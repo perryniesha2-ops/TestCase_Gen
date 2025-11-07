@@ -30,6 +30,9 @@ const NAV: NavItem[] = [
   { href: "/pages/settings", label: "Settings", icon: Settings },
 ];
 
+
+
+
 function SidebarLink({ item, active }: { item: NavItem; active: boolean }) {
   const Icon = item.icon;
   return (
@@ -63,7 +66,7 @@ export function AppSidebar({
     <div
       className={cn(
         "flex h-full flex-col border-r bg-background",
-        collapsed ? "w-[64px]" : "w-64",
+        collapsed ? "w-[55px]" : "w-64",
         className
       )}
     >
@@ -85,7 +88,7 @@ export function AppSidebar({
           onClick={() => setCollapsed((c) => !c)}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          {collapsed ? <ChevronRight className="h-4 w-3" /> : <ChevronLeft className="h-4 w-3" />}
         </Button>
       </div>
 

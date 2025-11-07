@@ -50,17 +50,18 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="grid min-h-screen w-full md:grid-cols-[240px_1fr]">
+<div className="grid min-h-screen w-full md:grid-cols-[240px_1fr] md:gap-x-4 lg:gap-x-6">
       {/* Sidebar (visible on md+, Sheet inside AppSidebar for mobile) */}
       <AppSidebar className="hidden md:block" />
 
       {/* Main column */}
-      <div className="flex min-h-screen flex-col">
+  <div className="flex min-h-screen flex-col">
         {/* Top header (remove if your root layout already renders one) */}
         <SiteHeader />
 
         {/* Page content */}
-        <main className="container mx-auto w-full flex-1 px-4 py-6">
+    <main className="container mx-auto w-full flex-1 px-4 py-6">
+          
           {/* Top row: title + actions */}
           <div className="mb-4 flex items-center justify-between">
             <div>
