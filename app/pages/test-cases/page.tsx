@@ -1,3 +1,5 @@
+// app/pages/test-cases/page.tsx (Server Component)
+import { Suspense } from "react";
 import { TestCaseTable } from "@/components/pagecomponents/test-case-table";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -13,34 +15,25 @@ export default function TestCasesPage() {
       <div className="flex min-h-screen flex-col px-4 md:px-6">
         <SiteHeader />
 
-        {/* Page header */}
         <header className="mt-6 max-w-6xl mx-auto space-y-2">
           <h1 className="text-3xl font-bold">Test Cases</h1>
-          <p className="text-muted-foreground">
-            Manage and organize your test cases across all projects.
-          </p>
+          <p className="text-muted-foreground">Manage and organize your test cases across all projects.</p>
         </header>
 
-        {/* Actions + Search */}
         <section className="max-w-6xl mx-auto mt-6 space-y-4 w-full">
-          {/* Right-aligned New button */}
           <div className="flex items-center justify-end">
             <Button asChild>
               <Link href="/generator">
-                <Plus className="mr-2 h-4 w-4" />
-                New Test Case
+                <Plus className="mr-2 h-4 w-4" /> New Test Case
               </Link>
             </Button>
           </div>
-
-          {/* If you render a search bar separately, place it here.
-             The space-y-4 above adds spacing between button, search, and table. */}
-          {/* <SearchBar /> */}
         </section>
 
-        {/* Table */}
         <main className="max-w-6xl mx-auto mt-6 w-full">
-          <TestCaseTable />
+          <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading test cases…</div>}>
+            <TestCaseTable />
+          </Suspense>
         </main>
       </div>
     </div>
