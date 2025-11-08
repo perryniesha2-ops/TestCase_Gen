@@ -5,8 +5,8 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { AppSidebar } from "@/components/pagecomponents/app-sidebar";      // <-- ensure this path matches your project
-import { SiteHeader } from "@/components/pagecomponents/site-header";      // <-- remove if your layout already has a header
+import { AppSidebar } from "@/components/pagecomponents/app-sidebar";      
+import { SiteHeader } from "@/components/pagecomponents/site-header";     
 import { cn } from "@/lib/utils";
 
 import {

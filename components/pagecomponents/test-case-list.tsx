@@ -169,7 +169,7 @@ export function TestCaseList() {
             <p className="text-muted-foreground mb-4">
               Generate your first test cases using AI
             </p>
-            <Button onClick={() => router.push('/dashboard/pages/generate')}>
+            <Button onClick={() => router.push('/pages/generate')}>
               Generate Test Cases
             </Button>
           </div>
