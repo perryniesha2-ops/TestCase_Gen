@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { LogoutButton } from "@/components/auth/logout-button"
 
 
 
@@ -107,10 +108,7 @@ export function SiteHeader({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/logout" className="flex items-center text-destructive">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
-                </Link>
+            <LogoutButton showConfirmation />
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

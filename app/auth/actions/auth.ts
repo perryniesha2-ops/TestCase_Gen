@@ -80,14 +80,70 @@ export async function login(formData: FormData) {
 
 export async function logout() {
   const supabase = await createClient()
-  const { error } = await supabase.auth.signOut()
+  
+  try {
+    // Sign out from Supabase (clears server-side session)
+    const { error } = await supabase.auth.signOut()
 
-  if (error) {
-    return { error: error.message }
+    if (error) {
+      console.error('Logout error:', error)
+      return { error: error.message }
+    }
+
+    // Clear any cached data
+    revalidatePath("/", "layout")
+    
+    // Redirect to login page
+    redirect("/pages/login")
+  } catch (error) {
+    console.error('Unexpected logout error:', error)
+    return { error: 'An unexpected error occurred during logout' }
   }
+}
 
-  revalidatePath("/", "layout")
-  redirect("/login")
+// Client-side logout helper for additional cleanup
+export async function logoutWithCleanup() {
+  const supabase = await createClient()
+  
+  try {
+    // Sign out from Supabase
+    const { error } = await supabase.auth.signOut()
+
+    if (error) {
+      throw error
+    }
+
+    // Clear any localStorage items related to our app
+    if (typeof window !== 'undefined') {
+      // Clear any app-specific localStorage items
+      const keysToRemove = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && (
+          key.startsWith('synthqa-') || 
+          key.startsWith('test-case-') ||
+          key.startsWith('requirement-') ||
+          key.includes('generator-')
+        )) {
+          keysToRemove.push(key)
+        }
+      }
+      
+      // Remove app-specific items
+      keysToRemove.forEach(key => localStorage.removeItem(key))
+      
+      // Clear sessionStorage as well
+      sessionStorage.clear()
+      
+      // Force reload to ensure clean state
+      window.location.href = '/pages/login'
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error('Logout error:', error)
+    throw error
+  }
 }
 
 export async function resetPassword(formData: FormData) {

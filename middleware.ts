@@ -54,26 +54,55 @@ export async function middleware(request: NextRequest) {
     }
   )
 
+  // Get user and handle potential errors
   const {
     data: { user },
+    error
   } = await supabase.auth.getUser()
 
   // Protected routes
-  const isProtectedRoute = request.nextUrl.pathname.startsWith('/dashboard') ||
-                          request.nextUrl.pathname.startsWith('/test-cases') ||
-                          request.nextUrl.pathname.startsWith('/profile')
+  const isProtectedRoute = request.nextUrl.pathname.startsWith('/pages/dashboard') ||
+                          request.nextUrl.pathname.startsWith('/pages/test-cases') ||
+                          request.nextUrl.pathname.startsWith('/pages/profile')
 
   // Auth routes
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/login') ||
-                     request.nextUrl.pathname.startsWith('/signup')
+  const isAuthRoute = request.nextUrl.pathname.startsWith('/pages/login') ||
+                     request.nextUrl.pathname.startsWith('/pages/signup')
+
+  // Auth callback routes (don't redirect these)
+  const isAuthCallback = request.nextUrl.pathname.startsWith('/auth/callback')
+
+  // If there's an auth error and user is trying to access protected route, clear session and redirect
+  if (error && isProtectedRoute) {
+    const loginUrl = new URL('/pages/login', request.url)
+    loginUrl.searchParams.set('message', 'Session expired. Please log in again.')
+    
+    const clearedResponse = NextResponse.redirect(loginUrl)
+    
+    // Clear auth-related cookies
+    const authCookieNames = [
+      'sb-access-token',
+      'sb-refresh-token', 
+      'supabase-auth-token',
+      'supabase.auth.token'
+    ]
+    
+    authCookieNames.forEach(name => {
+      clearedResponse.cookies.delete(name)
+    })
+    
+    return clearedResponse
+  }
 
   // If user is not logged in and trying to access protected route
   if (!user && isProtectedRoute) {
-    return NextResponse.redirect(new URL('/login', request.url))
+    const loginUrl = new URL('/pages/login', request.url)
+    loginUrl.searchParams.set('redirect', request.nextUrl.pathname)
+    return NextResponse.redirect(loginUrl)
   }
 
-  // If user is logged in and trying to access auth routes
-  if (user && isAuthRoute) {
+  // If user is logged in and trying to access auth routes (but not callback)
+  if (user && isAuthRoute && !isAuthCallback) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
