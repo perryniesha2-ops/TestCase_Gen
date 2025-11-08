@@ -111,7 +111,7 @@ export function GeneratorForm() {
       })
 
       // Redirect to the test cases list
-      router.push(`/dashboard/test-cases?generation=${data.generation_id}`)
+      router.push(`/dashboard/pages/test-cases?generation=${data.generation_id}`)
     } catch (error) {
       console.error('Generation error:', error)
       toast.error('Generation failed', {
