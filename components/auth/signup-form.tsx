@@ -134,7 +134,7 @@ export function SignupForm(){
             {loading ? "Creating account..." : "Create account"}
           </Button>
                 <FieldDescription className="text-center">
-                  Already have an account? <a href="/login">Sign in</a>
+                  Already have an account? <a href="/pages/login">Sign in</a>
                 </FieldDescription>
               </Field>
             </FieldGroup>

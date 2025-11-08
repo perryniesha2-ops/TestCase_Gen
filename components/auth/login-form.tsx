@@ -122,7 +122,7 @@ router.push("/pages/dashboard")      }
             {loading ? "Signing in..." : "Sign in"}
           </Button>
                 <FieldDescription className="text-center">
-                  Don&apos;t have an account? <a href="/signup">Sign up</a>
+                  Don&apos;t have an account? <a href="/pages/signup">Sign up</a>
                 </FieldDescription>
               </Field>
             </FieldGroup>
