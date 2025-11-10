@@ -22,7 +22,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { signup } from "@/app/auth/actions/auth"
+import { customSignup } from "@/app/auth/actions/auth"
 
 
 
@@ -49,27 +49,28 @@ export function SignupForm(){
     }
 
  try {
-      const result = await signup(formData)
-      
-      if (result?.error) {
-        toast.error("Signup failed", {
-          description: result.error,
-        })
-      } else if (result?.message) {
-        toast.success("Account created!", {
-          description: result.message,
-        })
-      } else {
-        toast.success("Account created successfully!")
-        router.push("/push/dashboard")      }
-    } catch (error) {
-      toast.error("An unexpected error occurred")
-      console.error(error)
-    } finally {
-      setLoading(false)
+    const result = await customSignup(formData)
+    
+    if (result?.error) {
+      toast.error("Signup failed", {
+        description: result.error,
+      })
+    } else if (result?.success && result?.requiresConfirmation) {
+      // Show email confirmation message instead of redirecting
+      toast.success("Account created!", {
+        description: "Please check your email to confirm your account.",
+      })
+      // Don't redirect to dashboard - stay on confirmation message
+    } else if (result?.success) {
+      // Regular signup flow (shouldn't happen with custom signup)
+      router.push("/pages/dashboard")
     }
+  } catch (error) {
+    toast.error("An unexpected error occurred")
+  } finally {
+    setLoading(false)
   }
-
+}
   
   return (
     <div className={cn("flex flex-col gap-6",)}>

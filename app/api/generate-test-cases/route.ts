@@ -39,7 +39,6 @@ function anthropicTextFromContent(blocks: unknown): string {
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-// ----- Config (FIXED TO MATCH FRONTEND) -----
 const AI_MODELS = {
   "claude-3-5-sonnet-20241022": "claude-3-5-sonnet-20241022",
   "claude-3-5-haiku-20241022": "claude-3-5-haiku-20241022", 
@@ -96,15 +95,7 @@ export async function POST(request: Request) {
       description?: string | null;
     };
 
-    console.log('🔍 API Request received:', {
-      requirements: (body.requirements ?? "").substring(0, 100) + '...',
-      model: body.model,
-      testCaseCount: body.testCaseCount,
-      coverage: body.coverage,
-      title: body.title,
-      description: body.description,
-      requirement_id: body.requirement_id
-    });
+    
 
     const requirements = (body.requirements ?? "").trim();
     const requirement_id = body.requirement_id || null;
@@ -216,7 +207,6 @@ Include positive tests, negative tests, boundary conditions, and error handling 
         usedProvider = "openai";
       }
     } catch (e) {
-      console.error(`Primary provider (${primary}) failed:`, e);
 
       try {
         if (fallback === "anthropic") {
@@ -237,7 +227,6 @@ Include positive tests, negative tests, boundary conditions, and error handling 
           usedProvider = "openai (fallback)";
         }
       } catch (fallbackError) {
-        console.error(`Fallback provider (${fallback}) also failed:`, fallbackError);
         return NextResponse.json(
           { error: "Both AI providers failed. Please try again later." },
           { status: 500 }
@@ -288,7 +277,6 @@ Return ONLY valid JSON, no markdown, no explanation.`;
         ? parsed.testCases
         : [];
     } catch (err) {
-      console.error("Structuring failed; attempting manual array extraction:", err);
       const match = rawText.match(/\[[\s\S]*\]/);
       if (!match) {
         return NextResponse.json(
@@ -301,7 +289,6 @@ Return ONLY valid JSON, no markdown, no explanation.`;
 
     if (!Array.isArray(testCases)) testCases = [];
     if (testCases.length < Math.floor(testCaseCount * 0.8)) {
-      console.warn(`Generated ${testCases.length} test cases, requested ${testCaseCount}`);
     }
 
     // ---- Persist generation ----

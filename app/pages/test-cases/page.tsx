@@ -1,6 +1,6 @@
 // app/pages/test-cases/page.tsx (Server Component)
 import { Suspense } from "react";
-import { TestCaseTable } from "@/components/pagecomponents/test-case-table";
+import { TabbedTestCaseTable } from "@/components/pagecomponents/test-case-table";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Plus } from "lucide-react";
@@ -32,7 +32,7 @@ export default function TestCasesPage() {
 
         <main className="max-w-6xl mx-auto mt-6 w-full">
           <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading test cases…</div>}>
-            <TestCaseTable />
+            <TabbedTestCaseTable/>
           </Suspense>
         </main>
       </div>

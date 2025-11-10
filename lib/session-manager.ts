@@ -50,7 +50,6 @@ export class SessionManager {
         try {
           localStorage.removeItem(key)
         } catch (e) {
-          console.warn(`Failed to remove localStorage key: ${key}`, e)
         }
       })
 
@@ -66,12 +65,10 @@ export class SessionManager {
         try {
           // We can add IndexedDB cleanup here if needed
         } catch (e) {
-          console.warn('Failed to clear IndexedDB', e)
         }
       }
 
     } catch (error) {
-      console.warn('Client storage cleanup failed:', error)
     }
   }
 
