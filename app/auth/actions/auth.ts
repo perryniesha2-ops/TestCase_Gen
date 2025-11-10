@@ -96,7 +96,7 @@ export async function logout() {
     revalidatePath("/", "layout")
     
     // Redirect to login page
-    redirect("/login")
+    redirect("/pages/login")
   } catch (error) {
     console.error('Unexpected logout error:', error)
     return { error: 'An unexpected error occurred during logout' }
@@ -138,7 +138,7 @@ export async function logoutWithCleanup() {
       sessionStorage.clear()
       
       // Force reload to ensure clean state
-      window.location.href = '/login'
+      window.location.href = '/pages/login'
     }
 
     return { success: true }

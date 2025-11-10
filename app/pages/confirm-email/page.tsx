@@ -1,9 +1,18 @@
-import { EmailConfirmationForm } from "@/components/auth/email-confirmation-form"
+// app/pages/confirm-email/page.tsx
+// Server Component wrapper for custom email confirmation
+
+import { ClientPageWrapper } from '@/components/auth/client-page-wrapper'
+import CustomConfirmEmailClient from './confirm-email-client'
 
 export default function ConfirmEmailPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <EmailConfirmationForm />
-    </div>
+    <ClientPageWrapper>
+      <CustomConfirmEmailClient />
+    </ClientPageWrapper>
   )
+}
+
+export const metadata = {
+  title: 'Confirm Email - SynthQA',
+  description: 'Confirm your email address to activate your account',
 }
