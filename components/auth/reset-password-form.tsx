@@ -3,88 +3,111 @@
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
-import { updatePassword } from "@/app/auth/actions/auth"
-import { createClient } from "@/lib/supabase/client"
+import { customUpdatePassword } from "@/app/auth/actions/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle, AlertTriangle, Eye, EyeOff } from "lucide-react"
+import { CheckCircle, AlertTriangle, Eye, EyeOff, Loader2 } from "lucide-react"
 
 export function ResetPasswordForm() {
   const [loading, setLoading] = useState(false)
+  const [checkingToken, setCheckingToken] = useState(true)
   const [isValidToken, setIsValidToken] = useState<boolean | null>(null)
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [tokenError, setTokenError] = useState<string | null>(null)
   
   const router = useRouter()
   const searchParams = useSearchParams()
-  const supabase = createClient()
+  const token = searchParams.get('token')
 
   useEffect(() => {
-    // Check if user has a valid session (from reset link)
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setIsValidToken(!!session)
+    // Check if we have a valid token
+    const checkToken = async () => {
+      if (!token) {
+        setIsValidToken(false)
+        setTokenError('No reset token found in URL')
+        setCheckingToken(false)
+        return
+      }
+
+      console.log('🔍 Checking reset token...')
+      
+      // We can't pre-validate the token without using it, so we'll assume it's valid
+      // and handle validation during the actual password update
+      setIsValidToken(true)
+      setCheckingToken(false)
     }
 
-    checkSession()
-  }, [supabase])
+    checkToken()
+  }, [token])
 
   const passwordsMatch = password === confirmPassword
   const isPasswordValid = password.length >= 6
-  const canSubmit = isPasswordValid && passwordsMatch && password && confirmPassword
+  const canSubmit = isPasswordValid && passwordsMatch && password && confirmPassword && isValidToken
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     
-    if (!canSubmit) {
+    if (!canSubmit || !token) {
       toast.error("Please check your password requirements")
       return
     }
 
     setLoading(true)
 
-    const formData = new FormData()
-    formData.append("password", password)
-
     try {
-      const result = await updatePassword(formData)
+      const formData = new FormData()
+      formData.append("token", token)
+      formData.append("password", password)
+
+      console.log('🔑 Updating password with custom token...')
+      const result = await customUpdatePassword(formData)
       
       if (result?.error) {
-        toast.error("Password update failed", {
-          description: result.error,
-        })
+        console.error('❌ Password update failed:', result.error)
+        
+        // Handle specific token errors
+        if (result.error.includes('Invalid') || result.error.includes('expired')) {
+          setIsValidToken(false)
+          setTokenError(result.error)
+        } else {
+          toast.error("Password update failed", {
+            description: result.error,
+          })
+        }
         setLoading(false)
       } else if (result?.success) {
+        console.log('✅ Password updated successfully!')
         setSuccess(true)
         toast.success("Password updated!", {
-          description: "Your password has been successfully updated.",
+          description: result.message || "Your password has been successfully updated.",
         })
         
-        // Redirect to dashboard after a short delay
+        // Redirect to sign-in page after a short delay
         setTimeout(() => {
-          router.push("/pages/dashboard")
+          router.push("/pages/login")
         }, 2000)
       }
     } catch (error) {
+      console.error('❌ Password update error:', error)
       toast.error("An unexpected error occurred")
-      console.error(error)
       setLoading(false)
     }
   }
 
   // Loading state while checking token
-  if (isValidToken === null) {
+  if (checkingToken) {
     return (
       <Card className="w-full max-w-md">
         <CardContent className="pt-6">
           <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
           <p className="text-center text-muted-foreground mt-4">
             Verifying reset link...
@@ -111,14 +134,14 @@ export function ResetPasswordForm() {
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              Reset links expire after 1 hour for security. Please request a new reset link.
+              {tokenError || "Reset links expire after a certain time for security. Please request a new reset link."}
             </AlertDescription>
           </Alert>
         </CardContent>
         <CardFooter>
           <Button 
             className="w-full" 
-            onClick={() => router.push("/pages/forgot-password")}
+            onClick={() => router.push("/forgot-password")}
           >
             Request new reset link
           </Button>
@@ -137,14 +160,14 @@ export function ResetPasswordForm() {
           </div>
           <CardTitle className="text-2xl">Password updated!</CardTitle>
           <CardDescription>
-            Your password has been successfully updated. You&apos;ll be redirected to your dashboard shortly.
+            Your password has been successfully updated. You can now sign in with your new password.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Alert>
             <CheckCircle className="h-4 w-4" />
             <AlertDescription>
-              Redirecting you to the dashboard...
+              Redirecting you to sign in...
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -246,7 +269,14 @@ export function ResetPasswordForm() {
             className="w-full" 
             disabled={loading || !canSubmit}
           >
-            {loading ? "Updating password..." : "Update password"}
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Updating password...
+              </>
+            ) : (
+              'Update password'
+            )}
           </Button>
         </CardFooter>
       </form>

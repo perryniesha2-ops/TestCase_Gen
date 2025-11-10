@@ -1,188 +1,229 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { toast } from "sonner"
-import { confirmEmail } from "@/app/auth/actions/auth"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle, AlertTriangle, Loader2 } from "lucide-react"
+import { useEffect, useState } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Loader2, CheckCircle, AlertCircle, Mail } from 'lucide-react'
+import { confirmEmail, resendConfirmationEmail } from '@/app/auth/actions/auth'
 
-export function EmailConfirmationForm() {
-  const [loading, setLoading] = useState(false)
-  const [success, setSuccess] = useState(false)
+export default function EmailConfirmationForm() {
+  const [loading, setLoading] = useState(true)
+  const [confirmed, setConfirmed] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [confirmedEmail, setConfirmedEmail] = useState("")
-  
-  const router = useRouter()
+  const [resendLoading, setResendLoading] = useState(false)
+  const [showResendForm, setShowResendForm] = useState(false)
+  const [resendEmail, setResendEmail] = useState('')
   const searchParams = useSearchParams()
-  const token = searchParams.get('token')
+  const router = useRouter()
 
   useEffect(() => {
-    if (token) {
-      handleConfirmation(token)
-    } else {
-      setError("Invalid confirmation link - missing token")
-    }
-  }, [token])
+    const handleConfirmation = async () => {
+      try {
+        // Get the token from URL parameters
+        const token = searchParams.get('token')
+        
+        console.log('🔍 Confirmation token found:', !!token)
+        
+        if (!token) {
+          setError('Invalid confirmation link - no token found')
+          setLoading(false)
+          return
+        }
 
-  async function handleConfirmation(confirmToken: string) {
-    setLoading(true)
+        console.log('🎯 Confirming email with custom token...')
+        
+        // Use your custom confirmation function
+        const formData = new FormData()
+        formData.append('token', token)
+        
+        const result = await confirmEmail(formData)
+        
+        if (result.success) {
+          console.log('✅ Email confirmed successfully!')
+          setConfirmed(true)
+          toast.success(result.message || 'Email confirmed successfully!')
+        } else {
+          console.error('❌ Confirmation failed:', result.error)
+          setError(result.error || 'Email confirmation failed')
+        }
+
+      } catch (err) {
+        console.error('❌ Confirmation error:', err)
+        setError('An unexpected error occurred during email confirmation')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    // Only run confirmation if we have URL parameters
+    if (searchParams.toString()) {
+      handleConfirmation()
+    } else {
+      setLoading(false)
+      setError('No confirmation token found in URL')
+    }
+  }, [searchParams])
+
+  const handleResendConfirmation = async (e: React.FormEvent) => {
+    e.preventDefault()
     
-    const formData = new FormData()
-    formData.append("token", confirmToken)
+    if (!resendEmail.trim()) {
+      toast.error('Please enter your email address')
+      return
+    }
 
     try {
-      const result = await confirmEmail(formData)
+      setResendLoading(true)
       
-      if (result?.error) {
-        setError(result.error)
-        toast.error("Confirmation failed", {
-          description: result.error,
-        })
-      } else if (result?.success) {
-        setSuccess(true)
-        setConfirmedEmail(result.email || "")
-        toast.success("Email confirmed!", {
-          description: result.message,
-        })
-        
-        // Redirect to login after a short delay
-        setTimeout(() => {
-          router.push("/pages/login?message=email_confirmed")
-        }, 3000)
+      const formData = new FormData()
+      formData.append('email', resendEmail.trim())
+      
+      const result = await resendConfirmationEmail(formData)
+      
+      if (result.success) {
+        toast.success(result.message || 'Confirmation email sent!')
+        setShowResendForm(false)
+        setError(null)
+      } else {
+        toast.error(result.error || 'Failed to resend confirmation email')
       }
-    } catch (error) {
-      setError("An unexpected error occurred")
-      console.error(error)
+    } catch (err) {
+      console.error('❌ Resend error:', err)
+      toast.error('Failed to resend confirmation email')
     } finally {
-      setLoading(false)
+      setResendLoading(false)
     }
   }
 
-  // Loading state
-  if (loading && !error && !success) {
-    return (
-      <Card className="w-full max-w-md">
-        <CardContent className="pt-6">
-          <div className="flex flex-col items-center justify-center py-8">
-            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-            <h3 className="text-lg font-medium mb-2">Confirming your email...</h3>
-            <p className="text-sm text-muted-foreground text-center">
-              Please wait while we verify your confirmation link.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    )
+  const handleContinue = () => {
+    router.push('/pages/login')
   }
 
-  // Error state
-  if (error) {
-    return (
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
-            <AlertTriangle className="h-6 w-6 text-destructive" />
-          </div>
-          <CardTitle className="text-2xl">Confirmation Failed</CardTitle>
+          <CardTitle className="flex items-center justify-center gap-2">
+            {loading && <Loader2 className="h-5 w-5 animate-spin" />}
+            {confirmed && <CheckCircle className="h-5 w-5 text-green-600" />}
+            {error && <AlertCircle className="h-5 w-5 text-red-600" />}
+            {!loading && !confirmed && !error && <Mail className="h-5 w-5" />}
+            Email Confirmation
+          </CardTitle>
           <CardDescription>
-            There was a problem confirming your email address
+            {loading && 'Confirming your email address...'}
+            {confirmed && 'Your email has been successfully confirmed!'}
+            {error && 'There was an issue confirming your email'}
+            {!loading && !confirmed && !error && 'Confirm your email address'}
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              {error}
-            </AlertDescription>
-          </Alert>
-          
-          {error.includes("expired") && (
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-              <p className="text-sm text-blue-800">
-                <strong>Need a new confirmation link?</strong> You can request a new one from the signup page.
+
+        <CardContent className="space-y-4">
+          {loading && (
+            <div className="text-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+              <p className="text-sm text-muted-foreground">
+                Please wait while we confirm your email address...
               </p>
             </div>
           )}
+
+          {confirmed && (
+            <div className="text-center py-4">
+              <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-4" />
+              <p className="text-sm text-muted-foreground mb-6">
+                Your email has been confirmed and your account is now active. You can now sign in to access SynthQA.
+              </p>
+              <Button onClick={handleContinue} className="w-full">
+                Continue to Sign In
+              </Button>
+            </div>
+          )}
+
+          {error && (
+            <div className="text-center py-4">
+              <AlertCircle className="h-12 w-12 text-red-600 mx-auto mb-4" />
+              <p className="text-sm text-red-600 mb-2 font-medium">
+                Email Confirmation Failed
+              </p>
+              <p className="text-sm text-muted-foreground mb-6">
+                {error}
+              </p>
+              
+              {!showResendForm ? (
+                <div className="space-y-2">
+                  <Button 
+                    onClick={() => setShowResendForm(true)} 
+                    variant="outline" 
+                    className="w-full"
+                  >
+                    Request New Confirmation Email
+                  </Button>
+                  <Button onClick={() => router.push('/pages/login')} variant="ghost" className="w-full">
+                    Back to Sign In
+                  </Button>
+                </div>
+              ) : (
+                <form onSubmit={handleResendConfirmation} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="resend-email">Email Address</Label>
+                    <Input
+                      id="resend-email"
+                      type="email"
+                      placeholder="Enter your email address"
+                      value={resendEmail}
+                      onChange={(e) => setResendEmail(e.target.value)}
+                      required
+                      disabled={resendLoading}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Button 
+                      type="submit" 
+                      className="w-full"
+                      disabled={resendLoading}
+                    >
+                      {resendLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        'Send Confirmation Email'
+                      )}
+                    </Button>
+                    <Button 
+                      type="button"
+                      onClick={() => setShowResendForm(false)} 
+                      variant="ghost" 
+                      className="w-full"
+                      disabled={resendLoading}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {!loading && !confirmed && !error && (
+            <div className="text-center py-4">
+              <Mail className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-sm text-muted-foreground mb-6">
+                Click the confirmation link in your email to activate your account.
+              </p>
+              <Button onClick={() => setShowResendForm(true)} variant="outline" className="w-full">
+                Resend Confirmation Email
+              </Button>
+            </div>
+          )}
         </CardContent>
-        <CardFooter className="flex flex-col gap-2">
-          <Button 
-            className="w-full" 
-            onClick={() => router.push("/pages/signup")}
-          >
-            Back to Signup
-          </Button>
-          <Button 
-            variant="outline"
-            className="w-full" 
-            onClick={() => router.push("/pages/login")}
-          >
-            Go to Login
-          </Button>
-        </CardFooter>
       </Card>
-    )
-  }
-
-  // Success state
-  if (success) {
-    return (
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
-            <CheckCircle className="h-6 w-6 text-green-600" />
-          </div>
-          <CardTitle className="text-2xl">Email Confirmed!</CardTitle>
-          <CardDescription>
-            Welcome to SynthQA! Your account is now ready to use.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Alert>
-            <CheckCircle className="h-4 w-4" />
-            <AlertDescription>
-              Your email {confirmedEmail && <strong>{confirmedEmail}</strong>} has been successfully confirmed. You can now log in and start generating test cases!
-            </AlertDescription>
-          </Alert>
-          
-          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
-            <h4 className="font-medium text-blue-900 mb-2">🎉 What&apos;s next?</h4>
-            <ul className="text-sm text-blue-800 space-y-1">
-              <li>• Log in to your account</li>
-              <li>• Create your first requirements</li>
-              <li>• Generate AI-powered test cases</li>
-              <li>• Build comprehensive test coverage</li>
-            </ul>
-          </div>
-
-          <div className="mt-4 text-center">
-            <p className="text-sm text-muted-foreground">
-              Redirecting to login page in a few seconds...
-            </p>
-          </div>
-        </CardContent>
-        <CardFooter>
-          <Button 
-            className="w-full" 
-            onClick={() => router.push("/pages/login")}
-          >
-            Go to Login
-          </Button>
-        </CardFooter>
-      </Card>
-    )
-  }
-
-  // Fallback state (shouldn't reach here)
-  return (
-    <Card className="w-full max-w-md">
-      <CardContent className="pt-6">
-        <div className="text-center">
-          <p className="text-muted-foreground">Processing...</p>
-        </div>
-      </CardContent>
-    </Card>
+    </div>
   )
 }

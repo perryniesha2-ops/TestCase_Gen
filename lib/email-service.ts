@@ -23,7 +23,7 @@ export class EmailService {
 
   // Send password reset email
   async sendPasswordResetEmail(data: ResetEmailData): Promise<boolean> {
-    const resetUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password?token=${data.token}`
+    const resetUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/pages/reset-password?token=${data.token}`
     
     const emailHtml = `
       <!DOCTYPE html>

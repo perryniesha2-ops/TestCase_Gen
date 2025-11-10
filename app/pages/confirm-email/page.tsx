@@ -2,12 +2,11 @@
 // Server Component wrapper for custom email confirmation
 
 import { ClientPageWrapper } from '@/components/auth/client-page-wrapper'
-import CustomConfirmEmailClient from './confirm-email-client'
-
+import EmailConfirmationForm from '@/components/auth/email-confirmation-form'
 export default function ConfirmEmailPage() {
   return (
     <ClientPageWrapper>
-      <CustomConfirmEmailClient />
+      <EmailConfirmationForm />
     </ClientPageWrapper>
   )
 }
