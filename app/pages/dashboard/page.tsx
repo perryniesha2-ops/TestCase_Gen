@@ -203,7 +203,7 @@ export default function DashboardPage() {
             </div>
             <div className="flex items-center gap-2">
               <Button asChild>
-                <Link href="/pages/cross-platform-testing">
+                <Link href="/pages/generate">
                   <Plus className="mr-2 h-4 w-4" />
                   New Generation
                 </Link>
