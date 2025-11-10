@@ -113,7 +113,7 @@ export class EmailService {
 
   // Send email confirmation email
   async sendConfirmationEmail(data: ConfirmationEmailData): Promise<boolean> {
-    const confirmUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/confirm-email?token=${data.token}`
+    const confirmUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/pages/confirm-email?token=${data.token}`
     const userName = data.userName || 'there'
     
     const emailHtml = `
