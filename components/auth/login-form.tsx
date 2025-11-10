@@ -100,13 +100,20 @@ router.push("/pages/dashboard")      }
               </Field>
               <Field>
                 <div className="flex items-center">
-                  <FieldLabel htmlFor="password">Password</FieldLabel>
-                  <Link
-                href="/forgot-password"
-                className="text-sm text-muted-foreground hover:text-primary"
-              >
-                Forgot password?
-              </Link>
+
+
+
+
+
+                 <div className="flex items-center gap-35">
+  <FieldLabel htmlFor="password">Password</FieldLabel>
+  <Link
+    href="/pages/forgot-password"
+    className="text-sm text-muted-foreground hover:text-primary"
+  >
+    Forgot password?
+  </Link>
+</div>
             </div>
             <Input
               id="password"

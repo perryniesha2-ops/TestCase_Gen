@@ -61,7 +61,7 @@ export function SignupForm(){
         })
       } else {
         toast.success("Account created successfully!")
-        router.push("/push/dashboard")      }
+        router.push("/pages/dashboard")      }
     } catch (error) {
       toast.error("An unexpected error occurred")
       console.error(error)
