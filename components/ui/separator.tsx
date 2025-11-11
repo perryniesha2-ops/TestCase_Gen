@@ -5,7 +5,7 @@ import * as SeparatorPrimitive from "@radix-ui/react-separator"
 
 import { cn } from "@/lib/utils"
 
-function Separator({
+export function Separator({
   className,
   orientation = "horizontal",
   decorative = true,
@@ -25,4 +25,20 @@ function Separator({
   )
 }
 
-export { Separator }
+
+export function SeparatorDemo() {
+
+  return (
+    <div>
+      
+      <Separator className="my-4" />
+      <div className="flex h-5 items-center space-x-4 text-sm">
+       
+        <Separator orientation="vertical" />
+       
+      </div>
+    </div>
+  )
+}
+
+

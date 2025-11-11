@@ -3,112 +3,109 @@
 import * as React from "react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { usePathname } from "next/navigation";
-import { Search, Sun, Moon, User, LogOut } from "lucide-react";
-
+import { Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import { LogoutButton } from "@/components/auth/logout-button"
+import { LogoutButton } from "@/components/auth/logout-button";
+import { createClient } from "@/lib/supabase/client";
 
+type UserProfile = {
+  id: string;
+  email: string;
+  full_name?: string;
+  avatar_url?: string;
+};
 
+function initials(name?: string, email?: string) {
+  const n = (name ?? "").trim();
+  if (n) return n.split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? "").join("") || "U";
+  return (email?.[0] ?? "U").toUpperCase();
+}
 
-export function SiteHeader({
-  className,
-  onSearch,
-}: {
-  className?: string;
-  onSearch?: (q: string) => void;
-}) {
-  const pathname = usePathname();
+export function SiteHeader({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
-  const [q, setQ] = React.useState("");
+  const [user, setUser] = React.useState<UserProfile | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const supabase = React.useMemo(() => createClient(), []);
+
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setUser({
+            id: user.id,
+            email: user.email || "",
+            full_name: (user.user_metadata?.full_name as string) || "",
+            avatar_url: (user.user_metadata?.avatar_url as string) || "",
+          });
+        } else {
+          setUser(null);
+        }
+      } catch {
+        // swallow errors; header should never break the page
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [supabase]);
+
+  const avatarText = initials(user?.full_name, user?.email);
 
   return (
-    <header
-      className={cn(
-        "sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur",
-        className
-      )}
-    >
+    <header className={cn("sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur", className)}>
       <div className="mx-auto flex h-14 max-w-screen-2xl items-center gap-2 px-3">
         <Link href="/" className="flex items-center gap-2 font-semibold">
-          
           <span className="hidden sm:block">SynthQA</span>
         </Link>
 
-        <nav className="hidden items-center gap-1 md:flex">
-         
-        </nav>
-
         <div className="ml-auto flex items-center gap-2">
-          {/* search */}
-          <div className="hidden sm:flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && onSearch) onSearch(q);
-                }}
-                placeholder="Search…"
-                className="w-[220px] pl-8"
-              />
-            </div>
-            <Button size="sm" variant="secondary" onClick={() => onSearch?.(q)}>
-              Search
-            </Button>
-          </div>
-
-          {/* theme toggle */}
           <Button
             size="icon"
             variant="ghost"
             aria-label="Toggle theme"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           >
-            <Sun className="h-4 w-4 rotate-0 scale-100 dark:-rotate-90 dark:scale-0 transition" />
-            <Moon className="absolute h-4 w-4 rotate-90 scale-0 dark:rotate-0 dark:scale-100 transition" />
+            <Sun className="h-4 w-4 rotate-0 scale-100 transition dark:-rotate-90 dark:scale-0" />
+            <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition dark:rotate-0 dark:scale-100" />
           </Button>
 
-          {/* user menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback>U</AvatarFallback>
+                  {user?.avatar_url ? (
+                    <AvatarImage
+                      src={user.avatar_url}
+                      alt={user.full_name || user.email || "User"}
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                    />
+                  ) : null}
+                  <AvatarFallback>{avatarText}</AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
+
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">User</p>
+                  <p className="text-sm font-medium leading-none">
+                    {user?.full_name || user?.email || "User"}
+                  </p>
                   <p className="text-xs leading-none text-muted-foreground">
-                    user@example.com
+                    {loading ? "" : user?.email || ""}
                   </p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/profile" className="flex items-center">
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-            <LogoutButton showConfirmation />
+                <LogoutButton showConfirmation />
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
