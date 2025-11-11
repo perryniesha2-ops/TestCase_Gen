@@ -1,6 +1,21 @@
 import { GalleryVerticalEnd } from "lucide-react"
 
 import { SignupForm } from "@/components/auth/signup-form"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldSeparator,
+  } from "@/components/ui/field"
+import { Separator,SeparatorDemo } from "@/components/ui/separator"
+
+
+import { LoginForm } from "@/components/auth/login-form"
+import {PrivacySheet} from "@/components/legal/PrivacySheet"
+import {TermsSheet} from "@/components/legal/TermsSheet"
+import {ContactSheet} from "@/components/pagecomponents/contactSheet"
+
 
 export default function SignupPage() {
   return (
@@ -13,6 +28,15 @@ export default function SignupPage() {
           Synth QA
         </a>
         <SignupForm />
+        </div>
+    <FieldDescription className="px-6 text-center">
+        By clicking continue, you agree to our Terms of{" "}
+        and Privacy Policy.
+    </FieldDescription>
+    <Separator /> 
+     <div className="flex h-6 items-center space-x-4 text-sm">
+     <PrivacySheet/><Separator orientation="vertical" />
+      <TermsSheet/><Separator orientation="vertical" /> <ContactSheet/>
       </div>
     </div>
   )

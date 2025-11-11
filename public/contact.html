@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Contact Support • Synth QA</title>
+  <link rel="stylesheet" href="/styles.css?v=1" />
+</head>
+<body class="legal">
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a href="/" class="brand">
+        <span>Synth QA</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="/terms.html">Terms</a>
+        <a href="//privacy.html">Privacy</a>
+        <a href="/contact.html" aria-current="page">Contact</a>
+        <a class="btn-dash" href="/pages/dashboard">Dashboard</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <form class="form" id="supportForm" novalidate>
+      <h1>Contact Support</h1>
+      <p class="lead">Tell us a bit about the issue and we’ll reply to your email.</p>
+
+      <div class="grid">
+        <div class="field half">
+          <label for="name">Your Name</label>
+          <input id="name" name="name" type="text" placeholder="Ada Lovelace" autocomplete="name" required />
+        </div>
+
+        <div class="field half">
+          <label for="email">Your Email</label>
+          <input id="email" name="email" type="email" placeholder="you@example.com" autocomplete="email" required />
+        </div>
+
+        <div class="field">
+          <label for="subject">Subject</label>
+          <input id="subject" name="subject" type="text" placeholder="Issue summary" required />
+        </div>
+
+        <div class="field">
+          <label for="message">Message</label>
+          <textarea id="message" name="message" placeholder="Describe what you need help with..." required></textarea>
+          <p class="hint">Include steps to reproduce, screenshots, and your browser/device if relevant.</p>
+        </div>
+
+        <!-- Honeypot (leave blank) -->
+        <input type="text" name="company" id="company" class="hidden" autocomplete="off" tabindex="-1" aria-hidden="true" />
+      </div>
+
+      <div class="actions">
+        <button type="submit" id="submitBtn">Send to Support</button>
+      </div>
+      <p id="status" class="hint" aria-live="polite"></p>
+    </form>
+  </main>
+
+  <footer class="site-footer">
+    <p>© <span id="y"></span> Synth QA • <a href="/terms.html">Terms</a> • <a href="/privacy.html">Privacy</a></p>
+  </footer>
+
+  <script>
+    document.getElementById('y').textContent = new Date().getFullYear();
+
+    const form = document.getElementById('supportForm');
+    const statusEl = document.getElementById('status');
+    const btn = document.getElementById('submitBtn');
+
+    function setStatus(msg, ok = true) {
+      statusEl.textContent = msg;
+      statusEl.classList.remove('error', 'success');
+      statusEl.classList.add(ok ? 'success' : 'error');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      setStatus('');
+      btn.disabled = true;
+
+      const data = {
+        name: form.name.value.trim(),
+        email: form.email.value.trim(),
+        subject: form.subject.value.trim(),
+        message: form.message.value.trim(),
+        hp: form.company.value.trim() // maps honeypot -> hp expected by API
+      };
+
+const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email);
+      if (!emailOk) { setStatus('Please enter a valid email address.', false); btn.disabled = false; return; }
+      if (!data.name || !data.subject || !data.message) { setStatus('Please fill in all required fields.', false); btn.disabled = false; return; }
+
+      try {
+        const res = await fetch('/api/send-support-emails', {   // <-- plural
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok) {
+          setStatus('Thanks! Your message has been sent. We’ll reply to your email.');
+          form.reset();
+        } else {
+          setStatus(json.error || 'We couldn’t send your message. Please try again.', false);
+        }
+      } catch {
+        setStatus('Network error. Please try again.', false);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
