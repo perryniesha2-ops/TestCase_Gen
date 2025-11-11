@@ -6,12 +6,8 @@ import { useTheme } from "next-themes";
 import { Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -25,24 +21,17 @@ type UserProfile = {
   avatar_url?: string;
 };
 
-function getUserInitials(name?: string, email?: string) {
+function initials(name?: string, email?: string) {
   const n = (name ?? "").trim();
-  if (n) {
-    const parts = n.split(/\s+/).slice(0, 2);
-    return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "U";
-  }
+  if (n) return n.split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? "").join("") || "U";
   return (email?.[0] ?? "U").toUpperCase();
 }
 
-export function SiteHeader({
-  className,
-}: {
-  className?: string;
-}) {
+export function SiteHeader({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
   const [user, setUser] = React.useState<UserProfile | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const supabase = createClient();
+  const supabase = React.useMemo(() => createClient(), []);
 
   React.useEffect(() => {
     (async () => {
@@ -58,28 +47,25 @@ export function SiteHeader({
         } else {
           setUser(null);
         }
+      } catch {
+        // swallow errors; header should never break the page
+        setUser(null);
       } finally {
         setLoading(false);
       }
     })();
   }, [supabase]);
 
-  const initials = getUserInitials(user?.full_name, user?.email);
+  const avatarText = initials(user?.full_name, user?.email);
 
   return (
-    <header
-      className={cn(
-        "sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur",
-        className
-      )}
-    >
+    <header className={cn("sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur", className)}>
       <div className="mx-auto flex h-14 max-w-screen-2xl items-center gap-2 px-3">
         <Link href="/" className="flex items-center gap-2 font-semibold">
           <span className="hidden sm:block">SynthQA</span>
         </Link>
 
         <div className="ml-auto flex items-center gap-2">
-          {/* theme toggle */}
           <Button
             size="icon"
             variant="ghost"
@@ -90,17 +76,18 @@ export function SiteHeader({
             <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition dark:rotate-0 dark:scale-100" />
           </Button>
 
-          {/* user menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-8 w-8">
                   {user?.avatar_url ? (
-                    <AvatarImage src={user.avatar_url} alt={user.full_name || user.email} />
+                    <AvatarImage
+                      src={user.avatar_url}
+                      alt={user.full_name || user.email || "User"}
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                    />
                   ) : null}
-                  <AvatarFallback className="text-xs font-medium">
-                    {initials}
-                  </AvatarFallback>
+                  <AvatarFallback>{avatarText}</AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
@@ -109,7 +96,7 @@ export function SiteHeader({
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium leading-none">
-                    {loading ? "Loading…" : user?.full_name || "User"}
+                    {user?.full_name || user?.email || "User"}
                   </p>
                   <p className="text-xs leading-none text-muted-foreground">
                     {loading ? "" : user?.email || ""}
@@ -117,7 +104,6 @@ export function SiteHeader({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {/* Add profile/settings items here if you want */}
               <DropdownMenuItem asChild>
                 <LogoutButton showConfirmation />
               </DropdownMenuItem>
