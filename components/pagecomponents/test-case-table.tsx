@@ -799,7 +799,6 @@ export function TabbedTestCaseTable() {
 
             <div className="flex-1 overflow-y-auto px-6 py-4">
               <div className="space-y-6">
-                {/* Description */}
                 <div>
                   <h4 className="font-semibold mb-2">Description</h4>
                   <p className="text-sm text-muted-foreground">{selectedCase.description}</p>

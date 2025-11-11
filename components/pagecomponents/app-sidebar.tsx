@@ -62,7 +62,7 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(initialCollapsed); // ⬅️ new
+  const [collapsed, setCollapsed] = useState(initialCollapsed); 
   const router = useRouter();
   const pathname = usePathname();
   const supabase = createClient();
@@ -303,11 +303,7 @@ function AppSidebarInnerExpandedForMobile({
   loading: boolean;
   handleSignOut: () => Promise<void>;
 }) {
-  // You can keep a super-simple copy of the content here, or
-  // if you prefer, render <AppSidebar initialCollapsed={false} /> inside the sheet.
-  // To keep this concise, we’ll just render the same navigation as buttons:
 
-  // For brevity, reuse the same arrays
   const router = useRouter();
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/pages/dashboard" ? pathname === "/pages/dashboard" || pathname === "/" : pathname.startsWith(href));

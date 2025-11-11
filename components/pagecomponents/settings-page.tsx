@@ -152,10 +152,8 @@ export default function SettingsPage() {
 
       if (uploadError) throw uploadError
 
-      // Get public URL
       const { data } = supabase.storage.from('avatars').getPublicUrl(fileName)
       
-      // Update user metadata
       const { error: updateError } = await supabase.auth.updateUser({
         data: { 
           avatar_url: data.publicUrl,
@@ -165,7 +163,6 @@ export default function SettingsPage() {
 
       if (updateError) throw updateError
 
-      // Update local state
       setUser(prev => prev ? { ...prev, avatar_url: data.publicUrl } : null)
       toast.success('Avatar updated successfully!')
 
@@ -181,7 +178,6 @@ export default function SettingsPage() {
     if (!user?.avatar_url) return
 
     try {
-      // Update user metadata to remove avatar
       const { error } = await supabase.auth.updateUser({
         data: { 
           avatar_url: null,
@@ -220,7 +216,6 @@ export default function SettingsPage() {
         }
       }
 
-      // Update user metadata
       const { error } = await supabase.auth.updateUser({
         data: {
           full_name: fullName,

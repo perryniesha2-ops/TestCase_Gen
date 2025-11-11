@@ -23,7 +23,6 @@ export default function EmailConfirmationForm() {
   useEffect(() => {
     const handleConfirmation = async () => {
       try {
-        // Get the token from URL parameters
         const token = searchParams.get('token')
         
         console.log('🔍 Confirmation token found:', !!token)
@@ -36,7 +35,6 @@ export default function EmailConfirmationForm() {
 
         console.log('🎯 Confirming email with custom token...')
         
-        // Use your custom confirmation function
         const formData = new FormData()
         formData.append('token', token)
         

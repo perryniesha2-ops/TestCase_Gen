@@ -162,12 +162,10 @@ export function GeneratorForm() {
     fetchRequirements()
   }, [])
 
-  // Get all available requirements (saved + placeholders if no saved requirements)
   const availableRequirements = savedRequirements.length > 0 
     ? savedRequirements 
     : PLACEHOLDER_REQUIREMENTS
 
-  // When switching modes, ensure correct control is active
   function switchMode(nextMode: "quick" | "saved") {
     setMode(nextMode)
     if (nextMode === "saved") {
@@ -185,7 +183,6 @@ export function GeneratorForm() {
   const togglePlatform = (platformId: string) => {
     setSelectedPlatforms(prev => {
       if (prev.includes(platformId)) {
-        // Remove platform and its framework selection
         const newFrameworks = { ...selectedFrameworks }
         delete newFrameworks[platformId]
         setSelectedFrameworks(newFrameworks)
@@ -196,7 +193,6 @@ export function GeneratorForm() {
     })
   }
 
-  // Handle framework selection for a platform
   const setFrameworkForPlatform = (platformId: string, framework: string) => {
     setSelectedFrameworks(prev => ({
       ...prev,

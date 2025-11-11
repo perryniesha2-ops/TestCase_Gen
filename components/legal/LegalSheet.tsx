@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
 
 type LegalSheetProps = {
   title: string;
-  trigger: React.ReactNode;          // e.g. <Button>Privacy</Button> or <Link>Terms</Link>
-  children: React.ReactNode;          // the legal content component
+  trigger: React.ReactNode;          
+  children: React.ReactNode;          
   side?: "right" | "left" | "top" | "bottom";
   className?: string;
 };

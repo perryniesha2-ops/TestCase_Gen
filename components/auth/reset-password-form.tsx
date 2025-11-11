@@ -27,7 +27,6 @@ export function ResetPasswordForm() {
   const token = searchParams.get('token')
 
   useEffect(() => {
-    // Check if we have a valid token
     const checkToken = async () => {
       if (!token) {
         setIsValidToken(false)
@@ -38,8 +37,7 @@ export function ResetPasswordForm() {
 
       console.log('🔍 Checking reset token...')
       
-      // We can't pre-validate the token without using it, so we'll assume it's valid
-      // and handle validation during the actual password update
+      
       setIsValidToken(true)
       setCheckingToken(false)
     }
@@ -72,7 +70,6 @@ export function ResetPasswordForm() {
       if (result?.error) {
         console.error('❌ Password update failed:', result.error)
         
-        // Handle specific token errors
         if (result.error.includes('Invalid') || result.error.includes('expired')) {
           setIsValidToken(false)
           setTokenError(result.error)
@@ -89,7 +86,6 @@ export function ResetPasswordForm() {
           description: result.message || "Your password has been successfully updated.",
         })
         
-        // Redirect to sign-in page after a short delay
         setTimeout(() => {
           router.push("/pages/login")
         }, 2000)
@@ -101,7 +97,6 @@ export function ResetPasswordForm() {
     }
   }
 
-  // Loading state while checking token
   if (checkingToken) {
     return (
       <Card className="w-full max-w-md">
@@ -117,7 +112,6 @@ export function ResetPasswordForm() {
     )
   }
 
-  // Invalid or expired token
   if (!isValidToken) {
     return (
       <Card className="w-full max-w-md">
@@ -150,7 +144,6 @@ export function ResetPasswordForm() {
     )
   }
 
-  // Success state
   if (success) {
     return (
       <Card className="w-full max-w-md">
@@ -175,7 +168,6 @@ export function ResetPasswordForm() {
     )
   }
 
-  // Reset form
   return (
     <Card className="w-full max-w-md">
       <CardHeader>

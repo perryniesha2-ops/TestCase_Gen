@@ -66,7 +66,6 @@ export function AddRequirementModal({ onRequirementAdded, children }: AddRequire
         return
       }
 
-      // Filter out empty acceptance criteria
       const validCriteria = acceptanceCriteria.filter(criteria => criteria.trim() !== '')
 
       const { error } = await supabase
