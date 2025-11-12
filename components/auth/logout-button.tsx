@@ -38,19 +38,16 @@ export function LogoutButton({
     setLoading(true)
     
     try {
-      // Use the comprehensive session manager
       const result = await SessionManager.logout()
 
       if (!result.success) {
         throw new Error(result.error || 'Logout failed')
       }
 
-      // Show success message
       toast.success('Logged out successfully', {
         description: 'You have been signed out of SynthQA'
       })
 
-      // Force reload to login page after a brief delay
       setTimeout(() => {
         SessionManager.forceReload()
       }, 1000)

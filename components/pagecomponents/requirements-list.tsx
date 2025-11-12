@@ -304,7 +304,6 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation()
-                          // TODO: Edit functionality
                           toast.info('Edit functionality coming soon')
                         }}
                       >
@@ -380,7 +379,6 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
                 <span>{selectedRequirement.title}</span>
                 <Button
                   onClick={() => {
-                    // TODO: Generate test cases from requirement
                     toast.info('Test case generation from requirements coming soon')
                   }}
                   size="sm"

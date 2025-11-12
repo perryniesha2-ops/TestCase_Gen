@@ -23,8 +23,8 @@ export default function TestCasesPage() {
         <section className="max-w-6xl mx-auto mt-6 space-y-4 w-full">
           <div className="flex items-center justify-end">
             <Button asChild>
-              <Link href="/generator">
-                <Plus className="mr-2 h-4 w-4" /> New Test Case
+              <Link href="/pages/test-cases">
+                <Plus className="mr-2 h-4 w-4" /> New Test Case - coming soon!
               </Link>
             </Button>
           </div>

@@ -4,7 +4,6 @@
 export function PrivacyContent() {
   return (
     <div className="space-y-4 leading-relaxed text-sm text-muted-foreground">
-      <p><strong>Last updated:</strong> 2025-11-10</p>
 
       <p>
         This Privacy Policy explains how <strong>SynthQA</strong> (“we”, “us”)
@@ -60,6 +59,8 @@ export function PrivacyContent() {
         Depending on your location, you may access, correct, export, or delete your data, or object to certain processing.
         Contact: <a href="mailto:support@synthqa.app" className="underline">support@synthqa.app</a>.
       </p>
+      <p><strong>Last updated:</strong> 2025-11-10</p>
+
     </div>
   );
 }
@@ -67,7 +68,6 @@ export function PrivacyContent() {
 export function TermsContent() {
   return (
     <div className="space-y-4 leading-relaxed text-sm text-muted-foreground">
-      <p><strong>Last updated:</strong> 2025-11-10</p>
 
       <p>
         These Terms govern your use of <strong>SynthQA</strong> (“Service”). By using the Service, you agree to them.
@@ -128,7 +128,8 @@ export function TermsContent() {
         Questions about these Terms:{" "}
         Contact: <a href="mailto:legal@synthqa.app" className="underline">legal@synthqa.app</a>.
         </p> 
-       
+        <p><strong>Last updated:</strong> 2025-11-10</p>
+
     </div>
   );
 }

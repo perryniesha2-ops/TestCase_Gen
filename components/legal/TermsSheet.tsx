@@ -16,7 +16,7 @@ export  function TermsSheet({
       side={side}
       trigger={<Button variant="ghost" size="sm">{triggerLabel}</Button>}
     >
-      <ScrollArea className="h-[950px] w-[750px] rounded-md border p-4">
+      <ScrollArea className="h-[700px] w-[750px] rounded-md border p-4">
       <TermsContent />
       </ScrollArea>
     </LegalSheet>

@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, Sparkles, Info, FileText, Plus, FlaskConical, Layers, Monitor, Smartphone, Globe, Eye, Zap } from "lucide-react"
 import { AddRequirementModal } from "@/components/pagecomponents/add-requirement-modal"
 import Link from "next/link"
+import { checkAndRecordUsage } from '@/lib/usage-tracker'
 
 interface DatabaseRequirement {
   id: string
@@ -31,6 +32,12 @@ interface RequirementOption {
   priority: string
   value: string
 }
+type UserProfile = {
+  id: string;
+  email: string;
+  full_name?: string;
+  avatar_url?: string;
+};
 
 const PLACEHOLDER_REQUIREMENTS: RequirementOption[] = [
   {
@@ -115,6 +122,9 @@ export function GeneratorForm() {
   // Cross-platform specific state
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
   const [selectedFrameworks, setSelectedFrameworks] = useState<Record<string, string>>({})
+  const [user, setUser] = useState<UserProfile | null>(null)
+    const supabase = createClient();
+
   
   const router = useRouter()
 
@@ -159,15 +169,31 @@ export function GeneratorForm() {
   }
 
   useEffect(() => {
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setUser({
+            id: user.id,
+            email: user.email || "",
+            full_name: user.user_metadata?.full_name || "",
+            avatar_url: user.user_metadata?.avatar_url || "",
+          });
+        }
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [supabase]);
+
+  useEffect(() => {
     fetchRequirements()
   }, [])
 
-  // Get all available requirements (saved + placeholders if no saved requirements)
   const availableRequirements = savedRequirements.length > 0 
     ? savedRequirements 
     : PLACEHOLDER_REQUIREMENTS
 
-  // When switching modes, ensure correct control is active
   function switchMode(nextMode: "quick" | "saved") {
     setMode(nextMode)
     if (nextMode === "saved") {
@@ -181,11 +207,12 @@ export function GeneratorForm() {
   const savedRequirementsText = selectedReqData?.value || ""
   const finalRequirementsText = mode === "quick" ? customRequirements : savedRequirementsText
 
+
+
   // Handle platform selection
   const togglePlatform = (platformId: string) => {
     setSelectedPlatforms(prev => {
       if (prev.includes(platformId)) {
-        // Remove platform and its framework selection
         const newFrameworks = { ...selectedFrameworks }
         delete newFrameworks[platformId]
         setSelectedFrameworks(newFrameworks)
@@ -196,7 +223,6 @@ export function GeneratorForm() {
     })
   }
 
-  // Handle framework selection for a platform
   const setFrameworkForPlatform = (platformId: string, framework: string) => {
     setSelectedFrameworks(prev => ({
       ...prev,
@@ -207,6 +233,12 @@ export function GeneratorForm() {
   async function handleRegularSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
+
+    if (!user) {
+    toast.error("Please sign in to generate test cases")
+    router.push('/sign-in')
+    return
+  }
 
     try {
       const formData = new FormData(e.currentTarget)
@@ -257,9 +289,21 @@ export function GeneratorForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestPayload),
+       
       })
+        const data = await response.json()
 
-      const data = await response.json()
+      if (response.status === 429) {
+  toast.error(data.error, {
+    description: "Upgrade to Pro for 500 test cases/month",
+    action: {
+      label: "Upgrade",
+      onClick: () => router.push('/billing')
+    }
+  })
+  return
+}
+
       
       if (!response.ok) {
         throw new Error(data.error || data.details || `HTTP ${response.status}: Failed to generate test cases`)

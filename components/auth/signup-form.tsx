@@ -38,7 +38,6 @@ export function SignupForm(){
 
     const formData = new FormData(e.currentTarget)
     
-    // Validate password confirmation
     const password = formData.get("password") as string
     const confirmPassword = formData.get("confirmPassword") as string
 
@@ -56,13 +55,10 @@ export function SignupForm(){
         description: result.error,
       })
     } else if (result?.success && result?.requiresConfirmation) {
-      // Show email confirmation message instead of redirecting
       toast.success("Account created!", {
         description: "Please check your email to confirm your account.",
       })
-      // Don't redirect to dashboard - stay on confirmation message
     } else if (result?.success) {
-      // Regular signup flow (shouldn't happen with custom signup)
       router.push("/pages/dashboard")
     }
   } catch (error) {

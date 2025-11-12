@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import { checkAndRecordUsage } from "@/lib/usage-tracker";
 
 export const runtime = "nodejs";
 
@@ -25,14 +26,19 @@ interface GeneratedTestCase {
 
 // ----- Helpers -----
 function isAnthropicTextBlock(b: unknown): b is { type: "text"; text: string } {
-  if (typeof b !== "object" || b === null) return false;
-  const t = (b as { type?: unknown }).type;
-  const txt = (b as { text?: unknown }).text;
-  return t === "text" && typeof txt === "string";
+  return (
+    typeof b === "object" &&
+    b !== null &&
+    "type" in b &&
+    "text" in b &&
+    (b as Record<string, unknown>).type === "text" &&
+    typeof (b as Record<string, unknown>).text === "string"
+  );
 }
+
 function anthropicTextFromContent(blocks: unknown): string {
   if (!Array.isArray(blocks)) return "";
-  return blocks.filter(isAnthropicTextBlock).map(b => b.text).join("\n\n").trim();
+  return blocks.filter(isAnthropicTextBlock).map((b) => b.text).join("\n\n").trim();
 }
 
 // ----- Clients -----
@@ -41,7 +47,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 const AI_MODELS = {
   "claude-3-5-sonnet-20241022": "claude-3-5-sonnet-20241022",
-  "claude-3-5-haiku-20241022": "claude-3-5-haiku-20241022", 
+  "claude-3-5-haiku-20241022": "claude-3-5-haiku-20241022",
   "gpt-4o": "gpt-4o",
   "gpt-4o-mini": "gpt-4o-mini",
 } as const;
@@ -58,18 +64,16 @@ const COVERAGE_PROMPTS = {
 type CoverageKey = keyof typeof COVERAGE_PROMPTS;
 type ModelKey = keyof typeof AI_MODELS;
 
-const ALLOWED = new Set(["low","medium","high","critical"] as const);
+const ALLOWED = new Set(["low", "medium", "high", "critical"] as const);
 type Priority = "low" | "medium" | "high" | "critical";
 
 function normalizePriority(p: unknown): Priority {
   const s = (typeof p === "string" ? p : "").toLowerCase().trim();
-
-  if (["p0","blocker"].includes(s)) return "critical";
+  if (["p0", "blocker"].includes(s)) return "critical";
   if (["p1"].includes(s)) return "high";
   if (["p2"].includes(s)) return "medium";
   if (["p3"].includes(s)) return "low";
-
-  return (ALLOWED.has(s as Priority) ? (s as Priority) : "medium");
+  return ALLOWED.has(s as Priority) ? (s as Priority) : "medium";
 }
 
 // ----- Handler -----
@@ -78,7 +82,10 @@ export async function POST(request: Request) {
     const supabase = await createClient();
 
     // Auth
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -95,72 +102,66 @@ export async function POST(request: Request) {
       description?: string | null;
     };
 
-    
-
     const requirements = (body.requirements ?? "").trim();
     const requirement_id = body.requirement_id || null;
     const model = body.model as ModelKey;
-    const testCaseCount = Number(body.testCaseCount ?? 0);
+    const testCaseCount = Number(body.testCaseCount ?? 10);
     const coverage = body.coverage as CoverageKey;
     const template = body.template ?? "";
     const title = (body.title ?? "").trim();
     const description = body.description ?? null;
 
-    // ENHANCED VALIDATION WITH SPECIFIC ERROR MESSAGES
+    // Validation
     if (!requirements) {
       return NextResponse.json(
         { error: "Requirements are required", field: "requirements" },
         { status: 400 }
       );
     }
-
     if (!title) {
       return NextResponse.json(
         { error: "Generation title is required", field: "title" },
         { status: 400 }
       );
     }
-
-    if (!Number.isFinite(testCaseCount) || testCaseCount <= 0 || testCaseCount > 100) {
+    if (!Number.isFinite(testCaseCount)) {
       return NextResponse.json(
-        { 
-          error: "Test case count must be a number between 1 and 100", 
-          field: "testCaseCount",
-          received: body.testCaseCount,
-          type: typeof body.testCaseCount
-        },
+        { error: "Test case count must be a number between 1 and 50", field: "testCaseCount" },
         { status: 400 }
       );
     }
-
+    if (testCaseCount <= 0) {
+      return NextResponse.json(
+        { error: "Test case count must be greater than 0", field: "testCaseCount" },
+        { status: 400 }
+      );
+    }
+    if (testCaseCount > 50) {
+      return NextResponse.json(
+        { error: "Cannot generate more than 50 test cases at once", field: "testCaseCount" },
+        { status: 400 }
+      );
+    }
     if (!(model in AI_MODELS)) {
       return NextResponse.json(
-        { 
-          error: "Unsupported AI model", 
-          field: "model",
-          received: model,
-          supported: Object.keys(AI_MODELS)
-        },
+        { error: "Unsupported AI model", field: "model" },
         { status: 400 }
       );
     }
-
     if (!(coverage in COVERAGE_PROMPTS)) {
       return NextResponse.json(
-        { 
-          error: "Invalid coverage level", 
-          field: "coverage",
-          received: coverage,
-          valid: Object.keys(COVERAGE_PROMPTS)
-        },
+        { error: "Invalid coverage level", field: "coverage" },
         { status: 400 }
       );
     }
 
-    // Provider selection
-    const isAnthropicModel = model.startsWith("claude");
-    const primary: "anthropic" | "openai" = isAnthropicModel ? "anthropic" : "openai";
-    const fallback: "anthropic" | "openai" = isAnthropicModel ? "openai" : "anthropic";
+    // Quota check (no logging)
+    try {
+      await checkAndRecordUsage(user.id, testCaseCount);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Usage limit exceeded";
+      return NextResponse.json({ error: msg, upgradeRequired: true }, { status: 429 });
+    }
 
     // Prompt
     const coverageInstruction = COVERAGE_PROMPTS[coverage];
@@ -185,6 +186,10 @@ Make the test cases practical, executable, and specific to the requirements.
 Include positive tests, negative tests, boundary conditions, and error handling scenarios as appropriate for the coverage level.`;
 
     // ---- Call LLM (primary, then fallback) ----
+    const isAnthropicModel = (model as string).startsWith("claude");
+    const primary: "anthropic" | "openai" = isAnthropicModel ? "anthropic" : "openai";
+    const fallback: "anthropic" | "openai" = isAnthropicModel ? "openai" : "anthropic";
+
     let rawText = "";
     let usedProvider = "";
 
@@ -195,8 +200,8 @@ Include positive tests, negative tests, boundary conditions, and error handling 
           max_tokens: 8000,
           messages: [{ role: "user", content: promptUsed }],
         });
-        rawText = anthropicTextFromContent(res.content); 
-        usedProvider = "anthropic";                      
+        rawText = anthropicTextFromContent(res.content);
+        usedProvider = "anthropic";
       } else {
         const res = await openai.chat.completions.create({
           model: AI_MODELS[model],
@@ -206,17 +211,16 @@ Include positive tests, negative tests, boundary conditions, and error handling 
         rawText = res.choices?.[0]?.message?.content ?? "";
         usedProvider = "openai";
       }
-    } catch (e) {
-
+    } catch {
       try {
         if (fallback === "anthropic") {
           const res = await anthropic.messages.create({
-            model: "claude-3-5-sonnet-20241022", // Use correct Claude model for fallback
+            model: "claude-3-5-sonnet-20241022",
             max_tokens: 8000,
             messages: [{ role: "user", content: promptUsed }],
           });
           rawText = anthropicTextFromContent(res.content);
-          usedProvider = "anthropic (fallback)";
+          usedProvider = "anthropic";
         } else {
           const res = await openai.chat.completions.create({
             model: "gpt-4o",
@@ -224,12 +228,12 @@ Include positive tests, negative tests, boundary conditions, and error handling 
             max_tokens: 8000,
           });
           rawText = res.choices?.[0]?.message?.content ?? "";
-          usedProvider = "openai (fallback)";
+          usedProvider = "openai";
         }
-      } catch (fallbackError) {
+      } catch {
         return NextResponse.json(
-          { error: "Both AI providers failed. Please try again later." },
-          { status: 500 }
+          { error: "Generation temporarily unavailable. Please try again later." },
+          { status: 503 }
         );
       }
     }
@@ -276,11 +280,12 @@ Return ONLY valid JSON, no markdown, no explanation.`;
         : Array.isArray(parsed.testCases)
         ? parsed.testCases
         : [];
-    } catch (err) {
+    } catch {
+      // naive fallback: try to recover an array if present
       const match = rawText.match(/\[[\s\S]*\]/);
       if (!match) {
         return NextResponse.json(
-          { error: "Failed to structure test cases. Please try regenerating." },
+          { error: "Failed to structure test cases. Please regenerate." },
           { status: 500 }
         );
       }
@@ -288,8 +293,6 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     }
 
     if (!Array.isArray(testCases)) testCases = [];
-    if (testCases.length < Math.floor(testCaseCount * 0.8)) {
-    }
 
     // ---- Persist generation ----
     const { data: generation, error: genError } = await supabase
@@ -298,29 +301,15 @@ Return ONLY valid JSON, no markdown, no explanation.`;
         user_id: user.id,
         title,
         description,
-        ai_provider: usedProvider.includes('anthropic') ? 'anthropic' : 'openai', // FIXED: Normalize provider name
-        prompt_used: promptUsed,
+        ai_provider: usedProvider === "anthropic" ? "anthropic" : "openai",
+        prompt_used: promptUsed, // stored server-side; not exposed in response
       })
       .select()
       .single();
 
     if (genError || !generation) {
-      console.error("GENERATION INSERT ERROR", {
-        code: genError?.code,
-        message: genError?.message,
-        details: genError?.details,
-        hint: genError?.hint,
-      });
       return NextResponse.json(
-        {
-          error: "Failed to save generation",
-          debug: {
-            code: genError?.code,
-            message: genError?.message,
-            details: genError?.details,
-            hint: genError?.hint,
-          },
-        },
+        { error: "Failed to save generation" },
         { status: 500 }
       );
     }
@@ -328,12 +317,12 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     // ---- Persist cases ----
     const rows = testCases.map((tc) => ({
       generation_id: generation.id,
-      requirement_id: requirement_id,
+      requirement_id,
       user_id: user.id,
       title: tc.title,
       description: tc.description,
       test_type: tc.test_type || "functional",
-      priority: normalizePriority(tc.priority),  
+      priority: normalizePriority(tc.priority),
       preconditions: tc.preconditions ?? null,
       test_steps: tc.test_steps, // JSONB
       expected_result: tc.expected_result,
@@ -347,32 +336,12 @@ Return ONLY valid JSON, no markdown, no explanation.`;
       .insert(rows)
       .select();
 
-    if (tcError) {
-      console.error("TEST CASES INSERT ERROR", {
-        code: tcError.code,
-        message: tcError.message,
-        details: tcError.details,
-        hint: tcError.hint,
-      });
+    if (tcError || !savedCases) {
       return NextResponse.json(
-        {
-          error: "Failed to save test cases",
-          debug: {
-            code: tcError.code,
-            message: tcError.message,
-            details: tcError.details,
-            hint: tcError.hint,
-          },
-        },
+        { error: "Failed to save test cases" },
         { status: 500 }
       );
     }
-
-    console.log('✅ Success! Generated and saved test cases:', {
-      generation_id: generation.id,
-      count: savedCases.length,
-      provider_used: usedProvider
-    });
 
     return NextResponse.json({
       success: true,
@@ -381,10 +350,9 @@ Return ONLY valid JSON, no markdown, no explanation.`;
       count: savedCases.length,
       provider_used: usedProvider,
     });
-  } catch (error) {
-    console.error("Error generating test cases:", error);
+  } catch {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to generate test cases" },
+      { error: "Unexpected error. Please try again." },
       { status: 500 }
     );
   }

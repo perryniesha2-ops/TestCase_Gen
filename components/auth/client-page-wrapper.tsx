@@ -27,7 +27,6 @@ function ClientPageFallback() {
   )
 }
 
-// Specific wrapper for test case pages that commonly use search params
 export function TestCasePageWrapper({ children }: { children: React.ReactNode }) {
   return (
     <Suspense fallback={
@@ -43,7 +42,6 @@ export function TestCasePageWrapper({ children }: { children: React.ReactNode })
   )
 }
 
-// Wrapper for forms that use search params
 export function FormPageWrapper({ children }: { children: React.ReactNode }) {
   return (
     <Suspense fallback={

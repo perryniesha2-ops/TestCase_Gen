@@ -13,12 +13,12 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 type Props = {
-  /** API endpoint to post to (App Router route) */
-  action?: string; // default "/api/send-support-email"
-  /** Optional className for the trigger button/link */
+ 
+  action?: string; 
+ 
   className?: string;
-  /** Optional label for the trigger */
-  triggerLabel?: string; // default "Contact"
+ 
+  triggerLabel?: string; 
 };
 
 export function ContactSheet({
@@ -37,7 +37,7 @@ export function ContactSheet({
     const name = (data.name || "").trim();
     const subject = (data.subject || "").trim();
     const message = (data.message || "").trim();
-    const hp = (data.company || "").trim(); // honeypot
+    const hp = (data.company || "").trim(); 
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       toast.error("Please enter a valid email address.");
