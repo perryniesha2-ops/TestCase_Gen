@@ -112,12 +112,12 @@ export function AddRequirementModal({ onRequirementAdded, children }: AddRequire
       <DialogTrigger asChild>
         {children || (
           <Button>
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="h-4 w-8 mr-2" />
             New Requirement
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+<DialogContent className="max-w-fit lg:max-w-fit overflow-y-auto .....">
         <DialogHeader>
           <DialogTitle>Create New Requirement</DialogTitle>
           <DialogDescription>

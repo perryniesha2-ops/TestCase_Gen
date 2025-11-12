@@ -30,6 +30,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleDollarSign,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -55,6 +56,7 @@ const navigation = [
 
 const secondaryNavigation = [
   { name: "Settings", href: "/pages/settings", icon: Settings },
+  { name: "Billing", href: "/pages/billing", icon: CircleDollarSign },
   { name: "Help & Support", href: "/pages/contact", icon: HelpCircle },
 ];
 
