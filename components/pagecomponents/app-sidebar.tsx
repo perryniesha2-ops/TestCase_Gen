@@ -33,6 +33,8 @@ import {
   CircleDollarSign,
 } from "lucide-react";
 import { toast } from "sonner";
+import Link from "next/link";
+
 
 interface UserProfile {
   id: string;
@@ -91,7 +93,7 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      router.push("/sign-in");
+      router.push("/pages/login");
       toast.success("Signed out successfully");
     } catch (error) {
       console.error("Error signing out:", error);
@@ -147,11 +149,42 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
     <div className="flex h-full flex-col">
       {/* Brand / Collapse toggle */}
       <div className={cn("flex h-16 items-center border-b", collapsed ? "px-2" : "px-4")}>
-        <div className={cn("flex items-center gap-2", collapsed && "w-full justify-center")}>
-          <FlaskConical className="h-6 w-6 text-primary" />
-          {!collapsed && <span className="text-xl font-bold">SynthQA</span>}
+        <div className={cn("flex items-center gap-0", collapsed && "w-full justify-center")}>
+             <Link
+        href="/pages/dashboard"
+        className={cn(
+          "flex items-center font-semibold shrink-0",
+          collapsed ? "w-full justify-center gap-0" : "gap-2 md:gap-3"
+        )}
+      >
+        <img
+          src="/logo-sq-dark.svg"
+          alt="SynthQA Logo"
+          className={cn(
+            "hidden dark:block w-auto",
+            collapsed ? "h-10" : "h-12 md:h-14"
+          )}
+        />
+        <img
+          src="/logo-sq-light.svg"
+          alt="SynthQA Logo"
+          className={cn(
+            "block dark:hidden w-auto",
+            collapsed ? "h-10" : "h-12 md:h-14"
+          )}
+        />
+
+        {/* Only show text when NOT collapsed */}
+        {!collapsed && (
+          <span className="text-sm md:text-sm font-bold tracking-tight">
+            SynthQA
+          </span>
+        )}
+      </Link>
+
         </div>
         {/* collapse/expand button (desktop only) */}
+        
         <Button
           type="button"
           size="icon"
@@ -162,6 +195,7 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </Button>
+        
       </div>
 
       {/* Primary nav */}
@@ -251,7 +285,7 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
-          <Button variant="outline" className={cn("w-full", collapsed && "w-10 px-0")} onClick={() => router.push("/sign-in")} title={collapsed ? "Sign in" : undefined}>
+          <Button variant="outline" className={cn("w-full", collapsed && "w-10 px-0")} onClick={() => router.push("/pages/sign-in")} title={collapsed ? "Sign in" : undefined}>
             {collapsed ? <User className="h-4 w-4" /> : "Sign In"}
           </Button>
         )}
@@ -351,7 +385,7 @@ function AppSidebarInnerExpandedForMobile({
             Sign out
           </Button>
         ) : (
-          <Button variant="outline" className="w-full" onClick={() => router.push("/sign-in")}>
+          <Button variant="outline" className="w-full" onClick={() => router.push("/pages/login")}>
             Sign In
           </Button>
         )}

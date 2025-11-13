@@ -225,7 +225,7 @@ React.useEffect(() => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        router.push("/sign-in");
+        router.push("/pages/login");
         return;
       }
 

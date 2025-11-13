@@ -74,7 +74,7 @@ export default function SettingsPage() {
       const { data: { user } } = await supabase.auth.getUser()
       
       if (!user) {
-        router.push('/sign-in')
+        router.push('/pages/login')
         return
       }
 
@@ -307,7 +307,7 @@ export default function SettingsPage() {
             <div className="text-center">
               <p className="text-muted-foreground">Please sign in to access settings.</p>
               <Button 
-                onClick={() => router.push('/sign-in')} 
+                onClick={() => router.push('/pages/login')} 
                 className="mt-4"
               >
                 Sign In
