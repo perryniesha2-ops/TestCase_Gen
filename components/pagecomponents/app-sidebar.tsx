@@ -252,7 +252,6 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
                       <p className="text-sm font-medium truncate">{user.full_name || "User"}</p>
                       <p className="text-xs text-muted-foreground truncate">{user.email}</p>
                     </div>
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
                   </>
                 )}
               </Button>
