@@ -61,7 +61,6 @@ export default function ContactUs() {
     <div className="grid min-h-screen w-full md:grid-cols-[240px_1fr]">
       <AppSidebar className="hidden md:block" />
       <div className="flex min-h-screen flex-col">
-        <SiteHeader />
 
         {/* Page hero */}
         <section className="relative">
@@ -72,12 +71,14 @@ export default function ContactUs() {
               <p className="mt-2 text-sm text-muted-foreground">
                 Have a question about SynthQA or ran into an issue? We’re here to help.
               </p>
+              <p className="mt-4 text-sm text-muted-foreground">
+              </p>
             </div>
           </div>
         </section>
 
         <main className="px-4 md:px-8 pb-10">
-          <div className="mx-auto grid max-w-5xl gap-6 md:grid-cols-5">
+          <div className="mx-auto grid max-w-5xl gap-8 md:grid-cols-5">
             {/* Left: Info / quick help */}
             <Card className="md:col-span-2">
               <CardHeader>

@@ -6,9 +6,12 @@ import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -21,9 +24,27 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { 
   CheckCircle2, 
   XCircle, 
@@ -41,7 +62,13 @@ import {
   Eye,
   Zap,
   FlaskConical,
-  Layers
+  Layers,
+  Plus,
+  Edit3,
+  Trash2,
+  MoreHorizontal,
+  Save,
+  X
 } from "lucide-react"
 import { updateTestExecution } from "@/lib/test-execution"
 
@@ -105,6 +132,24 @@ interface TestExecution {
   }
 }
 
+interface TestStep {
+  step_number: number
+  action: string
+  expected: string
+}
+
+// Form interfaces for editing/creating
+interface TestCaseForm {
+  title: string
+  description: string
+  test_type: string
+  priority: 'low' | 'medium' | 'high' | 'critical'
+  preconditions: string
+  test_steps: TestStep[]
+  expected_result: string
+  status: 'draft' | 'active' | 'archived'
+}
+
 const platformIcons = {
   web: Monitor,
   mobile: Smartphone,
@@ -112,6 +157,11 @@ const platformIcons = {
   accessibility: Eye,
   performance: Zap
 }
+
+const testTypes = [
+  'functional', 'integration', 'unit', 'e2e', 'security', 'performance', 
+  'accessibility', 'api', 'regression', 'smoke', 'user acceptance'
+]
 
 export function TabbedTestCaseTable() {
   const [testCases, setTestCases] = useState<TestCase[]>([])
@@ -127,8 +177,26 @@ export function TabbedTestCaseTable() {
   const [currentPage, setCurrentPage] = useState(1)
   const [crossPlatformCurrentPage, setCrossPlatformCurrentPage] = useState(1)
   const [updating, setUpdating] = useState<string | null>(null)
-  const itemsPerPage = 10
   
+  // CRUD state
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [editingTestCase, setEditingTestCase] = useState<TestCase | null>(null)
+  const [deletingTestCase, setDeletingTestCase] = useState<TestCase | null>(null)
+  const [formData, setFormData] = useState<TestCaseForm>({
+    title: '',
+    description: '',
+    test_type: 'functional',
+    priority: 'medium',
+    preconditions: '',
+    test_steps: [{ step_number: 1, action: '', expected: '' }],
+    expected_result: '',
+    status: 'draft'
+  })
+  const [saving, setSaving] = useState(false)
+  
+  const itemsPerPage = 10
   const router = useRouter()
   const searchParams = useSearchParams()
   const generationId = searchParams.get('generation')
@@ -211,7 +279,7 @@ export function TabbedTestCaseTable() {
       })
       setCrossPlatformSuites(suitesMap)
       
-      // Initialize execution state with current database status
+      // Initialize execution state
       const initialExecution: TestExecution = {}
       
       testCasesData?.forEach(tc => {
@@ -239,6 +307,188 @@ export function TabbedTestCaseTable() {
     }
   }
 
+  // CRUD Functions
+  async function handleCreateTestCase() {
+    setSaving(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
+        toast.error('Please log in to create test cases')
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('test_cases')
+        .insert({
+          user_id: user.id,
+          generation_id: generationId || null,
+          title: formData.title,
+          description: formData.description,
+          test_type: formData.test_type,
+          priority: formData.priority,
+          preconditions: formData.preconditions || null,
+          test_steps: formData.test_steps,
+          expected_result: formData.expected_result,
+          is_edge_case: false,
+          status: formData.status,
+          execution_status: 'not_run',
+          is_manual: true
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setTestCases(prev => [data, ...prev])
+      setShowCreateDialog(false)
+      resetForm()
+      toast.success('Test case created successfully')
+    } catch (error) {
+      console.error('Error creating test case:', error)
+      toast.error('Failed to create test case')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleUpdateTestCase() {
+    if (!editingTestCase) return
+    
+    setSaving(true)
+    try {
+      const supabase = createClient()
+      
+      const { data, error } = await supabase
+        .from('test_cases')
+        .update({
+          title: formData.title,
+          description: formData.description,
+          test_type: formData.test_type,
+          priority: formData.priority,
+          preconditions: formData.preconditions || null,
+          test_steps: formData.test_steps,
+          expected_result: formData.expected_result,
+          status: formData.status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', editingTestCase.id)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setTestCases(prev => prev.map(tc => tc.id === editingTestCase.id ? data : tc))
+      setShowEditDialog(false)
+      setEditingTestCase(null)
+      resetForm()
+      toast.success('Test case updated successfully')
+    } catch (error) {
+      console.error('Error updating test case:', error)
+      toast.error('Failed to update test case')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDeleteTestCase() {
+    if (!deletingTestCase) return
+    
+    setSaving(true)
+    try {
+      const supabase = createClient()
+      
+      const { error } = await supabase
+        .from('test_cases')
+        .delete()
+        .eq('id', deletingTestCase.id)
+
+      if (error) throw error
+
+      setTestCases(prev => prev.filter(tc => tc.id !== deletingTestCase.id))
+      setShowDeleteDialog(false)
+      setDeletingTestCase(null)
+      toast.success('Test case deleted successfully')
+    } catch (error) {
+      console.error('Error deleting test case:', error)
+      toast.error('Failed to delete test case')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function openCreateDialog() {
+    resetForm()
+    setShowCreateDialog(true)
+  }
+
+  function openEditDialog(testCase: TestCase) {
+    setEditingTestCase(testCase)
+    setFormData({
+      title: testCase.title,
+      description: testCase.description,
+      test_type: testCase.test_type,
+      priority: testCase.priority,
+      preconditions: testCase.preconditions || '',
+      test_steps: testCase.test_steps,
+      expected_result: testCase.expected_result,
+      status: testCase.status
+    })
+    setShowEditDialog(true)
+  }
+
+  function openDeleteDialog(testCase: TestCase) {
+    setDeletingTestCase(testCase)
+    setShowDeleteDialog(true)
+  }
+
+  function resetForm() {
+    setFormData({
+      title: '',
+      description: '',
+      test_type: 'functional',
+      priority: 'medium',
+      preconditions: '',
+      test_steps: [{ step_number: 1, action: '', expected: '' }],
+      expected_result: '',
+      status: 'draft'
+    })
+  }
+
+  function addTestStep() {
+    setFormData(prev => ({
+      ...prev,
+      test_steps: [
+        ...prev.test_steps,
+        {
+          step_number: prev.test_steps.length + 1,
+          action: '',
+          expected: ''
+        }
+      ]
+    }))
+  }
+
+  function removeTestStep(index: number) {
+    setFormData(prev => ({
+      ...prev,
+      test_steps: prev.test_steps
+        .filter((_, i) => i !== index)
+        .map((step, i) => ({ ...step, step_number: i + 1 }))
+    }))
+  }
+
+  function updateTestStep(index: number, field: 'action' | 'expected', value: string) {
+    setFormData(prev => ({
+      ...prev,
+      test_steps: prev.test_steps.map((step, i) => 
+        i === index ? { ...step, [field]: value } : step
+      )
+    }))
+  }
+
+  // Existing functions (toggleStep, markAsPassed, etc.) remain the same...
   function toggleStep(testCaseId: string, stepNumber: number) {
     setExecution(prev => {
       const current = prev[testCaseId] || { status: 'not_run', completedSteps: [], notes: '' }
@@ -487,6 +737,10 @@ export function TabbedTestCaseTable() {
             className="pl-10"
           />
         </div>
+        <Button onClick={openCreateDialog} className="gap-2">
+          <Plus className="h-4 w-4" />
+          New Test Case
+        </Button>
         <Button variant="outline" size="default">
           <FileDown className="h-4 w-4 mr-2" />
           Export
@@ -539,15 +793,20 @@ export function TabbedTestCaseTable() {
                   <TableHead className="w-[100px]">Type</TableHead>
                   <TableHead className="w-[150px]">Generation</TableHead>
                   <TableHead className="w-[120px]">Created</TableHead>
+                  <TableHead className="w-[80px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedTestCases.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12">
+                    <TableCell colSpan={7} className="text-center py-12">
                       <div className="flex flex-col items-center gap-2">
                         <FlaskConical className="h-8 w-8 text-muted-foreground" />
                         <p className="text-muted-foreground">No regular test cases found</p>
+                        <Button onClick={openCreateDialog} variant="outline" className="mt-2">
+                          <Plus className="h-4 w-4 mr-2" />
+                          Create your first test case
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -557,13 +816,12 @@ export function TabbedTestCaseTable() {
                     const generation = generations[testCase.generation_id]
                     
                     return (
-                      <TableRow 
-                        key={testCase.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => openTestCaseDialog(testCase, 'regular')}
-                      >
+                      <TableRow key={testCase.id}>
                         <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
+                          <div 
+                            className="flex items-center gap-2 cursor-pointer hover:text-primary"
+                            onClick={() => openTestCaseDialog(testCase, 'regular')}
+                          >
                             {exec?.status === 'pass' && (
                               <CheckCircle2 className="h-4 w-4 text-green-600" />
                             )}
@@ -588,10 +846,37 @@ export function TabbedTestCaseTable() {
                           <Badge variant="secondary">{testCase.test_type}</Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm">
-                          {generation?.title || 'N/A'}
+                          {generation?.title || 'Manual'}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm">
                           {getRelativeTime(testCase.created_at)}
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openTestCaseDialog(testCase, 'regular')}>
+                                <Eye className="h-4 w-4 mr-2" />
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openEditDialog(testCase)}>
+                                <Edit3 className="h-4 w-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                onClick={() => openDeleteDialog(testCase)}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     )
@@ -631,7 +916,7 @@ export function TabbedTestCaseTable() {
           )}
         </TabsContent>
 
-        {/* Cross-Platform Test Cases Tab */}
+        {/* Cross-Platform Test Cases Tab remains the same... */}
         <TabsContent value="cross-platform" className="space-y-6">
           {/* Cross-Platform Stats */}
           <div className="grid grid-cols-4 gap-4">
@@ -761,7 +1046,261 @@ export function TabbedTestCaseTable() {
         </TabsContent>
       </Tabs>
 
-      {/* Test Case Details Dialog */}
+      {/* Create/Edit Test Case Dialog */}
+      <Dialog
+  open={showCreateDialog || showEditDialog}
+  onOpenChange={(open) => {
+    if (!open) {
+      setShowCreateDialog(false)
+      setShowEditDialog(false)
+      setEditingTestCase(null)
+      resetForm()
+    }
+  }}
+>
+  <DialogContent className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0">
+    {/* Sticky header */}
+    <DialogHeader className="sticky top-0 z-10 bg-background p-6 border-b">
+      <DialogTitle className="flex items-center gap-3">
+        {showCreateDialog ? "Create New Test Case" : "Edit Test Case"}
+      </DialogTitle>
+      <DialogDescription>
+        {showCreateDialog
+          ? "Fill in the details below to create a new test case."
+          : "Update the test case details below."}
+      </DialogDescription>
+    </DialogHeader>
+
+    {/* Scrollable body */}
+    <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+      {/* Basic Information */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="title">Title *</Label>
+          <Input
+            id="title"
+            value={formData.title}
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, title: e.target.value }))
+            }
+            placeholder="Enter test case title"
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="test_type">Test Type</Label>
+          <Select
+            value={formData.test_type}
+            onValueChange={(value) =>
+              setFormData((prev) => ({ ...prev, test_type: value }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select test type" />
+            </SelectTrigger>
+            <SelectContent>
+              {testTypes.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+     
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="priority">Priority</Label>
+                <Select
+                  value={formData.priority}
+                  onValueChange={(value: 'low' | 'medium' | 'high' | 'critical') => 
+                    setFormData(prev => ({ ...prev, priority: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value: 'draft' | 'active' | 'archived') => 
+                    setFormData(prev => ({ ...prev, status: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="archived">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Description *</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Describe what this test case covers"
+                rows={3}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="preconditions">Preconditions</Label>
+              <Textarea
+                id="preconditions"
+                value={formData.preconditions}
+                onChange={(e) => setFormData(prev => ({ ...prev, preconditions: e.target.value }))}
+                placeholder="Any prerequisites or setup required before running this test"
+                rows={2}
+              />
+            </div>
+
+            {/* Test Steps */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Test Steps *</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addTestStep}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Step
+                </Button>
+              </div>
+              
+              <div className="space-y-3">
+                {formData.test_steps.map((step, index) => (
+                  <div key={step.step_number} className="border rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-sm">Step {step.step_number}</span>
+                      {formData.test_steps.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeTestStep(index)}
+                          className="text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor={`action-${index}`}>Action</Label>
+                      <Input
+                        id={`action-${index}`}
+                        value={step.action}
+                        onChange={(e) => updateTestStep(index, 'action', e.target.value)}
+                        placeholder="What action should be performed?"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor={`expected-${index}`}>Expected Result</Label>
+                      <Input
+                        id={`expected-${index}`}
+                        value={step.expected}
+                        onChange={(e) => updateTestStep(index, 'expected', e.target.value)}
+                        placeholder="What should happen after performing the action?"
+                        required
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="expected_result">Overall Expected Result *</Label>
+              <Textarea
+                id="expected_result"
+                value={formData.expected_result}
+                onChange={(e) => setFormData(prev => ({ ...prev, expected_result: e.target.value }))}
+                placeholder="What should be the final outcome of this test case?"
+                rows={3}
+                required
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex-shrink-0 px-6 py-4 border-t">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => {
+          setShowCreateDialog(false)
+          setShowEditDialog(false)
+          setEditingTestCase(null)
+          resetForm()
+        }}
+      >
+        Cancel
+      </Button>
+      <Button
+        type="button"
+        onClick={showCreateDialog ? handleCreateTestCase : handleUpdateTestCase}
+        disabled={
+          saving ||
+          !formData.title ||
+          !formData.description ||
+          !formData.expected_result
+        }
+      >
+        {saving ? (
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        ) : (
+          <Save className="h-4 w-4 mr-2" />
+        )}
+        {showCreateDialog ? "Create Test Case" : "Update Test Case"}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Test Case</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{deletingTestCase?.title}&quot;? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTestCase}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={saving}
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Test Case Details Dialog (existing) */}
       {selectedCase && (
         <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
           <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] flex flex-col p-0">
@@ -794,6 +1333,16 @@ export function TabbedTestCaseTable() {
                       : (selectedCase as CrossPlatformTestCase).steps?.length || 0
                   } steps
                 </span>
+                {selectedCaseType === 'regular' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openEditDialog(selectedCase as TestCase)}
+                    className="ml-auto"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                  </Button>
+                )}
               </DialogDescription>
             </DialogHeader>
 

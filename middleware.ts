@@ -63,7 +63,27 @@ export async function middleware(request: NextRequest) {
   // Protected routes
   const isProtectedRoute = request.nextUrl.pathname.startsWith('/pages/dashboard') ||
                           request.nextUrl.pathname.startsWith('/pages/test-cases') ||
-                          request.nextUrl.pathname.startsWith('/pages/profile')
+                          request.nextUrl.pathname.startsWith('/pages/generate')    ||
+                          request.nextUrl.pathname.startsWith('/pages/dashboard')    ||
+                          request.nextUrl.pathname.startsWith('/pages/requirements')    ||
+                          request.nextUrl.pathname.startsWith('/pages/settings')    ||
+                          request.nextUrl.pathname.startsWith('/pages/contact')    ||
+                          request.nextUrl.pathname.startsWith('/pages/privacy')    ||
+                          request.nextUrl.pathname.startsWith('/pages/terms')    ||
+                          request.nextUrl.pathname.startsWith('/dashboard') ||
+                          request.nextUrl.pathname.startsWith('/test-cases') ||
+                          request.nextUrl.pathname.startsWith('/generate')    ||
+                          request.nextUrl.pathname.startsWith('/dashboard')    ||
+                          request.nextUrl.pathname.startsWith('/requirements')    ||
+                          request.nextUrl.pathname.startsWith('/settings')    ||
+                          request.nextUrl.pathname.startsWith('/contact')    ||
+                          request.nextUrl.pathname.startsWith('/privacy')    ||
+                          request.nextUrl.pathname.startsWith('/terms')    
+
+
+
+
+
 
   // Auth routes
   const isAuthRoute = request.nextUrl.pathname.startsWith('/pages/login') ||

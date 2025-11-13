@@ -236,7 +236,7 @@ export function GeneratorForm() {
 
     if (!user) {
     toast.error("Please sign in to generate test cases")
-    router.push('/sign-in')
+    router.push('/pages/login')
     return
   }
 

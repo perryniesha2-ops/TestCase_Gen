@@ -14,19 +14,14 @@ export default function TestCasesPage() {
 
       <div className="flex min-h-screen flex-col px-4 md:px-6">
         <SiteHeader />
-
         <header className="mt-6 max-w-6xl mx-auto space-y-2">
-          <h1 className="text-3xl font-bold">Test Cases</h1>
+          <h1 className="text-3xl font-bold text-center">Test Cases</h1>
           <p className="text-muted-foreground">Manage and organize your test cases across all projects.</p>
         </header>
 
         <section className="max-w-6xl mx-auto mt-6 space-y-4 w-full">
           <div className="flex items-center justify-end">
-            <Button asChild>
-              <Link href="/pages/test-cases">
-                <Plus className="mr-2 h-4 w-4" /> New Test Case - coming soon!
-              </Link>
-            </Button>
+            
           </div>
         </section>
 
