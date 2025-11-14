@@ -1,9 +1,14 @@
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form"
+import { ClientPageWrapper } from '@/components/auth/client-page-wrapper'
+
 
 export default function ForgotPasswordPage() {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <ForgotPasswordForm />
+             <ClientPageWrapper>
+                <ForgotPasswordForm />
+            </ClientPageWrapper>
+
     </div>
   )
 }
