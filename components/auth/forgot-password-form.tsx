@@ -98,7 +98,7 @@ export function ForgotPasswordForm() {
               try again
             </button>
           </p>
-          <Link href="/login">
+          <Link href="/pages/login">
             <Button variant="ghost" className="w-full">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to login
@@ -153,7 +153,7 @@ export function ForgotPasswordForm() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Sending..." : "Send reset link"}
           </Button>
-          <Link href="/login">
+          <Link href="/pages/login">
             <Button variant="ghost" className="w-full">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to login
