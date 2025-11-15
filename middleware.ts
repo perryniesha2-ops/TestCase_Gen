@@ -69,16 +69,11 @@ export async function middleware(request: NextRequest) {
                           request.nextUrl.pathname.startsWith('/pages/settings')    ||
                           request.nextUrl.pathname.startsWith('/pages/contact')    ||
                           request.nextUrl.pathname.startsWith('/pages/privacy')    ||
-                          request.nextUrl.pathname.startsWith('/pages/terms')    ||
-                          request.nextUrl.pathname.startsWith('/dashboard') ||
-                          request.nextUrl.pathname.startsWith('/test-cases') ||
-                          request.nextUrl.pathname.startsWith('/generate')    ||
-                          request.nextUrl.pathname.startsWith('/dashboard')    ||
-                          request.nextUrl.pathname.startsWith('/requirements')    ||
-                          request.nextUrl.pathname.startsWith('/settings')    ||
-                          request.nextUrl.pathname.startsWith('/contact')    ||
-                          request.nextUrl.pathname.startsWith('/privacy')    ||
-                          request.nextUrl.pathname.startsWith('/terms')    
+                          request.nextUrl.pathname.startsWith('/pages/billing')    ||
+                          request.nextUrl.pathname.startsWith('/pages/login')    ||
+                          request.nextUrl.pathname.startsWith('/pages/signup')    ||
+                          request.nextUrl.pathname.startsWith('/pages/pricing')    ||
+                          request.nextUrl.pathname.startsWith('/pages/terms')    
 
 
 
@@ -94,7 +89,7 @@ export async function middleware(request: NextRequest) {
 
   // If there's an auth error and user is trying to access protected route, clear session and redirect
   if (error && isProtectedRoute) {
-    const loginUrl = new URL('/pages/login', request.url)
+    const loginUrl = new URL('/pages/beta-login', request.url)
     loginUrl.searchParams.set('message', 'Session expired. Please log in again.')
     
     const clearedResponse = NextResponse.redirect(loginUrl)
@@ -116,7 +111,7 @@ export async function middleware(request: NextRequest) {
 
   // If user is not logged in and trying to access protected route
   if (!user && isProtectedRoute) {
-    const loginUrl = new URL('/pages/login', request.url)
+    const loginUrl = new URL('/pages/beta-login', request.url)
     loginUrl.searchParams.set('redirect', request.nextUrl.pathname)
     return NextResponse.redirect(loginUrl)
   }
