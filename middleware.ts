@@ -72,6 +72,7 @@ export async function middleware(request: NextRequest) {
                           request.nextUrl.pathname.startsWith('/pages/billing')    ||
                           request.nextUrl.pathname.startsWith('/pages/login')    ||
                           request.nextUrl.pathname.startsWith('/pages/signup')    ||
+                          request.nextUrl.pathname.startsWith('/pages/pricing')    ||
                           request.nextUrl.pathname.startsWith('/pages/terms')    
 
 
