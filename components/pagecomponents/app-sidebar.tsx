@@ -28,6 +28,7 @@ import {
   CreditCard,
   Bell,
   ChevronDown,
+  Library,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
@@ -52,8 +53,9 @@ interface SidebarProps {
 const navigation = [
   { name: "Dashboard", href: "/pages/dashboard", icon: Home },
   { name: "Generate Tests", href: "/pages/generate", icon: FlaskConical },
-  { name: "Test Cases", href: "/pages/test-cases", icon: FileText },
+  { name: "Test Suites", href: "/pages/test-library", icon: Library },
   { name: "Requirements", href: "/pages/requirements", icon: BarChart3 },
+  { name: "Test Cases", href: "/pages/test-cases", icon: FileText },
 ];
 
 const secondaryNavigation = [

@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -21,6 +22,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
 import { 
   Loader2,
   Search,
@@ -32,7 +46,13 @@ import {
   Edit,
   Trash2,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  MoreHorizontal,
+  Link as LinkIcon,
+  Target,
+  CheckCircle,
+  AlertTriangle,
+  BarChart3
 } from "lucide-react"
 
 interface Requirement {
@@ -45,8 +65,28 @@ interface Requirement {
   priority: 'low' | 'medium' | 'high' | 'critical'
   status: 'draft' | 'active' | 'archived'
   source: string
+  metadata?: Record<string, string | number | boolean>
   created_at: string
   updated_at: string
+  // Test management fields
+  test_case_count: number
+  coverage_percentage: number
+}
+
+interface TestCase {
+  id: string
+  title: string
+  test_type: string
+  priority: string
+  status: string
+}
+
+interface RequirementTestCase {
+  id: string
+  requirement_id: string
+  test_case_id: string
+  coverage_type: 'direct' | 'indirect' | 'negative'
+  test_cases?: TestCase
 }
 
 interface RequirementsListProps {
@@ -56,34 +96,173 @@ interface RequirementsListProps {
 
 export function RequirementsList({ onRequirementSelected, selectable = false }: RequirementsListProps) {
   const [requirements, setRequirements] = useState<Requirement[]>([])
+  const [testCases, setTestCases] = useState<TestCase[]>([])
+  const [linkedTestCases, setLinkedTestCases] = useState<RequirementTestCase[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [priorityFilter, setPriorityFilter] = useState("all")
   const [selectedRequirement, setSelectedRequirement] = useState<Requirement | null>(null)
   const [showDetailsDialog, setShowDetailsDialog] = useState(false)
+  const [showLinkDialog, setShowLinkDialog] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
   useEffect(() => {
-    fetchRequirements()
+    fetchData()
   }, [])
 
-  async function fetchRequirements() {
+  async function fetchData() {
     try {
       const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
       
-      const { data, error } = await supabase
+      if (!user) {
+        toast.error('Please log in to view requirements')
+        return
+      }
+
+      // Fetch requirements
+      const { data: reqData, error: reqError } = await supabase
         .from('requirements')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
-      if (error) throw error
+      if (reqError) throw reqError
 
-      setRequirements(data || [])
+      // Calculate coverage for each requirement
+      const requirementsWithCoverage = await Promise.all(
+        (reqData || []).map(async (req) => {
+          // Get linked test cases
+          const { data: linkData } = await supabase
+            .from('requirement_test_cases')
+            .select('test_case_id')
+            .eq('requirement_id', req.id)
+
+          const testCaseIds = linkData?.map(link => link.test_case_id) || []
+          
+          if (testCaseIds.length > 0) {
+            // Get latest execution status for each test case
+            const { data: execData } = await supabase
+              .from('test_executions')
+              .select('test_case_id, execution_status')
+              .in('test_case_id', testCaseIds)
+              .order('created_at', { ascending: false })
+
+            // Get latest execution per test case
+            const latestExecutions = execData?.reduce((acc, exec) => {
+              if (!acc[exec.test_case_id]) {
+                acc[exec.test_case_id] = exec.execution_status
+              }
+              return acc
+            }, {} as Record<string, string>) || {}
+
+            const passedCount = Object.values(latestExecutions).filter(status => status === 'passed').length
+            const coveragePercentage = testCaseIds.length > 0 ? Math.round((passedCount / testCaseIds.length) * 100) : 0
+
+            return {
+              ...req,
+              test_case_count: testCaseIds.length,
+              coverage_percentage: coveragePercentage
+            }
+          }
+
+          return {
+            ...req,
+            test_case_count: 0,
+            coverage_percentage: 0
+          }
+        })
+      )
+
+      setRequirements(requirementsWithCoverage)
+
+      // Fetch test cases for linking
+      const { data: testCaseData, error: testCaseError } = await supabase
+        .from('test_cases')
+        .select('id, title, test_type, priority, status')
+        .eq('user_id', user.id)
+        .order('title')
+
+      if (testCaseError) {
+        // New users might not have test cases yet
+        setTestCases([])
+      } else {
+        setTestCases(testCaseData || [])
+      }
+
     } catch (error) {
       console.error('Error fetching requirements:', error)
       toast.error('Failed to load requirements')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function fetchLinkedTestCases(requirementId: string) {
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('requirement_test_cases')
+        .select(`
+          *,
+          test_cases(id, title, test_type, priority, status)
+        `)
+        .eq('requirement_id', requirementId)
+
+      if (error) throw error
+      setLinkedTestCases(data || [])
+    } catch (error) {
+      console.error('Error fetching linked test cases:', error)
+      setLinkedTestCases([])
+    }
+  }
+
+  async function linkTestCase(testCaseId: string, coverageType: string) {
+    if (!selectedRequirement) return
+
+    try {
+      const supabase = createClient()
+      
+      const { error } = await supabase
+        .from('requirement_test_cases')
+        .insert({
+          requirement_id: selectedRequirement.id,
+          test_case_id: testCaseId,
+          coverage_type: coverageType
+        })
+
+      if (error) throw error
+
+      toast.success('Test case linked successfully')
+      fetchLinkedTestCases(selectedRequirement.id)
+      fetchData() // Refresh coverage stats
+    } catch (error) {
+      console.error('Error linking test case:', error)
+      toast.error('Failed to link test case')
+    }
+  }
+
+  async function unlinkTestCase(linkId: string) {
+    try {
+      const supabase = createClient()
+      
+      const { error } = await supabase
+        .from('requirement_test_cases')
+        .delete()
+        .eq('id', linkId)
+
+      if (error) throw error
+
+      toast.success('Test case unlinked')
+      if (selectedRequirement) {
+        fetchLinkedTestCases(selectedRequirement.id)
+        fetchData() // Refresh coverage stats
+      }
+    } catch (error) {
+      console.error('Error unlinking test case:', error)
+      toast.error('Failed to unlink test case')
     }
   }
 
@@ -103,21 +282,17 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
       if (error) throw error
 
       toast.success('Requirement deleted successfully')
-      fetchRequirements()
+      fetchData()
     } catch (error) {
       console.error('Error deleting requirement:', error)
       toast.error('Failed to delete requirement')
     }
   }
 
-  function getTypeVariant(type: string): "default" | "secondary" | "outline" {
-    switch (type) {
-      case 'functional': return 'default'
-      case 'user_story': return 'secondary'
-      case 'use_case': return 'outline'
-      case 'non_functional': return 'outline'
-      default: return 'default'
-    }
+  function openLinkDialog(requirement: Requirement) {
+    setSelectedRequirement(requirement)
+    fetchLinkedTestCases(requirement.id)
+    setShowLinkDialog(true)
   }
 
   function getTypeColor(type: string) {
@@ -150,6 +325,18 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
+  function getCoverageColor(percentage: number) {
+    if (percentage >= 80) return 'text-green-600'
+    if (percentage >= 60) return 'text-yellow-600'
+    return 'text-red-600'
+  }
+
+  function getCoverageIcon(percentage: number) {
+    if (percentage >= 80) return <CheckCircle className="h-4 w-4 text-green-600" />
+    if (percentage >= 60) return <AlertTriangle className="h-4 w-4 text-yellow-600" />
+    return <Target className="h-4 w-4 text-red-600" />
+  }
+
   function getRelativeTime(dateString: string) {
     const date = new Date(dateString)
     const now = new Date()
@@ -175,17 +362,27 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
   }
 
   // Filter requirements
-  const filteredRequirements = requirements.filter(req =>
-    req.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    req.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    req.external_id?.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredRequirements = requirements.filter(req => {
+    const matchesSearch = req.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         req.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         req.external_id?.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    const matchesStatus = statusFilter === 'all' || req.status === statusFilter
+    const matchesPriority = priorityFilter === 'all' || req.priority === priorityFilter
+    
+    return matchesSearch && matchesStatus && matchesPriority
+  })
 
   // Pagination
   const totalPages = Math.ceil(filteredRequirements.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
   const paginatedRequirements = filteredRequirements.slice(startIndex, endIndex)
+
+  // Get available test cases for linking
+  const availableTestCases = testCases.filter(tc => 
+    !linkedTestCases.some(link => link.test_case_id === tc.id)
+  )
 
   if (loading) {
     return (
@@ -197,7 +394,7 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
 
   return (
     <div className="space-y-6">
-      {/* Header with Search and Actions */}
+      {/* Header with Search and Filters */}
       <div className="flex items-center gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -211,10 +408,32 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
             className="pl-10"
           />
         </div>
-        <Button variant="outline" size="default">
-          <Filter className="h-4 w-4 mr-2" />
-          Filter
-        </Button>
+        
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="draft">Draft</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="archived">Archived</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Filter by priority" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Priority</SelectItem>
+            <SelectItem value="critical">Critical</SelectItem>
+            <SelectItem value="high">High</SelectItem>
+            <SelectItem value="medium">Medium</SelectItem>
+            <SelectItem value="low">Low</SelectItem>
+          </SelectContent>
+        </Select>
+
         <Button variant="outline" size="default">
           <FileDown className="h-4 w-4 mr-2" />
           Export
@@ -230,18 +449,21 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
               <TableHead className="w-[120px]">Type</TableHead>
               <TableHead className="w-[100px]">Priority</TableHead>
               <TableHead className="w-[100px]">Status</TableHead>
+              <TableHead className="w-[120px]">Test Coverage</TableHead>
               <TableHead className="w-[120px]">External ID</TableHead>
               <TableHead className="w-[120px]">Created</TableHead>
-              <TableHead className="w-[120px] text-center">Actions</TableHead>
+              <TableHead className="w-[80px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {paginatedRequirements.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-12">
+                <TableCell colSpan={8} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Search className="h-8 w-8 text-muted-foreground" />
-                    <p className="text-muted-foreground">No requirements found</p>
+                    <p className="text-muted-foreground">
+                      {requirements.length === 0 ? 'No requirements yet' : 'No requirements match your filters'}
+                    </p>
                   </div>
                 </TableCell>
               </TableRow>
@@ -274,6 +496,30 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
                     {getStatusBadge(requirement.status)}
                   </TableCell>
                   <TableCell>
+                    <div className="flex items-center gap-2">
+                      {getCoverageIcon(requirement.coverage_percentage)}
+                      <div className="flex flex-col">
+                        <span className={`text-sm font-medium ${getCoverageColor(requirement.coverage_percentage)}`}>
+                          {requirement.coverage_percentage}%
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {requirement.test_case_count} tests
+                        </span>
+                      </div>
+                      {requirement.test_case_count > 0 && (
+                        <div className="w-16 bg-gray-200 rounded-full h-1">
+                          <div 
+                            className={`h-1 rounded-full transition-all ${
+                              requirement.coverage_percentage >= 80 ? 'bg-green-500' :
+                              requirement.coverage_percentage >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${requirement.coverage_percentage}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
                     {requirement.external_id ? (
                       <div className="flex items-center gap-1 text-sm">
                         <ExternalLink className="h-3 w-3" />
@@ -286,40 +532,56 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
                   <TableCell className="text-muted-foreground text-sm">
                     {getRelativeTime(requirement.created_at)}
                   </TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={(e) => {
                           e.stopPropagation()
                           setSelectedRequirement(requirement)
                           setShowDetailsDialog(true)
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
+                        }}>
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation()
+                          openLinkDialog(requirement)
+                        }}>
+                          <LinkIcon className="h-4 w-4 mr-2" />
+                          Link Tests
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation()
+                          toast.info('Test generation from requirements coming soon')
+                        }}>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          Generate Tests
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={(e) => {
                           e.stopPropagation()
                           toast.info('Edit functionality coming soon')
-                        }}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDelete(requirement)
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
+                        }}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDelete(requirement)
+                          }}
+                          className="text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))
@@ -370,22 +632,30 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
         </div>
       )}
 
-      {/* Requirement Details Dialog */}
+      {/* Details and Link Dialogs - keeping same as before */}
       {selectedRequirement && (
         <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center justify-between">
                 <span>{selectedRequirement.title}</span>
-                <Button
-                  onClick={() => {
-                    toast.info('Test case generation from requirements coming soon')
-                  }}
-                  size="sm"
-                >
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Generate Tests
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => openLinkDialog(selectedRequirement)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <LinkIcon className="h-4 w-4 mr-2" />
+                    Link Tests ({selectedRequirement.test_case_count})
+                  </Button>
+                  <Button
+                    onClick={() => toast.info('Test generation coming soon')}
+                    size="sm"
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Generate Tests
+                  </Button>
+                </div>
               </DialogTitle>
               <DialogDescription className="flex items-center gap-2 flex-wrap pt-2">
                 <Badge className={getTypeColor(selectedRequirement.type)}>
@@ -401,11 +671,16 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
                     {selectedRequirement.external_id}
                   </Badge>
                 )}
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  <span className={`text-sm font-medium ${getCoverageColor(selectedRequirement.coverage_percentage)}`}>
+                    {selectedRequirement.coverage_percentage}% test coverage
+                  </span>
+                </div>
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-6">
-              {/* Description */}
               <div>
                 <h4 className="font-semibold mb-2">Description</h4>
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">
@@ -413,7 +688,6 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
                 </p>
               </div>
 
-              {/* Acceptance Criteria */}
               {selectedRequirement.acceptance_criteria && selectedRequirement.acceptance_criteria.length > 0 && (
                 <div>
                   <h4 className="font-semibold mb-2">Acceptance Criteria</h4>
@@ -430,7 +704,24 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
                 </div>
               )}
 
-              {/* Metadata */}
+              {selectedRequirement.test_case_count > 0 && (
+                <div className="bg-muted/50 p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2">Test Coverage Summary</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm font-medium">Linked Test Cases</p>
+                      <p className="text-2xl font-bold">{selectedRequirement.test_case_count}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Pass Rate</p>
+                      <p className={`text-2xl font-bold ${getCoverageColor(selectedRequirement.coverage_percentage)}`}>
+                        {selectedRequirement.coverage_percentage}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                 <div>
                   <p className="text-sm font-medium">Source</p>
@@ -447,6 +738,98 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Test Case Linking Dialog */}
+      <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Link Test Cases</DialogTitle>
+            <DialogDescription>
+              Manage test case links for: {selectedRequirement?.title}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <Tabs defaultValue="linked" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="linked">Linked Tests ({linkedTestCases.length})</TabsTrigger>
+              <TabsTrigger value="available">Available Tests ({availableTestCases.length})</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="linked" className="space-y-4">
+              {linkedTestCases.length === 0 ? (
+                <div className="text-center py-8">
+                  <Target className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-muted-foreground">No test cases linked yet</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {linkedTestCases.map((link) => (
+                    <div key={link.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex-1">
+                        <div className="font-medium">{link.test_cases?.title}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline">{link.test_cases?.test_type}</Badge>
+                          <Badge variant="outline">{link.coverage_type} coverage</Badge>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => unlinkTestCase(link.id)}
+                      >
+                        Unlink
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="available" className="space-y-4">
+              {availableTestCases.length === 0 ? (
+                <div className="text-center py-8">
+                  <CheckCircle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-muted-foreground">
+                    {testCases.length === 0 
+                      ? 'No test cases created yet. Create test cases first to link them to requirements.'
+                      : 'All test cases are already linked'
+                    }
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {availableTestCases.map((testCase) => (
+                    <div key={testCase.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex-1">
+                        <div className="font-medium">{testCase.title}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline">{testCase.test_type}</Badge>
+                          <Badge variant="outline">{testCase.priority}</Badge>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          defaultValue="direct"
+                          onValueChange={(value) => linkTestCase(testCase.id, value)}
+                        >
+                          <SelectTrigger className="w-32">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="direct">Direct</SelectItem>
+                            <SelectItem value="indirect">Indirect</SelectItem>
+                            <SelectItem value="negative">Negative</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
