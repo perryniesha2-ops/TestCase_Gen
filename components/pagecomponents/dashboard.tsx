@@ -685,7 +685,7 @@ export function TestManagementDashboard() {
               </Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="pages/test-suite">
+              <Link href="/pages/test-library">
                 <Play className="h-4 w-4 mr-2" />
                 Start Test Suite
               </Link>

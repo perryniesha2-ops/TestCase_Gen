@@ -56,7 +56,7 @@ import {
 } from "lucide-react"
 
 interface Requirement {
-  id: string
+   id: string
   title: string
   description: string
   type: 'functional' | 'user_story' | 'use_case' | 'non_functional'
@@ -68,7 +68,6 @@ interface Requirement {
   metadata?: Record<string, string | number | boolean>
   created_at: string
   updated_at: string
-  // Test management fields
   test_case_count: number
   coverage_percentage: number
 }
@@ -107,6 +106,7 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
   const [showLinkDialog, setShowLinkDialog] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
+  const [selectedCoverageTypes, setSelectedCoverageTypes] = useState<Record<string, string>>({})
 
   useEffect(() => {
     fetchData()
@@ -151,12 +151,12 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
               .order('created_at', { ascending: false })
 
             // Get latest execution per test case
-            const latestExecutions = execData?.reduce((acc, exec) => {
+            const latestExecutions = execData?.reduce((acc: Record<string, string>, exec) => {
               if (!acc[exec.test_case_id]) {
                 acc[exec.test_case_id] = exec.execution_status
               }
               return acc
-            }, {} as Record<string, string>) || {}
+            }, {}) || {}
 
             const passedCount = Object.values(latestExecutions).filter(status => status === 'passed').length
             const coveragePercentage = testCaseIds.length > 0 ? Math.round((passedCount / testCaseIds.length) * 100) : 0
@@ -632,14 +632,13 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
         </div>
       )}
 
-      {/* Details and Link Dialogs - keeping same as before */}
+      {/* Details Dialog */}
       {selectedRequirement && (
         <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center justify-between">
                 <span>{selectedRequirement.title}</span>
-                <div className="flex gap-2">
                   <Button
                     onClick={() => openLinkDialog(selectedRequirement)}
                     size="sm"
@@ -648,37 +647,32 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
                     <LinkIcon className="h-4 w-4 mr-2" />
                     Link Tests ({selectedRequirement.test_case_count})
                   </Button>
-                  <Button
-                    onClick={() => toast.info('Test generation coming soon')}
-                    size="sm"
-                  >
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Generate Tests
-                  </Button>
-                </div>
+                
               </DialogTitle>
-              <DialogDescription className="flex items-center gap-2 flex-wrap pt-2">
-                <Badge className={getTypeColor(selectedRequirement.type)}>
-                  {selectedRequirement.type.replace('_', ' ')}
-                </Badge>
-                <Badge className={getPriorityColor(selectedRequirement.priority)}>
-                  {selectedRequirement.priority}
-                </Badge>
-                {getStatusBadge(selectedRequirement.status)}
-                {selectedRequirement.external_id && (
-                  <Badge variant="outline">
-                    <ExternalLink className="h-3 w-3 mr-1" />
-                    {selectedRequirement.external_id}
-                  </Badge>
-                )}
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4" />
-                  <span className={`text-sm font-medium ${getCoverageColor(selectedRequirement.coverage_percentage)}`}>
-                    {selectedRequirement.coverage_percentage}% test coverage
-                  </span>
-                </div>
-              </DialogDescription>
             </DialogHeader>
+            
+            {/* Move badges outside DialogDescription to fix nesting error */}
+            <div className="flex items-center gap-2 flex-wrap -mt-2">
+              <Badge className={getTypeColor(selectedRequirement.type)}>
+                {selectedRequirement.type.replace('_', ' ')}
+              </Badge>
+              <Badge className={getPriorityColor(selectedRequirement.priority)}>
+                {selectedRequirement.priority}
+              </Badge>
+              {getStatusBadge(selectedRequirement.status)}
+              {selectedRequirement.external_id && (
+                <Badge variant="outline">
+                  <ExternalLink className="h-3 w-3 mr-1" />
+                  {selectedRequirement.external_id}
+                </Badge>
+              )}
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                <span className={`text-sm font-medium ${getCoverageColor(selectedRequirement.coverage_percentage)}`}>
+                  {selectedRequirement.coverage_percentage}% test coverage
+                </span>
+              </div>
+            </div>
 
             <div className="space-y-6">
               <div>
@@ -688,7 +682,9 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
                 </p>
               </div>
 
-              {selectedRequirement.acceptance_criteria && selectedRequirement.acceptance_criteria.length > 0 && (
+              {selectedRequirement.acceptance_criteria && 
+               Array.isArray(selectedRequirement.acceptance_criteria) && 
+               selectedRequirement.acceptance_criteria.length > 0 && (
                 <div>
                   <h4 className="font-semibold mb-2">Acceptance Criteria</h4>
                   <ul className="space-y-2">
@@ -798,32 +794,57 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {availableTestCases.map((testCase) => (
-                    <div key={testCase.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex-1">
-                        <div className="font-medium">{testCase.title}</div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="outline">{testCase.test_type}</Badge>
-                          <Badge variant="outline">{testCase.priority}</Badge>
+                  {availableTestCases.map((testCase) => {
+                    // Get the selected coverage type for this test case, default to 'direct'
+                    const selectedType = selectedCoverageTypes[testCase.id] || 'direct'
+                    
+                    return (
+                      <div key={testCase.id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex-1">
+                          <div className="font-medium">{testCase.title}</div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline">{testCase.test_type}</Badge>
+                            <Badge variant="outline">{testCase.priority}</Badge>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={selectedType}
+                            onValueChange={(value) => {
+                              setSelectedCoverageTypes(prev => ({
+                                ...prev,
+                                [testCase.id]: value
+                              }))
+                            }}
+                          >
+                            <SelectTrigger className="w-32">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="direct">Direct</SelectItem>
+                              <SelectItem value="indirect">Indirect</SelectItem>
+                              <SelectItem value="negative">Negative</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              linkTestCase(testCase.id, selectedType)
+                              // Clean up state after linking
+                              setSelectedCoverageTypes(prev => {
+                                const updated = { ...prev }
+                                delete updated[testCase.id]
+                                return updated
+                              })
+                            }}
+                          >
+                            <LinkIcon className="h-4 w-4 mr-2" />
+                            Link
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Select
-                          defaultValue="direct"
-                          onValueChange={(value) => linkTestCase(testCase.id, value)}
-                        >
-                          <SelectTrigger className="w-32">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="direct">Direct</SelectItem>
-                            <SelectItem value="indirect">Indirect</SelectItem>
-                            <SelectItem value="negative">Negative</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </TabsContent>

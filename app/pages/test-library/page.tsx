@@ -2,7 +2,7 @@ import { TestSuiteManager } from "@/components/pagecomponents/test-suite-manager
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
 
-export default function GeneratePage() {
+export default function TestCaseManager() {
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[240px_1fr] md:gap-x-4 lg:gap-x-6">
       {/* Sidebar */}
