@@ -45,3 +45,7 @@ export default function RequirementsPage() {
     </div>
   );
 }
+export const metadata = {
+  title: 'Requirements - SynthQA',
+  description: 'Manage and organize your project requirements to generate targeted test cases.',
+}

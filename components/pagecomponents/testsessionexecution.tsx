@@ -1,33 +1,57 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog"
-import { 
-  Play, 
-  Pause, 
-  CheckCircle, 
-  XCircle, 
-  Clock, 
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert"
+import {
+  Play,
+  Pause,
+  CheckCircle,
+  XCircle,
+  Clock,
   AlertTriangle,
   SkipForward,
-  Timer,
-  Users,
-  Calendar
+  History,
+  ChevronLeft,
+  ChevronRight,
+  TrendingUp,
+  Trash2,
 } from "lucide-react"
+
+//
+// ---- Types ----
+//
 
 interface TestSuite {
   id: string
@@ -56,16 +80,61 @@ interface SuiteTestCase {
   test_cases: TestCase
 }
 
-interface TestExecution {
-  id: string
+type TestExecutionStatusRow = {
+  execution_status: ExecutionStatus
+}
+
+type ExecutionStatus =
+  | "not_run"
+  | "in_progress"
+  | "passed"
+  | "failed"
+  | "skipped"
+  | "blocked"
+
+interface TestExecutionRow {
   test_case_id: string
-  execution_status: 'not_run' | 'in_progress' | 'passed' | 'failed' | 'skipped' | 'blocked'
-  started_at?: string
-  completed_at?: string
-  execution_notes?: string
-  failure_reason?: string
-  completed_steps: number[]
-  failed_steps: number[]
+  execution_status: ExecutionStatus
+}
+
+interface SessionStats {
+  passed: number
+  failed: number
+  blocked: number
+  skipped: number
+}
+
+interface TestRunSessionRow {
+  id: string
+  user_id: string
+  suite_id: string | null
+  name: string
+  description: string | null
+  status: "planned" | "in_progress" | "paused" | "completed" | "aborted"
+  planned_start: string | null
+  actual_start: string | null
+  actual_end: string | null
+  environment: string | null
+  test_cases_total: number
+  test_cases_completed: number
+  progress_percentage: number
+  passed_cases: number
+  failed_cases: number
+  skipped_cases: number
+  blocked_cases: number
+  created_at: string | null
+  updated_at: string | null
+  created_by: string | null
+}
+
+interface TestSession extends TestRunSessionRow {
+  stats: SessionStats
+}
+
+
+interface SessionDialogData {
+  session: TestSession
+  suite: TestSuite
 }
 
 interface TestSessionExecutionProps {
@@ -75,533 +144,1647 @@ interface TestSessionExecutionProps {
   onSessionComplete: () => void
 }
 
-export function TestSessionExecution({ 
-  suite, 
-  open, 
-  onOpenChange, 
-  onSessionComplete 
+export function TestSessionExecution({
+  suite,
+  open,
+  onOpenChange,
+  onSessionComplete,
 }: TestSessionExecutionProps) {
   const [suiteTestCases, setSuiteTestCases] = useState<SuiteTestCase[]>([])
   const [currentTestIndex, setCurrentTestIndex] = useState(0)
-  const [currentTest, setCurrentTest] = useState<SuiteTestCase | null>(null)
-  const [currentExecution, setCurrentExecution] = useState<TestExecution | null>(null)
-  const [sessionStarted, setSessionStarted] = useState(false)
-  const [sessionStats, setSessionStats] = useState({
-    total: 0,
-    completed: 0,
+  const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(
+    null,
+  )
+  const [sessionStats, setSessionStats] = useState<SessionStats>({
     passed: 0,
     failed: 0,
     skipped: 0,
-    blocked: 0
+    blocked: 0,
   })
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [currentSession, setCurrentSession] = useState<TestSession | null>(null)
+
   const [executionNotes, setExecutionNotes] = useState("")
   const [failureReason, setFailureReason] = useState("")
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set())
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [autoAdvance, setAutoAdvance] = useState(true)
 
+  const [loading, setLoading] = useState(false)
+const [testsLoading, setTestsLoading] = useState(false)
+
+
+  // Smart-flow dialogs
+  const [showResumeDialog, setShowResumeDialog] = useState(false)
+  const [showNewRunDialog, setShowNewRunDialog] = useState(false)
+  const [showExecutionDialog, setShowExecutionDialog] = useState(false)
+  const [showHistorySheet, setShowHistorySheet] = useState(false)
+  const [showPauseDialog, setShowPauseDialog] = useState(false)
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false)
+
+  const [resumeDialogData, setResumeDialogData] =
+    useState<SessionDialogData | null>(null)
+  const [newRunDialogData, setNewRunDialogData] = useState<{
+    lastSession: TestSession
+    suite: TestSuite
+  } | null>(null)
+  const [sessionHistory, setSessionHistory] = useState<TestSession[]>([])
+
+  const currentTest = suiteTestCases[currentTestIndex] ?? null
+  const totalTests = suiteTestCases.length
+  const completedCount = currentSession?.test_cases_completed ?? 0
+  const progressPercentage = currentSession?.progress_percentage ?? 0
+
+  //
+  // ---- Effects ----
+  //
+
+  // Load test cases when suite changes
   useEffect(() => {
-    if (open) {
-      fetchSuiteTestCases()
-    }
-  }, [open, suite.id])
+    if (!suite.id) return
+    fetchSuiteTestCases()
+  }, [suite.id])
 
+  // When parent sets open=true, kick off Smart Session Detection
   useEffect(() => {
-    if (suiteTestCases.length > 0) {
-      setCurrentTest(suiteTestCases[currentTestIndex])
-      setSessionStats(prev => ({ ...prev, total: suiteTestCases.length }))
+    if (!open) return
+    // "open" from parent just means "user clicked Execute"
+    handleExecuteClick()
+  }, [open])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyPress(e: KeyboardEvent) {
+      if (!showExecutionDialog) return
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return
+      }
+
+      if (!currentTest || !currentSession) return
+
+      switch (e.key.toLowerCase()) {
+        case "p":
+          e.preventDefault()
+          void completeTestExecution("passed")
+          break
+        case "f":
+          e.preventDefault()
+          void completeTestExecution("failed")
+          break
+        case "b":
+          e.preventDefault()
+          void completeTestExecution("blocked")
+          break
+        case "s":
+          e.preventDefault()
+          void completeTestExecution("skipped")
+          break
+        case " ":
+          e.preventDefault()
+          toggleStep(0) // toggle first step (or you can track "current step")
+          break
+        default:
+          break
+      }
     }
-  }, [suiteTestCases, currentTestIndex])
 
-  async function fetchSuiteTestCases() {
-    try {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from('test_suite_cases')
-        .select(`
-          id,
-          test_case_id,
-          sequence_order,
-          priority,
-          estimated_duration_minutes,
-          assigned_to,
-          test_cases(
-            id,
-            title,
-            description,
-            test_type,
-            steps,
-            expected_result
-          )
-        `)
-        .eq('suite_id', suite.id)
-        .order('sequence_order')
+    window.addEventListener("keydown", handleKeyPress)
+    return () => window.removeEventListener("keydown", handleKeyPress)
+  }, [showExecutionDialog, currentTest, currentSession, completedSteps])
 
-      if (error) throw error
-      
-      const transformedData = data?.map(item => ({
-        ...item,
-        test_cases: Array.isArray(item.test_cases) ? item.test_cases[0] : item.test_cases
-      })) || []
+  //
+  // ---- Supabase helpers ----
+  //
 
-      setSuiteTestCases(transformedData)
-    } catch (error) {
-      console.error('Error fetching suite test cases:', error)
-      toast.error('Failed to load test cases for execution')
-    }
-  }
-
-  async function startSession() {
+  async function fetchSuiteTestCases(): Promise<SuiteTestCase[]> {
+  setTestsLoading(true)
   try {
     const supabase = createClient()
-    
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-    
-    if (sessionError || !session?.user) {
-      console.error('No active session:', sessionError)
-      toast.error('Please log in to start a test session')
-      return
+    const { data, error } = await supabase
+      .from("test_suite_cases")
+      .select(`
+        id,
+        test_case_id,
+        sequence_order,
+        priority,
+        estimated_duration_minutes,
+        assigned_to,
+        test_cases(
+          id,
+          title,
+          description,
+          test_type,
+          steps,
+          expected_result
+        )
+      `)
+      .eq("suite_id", suite.id)
+      .order("sequence_order")
+
+    if (error) throw error
+
+    type RawRow = {
+      id: string
+      test_case_id: string
+      sequence_order: number
+      priority: string
+      estimated_duration_minutes: number
+      assigned_to?: string
+      test_cases: TestCase | TestCase[]
     }
 
-    const user = session.user
-    setSessionStats({
-  total: suiteTestCases.length,
-  completed: 0,
-  passed: 0,
-  failed: 0,
-  skipped: 0,
-  blocked: 0
-})
+    const raw = (data ?? []) as RawRow[]
 
-    const { data: testSession, error: insertError } = await supabase
-      .from('test_run_sessions')
-      .insert({
-        name: `${suite.name} - ${new Date().toLocaleString()}`,
-        suite_id: suite.id,
-        user_id: user.id,
-        status: 'in_progress',
-        actual_start: new Date().toISOString(),
-        environment: 'staging'
-      })
-      .select()
-      .single()
+    const transformed: SuiteTestCase[] = raw.map((item) => ({
+      id: item.id,
+      test_case_id: item.test_case_id,
+      sequence_order: item.sequence_order,
+      priority: item.priority,
+      estimated_duration_minutes: item.estimated_duration_minutes,
+      assigned_to: item.assigned_to,
+      test_cases: Array.isArray(item.test_cases)
+        ? item.test_cases[0]
+        : item.test_cases,
+    }))
 
-    if (insertError) {
-     
-      throw insertError
-    }
-
-    
-
-    setSessionId(testSession.id)
-    setSessionStarted(true)
-    
-    if (suiteTestCases.length > 0) {
-      await startTestExecution(suiteTestCases[0], testSession.id)
-    }
-    
-    toast.success('Test session started')
+    setSuiteTestCases(transformed)
+    return transformed
   } catch (error) {
-    toast.error('Failed to start test session')
+    console.error("Error fetching suite test cases:", error)
+    toast.error("Failed to load test cases for execution")
+    setSuiteTestCases([])
+    return []
+  } finally {
+    setTestsLoading(false)
   }
 }
 
-  async function startTestExecution(testCase: SuiteTestCase, currentSessionId?: string) {
+  async function getSessionStats(sessionId: string): Promise<SessionStats> {
+  try {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("test_executions")
+      .select("execution_status")
+      .eq("session_id", sessionId)
+
+    if (error) throw error
+
+    const rows = (data ?? []) as TestExecutionStatusRow[]
+
+    const stats: SessionStats = {
+      passed: 0,
+      failed: 0,
+      blocked: 0,
+      skipped: 0,
+    }
+
+    rows.forEach((exec) => {
+      if (exec.execution_status === "passed") stats.passed++
+      if (exec.execution_status === "failed") stats.failed++
+      if (exec.execution_status === "blocked") stats.blocked++
+      if (exec.execution_status === "skipped") stats.skipped++
+    })
+
+    return stats
+  } catch (error) {
+    console.error("Error getting session stats:", error)
+    return { passed: 0, failed: 0, blocked: 0, skipped: 0 }
+  }
+}
+
+  async function getLastCompletedSession(
+    suiteId: string,
+  ): Promise<TestSession | null> {
     try {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      
+      const { data, error } = await supabase
+        .from("test_run_sessions")
+        .select("*")
+        .eq("suite_id", suiteId)
+        .eq("status", "completed")
+        .order("actual_end", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data) return null
+
+      const stats = await getSessionStats(data.id)
+      const session: TestSession = { ...data, stats }
+      return session
+    } catch (error) {
+      console.error("Error getting last session:", error)
+      return null
+    }
+  }
+  async function getActiveSession(suiteId: string): Promise<TestSession | null> {
+  try {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("test_run_sessions")
+      .select("*")
+      .eq("suite_id", suiteId)
+      .in("status", ["in_progress", "paused"]) // Include paused sessions
+      .order("actual_start", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) return null
+
+    const row = data as TestRunSessionRow
+    const stats = await getSessionStats(row.id)
+
+    return { ...row, stats }
+  } catch (error) {
+    console.error("Error getting active session:", error)
+    return null
+  }
+}
+
+
+async function getIncompleteSessions(suiteId: string): Promise<TestSession[]> {
+  try {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("test_run_sessions")
+      .select("*")
+      .eq("suite_id", suiteId)
+      .in("status", ["in_progress", "paused"])
+      .order("actual_start", { ascending: false })
+
+    if (error) throw error
+    if (!data) return []
+
+    const sessions = await Promise.all(
+      data.map(async (row) => {
+        const stats = await getSessionStats(row.id)
+        return { ...row, stats } as TestSession
+      })
+    )
+
+    return sessions
+  } catch (error) {
+    console.error("Error getting incomplete sessions:", error)
+    return []
+  }
+}
+
+
+  async function fetchSessionHistory() {
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("test_run_sessions")
+        .select("*")
+        .eq("suite_id", suite.id)
+        .order("actual_start", { ascending: false })
+        .limit(10)
+
+      if (error) throw error
+
+      const raw: TestRunSessionRow[] = data ?? []
+      const sessionsWithStats: TestSession[] = await Promise.all(
+        raw.map(async (session) => {
+          const stats = await getSessionStats(session.id)
+          return { ...session, stats }
+        }),
+      )
+
+      setSessionHistory(sessionsWithStats)
+    } catch (error) {
+      console.error("Error fetching session history:", error)
+    }
+  }
+  async function deleteSessionRun(sessionId: string) {
+  const confirmed = window.confirm(
+    "Delete this test run and all of its executions? This cannot be undone."
+  )
+  if (!confirmed) return
+
+  try {
+    const supabase = createClient()
+
+    // 1) Delete executions for this session
+    const { error: execError } = await supabase
+      .from("test_executions")
+      .delete()
+      .eq("session_id", sessionId)
+
+    if (execError) throw execError
+
+    // 2) Delete the session itself
+    const { error: sessionError } = await supabase
+      .from("test_run_sessions")
+      .delete()
+      .eq("id", sessionId)
+
+    if (sessionError) throw sessionError
+
+    // 3) Update local state
+    setSessionHistory((prev) => prev.filter((s) => s.id !== sessionId))
+
+    if (currentSession?.id === sessionId) {
+      setCurrentSession(null)
+      setSessionId(null)
+    }
+
+    toast.success("Test run deleted")
+  } catch (error) {
+    console.error("Error deleting test run:", error)
+    toast.error("Failed to delete test run")
+  }
+}
+
+
+  //
+  // ---- Smart Session Detection ----
+  //
+
+  async function handleExecuteClick() {
+  if (!suite.id) return
+
+  setLoading(true)
+  try {
+    // Ensure we have fresh test cases
+    const tests =
+      suiteTestCases.length > 0 ? suiteTestCases : await fetchSuiteTestCases()
+
+    if (!tests || tests.length === 0) {
+      toast.error("No test cases available for this suite")
+      onOpenChange(false)
+      return
+    }
+
+    // Check for any incomplete session (in_progress OR paused)
+    const activeSession = await getActiveSession(suite.id)
+    const lastSession = await getLastCompletedSession(suite.id)
+
+    if (activeSession && activeSession.progress_percentage < 100) {
+      // Found an incomplete session - ask user to resume or start new
+      setResumeDialogData({ session: activeSession, suite })
+      setShowResumeDialog(true)
+    } else if (lastSession) {
+      // No incomplete session, but there's a completed one
+      setNewRunDialogData({ lastSession, suite })
+      setShowNewRunDialog(true)
+    } else {
+      // No sessions at all - start fresh
+      await startNewSession()
+    }
+  } catch (error) {
+    console.error("Error handling execute click:", error)
+    toast.error("Failed to start test execution")
+    onOpenChange(false)
+  } finally {
+    setLoading(false)
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  //
+  // ---- Session lifecycle ----
+  //
+
+  async function startNewSession() {
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) {
+        toast.error("Please log in to start a test session")
+        return
+      }
+
+     const { data, error } = await supabase
+  .from("test_run_sessions")
+  .insert({
+    user_id: user.id,               
+    suite_id: suite.id,
+    name: `${suite.name} - ${new Date().toLocaleString()}`,
+    description: null,
+    status: "in_progress",
+    environment: "staging",
+    planned_start: null,
+    actual_start: new Date().toISOString(),
+    actual_end: null,
+    test_cases_total: totalTests,
+    test_cases_completed: 0,
+    progress_percentage: 0,
+    passed_cases: 0,
+    failed_cases: 0,
+    skipped_cases: 0,
+    blocked_cases: 0,
+    created_by: user.id,             
+  })
+  .select()
+  .single()
+
+
+      if (error) throw error
+
+      const stats: SessionStats = {
+        passed: 0,
+        failed: 0,
+        blocked: 0,
+        skipped: 0,
+      }
+
+      const session: TestSession = { ...data, stats }
+      setSessionId(session.id)
+      setCurrentSession(session)
+      setCurrentTestIndex(0)
+      setCompletedSteps(new Set())
+      setExecutionNotes("")
+      setFailureReason("")
+      setShowResumeDialog(false)
+      setShowNewRunDialog(false)
+      setShowExecutionDialog(true)
+
+      await startTestExecution(0, session.id)
+
+      toast.success("Test session started")
+    } catch (error) {
+      console.error("Error starting new session:", error)
+      toast.error("Failed to start test session")
+      onOpenChange(false)
+    }
+  }
+
+  async function resumeSession(session: TestSession) {
+  try {
+    const supabase = createClient()
+
+    // Get all executions for this session
+    const { data, error } = await supabase
+      .from("test_executions")
+      .select("test_case_id, execution_status")
+      .eq("session_id", session.id)
+      .order("created_at", { ascending: true })
+
+    if (error) throw error
+
+    // Find completed test case IDs
+    const completedIds = new Set<string>(
+      (data ?? [])
+        .filter((e) => 
+          e.execution_status === "passed" || 
+          e.execution_status === "failed" || 
+          e.execution_status === "blocked" || 
+          e.execution_status === "skipped"
+        )
+        .map((e) => e.test_case_id)
+    )
+
+    // Find the first test case that hasn't been completed
+    const nextIndex = suiteTestCases.findIndex((tc) => 
+      !completedIds.has(tc.test_case_id)
+    )
+
+    // If all tests are done, start from beginning (shouldn't happen)
+    // Otherwise start from the first incomplete test
+    const safeIndex = nextIndex >= 0 ? nextIndex : 0
+
+    setCurrentSession(session)
+    setSessionId(session.id)
+    setCurrentTestIndex(safeIndex)
+    setCompletedSteps(new Set())
+    setExecutionNotes("")
+    setFailureReason("")
+    setShowResumeDialog(false)
+    setShowHistorySheet(false) // Close history sheet when resuming
+    setShowExecutionDialog(true)
+
+    await startTestExecution(safeIndex, session.id)
+    toast.success(`Resumed from test ${safeIndex + 1} of ${suiteTestCases.length}`)
+  } catch (error) {
+    console.error("Error resuming session:", error)
+    toast.error("Failed to resume session")
+  }
+}
+
+  async function pauseSession() {
+    if (!currentSession) return
+    try {
+      const supabase = createClient()
+      await supabase
+        .from("test_run_sessions")
+        .update({ status: "paused" })
+        .eq("id", currentSession.id)
+
+      setShowExecutionDialog(false)
+      setShowPauseDialog(false)
+      onOpenChange(false)
+      toast.success("Session paused - Resume anytime")
+    } catch (error) {
+      console.error("Error pausing session:", error)
+      toast.error("Failed to pause session")
+    }
+  }
+
+  async function completeSession() {
+    if (!currentSession) return
+    try {
+      const supabase = createClient()
+
+      await supabase
+        .from("test_run_sessions")
+        .update({
+          status: "completed",
+          actual_end: new Date().toISOString(),
+        })
+        .eq("id", currentSession.id)
+
+      await supabase
+        .from("test_suites")
+        .update({
+          status: "completed",
+          actual_end_date: new Date().toISOString(),
+        })
+        .eq("id", suite.id)
+
+      toast.success("Test session completed!")
+      setShowExecutionDialog(false)
+      setShowCompleteDialog(true)
+      onSessionComplete()
+      onOpenChange(false)
+    } catch (error) {
+      console.error("Error completing session:", error)
+      toast.error("Failed to complete session")
+    }
+  }
+
+  //
+  // ---- Execution helpers ----
+  //
+
+  async function startTestExecution(
+    index: number,
+    currentSessionId: string | null,
+  ) {
+    const testCase = suiteTestCases[index]
+    if (!testCase || !currentSessionId) return
+
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
       if (!user) return
 
       const { data, error } = await supabase
-        .from('test_executions')
+        .from("test_executions")
         .insert({
           test_case_id: testCase.test_case_id,
           suite_id: suite.id,
-          session_id: currentSessionId || sessionId, // Use provided ID or state ID
+          session_id: currentSessionId,
           executed_by: user.id,
-          execution_status: 'in_progress',
+          execution_status: "in_progress",
           started_at: new Date().toISOString(),
           completed_steps: [],
-          failed_steps: []
+          failed_steps: [],
         })
         .select()
         .single()
 
       if (error) throw error
 
-      setCurrentExecution(data)
+      setCurrentExecutionId(data.id as string)
       setExecutionNotes("")
       setFailureReason("")
       setCompletedSteps(new Set())
     } catch (error) {
-      toast.error('Failed to start test execution')
+      console.error("Error starting test execution:", error)
+      toast.error("Failed to start test execution")
     }
   }
 
-  async function completeTestExecution(status: 'passed' | 'failed' | 'skipped' | 'blocked') {
-    if (!currentExecution || !currentTest) return
+  async function completeTestExecution(status: ExecutionStatus) {
+    if (
+      !currentExecutionId ||
+      !currentSession ||
+      !currentTest ||
+      !["passed", "failed", "skipped", "blocked"].includes(status)
+    ) {
+      return
+    }
 
     try {
       const supabase = createClient()
-      
+
+      const completedStepsArray = Array.from(completedSteps)
+
       const { error } = await supabase
-        .from('test_executions')
+        .from("test_executions")
         .update({
           execution_status: status,
           completed_at: new Date().toISOString(),
           execution_notes: executionNotes || null,
-          failure_reason: status === 'failed' ? failureReason : null,
-          completed_steps: Array.from(completedSteps),
-          failed_steps: status === 'failed' ? Array.from(completedSteps) : []
+          failure_reason: status === "failed" ? failureReason || null : null,
+          completed_steps: completedStepsArray,
+          failed_steps: status === "failed" ? completedStepsArray : [],
         })
-        .eq('id', currentExecution.id)
+        .eq("id", currentExecutionId)
 
       if (error) throw error
 
-      setSessionStats(prev => ({
-        ...prev,
-        completed: prev.completed + 1,
-        [status]: prev[status] + 1
-      }))
+      // update session row progress
+      const newCompleted = currentSession.test_cases_completed + 1
+      const newProgress = Math.round((newCompleted / totalTests) * 100)
+
+      await supabase
+        .from("test_run_sessions")
+        .update({
+          test_cases_completed: newCompleted,
+          progress_percentage: newProgress,
+          status: newProgress === 100 ? "completed" : "in_progress",
+          actual_end: newProgress === 100 ? new Date().toISOString() : null,
+        })
+        .eq("id", currentSession.id)
+
+      // update local stats
+      const newStats: SessionStats = { ...currentSession.stats }
+      if (status === "passed") newStats.passed++
+      if (status === "failed") newStats.failed++
+      if (status === "blocked") newStats.blocked++
+      if (status === "skipped") newStats.skipped++
+
+      const updatedSession: TestSession = {
+        ...currentSession,
+        test_cases_completed: newCompleted,
+        progress_percentage: newProgress,
+        stats: newStats,
+      }
+
+      setCurrentSession(updatedSession)
+      setSessionStats(newStats)
 
       toast.success(`Test ${status}`)
-      
-      // Move to next test or complete session
-      if (currentTestIndex < suiteTestCases.length - 1) {
+
+      setExecutionNotes("")
+      setFailureReason("")
+      setCompletedSteps(new Set())
+
+      if (newProgress === 100) {
+        await completeSession()
+      } else if (
+        autoAdvance &&
+        currentTestIndex < suiteTestCases.length - 1
+      ) {
         const nextIndex = currentTestIndex + 1
         setCurrentTestIndex(nextIndex)
-        await startTestExecution(suiteTestCases[nextIndex])
-      } else {
-        await completeSession()
+        await startTestExecution(nextIndex, updatedSession.id)
       }
     } catch (error) {
-      toast.error('Failed to complete test execution')
-    }
-  }
-
-  async function skipToTest(index: number) {
-    if (currentExecution) {
-      await completeTestExecution('skipped')
-    }
-    
-    setCurrentTestIndex(index)
-    if (suiteTestCases[index]) {
-      await startTestExecution(suiteTestCases[index])
-    }
-  }
-
-  // FIX: Updated to update the test_run_sessions record
-  async function completeSession() {
-    try {
-      const supabase = createClient()
-      
-      // Update the test run session status
-      if (sessionId) {
-        await supabase
-          .from('test_run_sessions')
-          .update({ 
-            status: 'completed',
-            actual_end: new Date().toISOString()
-          })
-          .eq('id', sessionId)
-      }
-      
-      // Update suite status
-      await supabase
-        .from('test_suites')
-        .update({ 
-          status: 'completed',
-          actual_end_date: new Date().toISOString()
-        })
-        .eq('id', suite.id)
-
-      toast.success('Test session completed!')
-      onSessionComplete()
-      onOpenChange(false)
-    } catch (error) {
-      toast.error('Failed to complete session')
+      console.error("Error completing test execution:", error)
+      toast.error("Failed to complete test execution")
     }
   }
 
   function toggleStep(stepIndex: number) {
-    setCompletedSteps(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(stepIndex)) {
-        newSet.delete(stepIndex)
+    setCompletedSteps((prev) => {
+      const next = new Set(prev)
+      if (next.has(stepIndex)) {
+        next.delete(stepIndex)
       } else {
-        newSet.add(stepIndex)
+        next.add(stepIndex)
       }
-      return newSet
+      return next
     })
   }
 
-  const progressPercentage = suiteTestCases.length > 0 
-    ? Math.round((sessionStats.completed / sessionStats.total) * 100) 
-    : 0
+  function formatRelativeTime(dateString?: string | null) {
+    if (!dateString) return "N/A"
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+
+    if (diffMins < 1) return "Just now"
+    if (diffMins < 60) return `${diffMins} minutes ago`
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)} hours ago`
+    return `${Math.floor(diffMins / 1440)} days ago`
+  }
+
+  function formatDuration(start?: string | null, end?: string | null) {
+    if (!start || !end) return "N/A"
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+    const diffMins = Math.floor(
+      (endDate.getTime() - startDate.getTime()) / 60000,
+    )
+    return `${diffMins} minutes`
+  }
+
+  //
+  // ---- UI ----
+  //
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="
-        w-full
-        max-w-5xl
-        md:max-w-6xl
-        h-[90vh]
-        max-h-[90vh]
-        flex
-        flex-col
-        p-6
-      ">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Play className="h-5 w-5" />
-            Test Session: {suite.name}
-          </DialogTitle>
-          <DialogDescription>
-            Execute test cases in sequence and track results in real-time
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      {/* Resume Dialog */}
+      <Dialog open={showResumeDialog} onOpenChange={setShowResumeDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Resume Test Session</DialogTitle>
+            <DialogDescription>Active session detected</DialogDescription>
+          </DialogHeader>
 
-      <div className="flex-1 overflow-y-auto space-y-6 pr-2">
-          {/* Session Progress */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Session Progress</CardTitle>
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span>{sessionStats.completed} of {sessionStats.total} completed</span>
-                  <span>{progressPercentage}%</span>
+          {resumeDialogData && (
+            <div className="space-y-4 py-4">
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>Active session in progress</AlertDescription>
+              </Alert>
+
+              <div className="bg-muted p-4 rounded-lg space-y-2">
+                <div className="flex justify-between">
+                  <span>Session Progress:</span>
+                  <span className="font-bold">
+                    {resumeDialogData.session.progress_percentage}%
+                  </span>
+                </div>
+                <Progress value={resumeDialogData.session.progress_percentage} />
+                <div className="text-sm text-muted-foreground">
+                  {resumeDialogData.session.test_cases_completed} of{" "}
+                  {resumeDialogData.session.test_cases_total} tests complete
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              <Progress value={progressPercentage} className="mb-4" />
-              <div className="grid grid-cols-5 gap-4 text-center">
-                <div className="space-y-1">
-                  <div className="text-2xl font-bold text-green-500">{sessionStats.passed}</div>
-                  <div className="text-xs text-muted-foreground">Passed</div>
+
+              <div className="grid grid-cols-4 gap-2 text-center">
+                <div>
+                  <div className="text-lg font-bold text-green-600">
+                    {resumeDialogData.session.stats.passed}
+                  </div>
+                  <div className="text-xs">Passed</div>
                 </div>
-                <div className="space-y-1">
-                  <div className="text-2xl font-bold text-red-500">{sessionStats.failed}</div>
-                  <div className="text-xs text-muted-foreground">Failed</div>
+                <div>
+                  <div className="text-lg font-bold text-red-600">
+                    {resumeDialogData.session.stats.failed}
+                  </div>
+                  <div className="text-xs">Failed</div>
                 </div>
-                <div className="space-y-1">
-                  <div className="text-2xl font-bold text-orange-600">{sessionStats.blocked}</div>
-                  <div className="text-xs text-muted-foreground">Blocked</div>
+                <div>
+                  <div className="text-lg font-bold text-orange-600">
+                    {resumeDialogData.session.stats.blocked}
+                  </div>
+                  <div className="text-xs">Blocked</div>
                 </div>
-                <div className="space-y-1">
-                  <div className="text-2xl font-bold text-gray-600">{sessionStats.skipped}</div>
-                  <div className="text-xs text-muted-foreground">Skipped</div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-2xl font-bold">{sessionStats.total - sessionStats.completed}</div>
-                  <div className="text-xs text-muted-foreground">Remaining</div>
+                <div>
+                  <div className="text-lg font-bold text-gray-600">
+                    {resumeDialogData.session.stats.skipped}
+                  </div>
+                  <div className="text-xs">Skipped</div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Current Test Execution */}
-            <div className="lg:col-span-2">
-              {!sessionStarted ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Ready to Start Test Session</CardTitle>
-                    <CardDescription>
-                      {suiteTestCases.length} test cases are queued for execution
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button onClick={startSession} className="w-full" size="lg">
-                      <Play className="h-4 w-4 mr-2" />
-                      Start Test Session
-                    </Button>
-                  </CardContent>
-                </Card>
-              ) : currentTest ? (
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle>{currentTest.test_cases.title}</CardTitle>
-                        <CardDescription>
-                          Test {currentTestIndex + 1} of {suiteTestCases.length} • {currentTest.test_cases.test_type}
-                        </CardDescription>
+              <div className="text-sm text-muted-foreground">
+                <Clock className="inline h-3 w-3 mr-1" />
+                Started:{" "}
+                {formatRelativeTime(resumeDialogData.session.actual_start)}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                void startNewSession()
+              }}
+            >
+              Start New
+            </Button>
+            <Button
+              onClick={() =>
+                resumeDialogData &&
+                void resumeSession(resumeDialogData.session)
+              }
+            >
+              Continue Session
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Run Dialog */}
+      <Dialog open={showNewRunDialog} onOpenChange={setShowNewRunDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Start New Test Run</DialogTitle>
+            <DialogDescription>Previous run completed</DialogDescription>
+          </DialogHeader>
+
+          {newRunDialogData && (
+            <div className="space-y-4 py-4">
+              <div className="text-sm text-muted-foreground">
+                Last run finished:{" "}
+                {formatRelativeTime(newRunDialogData.lastSession.actual_end)}
+              </div>
+
+              <div className="bg-muted p-4 rounded-lg space-y-2">
+                <div className="font-medium text-sm mb-2">Last Results:</div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>Passed:</span>
+                    <Badge className="bg-green-600">
+                      {newRunDialogData.lastSession.stats.passed}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Failed:</span>
+                    <Badge variant="destructive">
+                      {newRunDialogData.lastSession.stats.failed}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="pt-2 border-t mt-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>Pass Rate:</span>
+                    <span className="font-bold">
+                      {Math.round(
+                        (newRunDialogData.lastSession.stats.passed /
+                          newRunDialogData.lastSession.test_cases_total) *
+                          100,
+                      )}
+                      %
+                    </span>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Duration:{" "}
+                  {formatDuration(
+                    newRunDialogData.lastSession.actual_start,
+                    newRunDialogData.lastSession.actual_end,
+                  )}
+                </div>
+              </div>
+
+              <Alert>
+                <AlertDescription className="text-xs">
+                  Starting a new run will create a fresh session and preserve
+                  the previous results for comparison.
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                void fetchSessionHistory()
+                setShowHistorySheet(true)
+              }}
+            >
+              <History className="h-4 w-4 mr-2" />
+              View History
+            </Button>
+            <Button
+              onClick={() => {
+                void startNewSession()
+              }}
+            >
+              <Play className="h-4 w-4 mr-2" />
+              Start New Run
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Execution Dialog */}
+      <Dialog
+        open={showExecutionDialog}
+        onOpenChange={(openValue) => {
+          setShowExecutionDialog(openValue)
+          if (!openValue) {
+            onOpenChange(false)
+          }
+        }}
+      >
+       <DialogContent
+  className="
+    w-[95vw]
+    sm:max-w-[95vw]
+    lg:max-w-[1100px]  /* wider on desktop */
+    h-[95vh]
+    max-h-[95vh]
+    flex
+    flex-col
+    p-0
+    overflow-hidden
+  "
+>
+  <DialogHeader className="px-6 pt-6 pb-4 border-b">
+    <DialogTitle className="flex items-center gap-2">
+      <Play className="h-5 w-5" />
+      Test Session: {suite.name}
+    </DialogTitle>
+    <DialogDescription>
+      Session Progress: {progressPercentage}% — {completedCount} of {totalTests} tests complete
+    </DialogDescription>
+  </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-6 pr-2">
+            {/* Session Progress bar + stats */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Session Progress</CardTitle>
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    <span>
+                      {completedCount} of {totalTests} tests complete
+                    </span>
+                    <span>{progressPercentage}%</span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Progress value={progressPercentage} className="mb-4" />
+                <div className="grid grid-cols-5 gap-4 text-center">
+                  <div>
+                    <div className="text-2xl font-bold text-green-500">
+                      {sessionStats.passed}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Passed</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-red-500">
+                      {sessionStats.failed}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Failed</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-orange-600">
+                      {sessionStats.blocked}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Blocked
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-600">
+                      {sessionStats.skipped}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Skipped
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">
+                      {totalTests - completedCount}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Remaining
+                    </div>
+                  </div>
+                </div>
+                {totalTests > 0 && (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Pass Rate:{" "}
+                    {completedCount > 0
+                      ? `${Math.round(
+                          (sessionStats.passed / completedCount) * 100,
+                        )}% (${sessionStats.passed}/${completedCount})`
+                      : "N/A"}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Current test execution (2/3) */}
+              <div className="lg:col-span-2">
+                {currentTest && currentSession ? (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle>
+                            {currentTest.test_cases.title}
+                          </CardTitle>
+                          <CardDescription>
+                            Test {currentTestIndex + 1} of {totalTests} •{" "}
+                            {currentTest.test_cases.test_type}
+                          </CardDescription>
+                        </div>
+                        <Badge variant="outline">{currentTest.priority}</Badge>
                       </div>
-                      <Badge variant="outline">
-                        {currentTest.priority}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div>
-                      <h4 className="font-medium mb-2">Description</h4>
-                      <p className="text-sm text-muted-foreground">{currentTest.test_cases.description}</p>
-                    </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div>
+                        <h4 className="font-medium mb-2">Description</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {currentTest.test_cases.description}
+                        </p>
+                      </div>
 
-                    <div>
-                      <h4 className="font-medium mb-2">Test Steps</h4>
-                      <div className="space-y-2">
-                        {currentTest.test_cases.steps?.map((step, index) => (
-                          <div key={index} className="flex items-start gap-3">
-                            <button
-                              onClick={() => toggleStep(index)}
-                              className={`mt-0.5 h-4 w-4 rounded border-2 flex items-center justify-center ${
-                                completedSteps.has(index)
-                                  ? 'bg-green-500 border-green-500'
-                                  : 'border-gray-300'
-                              }`}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-medium mb-0">Test Steps</h4>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              if (
+                                completedSteps.size ===
+                                (currentTest.test_cases.steps?.length ?? 0)
+                              ) {
+                                setCompletedSteps(new Set())
+                              } else {
+                                const all = new Set<number>()
+                                currentTest.test_cases.steps.forEach(
+                                  (_, idx) => {
+                                    all.add(idx)
+                                  },
+                                )
+                                setCompletedSteps(all)
+                              }
+                            }}
+                          >
+                            Toggle All
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          {currentTest.test_cases.steps?.map((step, index) => (
+                            <div
+                              key={index}
+                              className="flex items-start gap-3"
                             >
-                              {completedSteps.has(index) && (
-                                <CheckCircle className="h-3 w-3 text-white" />
-                              )}
-                            </button>
-                            <div className="flex-1">
-                              <p className={`text-sm ${completedSteps.has(index) ? 'line-through text-muted-foreground' : ''}`}>
-                                <span className="font-mono text-xs mr-2">{index + 1}.</span>
-                                {step}
+                              <button
+                                type="button"
+                                onClick={() => toggleStep(index)}
+                                className={`mt-0.5 h-4 w-4 rounded border-2 flex items-center justify-center ${
+                                  completedSteps.has(index)
+                                    ? "bg-green-500 border-green-500"
+                                    : "border-gray-300"
+                                }`}
+                              >
+                                {completedSteps.has(index) && (
+                                  <CheckCircle className="h-3 w-3 text-white" />
+                                )}
+                              </button>
+                              <div className="flex-1">
+                                <p
+                                  className={`text-sm ${
+                                    completedSteps.has(index)
+                                      ? "line-through text-muted-foreground"
+                                      : ""
+                                  }`}
+                                >
+                                  <span className="font-mono text-xs mr-2">
+                                    {index + 1}.
+                                  </span>
+                                  {step}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="font-medium mb-2">Expected Result</h4>
+                        <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
+                          {currentTest.test_cases.expected_result}
+                        </p>
+                      </div>
+
+                      <div>
+                        <h4 className="font-medium mb-2">Execution Notes</h4>
+                        <Textarea
+                          value={executionNotes}
+                          onChange={(e) => setExecutionNotes(e.target.value)}
+                          placeholder="Add notes about the test execution..."
+                          rows={3}
+                        />
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="font-medium mb-2">Test Result</h4>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              onClick={() => void completeTestExecution("passed")}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Pass (P)
+                            </Button>
+                            <Button
+                              onClick={() => {
+                                if (!failureReason.trim()) {
+                                  toast.error(
+                                    "Please provide a failure reason",
+                                  )
+                                  return
+                                }
+                                void completeTestExecution("failed")
+                              }}
+                              variant="destructive"
+                            >
+                              <XCircle className="h-4 w-4 mr-2" />
+                              Fail (F)
+                            </Button>
+                            <Button
+                              onClick={() =>
+                                void completeTestExecution("blocked")
+                              }
+                              variant="outline"
+                              className="text-orange-600"
+                            >
+                              <AlertTriangle className="h-4 w-4 mr-2" />
+                              Blocked (B)
+                            </Button>
+                            <Button
+                              onClick={() =>
+                                void completeTestExecution("skipped")
+                              }
+                              variant="outline"
+                            >
+                              <SkipForward className="h-4 w-4 mr-2" />
+                              Skip (S)
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <Textarea
+                            value={failureReason}
+                            onChange={(e) => setFailureReason(e.target.value)}
+                            placeholder="If test failed or blocked, describe the reason..."
+                            rows={2}
+                            className="text-sm"
+                          />
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <input
+                            id="auto-advance"
+                            type="checkbox"
+                            checked={autoAdvance}
+                            onChange={(e) =>
+                              setAutoAdvance(e.currentTarget.checked)
+                            }
+                          />
+                          <label
+                            htmlFor="auto-advance"
+                            className="text-sm text-muted-foreground"
+                          >
+                            Auto-advance to next test after marking result
+                          </label>
+                        </div>
+
+                        <div className="text-xs text-muted-foreground pt-2 border-t">
+                          Shortcuts:{" "}
+                          <kbd className="px-1 py-0.5 bg-muted rounded">P</kbd>{" "}
+                          Pass •{" "}
+                          <kbd className="px-1 py-0.5 bg-muted rounded">F</kbd>{" "}
+                          Fail •{" "}
+                          <kbd className="px-1 py-0.5 bg-muted rounded">B</kbd>{" "}
+                          Block •{" "}
+                          <kbd className="px-1 py-0.5 bg-muted rounded">S</kbd>{" "}
+                          Skip •{" "}
+                          <kbd className="px-1 py-0.5 bg-muted rounded">
+                            Space
+                          </kbd>{" "}
+                          Toggle step
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardContent className="py-12 text-center">
+                      <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold">
+                        Session Complete!
+                      </h3>
+                      <p className="text-muted-foreground">
+                        All test cases have been executed.
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* Test Queue (1/3) */}
+              <div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Test Queue</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex-1 overflow-hidden">
+                    <div className="space-y-2 h-full overflow-y-auto pr-2">
+                      {suiteTestCases.map((testCase, index) => (
+                        <button
+                          key={testCase.id}
+                          type="button"
+                          className={`w-full text-left p-3 rounded-lg border cursor-pointer transition-colors ${
+                            index === currentTestIndex
+                              ? "bg-blue-100 border-blue-400"
+                              : index <
+                                (currentSession?.test_cases_completed ?? 0)
+                              ? "bg-green-50 border-green-200"
+                              : "bg-gray-100 border-gray-300"
+                          }`}
+                          onClick={async () => {
+                            if (!currentSession) return
+                            if (index === currentTestIndex) return
+                            if (index < currentTestIndex) {
+                              // allow going back
+                              setCurrentTestIndex(index)
+                              await startTestExecution(index, currentSession.id)
+                            }
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs">
+                              {index + 1}
+                            </span>
+                            {index <
+                            (currentSession?.test_cases_completed ?? 0) ? (
+                              <CheckCircle className="h-4 w-4 text-green-500" />
+                            ) : index === currentTestIndex ? (
+                              <Clock className="h-4 w-4 text-orange-500" />
+                            ) : (
+                              <div className="h-4 w-4 rounded-full border-2 border-gray-300" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate text-gray-900">
+                                {testCase.test_cases.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {testCase.test_cases.test_type}
                               </p>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h4 className="font-medium mb-2">Expected Result</h4>
-                      <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
-                        {currentTest.test_cases.expected_result}
-                      </p>
-                    </div>
-
-                    <div>
-                      <h4 className="font-medium mb-2">Execution Notes</h4>
-                      <Textarea
-                        value={executionNotes}
-                        onChange={(e) => setExecutionNotes(e.target.value)}
-                        placeholder="Add notes about the test execution..."
-                        rows={3}
-                      />
-                    </div>
-
-                    <div>
-                      <h4 className="font-medium mb-2">Test Result</h4>
-                      <div className="flex gap-2">
-                        <Button 
-                          onClick={() => completeTestExecution('passed')}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Pass
-                        </Button>
-                        <Button 
-                          onClick={() => {
-                            if (!failureReason.trim()) {
-                              toast.error('Please provide a failure reason')
-                              return
-                            }
-                            completeTestExecution('failed')
-                          }}
-                          variant="destructive"
-                        >
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Fail
-                        </Button>
-                        <Button 
-                          onClick={() => completeTestExecution('blocked')}
-                          variant="outline"
-                          className="text-orange-600"
-                        >
-                          <AlertTriangle className="h-4 w-4 mr-2" />
-                          Blocked
-                        </Button>
-                        <Button 
-                          onClick={() => completeTestExecution('skipped')}
-                          variant="outline"
-                        >
-                          <SkipForward className="h-4 w-4 mr-2" />
-                          Skip
-                        </Button>
-                      </div>
-                      
-                      <div className="mt-3">
-                        <Textarea
-                          value={failureReason}
-                          onChange={(e) => setFailureReason(e.target.value)}
-                          placeholder="If test failed or blocked, describe the reason..."
-                          rows={2}
-                          className="text-sm"
-                        />
-                      </div>
+                        </button>
+                      ))}
                     </div>
                   </CardContent>
                 </Card>
-              ) : (
-                <Card>
-                  <CardContent className="text-center py-12">
-                    <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold">Session Complete!</h3>
-                    <p className="text-muted-foreground">All test cases have been executed.</p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-
-            {/* Test Queue */}
-            <div>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Test Queue</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-hidden">
-  <div className="space-y-2 h-full overflow-y-auto pr-2">
-                    {suiteTestCases.map((testCase, index) => (
-                      <div
-                        key={testCase.id}
-                       className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-  index === currentTestIndex
-    ? 'bg-blue-100 border-blue-400' 
-    : index < currentTestIndex
-    ? 'bg-green-50 border-green-200'
-    : 'bg-gray-100 border-gray-300'
-}`}
-                        onClick={() => sessionStarted && index > currentTestIndex && skipToTest(index)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs">{index + 1}</span>
-                          {index === currentTestIndex ? (
-                            <Clock className="h-4 w-4 text-orange-500" />
-                          ) : index < currentTestIndex ? (
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <div className="h-4 w-4 rounded-full border-2 border-gray-300" />
-                          )}
-                          <div className="flex-1 min-w-0">
- <p className="text-sm font-medium truncate text-gray-900">
-  {testCase.test_cases.title}
-</p>                            <p className="text-xs text-muted-foreground">{testCase.test_cases.test_type}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              </div>
             </div>
           </div>
-        </div>
 
-        {sessionStarted && currentTest && (
+          <DialogFooter className="pt-4 border-t flex justify-between">
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowPauseDialog(true)}
+              >
+                <Pause className="h-4 w-4 mr-2" />
+                Pause Session
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  void fetchSessionHistory()
+                  setShowHistorySheet(true)
+                }}
+              >
+                <History className="h-4 w-4 mr-2" />
+                History
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                disabled={currentTestIndex === 0}
+                onClick={async () => {
+                  if (!currentSession) return
+                  if (currentTestIndex === 0) return
+                  const prevIndex = currentTestIndex - 1
+                  setCurrentTestIndex(prevIndex)
+                  await startTestExecution(prevIndex, currentSession.id)
+                }}
+              >
+                <ChevronLeft className="h-4 w-4 mr-2" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                disabled={currentTestIndex >= totalTests - 1}
+                onClick={async () => {
+                  if (!currentSession) return
+                  if (currentTestIndex >= totalTests - 1) return
+                  const nextIndex = currentTestIndex + 1
+                  setCurrentTestIndex(nextIndex)
+                  await startTestExecution(nextIndex, currentSession.id)
+                }}
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-2" />
+              </Button>
+              <Button variant="destructive" onClick={() => void completeSession()}>
+                End Session
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pause dialog */}
+      <Dialog open={showPauseDialog} onOpenChange={setShowPauseDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pause Test Session?</DialogTitle>
+            <DialogDescription>
+              Your progress will be saved and you can resume anytime.
+            </DialogDescription>
+          </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" onClick={() => setShowPauseDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void pauseSession()}>
+              <Pause className="h-4 w-4 mr-2" />
               Pause Session
             </Button>
-            <Button onClick={completeSession} variant="destructive">
-              End Session
-            </Button>
           </DialogFooter>
-        )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {/* Complete dialog */}
+      <Dialog
+        open={showCompleteDialog}
+        onOpenChange={(openValue) => {
+          setShowCompleteDialog(openValue)
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>🎉 Test Session Complete!</DialogTitle>
+            <DialogDescription>All tests have been executed.</DialogDescription>
+          </DialogHeader>
+          {currentSession && (
+            <div className="py-4 space-y-4">
+              <div className="text-center">
+                <div className="text-3xl font-bold mb-2">
+                  {Math.round(
+                    (currentSession.stats.passed / totalTests) * 100,
+                  )}
+                  %
+                </div>
+                <div className="text-sm text-muted-foreground">Pass Rate</div>
+              </div>
+              <div className="bg-muted p-4 rounded-lg space-y-3">
+                <div className="font-medium text-sm">Results:</div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="flex justify-between">
+                    <span>Passed:</span>
+                    <Badge className="bg-green-600">
+                      {currentSession.stats.passed}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Failed:</span>
+                    <Badge variant="destructive">
+                      {currentSession.stats.failed}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Blocked:</span>
+                    <Badge className="bg-orange-600">
+                      {currentSession.stats.blocked}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Skipped:</span>
+                    <Badge variant="secondary">
+                      {currentSession.stats.skipped}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+              <div className="text-sm text-muted-foreground text-center">
+                Duration:{" "}
+                {formatDuration(
+                  currentSession.actual_start,
+                  currentSession.actual_end ?? new Date().toISOString(),
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setShowCompleteDialog(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* History sheet */}
+      <Sheet open={showHistorySheet} onOpenChange={setShowHistorySheet}>
+        <SheetContent side="right" className="w-[500px] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Test Run History</SheetTitle>
+            <SheetDescription>
+              All previous test runs for {suite.name}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-4 mt-6">
+            {sessionHistory.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <History className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No test run history yet</p>
+              </div>
+            ) : (
+              sessionHistory.map((session, index) => (
+                <Card key={session.id}>
+                  <CardHeader className="pb-3">
+  <div className="flex justify-between items-start gap-2">
+    <div>
+      <CardTitle className="text-base">
+        Run #{sessionHistory.length - index}
+      </CardTitle>
+      <CardDescription className="text-xs">
+        {formatRelativeTime(session.actual_start)}
+      </CardDescription>
+    </div>
+    <div className="flex items-center gap-2">
+      <Badge
+        variant={session.status === "completed" ? "default" : "secondary"}
+      >
+        {session.progress_percentage}%
+      </Badge>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+        onClick={() => void deleteSessionRun(session.id)}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  </div>
+</CardHeader>
+
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-4 gap-2 text-center text-sm">
+                      <div>
+                        <div className="font-bold text-green-600">
+                          {session.stats.passed}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Pass
+                        </div>
+                      </div>
+                      <div>
+                        <div className="font-bold text-red-600">
+                          {session.stats.failed}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Fail
+                        </div>
+                      </div>
+                      <div>
+                        <div className="font-bold text-orange-600">
+                          {session.stats.blocked}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Block
+                        </div>
+                      </div>
+                      <div>
+                        <div className="font-bold text-gray-600">
+                          {session.stats.skipped}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Skip
+                        </div>
+                      </div>
+                    </div>
+                    {session.status === "completed" && (
+                      <div className="text-sm pt-2 border-t">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Pass Rate:
+                          </span>
+                          <span className="font-medium">
+  {session.test_cases_total > 0
+    ? Math.round(
+        (session.stats.passed / session.test_cases_total) * 100,
+      )
+    : 0}
+  %
+</span>
+                        </div>
+                        <div className="flex justify-between mt-1">
+                          <span className="text-muted-foreground">
+                            Duration:
+                          </span>
+                          <span className="font-medium">
+                            {formatDuration(
+                              session.actual_start,
+                              session.actual_end,
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    {session.status === "in_progress" && (
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        onClick={() => {
+                          void resumeSession(session)
+                          setShowHistorySheet(false)
+                        }}
+                      >
+                        <Play className="h-4 w-4 mr-2" />
+                        Resume Session
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+            )}
+
+            {sessionHistory.length > 1 &&
+  sessionHistory.filter((s) => s.status === "completed").length > 1 && (
+    <Card className="border border-primary/20 bg-background/80">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2 text-primary">
+          <TrendingUp className="h-4 w-4 text-primary" />
+          Trend Analysis
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="text-sm text-foreground">
+        {(() => {
+          // Only use completed sessions that actually have test cases
+          const completedSessions = sessionHistory
+            .filter(
+              (s) =>
+                s.status === "completed" && s.test_cases_total > 0,
+            )
+            .slice(0, 3)
+            .reverse()
+
+          if (completedSessions.length < 2) {
+            return (
+              <div className="text-xs text-muted-foreground">
+                Not enough completed runs with test cases to calculate
+                trends yet.
+              </div>
+            )
+          }
+
+          const passRates = completedSessions.map((s) =>
+            Math.round(
+              (s.stats.passed / s.test_cases_total) * 100,
+            ),
+          )
+
+          return (
+            <div>
+              Pass rate progression: {passRates.join("% → ")}%
+              <div className="mt-1 text-xs text-muted-foreground">
+                {passRates[passRates.length - 1] > passRates[0]
+                  ? "📈 Improving"
+                  : passRates[passRates.length - 1] < passRates[0]
+                  ? "📉 Declining"
+                  : "➡️ Stable"}
+              </div>
+            </div>
+          )
+        })()}
+      </CardContent>
+    </Card>
+  )}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }

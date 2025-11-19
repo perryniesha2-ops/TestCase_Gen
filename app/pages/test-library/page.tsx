@@ -14,7 +14,7 @@ export default function TestCaseManager() {
 
         {/* Page header block */}
         <div className="mt-6 max-w-4xl mx-auto space-y-3">
-          <h1 className="text-3xl font-bold text-center">Test Suites</h1>
+          <h1 className="text-3xl font-bold text-center">Test Suite Management</h1>
           <p className="text-muted-foreground text-center">
             Organize and execute your test cases
           </p>
@@ -31,4 +31,8 @@ export default function TestCaseManager() {
       </div>
     </div>
   );
+}
+export const metadata = {
+  title: 'Test Suites - SynthQA',
+  description: 'Organize and execute your test cases',
 }

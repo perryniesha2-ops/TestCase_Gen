@@ -95,155 +95,185 @@ export function SuiteReports({ suiteId, showAllSuites = false }: SuiteReportsPro
   }, [timeRange, selectedSuite])
 
   async function fetchReportsData() {
-    setLoading(true)
-    setError(null)
-    try {
-      // First fetch available suites
-      await fetchAvailableSuites()
-      
-      // Then fetch all report data
-      await Promise.all([
-        fetchSuiteExecutionStats(),
-        fetchTestCasePerformance(),
-        fetchExecutionTrends()
-      ])
-    } catch (error) {
-      console.error('Error fetching reports data:', error)
-      setError('Failed to load report data')
-      toast.error('Failed to load reports')
-    } finally {
-      setLoading(false)
-    }
+  setLoading(true)
+  setError(null)
+  try {
+    // 1) Get suites and store them
+    const suites = await fetchAvailableSuites()
+
+    // 2) Fetch all report data using the fresh suite list
+    await Promise.all([
+      fetchSuiteExecutionStats(suites),
+      fetchTestCasePerformance(),
+      fetchExecutionTrends(),
+    ])
+  } catch (error) {
+    console.error('Error fetching reports data:', error)
+    setError('Failed to load report data')
+    toast.error('Failed to load reports')
+  } finally {
+    setLoading(false)
   }
+}
 
-  async function fetchAvailableSuites() {
-    try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      const { data, error } = await supabase
-        .from('test_suites')
-        .select('id, name, suite_type')
-        .eq('user_id', user.id)
-        .order('name')
-
-      if (error) throw error
-      setAvailableSuites(data || [])
-    } catch (error) {
-      console.error('Error fetching available suites:', error)
+  async function fetchAvailableSuites(): Promise<TestSuite[]> {
+  try {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      setAvailableSuites([])
+      return []
     }
+
+    const { data, error } = await supabase
+      .from('test_suites')
+      .select('id, name, suite_type')
+      .eq('user_id', user.id)
+      .order('name')
+
+    if (error) throw error
+
+    const suites = data || []
+    setAvailableSuites(suites)
+    return suites
+  } catch (error) {
+    console.error('Error fetching available suites:', error)
+    setAvailableSuites([])
+    return []
   }
+}
 
-  async function fetchSuiteExecutionStats() {
-    try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+async function fetchSuiteExecutionStats(
+  suitesFromCaller?: TestSuite[]
+) {
+  try {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      setSuiteStats([])
+      return
+    }
 
-      // Get suites to analyze
-      let suitesToAnalyze = availableSuites
-      if (selectedSuite !== 'all' && selectedSuite) {
-        suitesToAnalyze = availableSuites.filter(s => s.id === selectedSuite)
-      }
+    // Prefer suites passed from fetchReportsData, fallback to state
+    let suitesToAnalyze = suitesFromCaller && suitesFromCaller.length > 0 
+      ? suitesFromCaller 
+      : availableSuites
 
-      if (suitesToAnalyze.length === 0) {
-        setSuiteStats([])
-        return
-      }
+    if (selectedSuite !== 'all' && selectedSuite) {
+      suitesToAnalyze = suitesToAnalyze.filter(s => s.id === selectedSuite)
+    }
 
-      const cutoffDate = new Date(Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000).toISOString()
+    if (suitesToAnalyze.length === 0) {
+      setSuiteStats([])
+      return
+    }
 
-      const stats = await Promise.all(
-        suitesToAnalyze.map(async (suite) => {
-          // Get all executions for this suite
-          const { data: executions, error } = await supabase
-            .from('test_executions')
-            .select('execution_status, started_at, completed_at, created_at')
-            .eq('suite_id', suite.id)
-            .gte('created_at', cutoffDate)
+    const cutoffDate = new Date(
+      Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000
+    ).toISOString()
 
-          if (error) {
-            console.error(`Error fetching executions for suite ${suite.id}:`, error)
-            return null
-          }
+    const stats = await Promise.all(
+      suitesToAnalyze.map(async (suite) => {
+        const { data: executions, error } = await supabase
+          .from('test_executions')
+          .select('execution_status, started_at, completed_at, created_at')
+          .eq('suite_id', suite.id)
+          .gte('created_at', cutoffDate)
 
-          if (!executions || executions.length === 0) {
-            return {
-              suite_id: suite.id,
-              suite_name: suite.name,
-              suite_type: suite.suite_type,
-              execution_count: 0,
-              total_tests: 0,
-              avg_pass_rate: 0,
-              avg_execution_time: 0,
-              last_execution: '',
-              trend: 'stable' as const
-            }
-          }
+        if (error) {
+          console.error(`Error fetching executions for suite ${suite.id}:`, error)
+          return null
+        }
 
-          // Calculate statistics
-          const totalExecutions = executions.length
-          const passedExecutions = executions.filter(e => e.execution_status === 'passed').length
-          const passRate = totalExecutions > 0 ? (passedExecutions / totalExecutions) * 100 : 0
-
-          // Calculate average execution time
-          const completedExecutions = executions.filter(e => e.started_at && e.completed_at)
-          const avgTime = completedExecutions.length > 0 
-            ? completedExecutions.reduce((acc, exec) => {
-                const start = new Date(exec.started_at!).getTime()
-                const end = new Date(exec.completed_at!).getTime()
-                return acc + (end - start)
-              }, 0) / completedExecutions.length / 1000 / 60 // minutes
-            : 0
-
-          // Determine trend (compare last week to previous week)
-          const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-          const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
-          
-          const recentExecs = executions.filter(e => new Date(e.created_at) >= oneWeekAgo)
-          const recentPass = recentExecs.filter(e => e.execution_status === 'passed').length
-          const recentTotal = recentExecs.length
-          
-          const previousExecs = executions.filter(e => 
-            new Date(e.created_at) >= twoWeeksAgo && new Date(e.created_at) < oneWeekAgo
-          )
-          const previousPass = previousExecs.filter(e => e.execution_status === 'passed').length
-          const previousTotal = previousExecs.length
-
-          let trend: 'up' | 'down' | 'stable' = 'stable'
-          if (recentTotal > 0 && previousTotal > 0) {
-            const recentRate = recentPass / recentTotal
-            const previousRate = previousPass / previousTotal
-            if (recentRate > previousRate + 0.1) trend = 'up'
-            else if (recentRate < previousRate - 0.1) trend = 'down'
-          }
-
-          // Get most recent execution date
-          const sortedByDate = [...executions].sort((a, b) => 
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          )
-
+        if (!executions || executions.length === 0) {
           return {
             suite_id: suite.id,
             suite_name: suite.name,
             suite_type: suite.suite_type,
-            execution_count: totalExecutions,
-            total_tests: totalExecutions,
-            avg_pass_rate: Math.round(passRate),
-            avg_execution_time: Math.round(avgTime * 10) / 10, // Round to 1 decimal
-            last_execution: sortedByDate[0]?.created_at || '',
-            trend
+            execution_count: 0,
+            total_tests: 0,
+            avg_pass_rate: 0,
+            avg_execution_time: 0,
+            last_execution: '',
+            trend: 'stable' as const,
           }
-        })
-      )
+        }
 
-      setSuiteStats(stats.filter(s => s !== null) as SuiteExecutionStats[])
-    } catch (error) {
-      console.error('Error fetching suite execution stats:', error)
-      throw error
-    }
+        const totalExecutions = executions.length
+        const passedExecutions = executions.filter(
+          e => e.execution_status === 'passed'
+        ).length
+        const passRate = totalExecutions > 0
+          ? (passedExecutions / totalExecutions) * 100
+          : 0
+
+        const completedExecutions = executions.filter(
+          e => e.started_at && e.completed_at
+        )
+        const avgTime = completedExecutions.length > 0
+          ? completedExecutions.reduce((acc, exec) => {
+              const start = new Date(exec.started_at!).getTime()
+              const end = new Date(exec.completed_at!).getTime()
+              return acc + (end - start)
+            }, 0) / completedExecutions.length / 1000 / 60
+          : 0
+
+        const now = Date.now()
+        const oneWeekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000)
+        const twoWeeksAgo = new Date(now - 14 * 24 * 60 * 60 * 1000)
+
+        const recentExecs = executions.filter(
+          e => new Date(e.created_at) >= oneWeekAgo
+        )
+        const recentPass = recentExecs.filter(
+          e => e.execution_status === 'passed'
+        ).length
+        const recentTotal = recentExecs.length
+
+        const previousExecs = executions.filter(e => {
+          const d = new Date(e.created_at)
+          return d >= twoWeeksAgo && d < oneWeekAgo
+        })
+        const previousPass = previousExecs.filter(
+          e => e.execution_status === 'passed'
+        ).length
+        const previousTotal = previousExecs.length
+
+        let trend: 'up' | 'down' | 'stable' = 'stable'
+        if (recentTotal > 0 && previousTotal > 0) {
+          const recentRate = recentPass / recentTotal
+          const previousRate = previousPass / previousTotal
+          if (recentRate > previousRate + 0.1) trend = 'up'
+          else if (recentRate < previousRate - 0.1) trend = 'down'
+        }
+
+        const sortedByDate = [...executions].sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() -
+            new Date(a.created_at).getTime()
+        )
+
+        return {
+          suite_id: suite.id,
+          suite_name: suite.name,
+          suite_type: suite.suite_type,
+          execution_count: totalExecutions,
+          total_tests: totalExecutions,
+          avg_pass_rate: Math.round(passRate),
+          avg_execution_time: Math.round(avgTime * 10) / 10,
+          last_execution: sortedByDate[0]?.created_at || '',
+          trend,
+        }
+      })
+    )
+
+    setSuiteStats(stats.filter(Boolean) as SuiteExecutionStats[])
+  } catch (error) {
+    console.error('Error fetching suite execution stats:', error)
+    throw error
   }
+}
+
 
   async function fetchTestCasePerformance() {
     try {
@@ -475,21 +505,22 @@ export function SuiteReports({ suiteId, showAllSuites = false }: SuiteReportsPro
           <p className="text-muted-foreground">Analytics and insights from test execution data</p>
         </div>
         <div className="flex items-center gap-4">
-          {showAllSuites && availableSuites.length > 0 && (
-            <Select value={selectedSuite} onValueChange={setSelectedSuite}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Select suite" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Suites</SelectItem>
-                {availableSuites.map(suite => (
-                  <SelectItem key={suite.id} value={suite.id}>
-                    {suite.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          {showAllSuites && (
+  <Select value={selectedSuite} onValueChange={setSelectedSuite}>
+    <SelectTrigger className="w-48">
+      <SelectValue placeholder="All Suites" />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="all">All Suites</SelectItem>
+      {availableSuites.map((suite) => (
+        <SelectItem key={suite.id} value={suite.id}>
+          {suite.name}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+)}
+         
           <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger className="w-40">
               <SelectValue />

@@ -32,3 +32,8 @@ export default function Dashboard() {
     </div>
   );
 }
+
+export const metadata = {
+  title: 'Dashboard - SynthQA',
+  description: 'Overview of your testing activities and quality metrics.',
+}

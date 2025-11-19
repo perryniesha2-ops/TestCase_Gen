@@ -38,6 +38,22 @@ type UserProfile = {
   full_name?: string;
   avatar_url?: string;
 };
+interface GenerationResult {
+  platform: string
+  count: number
+  error?: string
+}
+
+interface CrossPlatformResponse {
+  success?: boolean
+  suite_id?: string
+  total_test_cases?: number
+  platforms?: string[]
+  generation_results?: GenerationResult[]
+  message?: string
+  error?: string
+  details?: string
+}
 
 const PLACEHOLDER_REQUIREMENTS: RequirementOption[] = [
   {
@@ -327,75 +343,122 @@ export function GeneratorForm() {
   }
 
   async function handleCrossPlatformSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setLoading(true)
+  e.preventDefault()
+  setLoading(true)
 
-    try {
-      const formData = new FormData(e.currentTarget)
-      const requirement = formData.get("requirement") as string
-      const model = formData.get("model") as string
+  try {
+    const formData = new FormData(e.currentTarget)
+    const requirement = formData.get("requirement") as string
+    const model = formData.get("model") as string
 
-      // Validation
-      if (!requirement?.trim()) {
-        toast.error("Please enter the requirement description.")
+    console.log('📤 Submitting cross-platform generation:', {
+      requirement,
+      selectedPlatforms,
+      selectedFrameworks,
+      model
+    })
+
+    // Validation
+    if (!requirement?.trim()) {
+      toast.error("Please enter the requirement description.")
+      return
+    }
+
+    if (selectedPlatforms.length === 0) {
+      toast.error("Please select at least one platform.")
+      return
+    }
+
+    // Check that all selected platforms have frameworks
+    for (const platform of selectedPlatforms) {
+      if (!selectedFrameworks[platform]) {
+        const platformName = platformOptions.find(p => p.id === platform)?.name || platform
+        toast.error(`Please select a framework for ${platformName}.`)
         return
       }
+    }
 
-      if (selectedPlatforms.length === 0) {
-        toast.error("Please select at least one platform.")
-        return
-      }
+    // Prepare platforms data
+    const platformsData = selectedPlatforms.map(platformId => ({
+      platform: platformId,
+      framework: selectedFrameworks[platformId]
+    }))
 
-      // Check that all selected platforms have frameworks
-      for (const platform of selectedPlatforms) {
-        if (!selectedFrameworks[platform]) {
-          toast.error(`Please select a framework for ${platformOptions.find(p => p.id === platform)?.name}.`)
-          return
+    const requestPayload = {
+      requirement: requirement.trim(),
+      platforms: platformsData,
+      model: model?.trim() || "claude-3-5-sonnet-20241022"
+    }
+
+    console.log('🚀 Sending request to /api/cross-platform-testing:', requestPayload)
+
+    const response = await fetch("/api/cross-platform-testing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestPayload),
+    })
+
+    console.log('📥 Response status:', response.status, response.statusText)
+
+    const data = await response.json() as CrossPlatformResponse
+    console.log('📦 Response data:', data)
+    
+    if (!response.ok) {
+      // More detailed error handling
+      if (response.status === 500 && data.generation_results) {
+        // Partial failure - some platforms succeeded
+        const failed = data.generation_results.filter((r) => r.error)
+        const succeeded = data.generation_results.filter((r) => r.count > 0)
+        
+        if (succeeded.length > 0) {
+          toast.error(
+            `Generated ${data.total_test_cases || 0} test cases for ${succeeded.length} platform(s). ` +
+            `Failed for: ${failed.map((r) => r.platform).join(', ')}`,
+            { duration: 7000 }
+          )
+        } else {
+          toast.error(
+            data.error || "Failed to generate test cases for any platform",
+            { 
+              description: data.details || "Check server logs for details",
+              duration: 7000 
+            }
+          )
         }
-      }
-
-      // Prepare platforms data
-      const platformsData = selectedPlatforms.map(platformId => ({
-        platform: platformId,
-        framework: selectedFrameworks[platformId]
-      }))
-
-      const requestPayload = {
-        requirement: requirement.trim(),
-        platforms: platformsData,
-        model: model?.trim() || "claude-3-5-sonnet-20241022"
-      }
-
-      console.log('🚀 Sending cross-platform request payload:', requestPayload)
-
-      const response = await fetch("/api/cross-platform-testing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestPayload),
-      })
-
-      const data = await response.json()
-      
-      if (!response.ok) {
+      } else {
         throw new Error(data.error || data.details || `HTTP ${response.status}: Failed to generate cross-platform tests`)
       }
-
-      toast.success("Cross-platform tests generated!", {
-        description: `Created test suite with ${data.total_test_cases} test cases across ${selectedPlatforms.length} platforms`,
-      })
-
-      router.push(`/pages/test-cases`)
-
-    } catch (err) {
-      console.error('❌ Cross-platform generation error:', err)
-      toast.error("Unable to generate cross-platform tests", {
-        description: err instanceof Error ? err.message : "Please try again later",
-        duration: 7000,
-      })
-    } finally {
-      setLoading(false)
+      return
     }
+
+    // Success!
+    console.log('✅ Generation successful:', data)
+    
+    toast.success("Cross-platform tests generated!", {
+      description: `Created ${data.total_test_cases} test cases across ${selectedPlatforms.length} platform(s)`,
+    })
+
+    // Show breakdown by platform
+    if (data.generation_results) {
+      const breakdown = data.generation_results
+        .map((r) => `${r.platform}: ${r.count} tests`)
+        .join(', ')
+      console.log('📊 Breakdown:', breakdown)
+    }
+
+    router.push(`/pages/test-cases`)
+
+  } catch (err) {
+    console.error('❌ Cross-platform generation error:', err)
+    toast.error("Unable to generate cross-platform tests", {
+      description: err instanceof Error ? err.message : "Please try again later",
+      duration: 7000,
+    })
+  } finally {
+    setLoading(false)
   }
+}
+
 
   return (
     <Card className="mx-auto w-full max-w-7xl">

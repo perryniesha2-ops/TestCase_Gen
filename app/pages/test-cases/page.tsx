@@ -34,3 +34,7 @@ export default function TestCasesPage() {
     </div>
   );
 }
+export const metadata = {
+  title: 'Test Cases - SynthQA',
+  description: 'Manage and organize your test cases across all projects.',
+}

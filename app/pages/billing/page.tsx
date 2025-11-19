@@ -18,4 +18,7 @@ export default function Billing() {
     </div>
           </div>
   )
+}export const metadata = {
+  title: 'Billing - SynthQA',
+  description: 'Manage and Update Your Subsription',
 }

@@ -521,6 +521,44 @@ export function TabbedTestCaseTable() {
     }
   }
 
+async function updateTestCaseStatus(testCaseId: string, newStatus: 'draft' | 'active' | 'archived') {
+  setUpdating(testCaseId)
+  try {
+    const supabase = createClient()
+    
+    const { data, error } = await supabase
+      .from('test_cases')
+      .update({
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', testCaseId)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    // Update local state
+    setTestCases(prev => prev.map(tc => 
+      tc.id === testCaseId ? { ...tc, status: newStatus } : tc
+    ))
+
+    const statusLabels = {
+      draft: 'Draft',
+      active: 'Approved',
+      archived: 'Archived'
+    }
+
+    toast.success(`Status updated to ${statusLabels[newStatus]}`)
+  } catch (error) {
+    console.error('Error updating test case status:', error)
+    toast.error('Failed to update status')
+  } finally {
+    setUpdating(null)
+  }
+}
+
+
   async function saveExecutionResult(testCaseId: string, status: ExecutionStatus, details: ExecutionDetails) {
     const startTime = execution[testCaseId]?.started_at
     const duration = startTime 
@@ -693,38 +731,73 @@ export function TabbedTestCaseTable() {
   }
 
   async function handleDeleteTestCase() {
-    if (!deletingTestCase) return
+  if (!deletingTestCase) return
+  
+  setSaving(true)
+  try {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
     
-    setSaving(true)
-    try {
-      const supabase = createClient()
-      
-      const { error } = await supabase
-        .from('test_cases')
-        .delete()
-        .eq('id', deletingTestCase.id)
-
-      if (error) throw error
-
-      setTestCases(prev => prev.filter(tc => tc.id !== deletingTestCase.id))
-      
-      // Remove from execution state
-      setExecution(prev => {
-        const newExecution = { ...prev }
-        delete newExecution[deletingTestCase.id]
-        return newExecution
-      })
-
-      setShowDeleteDialog(false)
-      setDeletingTestCase(null)
-      toast.success('Test case deleted successfully')
-    } catch (error) {
-      console.error('Error deleting test case:', error)
-      toast.error('Failed to delete test case')
-    } finally {
-      setSaving(false)
+    if (!user) {
+      toast.error('You must be logged in to delete test cases')
+      return
     }
+
+    // STEP 1: Delete test_executions first (foreign key constraint)
+    const { error: executionsError } = await supabase
+      .from('test_executions')
+      .delete()
+      .eq('test_case_id', deletingTestCase.id)
+
+    if (executionsError) {
+      console.error('Error deleting test executions:', executionsError)
+      throw new Error('Failed to delete test executions')
+    }
+
+    // STEP 2: Delete test_suite_cases associations
+    const { error: suiteRelationsError } = await supabase
+      .from('test_suite_cases')
+      .delete()
+      .eq('test_case_id', deletingTestCase.id)
+
+    if (suiteRelationsError) {
+      console.error('Error deleting suite associations:', suiteRelationsError)
+      throw new Error('Failed to delete suite associations')
+    }
+
+    // STEP 3: Now delete the test case itself
+    const { error } = await supabase
+      .from('test_cases')
+      .delete()
+      .eq('id', deletingTestCase.id)
+      .eq('user_id', user.id) // Security: Ensure user owns this test case
+
+    if (error) {
+      console.error('Error deleting test case:', error)
+      throw error
+    }
+
+    // STEP 4: Update local state
+    setTestCases(prev => prev.filter(tc => tc.id !== deletingTestCase.id))
+    
+    // Remove from execution state
+    setExecution(prev => {
+      const newExecution = { ...prev }
+      delete newExecution[deletingTestCase.id]
+      return newExecution
+    })
+
+    setShowDeleteDialog(false)
+    setDeletingTestCase(null)
+    toast.success('Test case deleted successfully')
+  } catch (error) {
+    console.error('Error deleting test case:', error)
+    toast.error('Failed to delete test case')
+  } finally {
+    setSaving(false)
   }
+}
+
 
   function openCreateDialog() {
     resetForm()
@@ -1115,9 +1188,28 @@ export function TabbedTestCaseTable() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          {getStatusBadge(testCase.status)}
-                        </TableCell>
+                       <TableCell>
+  {/* STATUS DROPDOWN */}
+  <Select
+    value={testCase.status}
+    onValueChange={(value: 'draft' | 'active' | 'archived') => 
+      updateTestCaseStatus(testCase.id, value)
+    }
+    disabled={updating === testCase.id}
+  >
+    <SelectTrigger className="w-[120px] h-8">
+      {updating === testCase.id ? (
+        <Loader2 className="h-3 w-3 animate-spin mr-2" />
+      ) : null}
+      <SelectValue />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="draft">Draft</SelectItem>
+      <SelectItem value="active">Approved</SelectItem>
+      <SelectItem value="archived">Archived</SelectItem>
+    </SelectContent>
+  </Select>
+</TableCell>
                         <TableCell>
                           <Badge className={getPriorityColor(testCase.priority)}>
                             {testCase.priority}
@@ -1236,6 +1328,7 @@ export function TabbedTestCaseTable() {
                   <TableHead className="w-[100px]">Platform</TableHead>
                   <TableHead className="w-[100px]">Framework</TableHead>
                   <TableHead className="w-[100px]">Priority</TableHead>
+                  <TableHead className="w-[140px]">Status</TableHead>
                   <TableHead className="w-[150px]">Requirement</TableHead>
                   <TableHead className="w-[120px]">Created</TableHead>
                 </TableRow>

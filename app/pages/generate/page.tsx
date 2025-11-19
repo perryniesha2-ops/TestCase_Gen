@@ -32,3 +32,7 @@ export default function GeneratePage() {
     </div>
   );
 }
+export const metadata = {
+  title: 'Generate - SynthQA',
+  description: 'Use AI to automatically create comprehensive test cases from your requirements.',
+}
