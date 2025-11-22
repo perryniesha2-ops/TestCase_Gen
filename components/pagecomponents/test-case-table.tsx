@@ -73,7 +73,6 @@ import {
   MessageSquare,
   RotateCcw
 } from "lucide-react"
-import { updateTestExecution } from "@/lib/test-execution"
 
 // Enhanced types to support new test management features
 type ExecutionStatus = 'not_run' | 'in_progress' | 'passed' | 'failed' | 'blocked' | 'skipped'
