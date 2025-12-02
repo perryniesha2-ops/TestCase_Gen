@@ -190,28 +190,46 @@ export function AddRequirementModal({ onRequirementAdded, children }: AddRequire
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent   className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
+  onInteractOutside={(e) => e.preventDefault()}>
+  <DialogHeader className="sticky top-0 z-10 bg-background px-6 py-4 border-b">
+     <div className="flex items-start justify-between gap-4">
+      <div className="space-y-1">
           <DialogTitle>Create New Requirement</DialogTitle>
           <DialogDescription>
             Define a new requirement that can be used to generate test cases and track coverage.
           </DialogDescription>
+                </div>
+<Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 rounded-full"
+        onClick={() => {
+          setOpen(false)
+          resetForm()
+        }}
+      >
+        <X className="h-4 w-4" />
+      </Button>
+      </div>
         </DialogHeader>
+  <div className="flex-1 overflow-y-auto px-6 py-4">
 
-        <Tabs defaultValue="basic" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="basic" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
+          <Tabs defaultValue="basic" className="w-full space-y-6">
+      <TabsList className="grid w-full grid-cols-2 rounded-lg bg-muted/40 p-1">
+        <TabsTrigger value="basic" className="flex items-center gap-2 py-2">
+          <FileText className="h-4 w-4" />
               Basic Info
-            </TabsTrigger>
-            <TabsTrigger value="advanced" className="flex items-center gap-2">
-              <Settings className="h-4 w-4" />
+          </TabsTrigger>
+        <TabsTrigger value="advanced" className="flex items-center gap-2 py-2">
+          <Settings className="h-4 w-4" />
               Advanced
             </TabsTrigger>
           </TabsList>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <TabsContent value="basic" className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-8">
+            <TabsContent value="basic" className="space-y-6 pt-2">
               {/* Title */}
               <div className="space-y-2">
                 <Label htmlFor="title">
@@ -226,6 +244,7 @@ export function AddRequirementModal({ onRequirementAdded, children }: AddRequire
                   disabled={loading}
                 />
               </div>
+              
 
               {/* Type and Priority */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -548,6 +567,8 @@ export function AddRequirementModal({ onRequirementAdded, children }: AddRequire
             </div>
           </form>
         </Tabs>
+                  </div>
+
       </DialogContent>
     </Dialog>
   )

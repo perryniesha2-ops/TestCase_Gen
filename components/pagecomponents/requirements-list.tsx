@@ -52,7 +52,8 @@ import {
   Target,
   CheckCircle,
   AlertTriangle,
-  BarChart3
+  BarChart3,
+  X
 } from "lucide-react"
 
 interface Requirement {
@@ -107,6 +108,7 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
   const [selectedCoverageTypes, setSelectedCoverageTypes] = useState<Record<string, string>>({})
+
 
   useEffect(() => {
     fetchData()
@@ -736,121 +738,174 @@ export function RequirementsList({ onRequirementSelected, selectable = false }: 
       )}
 
       {/* Test Case Linking Dialog */}
-      <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Link Test Cases</DialogTitle>
-            <DialogDescription>
-              Manage test case links for: {selectedRequirement?.title}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <Tabs defaultValue="linked" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="linked">Linked Tests ({linkedTestCases.length})</TabsTrigger>
-              <TabsTrigger value="available">Available Tests ({availableTestCases.length})</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="linked" className="space-y-4">
-              {linkedTestCases.length === 0 ? (
-                <div className="text-center py-8">
-                  <Target className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-muted-foreground">No test cases linked yet</p>
+     <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>
+  <DialogContent
+    className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
+    onInteractOutside={(e) => e.preventDefault()}
+  >
+    {/* Sticky header */}
+    <DialogHeader className="sticky top-0 z-10 bg-background px-6 py-4 border-b">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <DialogTitle className="text-lg font-semibold">
+            Link Test Cases
+          </DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            Manage test case links for:{" "}
+            <span className="font-medium">
+              {selectedRequirement?.title}
+            </span>
+          </DialogDescription>
+        </div>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-full shrink-0"
+          onClick={() => setShowLinkDialog(false)}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    </DialogHeader>
+
+    {/* Scrollable body with padding */}
+    <div className="flex-1 overflow-y-auto">
+      <Tabs defaultValue="linked" className="w-full">
+        {/* Tabs List with side padding */}
+        <div className="px-6 pt-4">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="linked">
+              Linked Tests ({linkedTestCases.length})
+            </TabsTrigger>
+            <TabsTrigger value="available">
+              Available Tests ({availableTestCases.length})
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* Linked tab */}
+        <TabsContent value="linked" className="px-6 py-4 space-y-4">
+          {linkedTestCases.length === 0 ? (
+            <div className="text-center py-8">
+              <Target className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+              <p className="text-muted-foreground">
+                No test cases linked yet
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {linkedTestCases.map((link) => (
+                <div
+                  key={link.id}
+                  className="flex items-center justify-between gap-4 p-4 border rounded-lg"
+                >
+                  <div className="flex-1 space-y-1">
+                    <div className="font-medium">
+                      {link.test_cases?.title}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">
+                        {link.test_cases?.test_type}
+                      </Badge>
+                      <Badge variant="outline">
+                        {link.coverage_type} coverage
+                      </Badge>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => unlinkTestCase(link.id)}
+                  >
+                    Unlink
+                  </Button>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  {linkedTestCases.map((link) => (
-                    <div key={link.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex-1">
-                        <div className="font-medium">{link.test_cases?.title}</div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="outline">{link.test_cases?.test_type}</Badge>
-                          <Badge variant="outline">{link.coverage_type} coverage</Badge>
-                        </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Available tab */}
+        <TabsContent value="available" className="px-6 py-4 space-y-4">
+          {availableTestCases.length === 0 ? (
+            <div className="text-center py-8">
+              <CheckCircle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+              <p className="text-muted-foreground">
+                {testCases.length === 0
+                  ? "No test cases created yet. Create test cases first to link them to requirements."
+                  : "All test cases are already linked"}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {availableTestCases.map((testCase) => {
+                const selectedType =
+                  selectedCoverageTypes[testCase.id] || "direct"
+
+                return (
+                  <div
+                    key={testCase.id}
+                    className="flex items-center justify-between gap-4 p-4 border rounded-lg"
+                  >
+                    <div className="flex-1 space-y-1">
+                      <div className="font-medium">{testCase.title}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">
+                          {testCase.test_type}
+                        </Badge>
+                        <Badge variant="outline">
+                          {testCase.priority}
+                        </Badge>
                       </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={selectedType}
+                        onValueChange={(value) => {
+                          setSelectedCoverageTypes((prev) => ({
+                            ...prev,
+                            [testCase.id]: value,
+                          }))
+                        }}
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue placeholder="Coverage" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="direct">Direct</SelectItem>
+                          <SelectItem value="indirect">Indirect</SelectItem>
+                          <SelectItem value="negative">Negative</SelectItem>
+                        </SelectContent>
+                      </Select>
+
                       <Button
                         size="sm"
-                        variant="destructive"
-                        onClick={() => unlinkTestCase(link.id)}
+                        onClick={() => {
+                          linkTestCase(testCase.id, selectedType)
+                          setSelectedCoverageTypes((prev) => {
+                            const updated = { ...prev }
+                            delete updated[testCase.id]
+                            return updated
+                          })
+                        }}
                       >
-                        Unlink
+                        <LinkIcon className="h-4 w-4 mr-2" />
+                        Link
                       </Button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="available" className="space-y-4">
-              {availableTestCases.length === 0 ? (
-                <div className="text-center py-8">
-                  <CheckCircle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-muted-foreground">
-                    {testCases.length === 0 
-                      ? 'No test cases created yet. Create test cases first to link them to requirements.'
-                      : 'All test cases are already linked'
-                    }
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {availableTestCases.map((testCase) => {
-                    // Get the selected coverage type for this test case, default to 'direct'
-                    const selectedType = selectedCoverageTypes[testCase.id] || 'direct'
-                    
-                    return (
-                      <div key={testCase.id} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex-1">
-                          <div className="font-medium">{testCase.title}</div>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="outline">{testCase.test_type}</Badge>
-                            <Badge variant="outline">{testCase.priority}</Badge>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Select
-                            value={selectedType}
-                            onValueChange={(value) => {
-                              setSelectedCoverageTypes(prev => ({
-                                ...prev,
-                                [testCase.id]: value
-                              }))
-                            }}
-                          >
-                            <SelectTrigger className="w-32">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="direct">Direct</SelectItem>
-                              <SelectItem value="indirect">Indirect</SelectItem>
-                              <SelectItem value="negative">Negative</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              linkTestCase(testCase.id, selectedType)
-                              // Clean up state after linking
-                              setSelectedCoverageTypes(prev => {
-                                const updated = { ...prev }
-                                delete updated[testCase.id]
-                                return updated
-                              })
-                            }}
-                          >
-                            <LinkIcon className="h-4 w-4 mr-2" />
-                            Link
-                          </Button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  </DialogContent>
+</Dialog>
     </div>
   )
 }
