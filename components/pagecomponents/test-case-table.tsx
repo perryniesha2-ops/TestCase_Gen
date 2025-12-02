@@ -1436,17 +1436,36 @@ async function updateTestCaseStatus(testCaseId: string, newStatus: 'draft' | 'ac
           }
         }}
       >
-        <DialogContent className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0">
-          <DialogHeader className="sticky top-0 z-10 bg-background p-6 border-b">
-            <DialogTitle className="flex items-center gap-3">
-              {showCreateDialog ? "Create New Test Case" : "Edit Test Case"}
-            </DialogTitle>
-            <DialogDescription>
-              {showCreateDialog
-                ? "Fill in the details below to create a new test case."
-                : "Update the test case details below."}
-            </DialogDescription>
-          </DialogHeader>
+<DialogContent 
+  className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
+  onInteractOutside={(e) => e.preventDefault()}  
+>          <DialogHeader className="sticky top-0 z-10 bg-background p-6 border-b">
+  <div className="flex items-start justify-between">
+    <div className="space-y-2">
+      <DialogTitle className="flex items-center gap-3">
+        {showCreateDialog ? "Create New Test Case" : "Edit Test Case"}
+      </DialogTitle>
+      <DialogDescription>
+        {showCreateDialog
+          ? "Fill in the details below to create a new test case."
+          : "Update the test case details below."}
+      </DialogDescription>
+    </div>
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8 rounded-full"
+      onClick={() => {
+        setShowCreateDialog(false)
+        setShowEditDialog(false)
+        setEditingTestCase(null)
+        resetForm()
+      }}
+    >
+      <X className="h-4 w-4" />
+    </Button>
+  </div>
+</DialogHeader>
 
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
             {/* Basic Information */}
@@ -1640,7 +1659,10 @@ async function updateTestCaseStatus(testCaseId: string, newStatus: 'draft' | 'ac
 
       {/* Enhanced Execution Details Dialog */}
       <Dialog open={showExecutionDialog} onOpenChange={setShowExecutionDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent 
+  className="max-w-md"
+  onInteractOutside={(e) => e.preventDefault()}  // ← ADD THIS
+>
           <DialogHeader>
             <DialogTitle>Test Execution Details</DialogTitle>
             <DialogDescription>
@@ -1759,9 +1781,13 @@ async function updateTestCaseStatus(testCaseId: string, newStatus: 'draft' | 'ac
       {/* Enhanced Test Case Details Dialog */}
       {selectedCase && (
         <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
-          <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] flex flex-col p-0">
-            <DialogHeader className="sticky top-0 z-10 bg-background p-6 border-b">
-              <DialogTitle className="flex items-center gap-3">
+<DialogContent 
+  className="w-[95vw] sm:max-w-3xl max-h-[90vh] flex flex-col p-0"
+  onInteractOutside={(e) => e.preventDefault()}  
+>            <DialogHeader className="sticky top-0 z-10 bg-background p-6 border-b">
+  <div className="flex items-start justify-between">
+    <div className="space-y-2 flex-1">
+      <DialogTitle className="flex items-center gap-3">
                 {execution[selectedCase.id]?.status === 'passed' && <CheckCircle2 className="h-5 w-5 text-green-600" />}
                 {execution[selectedCase.id]?.status === 'failed' && <XCircle className="h-5 w-5 text-red-600" />}
                 {execution[selectedCase.id]?.status === 'blocked' && <AlertTriangle className="h-5 w-5 text-orange-600" />}
@@ -1770,7 +1796,7 @@ async function updateTestCaseStatus(testCaseId: string, newStatus: 'draft' | 'ac
                 {execution[selectedCase.id]?.status === 'not_run' && <Circle className="h-5 w-5 text-gray-400" />}
                 {selectedCase.title}
               </DialogTitle>
-              <DialogDescription className="flex items-center gap-2 flex-wrap pt-2">
+      <DialogDescription className="flex items-center gap-2 flex-wrap pt-2">
                 <Badge className={getPriorityColor(selectedCase.priority)}>
                   {selectedCase.priority}
                 </Badge>
@@ -1802,8 +1828,19 @@ async function updateTestCaseStatus(testCaseId: string, newStatus: 'draft' | 'ac
                     <Edit3 className="h-4 w-4" />
                   </Button>
                 )}
-              </DialogDescription>
-            </DialogHeader>
+               </DialogDescription>
+    </div>
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8 rounded-full flex-shrink-0"
+      onClick={() => setShowDetailsDialog(false)}
+    >
+      <X className="h-4 w-4" />
+    </Button>
+  </div>
+</DialogHeader>
+
 
             <div className="flex-1 overflow-y-auto px-6 py-4">
               <div className="space-y-6">

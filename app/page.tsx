@@ -28,23 +28,21 @@ export default function LandingPage() {
 function SiteNav() {
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-0">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2 md:gap-3 font-semibold">
           {/* Logo: increase size by changing h-12 / md:h-14 */}
           <img
             src="/logo-sq-dark.svg"
             alt="SynthQA Logo"
-            className="hidden dark:block h-12 md:h-14 w-auto"
+            className="hidden dark:block h-50 md:h-50 w-auto"
           />
           <img
             src="/logo-sq-light.svg"
             alt="SynthQA Logo"
-            className="block dark:hidden h-12 md:h-14 w-auto"
+            className="block dark:hidden h-40 md:h-40 w-auto"
           />
-          <span className="text-xl md:text-2xl font-bold tracking-tight">
-            SynthQA
-          </span>
+        
         </Link>
 
         {/* Nav */}
