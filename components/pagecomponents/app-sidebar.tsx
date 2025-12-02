@@ -159,29 +159,18 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
           collapsed ? "w-full justify-center gap-0" : "gap-2 md:gap-3"
         )}
       >
-        <img
-          src="/logo-sq-dark.svg"
-          alt="SynthQA Logo"
-          className={cn(
-            "hidden dark:block w-auto",
-            collapsed ? "h-10" : "h-12 md:h-14"
-          )}
-        />
-        <img
-          src="/logo-sq-light.svg"
-          alt="SynthQA Logo"
-          className={cn(
-            "block dark:hidden w-auto",
-            collapsed ? "h-10" : "h-12 md:h-14"
-          )}
-        />
+         <img
+            src="/logo-sq-dark.svg"
+            alt="SynthQA Logo"
+            className="hidden dark:block h-60 md:h-50 w-auto"
+          />
+          <img
+            src="/logo-sq-light.svg"
+            alt="SynthQA Logo"
+            className="block dark:hidden h-50 md:h-50 w-auto"
+          />
 
-        {/* Only show text when NOT collapsed */}
-        {!collapsed && (
-          <span className="text-sm md:text-sm font-bold tracking-tight">
-            SynthQA
-          </span>
-        )}
+
       </Link>
 
         </div>
