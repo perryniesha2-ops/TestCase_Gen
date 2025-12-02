@@ -192,9 +192,11 @@ const platformIcons = {
 }
 
 const testTypes = [
-  'functional', 'integration', 'unit', 'e2e', 'security', 'performance', 
+  'functional', 'integration', 'unit', 'e2e', 'security', 'performance', 'boundary','validation',
   'accessibility', 'api', 'regression', 'smoke', 'user acceptance'
 ]
+
+
 
 export function TabbedTestCaseTable() {
   const [testCases, setTestCases] = useState<TestCase[]>([])
@@ -804,11 +806,14 @@ async function updateTestCaseStatus(testCaseId: string, newStatus: 'draft' | 'ac
   }
 
   function openEditDialog(testCase: TestCase) {
+      const rawType = (testCase.test_type || "").toLowerCase().trim()
+  const normalizedType = testTypes.includes(rawType) ? rawType : "functional"
+
     setEditingTestCase(testCase)
     setFormData({
       title: testCase.title,
       description: testCase.description,
-      test_type: testCase.test_type,
+      test_type: normalizedType,
       priority: testCase.priority,
       preconditions: testCase.preconditions || '',
       test_steps: testCase.test_steps,
@@ -1483,7 +1488,7 @@ async function updateTestCaseStatus(testCaseId: string, newStatus: 'draft' | 'ac
               <div className="space-y-2">
                 <Label htmlFor="test_type">Test Type</Label>
                 <Select
-                  value={formData.test_type}
+                  value={formData.test_type.toLowerCase()}
                   onValueChange={(value) => setFormData(prev => ({ ...prev, test_type: value }))}
                 >
                   <SelectTrigger>

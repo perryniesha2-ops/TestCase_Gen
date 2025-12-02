@@ -16,6 +16,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, User, Settings, Bell, Shield, CreditCard, Upload, Camera, Trash2, Save, Eye, EyeOff } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { useTheme as useNextTheme } from "next-themes"
+
+type ThemeOption = "light" | "dark" | "system"
+
 
 interface UserProfile {
   id: string
@@ -54,7 +58,8 @@ export default function SettingsPage() {
   const [showPasswords, setShowPasswords] = useState(false)
   
   // Preferences
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
+  const { setTheme: setNextTheme } = useNextTheme()
+  const [themePref, setThemePref] = useState<ThemeOption>("system")  
   const [emailNotifications, setEmailNotifications] = useState(true)
   const [pushNotifications, setPushNotifications] = useState(true)
   const [marketingEmails, setMarketingEmails] = useState(false)
@@ -70,56 +75,72 @@ export default function SettingsPage() {
   }, [])
 
   async function fetchUserProfile() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) {
-        router.push('/pages/login')
-        return
-      }
+  try {
+    const { data: { user: authUser } } = await supabase.auth.getUser()
 
-      // Fetch user profile from your database if you have extended user info
-      const userProfile: UserProfile = {
-        id: user.id,
-        email: user.email || '',
-        full_name: user.user_metadata?.full_name || '',
-        avatar_url: user.user_metadata?.avatar_url || '',
-        created_at: user.created_at || '',
-        preferences: user.user_metadata?.preferences || {
-          theme: 'system',
-          notifications: {
-            email: true,
-            push: true,
-            marketing: false
-          },
-          test_case_defaults: {
-            model: 'claude-3-5-sonnet-20241022',
-            coverage: 'comprehensive',
-            count: 10
-          }
-        }
-      }
-
-      setUser(userProfile)
-      
-      // Set form values
-      setFullName(userProfile.full_name || '')
-      setEmail(userProfile.email)
-      setTheme(userProfile.preferences?.theme || 'system')
-      setEmailNotifications(userProfile.preferences?.notifications.email ?? true)
-      setPushNotifications(userProfile.preferences?.notifications.push ?? true)
-      setMarketingEmails(userProfile.preferences?.notifications.marketing ?? false)
-      setDefaultModel(userProfile.preferences?.test_case_defaults.model || 'claude-3-5-sonnet-20241022')
-      setDefaultCoverage(userProfile.preferences?.test_case_defaults.coverage || 'comprehensive')
-      setDefaultCount(userProfile.preferences?.test_case_defaults.count || 10)
-      
-    } catch (error) {
-      console.error('Error fetching user profile:', error)
-      toast.error('Failed to load user profile')
-    } finally {
-      setLoading(false)
+    if (!authUser) {
+      router.push("/pages/login")
+      return
     }
+
+    const { data: profile, error } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("id", authUser.id)
+      .single()
+
+    if (error) {
+      console.error("Error loading profile from user_profiles:", error)
+      toast.error("Failed to load user profile")
+      return
+    }
+
+    const preferences =
+      (profile?.preferences as UserProfile["preferences"]) ??
+      (authUser.user_metadata?.preferences as UserProfile["preferences"]) ?? {
+        theme: "system",
+        notifications: {
+          email: true,
+          push: true,
+          marketing: false,
+        },
+        test_case_defaults: {
+          model: "claude-3-5-sonnet-20241022",
+          coverage: "comprehensive",
+          count: 10,
+        },
+      }
+
+    const userProfile: UserProfile = {
+      id: authUser.id,
+      email: profile?.email ?? authUser.email ?? "",
+      full_name: profile?.full_name ?? authUser.user_metadata?.full_name ?? "",
+      avatar_url: profile?.avatar_url ?? authUser.user_metadata?.avatar_url ?? "",
+      created_at: profile?.created_at ?? authUser.created_at ?? "",
+      preferences,
+    }
+
+    setUser(userProfile)
+
+    // Form values
+    setFullName(userProfile.full_name || "")
+    setEmail(userProfile.email)
+    setThemePref(preferences.theme)
+    setEmailNotifications(preferences.notifications.email)
+    setPushNotifications(preferences.notifications.push)
+    setMarketingEmails(preferences.notifications.marketing)
+    setDefaultModel(preferences.test_case_defaults.model)
+    setDefaultCoverage(preferences.test_case_defaults.coverage)
+    setDefaultCount(preferences.test_case_defaults.count)
+    // also sync UI theme (we’ll add `setNextTheme` below)
+    setNextTheme(preferences.theme)
+  } catch (error) {
+    console.error("Error fetching user profile:", error)
+    toast.error("Failed to load user profile")
+  } finally {
+    setLoading(false)
   }
+}
 
   async function handleAvatarUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -197,49 +218,69 @@ export default function SettingsPage() {
   }
 
   async function handleSaveProfile() {
-    if (!user) return
+  if (!user) return
 
-    setSaving(true)
+  setSaving(true)
 
-    try {
-      const preferences = {
-        theme,
-        notifications: {
-          email: emailNotifications,
-          push: pushNotifications,
-          marketing: marketingEmails
-        },
-        test_case_defaults: {
-          model: defaultModel,
-          coverage: defaultCoverage,
-          count: defaultCount
-        }
-      }
-
-      const { error } = await supabase.auth.updateUser({
-        data: {
-          full_name: fullName,
-          preferences
-        }
-      })
-
-      if (error) throw error
-
-      setUser(prev => prev ? { 
-        ...prev, 
-        full_name: fullName,
-        preferences 
-      } : null)
-
-      toast.success('Profile updated successfully!')
-
-    } catch (error) {
-      console.error('Error updating profile:', error)
-      toast.error('Failed to update profile')
-    } finally {
-      setSaving(false)
+  try {
+    const preferences = {
+      theme: themePref,
+      notifications: {
+        email: emailNotifications,
+        push: pushNotifications,
+        marketing: marketingEmails,
+      },
+      test_case_defaults: {
+        model: defaultModel,
+        coverage: defaultCoverage,
+        count: defaultCount,
+      },
     }
+
+    // 1) keep auth metadata in sync
+    const { error: authError } = await supabase.auth.updateUser({
+      data: {
+        full_name: fullName,
+        preferences,
+      },
+    })
+    if (authError) throw authError
+
+    // 2) persist in user_profiles
+    const { error: profileError } = await supabase
+      .from("user_profiles")
+      .update({
+        full_name: fullName,
+        email,
+        preferences,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id)
+
+    if (profileError) throw profileError
+
+    setUser((prev) =>
+      prev
+        ? {
+            ...prev,
+            full_name: fullName,
+            preferences,
+          }
+        : null,
+    )
+
+    // 3) apply theme to UI immediately
+    setNextTheme(themePref)
+
+    toast.success("Profile updated successfully!")
+  } catch (error) {
+    console.error("Error updating profile:", error)
+    toast.error("Failed to update profile")
+  } finally {
+    setSaving(false)
   }
+}
+
 
   async function handleChangePassword() {
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -440,25 +481,7 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-4 border-t">
-                <Button onClick={handleSaveProfile} disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Save Changes
-                    </>
-                  )}
-                </Button>
-                
-                <div className="text-xs text-muted-foreground">
-                  Account created: {new Date(user.created_at).toLocaleDateString()}
-                </div>
-              </div>
+              
             </CardContent>
           </Card>
         </TabsContent>
@@ -522,29 +545,37 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Appearance</CardTitle>
-              <CardDescription>
-                Customize how the application looks and feels
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <Label htmlFor="theme">Theme</Label>
-                <Select value={theme} onValueChange={(v) => setTheme(v as 'light' | 'dark' | 'system')}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="light">Light</SelectItem>
-                    <SelectItem value="dark">Dark</SelectItem>
-                    <SelectItem value="system">System</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
+         <Card>
+  <CardHeader>
+    <CardTitle>Appearance</CardTitle>
+    <CardDescription>
+      Customize how the application looks and feels
+    </CardDescription>
+  </CardHeader>
+  <CardContent>
+    <div className="space-y-2">
+      <Label htmlFor="theme">Theme</Label>
+      <Select
+        value={themePref}
+        onValueChange={(value) => {
+          const v = value as ThemeOption
+          setThemePref(v)
+          setNextTheme(v)      // updates shadcn / next-themes immediately
+        }}
+      >
+        <SelectTrigger className="w-48">
+          <SelectValue placeholder="Select theme" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="light">Light</SelectItem>
+          <SelectItem value="dark">Dark</SelectItem>
+          <SelectItem value="system">System</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  </CardContent>
+</Card>
+
         </TabsContent>
 
         {/* Notifications Tab */}
@@ -713,8 +744,29 @@ export default function SettingsPage() {
                 </Dialog>
               </div>
             </CardContent>
+            
           </Card>
+          
         </TabsContent>
+        <div className="flex items-center gap-2 pt-4 border-t">
+                <Button onClick={handleSaveProfile} disabled={saving}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
+                
+                <div className="text-xs text-muted-foreground">
+                  Account created: {new Date(user.created_at).toLocaleDateString()}
+                </div>
+              </div>
       </Tabs>
     </div>
   )

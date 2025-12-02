@@ -590,7 +590,7 @@ export function TestManagementDashboard() {
                 <Play className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                 <p className="text-muted-foreground">No active test suites</p>
                 <Button variant="outline" size="sm" className="mt-2" asChild>
-                  <Link href="/test-cases">
+                  <Link href="/pages/test-cases">
                     <Plus className="h-4 w-4 mr-1" />
                     Create Suite
                   </Link>

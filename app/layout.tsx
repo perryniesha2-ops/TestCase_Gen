@@ -3,6 +3,8 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "../components/providers/toast-providers";
 import { Providers } from "../providers"; 
+import { ThemeProvider } from "@/components/theme-provider"
+
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -22,11 +24,13 @@ export default function RootLayout({
           "min-h-dvh bg-background text-foreground antialiased",
         ].join(" ")}
       >
-        {/* Providers ensures <html> gets the same theme class on server & client */}
+        <ThemeProvider>
         <Providers>
           {children}
           <ToastProvider />
         </Providers>
+                </ThemeProvider>
+
       </body>
     </html>
   );
