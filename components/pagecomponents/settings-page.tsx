@@ -83,11 +83,27 @@ export default function SettingsPage() {
       return
     }
 
+    // Default preferences – matches your DB default
+    const defaultPreferences: UserProfile["preferences"] = {
+      theme: "system",
+      notifications: {
+        email: true,
+        push: true,
+        marketing: false,
+      },
+      test_case_defaults: {
+        model: "claude-3-5-sonnet-20241022",
+        coverage: "comprehensive",
+        count: 10,
+      },
+    }
+
+    // Try to load profile; `maybeSingle` does NOT error on 0 rows
     const { data: profile, error } = await supabase
       .from("user_profiles")
       .select("*")
       .eq("id", authUser.id)
-      .single()
+      .maybeSingle()
 
     if (error) {
       console.error("Error loading profile from user_profiles:", error)
@@ -95,34 +111,55 @@ export default function SettingsPage() {
       return
     }
 
-    const preferences =
-      (profile?.preferences as UserProfile["preferences"]) ??
-      (authUser.user_metadata?.preferences as UserProfile["preferences"]) ?? {
-        theme: "system",
-        notifications: {
-          email: true,
-          push: true,
-          marketing: false,
-        },
-        test_case_defaults: {
-          model: "claude-3-5-sonnet-20241022",
-          coverage: "comprehensive",
-          count: 10,
-        },
-      }
+    let finalProfile = profile
+
+// If there is no profile row yet, create-or-update one using UPSERT
+if (!finalProfile) {
+  const { data: newProfile, error: upsertError } = await supabase
+    .from("user_profiles")
+    .upsert(
+      {
+        id: authUser.id, // PK, FK to auth.users
+        email: authUser.email,
+        full_name: authUser.user_metadata?.full_name ?? null,
+        avatar_url: authUser.user_metadata?.avatar_url ?? null,
+        preferences: authUser.user_metadata?.preferences ?? defaultPreferences,
+      },
+      {
+        onConflict: "id", // matches PRIMARY KEY (id)
+      },
+    )
+    .select("*")
+    .single()
+
+  if (upsertError) {
+    console.error("Error upserting user profile:", upsertError)
+    toast.error("Failed to initialize user profile")
+    return
+  }
+
+  finalProfile = newProfile
+}
+
+
+    // Merge preferences from profile, auth metadata, and defaults
+    const preferences: UserProfile["preferences"] =
+      (finalProfile.preferences as UserProfile["preferences"]) ??
+      (authUser.user_metadata?.preferences as UserProfile["preferences"]) ??
+      defaultPreferences
 
     const userProfile: UserProfile = {
       id: authUser.id,
-      email: profile?.email ?? authUser.email ?? "",
-      full_name: profile?.full_name ?? authUser.user_metadata?.full_name ?? "",
-      avatar_url: profile?.avatar_url ?? authUser.user_metadata?.avatar_url ?? "",
-      created_at: profile?.created_at ?? authUser.created_at ?? "",
+      email: finalProfile.email ?? authUser.email ?? "",
+      full_name: finalProfile.full_name ?? authUser.user_metadata?.full_name ?? "",
+      avatar_url: finalProfile.avatar_url ?? authUser.user_metadata?.avatar_url ?? "",
+      created_at: finalProfile.created_at ?? authUser.created_at ?? "",
       preferences,
     }
 
     setUser(userProfile)
 
-    // Form values
+    // Populate form state
     setFullName(userProfile.full_name || "")
     setEmail(userProfile.email)
     setThemePref(preferences.theme)
@@ -132,7 +169,8 @@ export default function SettingsPage() {
     setDefaultModel(preferences.test_case_defaults.model)
     setDefaultCoverage(preferences.test_case_defaults.coverage)
     setDefaultCount(preferences.test_case_defaults.count)
-    // also sync UI theme (we’ll add `setNextTheme` below)
+
+    // Sync theme with next-themes
     setNextTheme(preferences.theme)
   } catch (error) {
     console.error("Error fetching user profile:", error)

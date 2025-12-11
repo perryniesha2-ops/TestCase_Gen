@@ -74,8 +74,9 @@ import {
   RotateCcw
 } from "lucide-react"
 
-// Enhanced types to support new test management features
 type ExecutionStatus = 'not_run' | 'in_progress' | 'passed' | 'failed' | 'blocked' | 'skipped'
+type ApprovalStatus = 'draft' | 'active' | 'archived'
+
 
 interface TestCase {
   id: string
@@ -110,6 +111,7 @@ interface CrossPlatformTestCase {
   automation_hints?: string[]
   priority: 'low' | 'medium' | 'high' | 'critical'
   execution_status: ExecutionStatus
+  status: ApprovalStatus   
   created_at: string
   cross_platform_test_suites?: {
     requirement: string
@@ -558,6 +560,121 @@ async function updateTestCaseStatus(testCaseId: string, newStatus: 'draft' | 'ac
     setUpdating(null)
   }
 }
+
+async function updateCrossPlatformStatus(
+  testCaseId: string,
+  newStatus: ApprovalStatus
+) {
+  setUpdating(testCaseId)
+  try {
+    const supabase = createClient()
+
+    const { error } = await supabase
+      .from("platform_test_cases")
+      .update({
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", testCaseId)
+
+    if (error) throw error
+
+    // Update local state
+    let updatedCase: CrossPlatformTestCase | undefined
+    setCrossPlatformCases((prev) =>
+      prev.map((tc) => {
+        if (tc.id === testCaseId) {
+          const next = { ...tc, status: newStatus }
+          updatedCase = next
+          return next
+        }
+        return tc
+      }),
+    )
+
+    const statusLabels: Record<ApprovalStatus, string> = {
+      draft: "Draft",
+      active: "Approved",
+      archived: "Archived",
+    }
+
+    toast.success(`Status updated to ${statusLabels[newStatus]}`)
+
+    // If we just approved it, sync into regular test_cases
+    if (newStatus === "active" && updatedCase) {
+      await syncToRegularTestCase(updatedCase)
+    }
+  } catch (error) {
+    console.error("Error updating cross-platform status:", error)
+    toast.error("Failed to update status")
+  } finally {
+    setUpdating(null)
+  }
+}
+async function syncToRegularTestCase(crossCase: CrossPlatformTestCase) {
+  try {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // 1. See if we already have a mirror for this platform test
+    const { data: existing, error: findError } = await supabase
+      .from("test_cases")
+      .select("id")
+      .eq("source_platform_test_case_id", crossCase.id)
+      .maybeSingle()
+
+    if (findError) throw findError
+
+    // Map platform test to regular test_case shape
+    const payload = {
+      user_id: user.id,
+      generation_id: null, // no generation link; it's from cross-platform
+      title: crossCase.title,
+      description: crossCase.description,
+      test_type: crossCase.platform, // or "cross_platform"
+      priority: crossCase.priority,
+      preconditions: crossCase.preconditions.join("\n"),
+      test_steps: crossCase.steps.map((step, index) => ({
+        step_number: index + 1,
+        action: step,
+        expected: crossCase.expected_results[index] || "",
+      })),
+      expected_result:
+        crossCase.expected_results.join("; ") ||
+        "See step expectations",
+      is_edge_case: false,
+      status: "active",            // mirror Approved
+      execution_status: "not_run",
+      is_manual: true,
+      source_platform_test_case_id: crossCase.id,
+    }
+
+    if (existing?.id) {
+      // 2. Update existing mirror
+      const { error: updateError } = await supabase
+        .from("test_cases")
+        .update(payload)
+        .eq("id", existing.id)
+
+      if (updateError) throw updateError
+    } else {
+      // 3. Create new mirror
+      const { error: insertError } = await supabase
+        .from("test_cases")
+        .insert(payload)
+
+      if (insertError) throw insertError
+    }
+
+    // Optional (but nice): refresh regular test cases so UI shows them
+    await fetchData()
+  } catch (error) {
+    console.error("Error syncing cross-platform case to test_cases:", error)
+    toast.error("Failed to sync cross-platform test to suites")
+  }
+}
+
 
 
   async function saveExecutionResult(testCaseId: string, status: ExecutionStatus, details: ExecutionDetails) {
@@ -1337,64 +1454,101 @@ async function updateTestCaseStatus(testCaseId: string, newStatus: 'draft' | 'ac
                   <TableHead className="w-[120px]">Created</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {paginatedCrossPlatformCases.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12">
-                      <div className="flex flex-col items-center gap-2">
-                        <Layers className="h-8 w-8 text-muted-foreground" />
-                        <p className="text-muted-foreground">No cross-platform test cases found</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  paginatedCrossPlatformCases.map((testCase) => {
-                    const exec = execution[testCase.id]
-                    const suite = crossPlatformSuites[testCase.suite_id]
-                    const Icon = platformIcons[testCase.platform as keyof typeof platformIcons]
-                    
-                    return (
-                      <TableRow 
-                        key={testCase.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => openTestCaseDialog(testCase, 'cross-platform')}
-                      >
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {exec?.status === 'passed' && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-                            {exec?.status === 'failed' && <XCircle className="h-4 w-4 text-red-600" />}
-                            {exec?.status === 'blocked' && <AlertTriangle className="h-4 w-4 text-orange-600" />}
-                            {exec?.status === 'skipped' && <Circle className="h-4 w-4 text-gray-400" />}
-                            {exec?.status === 'in_progress' && <Clock className="h-4 w-4 text-blue-600" />}
-                            {exec?.status === 'not_run' && <Circle className="h-4 w-4 text-gray-400" />}
-                            <span>{testCase.title}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {Icon && <Icon className="h-4 w-4" />}
-                            <Badge variant="default">{testCase.platform}</Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{testCase.framework}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={getPriorityColor(testCase.priority)}>
-                            {testCase.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {suite?.requirement || testCase.cross_platform_test_suites?.requirement || 'N/A'}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {getRelativeTime(testCase.created_at)}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
+             <TableBody>
+  {paginatedCrossPlatformCases.length === 0 ? (
+    <TableRow>
+      <TableCell colSpan={7} className="text-center py-12">
+        <div className="flex flex-col items-center gap-2">
+          <Layers className="h-8 w-8 text-muted-foreground" />
+          <p className="text-muted-foreground">No cross-platform test cases found</p>
+        </div>
+      </TableCell>
+    </TableRow>
+  ) : (
+    paginatedCrossPlatformCases.map((testCase) => {
+      const exec = execution[testCase.id]
+      const suite = crossPlatformSuites[testCase.suite_id]
+      const Icon = platformIcons[testCase.platform as keyof typeof platformIcons]
+
+      return (
+        <TableRow
+          key={testCase.id}
+          className="hover:bg-muted/50"
+          onClick={() => openTestCaseDialog(testCase, "cross-platform")}
+        >
+          {/* Title + execution icon */}
+          <TableCell className="font-medium">
+            <div className="flex items-center gap-2">
+              {exec?.status === "passed" && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+              {exec?.status === "failed" && <XCircle className="h-4 w-4 text-red-600" />}
+              {exec?.status === "blocked" && <AlertTriangle className="h-4 w-4 text-orange-600" />}
+              {exec?.status === "skipped" && <Circle className="h-4 w-4 text-gray-400" />}
+              {exec?.status === "in_progress" && <Clock className="h-4 w-4 text-blue-600" />}
+              {exec?.status === "not_run" && <Circle className="h-4 w-4 text-gray-400" />}
+              <span>{testCase.title}</span>
+            </div>
+          </TableCell>
+
+          {/* Platform */}
+          <TableCell>
+            <div className="flex items-center gap-2">
+              {Icon && <Icon className="h-4 w-4" />}
+              <Badge variant="default">{testCase.platform}</Badge>
+            </div>
+          </TableCell>
+
+          {/* Framework */}
+          <TableCell>
+            <Badge variant="outline">{testCase.framework}</Badge>
+          </TableCell>
+
+          {/* Priority */}
+          <TableCell>
+            <Badge className={getPriorityColor(testCase.priority)}>
+              {testCase.priority}
+            </Badge>
+          </TableCell>
+
+          {/* STATUS DROPDOWN (approval status) */}
+          <TableCell>
+            <Select
+              value={testCase.status}
+              onValueChange={(value: ApprovalStatus) =>
+                updateCrossPlatformStatus(testCase.id, value)
+              }
+              disabled={updating === testCase.id}
+            >
+              <SelectTrigger className="w-[140px] h-8">
+                {updating === testCase.id && (
+                  <Loader2 className="h-3 w-3 animate-spin mr-2" />
                 )}
-              </TableBody>
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="active">Approved</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+              </SelectContent>
+            </Select>
+          </TableCell>
+
+          {/* Requirement */}
+          <TableCell className="text-muted-foreground text-sm">
+            {suite?.requirement ||
+              testCase.cross_platform_test_suites?.requirement ||
+              "N/A"}
+          </TableCell>
+
+          {/* Created */}
+          <TableCell className="text-muted-foreground text-sm">
+            {getRelativeTime(testCase.created_at)}
+          </TableCell>
+        </TableRow>
+      )
+    })
+  )}
+</TableBody>
+
             </Table>
           </div>
 

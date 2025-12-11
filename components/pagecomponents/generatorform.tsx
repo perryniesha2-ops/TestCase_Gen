@@ -10,10 +10,15 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Loader2, Sparkles, Info, FileText, Plus, FlaskConical, Layers, Monitor, Smartphone, Globe, Eye, Zap } from "lucide-react"
+import { Loader2, Sparkles, Info, FileText, Plus, FlaskConical, Layers, Monitor, Smartphone, Globe, Eye, Zap, Save } from "lucide-react"
 import { AddRequirementModal } from "@/components/pagecomponents/add-requirement-modal"
 import Link from "next/link"
 import { checkAndRecordUsage } from '@/lib/usage-tracker'
+import { TemplateSelect } from "@/components/pagecomponents/template-select"
+import { QuickTemplateSave } from "@/components/pagecomponents/quick-templates"
+
+type TemplateCategory = 'functional' | 'security' | 'performance' | 'integration' | 'regression' | 'accessibility' | 'other'
+
 
 interface DatabaseRequirement {
   id: string
@@ -31,6 +36,21 @@ interface RequirementOption {
   type: string
   priority: string
   value: string
+}
+interface TemplateContent {
+  model: string
+  testCaseCount: number
+  coverage: 'standard' | 'comprehensive' | 'exhaustive'
+  includeEdgeCases?: boolean
+  includeNegativeTests?: boolean
+}
+
+interface TemplateFromSelect {
+  id: string
+  name: string
+  description?: string | null
+  category: TemplateCategory
+  template_content: TemplateContent
 }
 type UserProfile = {
   id: string;
@@ -53,6 +73,33 @@ interface CrossPlatformResponse {
   message?: string
   error?: string
   details?: string
+}
+
+interface TemplateContent {
+  model: string
+  testCaseCount: number
+  coverage: 'standard' | 'comprehensive' | 'exhaustive'
+  includeEdgeCases?: boolean
+  includeNegativeTests?: boolean
+}
+
+interface Template {
+  id: string
+  name: string
+  description?: string | null
+  category: string
+  template_content: TemplateContent
+}
+
+export interface Project {
+  id: string
+  user_id: string
+  name: string
+  description?: string
+  status: 'active' | 'archived' | 'completed'
+  color?: string
+  created_at: string
+  updated_at: string
 }
 
 const PLACEHOLDER_REQUIREMENTS: RequirementOption[] = [
@@ -134,12 +181,18 @@ export function GeneratorForm() {
   const [selectedRequirement, setSelectedRequirement] = useState("")
   const [customRequirements, setCustomRequirements] = useState("")
   const [fetchingRequirements, setFetchingRequirements] = useState(true)
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
+  const [model, setModel] = useState("claude-3-5-sonnet-20241022")
+  const [testCaseCount, setTestCaseCount] = useState("10") 
+  const [selectedProject, setSelectedProject] = useState<string>("")
+  const [projects, setProjects] = useState<Project[]>([])
+  const [coverage, setCoverage] = useState<"standard" | "comprehensive" | "exhaustive">("comprehensive")
   
   // Cross-platform specific state
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
   const [selectedFrameworks, setSelectedFrameworks] = useState<Record<string, string>>({})
   const [user, setUser] = useState<UserProfile | null>(null)
-    const supabase = createClient();
+  const supabase = createClient();
 
   
   const router = useRouter()
@@ -203,7 +256,9 @@ export function GeneratorForm() {
   }, [supabase]);
 
   useEffect(() => {
-    fetchRequirements()
+    fetchRequirements(),
+      fetchProjects()
+
   }, [])
 
   const availableRequirements = savedRequirements.length > 0 
@@ -260,16 +315,14 @@ export function GeneratorForm() {
       const formData = new FormData(e.currentTarget)
       const title = formData.get("title") as string
       const description = formData.get("description") as string
-      const model = formData.get("model") as string
-      const testCaseCountStr = formData.get("testCaseCount") as string
-      const coverage = formData.get("coverage") as string
-      const template = formData.get("template") as string
+     const modelToUse = model
+const testCaseCountNum = parseInt(testCaseCount, 10)
+const coverageToUse = coverage
 
-      const testCaseCount = parseInt(testCaseCountStr, 10)
-      if (isNaN(testCaseCount) || testCaseCount < 1 || testCaseCount > 100) {
-        toast.error("Please select a valid number of test cases.")
-        return
-      }
+if (isNaN(testCaseCountNum) || testCaseCountNum < 1 || testCaseCountNum > 100) {
+  toast.error("Please select a valid number of test cases.")
+  return
+}
 
       if (mode === "quick" && !customRequirements.trim()) {
         toast.error("Please enter your requirements.")
@@ -294,7 +347,7 @@ export function GeneratorForm() {
         model: model.trim(),
         testCaseCount: testCaseCount,
         coverage: coverage.trim(),
-        template: template?.trim() || null,
+        template: selectedTemplate?.id || null,
         title: title.trim(),
         description: description?.trim() || null,
       }
@@ -458,6 +511,63 @@ export function GeneratorForm() {
     setLoading(false)
   }
 }
+
+function applyTemplateSettings(template: Template | null) {
+  setSelectedTemplate(template)
+
+  if (!template) {
+    // Reset to defaults
+    setCustomRequirements("")
+    return
+  }
+
+
+  setTimeout(() => {
+    const settings = template.template_content
+
+    // Set UI defaults by updating DOM values
+    const modelEl = document.querySelector<HTMLSelectElement>('[name="model"]')
+    const countEl = document.querySelector<HTMLSelectElement>('[name="testCaseCount"]')
+    const coverageEl = document.querySelector<HTMLSelectElement>('[name="coverage"]')
+
+    if (modelEl) modelEl.value = settings.model
+    if (countEl) countEl.value = settings.testCaseCount.toString()
+    if (coverageEl) coverageEl.value = settings.coverage
+
+  }, 20)
+}
+
+function handleTemplateSelect(template: TemplateFromSelect | null) {
+    setSelectedTemplate(template)
+
+    if (!template) {
+     
+      return
+    }
+
+    const settings = template.template_content
+
+    setModel(settings.model)
+    setTestCaseCount(settings.testCaseCount.toString())
+    setCoverage(settings.coverage)
+  }
+
+async function fetchProjects() {
+  try {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("projects")
+      .select("*")
+      .eq("status", "active")
+      .order("name")
+
+    if (error) throw error
+    setProjects(data || [])
+  } catch (error) {
+    console.error("Error fetching projects:", error)
+  }
+}
+  
 
 
   return (
@@ -689,12 +799,58 @@ Example:
                 </div>
               )}
             </div>
+            {/* Template Selection */}
+<div className="mt-4 space-y-3 border rounded-lg p-4 bg-muted/30">
+  <div className="flex items-center justify-between gap-2">
+    <div className="flex-1">
+      <TemplateSelect
+        value={selectedTemplate?.id}
+        onSelect={handleTemplateSelect}
+        disabled={loading}
+      />
+    </div>
+
+    <QuickTemplateSave
+      currentSettings={{
+        model,
+        testCaseCount: parseInt(testCaseCount, 10) || 10,
+        coverage,
+      }}
+      onTemplateSaved={() => {
+        // Optional: you could trigger a toast or refresh somewhere else
+        toast.success("Template saved from current settings")
+      }}
+    >
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="whitespace-nowrap"
+        disabled={loading}
+      >
+        <Save className="h-4 w-4 mr-2" />
+        Save settings
+      </Button>
+    </QuickTemplateSave>
+  </div>
+
+  {selectedTemplate && (
+    <p className="text-xs text-muted-foreground">
+      Template <span className="font-medium">&quot;{selectedTemplate.name}&quot;</span> is applied. 
+      You can still adjust settings below before generating.
+    </p>
+  )}
+</div>
 
             {/* Settings row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="model">AI Model</Label>
-                <Select name="model" defaultValue="claude-3-5-sonnet-20241022" disabled={loading}>
+                <Select name="model"
+    value={model}
+    onValueChange={setModel}
+    disabled={loading}
+  >
                   <SelectTrigger className="h-10">
                     <SelectValue placeholder="Select model" />
                   </SelectTrigger>
@@ -709,8 +865,12 @@ Example:
 
               <div className="space-y-2">
                 <Label htmlFor="testCaseCount">Number of Test Cases</Label>
-                <Select name="testCaseCount" defaultValue="10" disabled={loading}>
-                  <SelectTrigger className="h-10">
+<Select
+    name="testCaseCount"
+    value={testCaseCount}
+    onValueChange={setTestCaseCount}
+    disabled={loading}
+  >                  <SelectTrigger className="h-10">
                     <SelectValue placeholder="Select count" />
                   </SelectTrigger>
                   <SelectContent>
@@ -727,8 +887,14 @@ Example:
 
             <div className="space-y-2">
               <Label htmlFor="coverage">Coverage Level</Label>
-              <Select name="coverage" defaultValue="comprehensive" disabled={loading}>
-                <SelectTrigger className="h-10">
+  <Select
+    name="coverage"
+    value={coverage}
+    onValueChange={(value) =>
+      setCoverage(value as "standard" | "comprehensive" | "exhaustive")
+    }
+    disabled={loading}
+  >                <SelectTrigger className="h-10">
                   <SelectValue placeholder="Select coverage" />
                 </SelectTrigger>
                 <SelectContent>

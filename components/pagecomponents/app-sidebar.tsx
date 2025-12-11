@@ -32,6 +32,8 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  Layout,
+  Newspaper,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -56,6 +58,10 @@ const navigation = [
   { name: "Generate Tests", href: "/pages/generate", icon: FlaskConical },
   { name: "Test Cases", href: "/pages/test-cases", icon: FileText },
   { name: "Test Suites", href: "/pages/test-library", icon: Library },
+  { name: "Templates", href: "/pages/template-manager", icon: Layout },
+  { name: "Projects", href: "/pages/proe-manager", icon: Newspaper },
+
+
 ];
 
 const secondaryNavigation = [

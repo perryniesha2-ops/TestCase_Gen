@@ -4,6 +4,7 @@ import "./globals.css";
 import { ToastProvider } from "../components/providers/toast-providers";
 import { Providers } from "../providers"; 
 import { ThemeProvider } from "@/components/theme-provider"
+import { SessionTimeoutProvider } from "@/components/providers/session-timeout-provider"
 
 
 const inter = Inter({ subsets: ["latin"] });
@@ -26,10 +27,14 @@ export default function RootLayout({
       >
         <ThemeProvider>
         <Providers>
+        <SessionTimeoutProvider timeoutMinutes={60} warnMinutesBefore={5}>
+
           {children}
           <ToastProvider />
+        </SessionTimeoutProvider>
+
         </Providers>
-                </ThemeProvider>
+        </ThemeProvider>
 
       </body>
     </html>
