@@ -7,7 +7,7 @@ export interface Project {
   icon: string
 }
 
-export interface Requirement {
+ export interface Requirement {
   id: string
   title: string
   description: string
