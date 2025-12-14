@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
-@plugin "tailwindcss-animate";
 
 /* Map your CSS variables to Tailwind v4 tokens so `bg-background`, etc. work */
 @theme {
