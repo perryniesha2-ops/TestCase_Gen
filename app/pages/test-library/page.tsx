@@ -1,4 +1,6 @@
-import { TestSuiteManager } from "@/components/pagecomponents/test-suite-manager";
+import { TestSuiteManager } from "@/components/testcase-management/test_suites/test-suite-manager";
+import { TestSuitesPage } from "@/components/testcase-management/test_suites/tests-suites";
+
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
 
@@ -23,9 +25,8 @@ export default function TestCaseManager() {
         {/* Centered form */}
         <main className="mt-6 flex-1">
           <div className="mx-auto w-full max-w-3xl">
-            {/* For *vertical* centering as well, replace the <main> above with:
-                <main className="mt-6 flex-1 grid place-items-center"> */}
-            <TestSuiteManager />
+           
+            <TestSuitesPage />
           </div>
         </main>
       </div>

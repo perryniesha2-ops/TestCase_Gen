@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, Sparkles, Info, FileText, Plus, FlaskConical, Layers, Monitor, Smartphone, Globe, Eye, Zap, Save } from "lucide-react"
-import { AddRequirementModal } from "@/components/pagecomponents/add-requirement-modal"
+import { AddRequirementModal } from "@/components/requirements/add-requirement-modal"
 import Link from "next/link"
 import { checkAndRecordUsage } from '@/lib/usage-tracker'
 import { TemplateSelect } from "@/components/pagecomponents/template-select"
@@ -181,7 +181,8 @@ export function GeneratorForm() {
   const [selectedRequirement, setSelectedRequirement] = useState("")
   const [customRequirements, setCustomRequirements] = useState("")
   const [fetchingRequirements, setFetchingRequirements] = useState(true)
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateFromSelect | null>(null)
+
   const [model, setModel] = useState("claude-3-5-sonnet-20241022")
   const [testCaseCount, setTestCaseCount] = useState("10") 
   const [selectedProject, setSelectedProject] = useState<string>("")
@@ -193,6 +194,9 @@ export function GeneratorForm() {
   const [selectedFrameworks, setSelectedFrameworks] = useState<Record<string, string>>({})
   const [user, setUser] = useState<UserProfile | null>(null)
   const supabase = createClient();
+  const [generationTitle, setGenerationTitle] = useState("")
+  const [generationDescription, setGenerationDescription] = useState("")
+
 
   
   const router = useRouter()
@@ -277,6 +281,18 @@ export function GeneratorForm() {
   const selectedReqData = availableRequirements.find(r => r.id === selectedRequirement)
   const savedRequirementsText = selectedReqData?.value || ""
   const finalRequirementsText = mode === "quick" ? customRequirements : savedRequirementsText
+  const templateApplied = !!selectedTemplate
+
+
+useEffect(() => {
+  if (mode !== "saved") return
+  if (!selectedReqData) return
+
+  setGenerationTitle(`${selectedReqData.title} Test Cases`)
+  setGenerationDescription(selectedReqData.description || "")
+}, [mode, selectedRequirement])
+
+
 
 
 
@@ -313,8 +329,9 @@ export function GeneratorForm() {
 
     try {
       const formData = new FormData(e.currentTarget)
-      const title = formData.get("title") as string
-      const description = formData.get("description") as string
+     const title = generationTitle
+const description = generationDescription
+
      const modelToUse = model
 const testCaseCountNum = parseInt(testCaseCount, 10)
 const coverageToUse = coverage
@@ -513,7 +530,7 @@ if (isNaN(testCaseCountNum) || testCaseCountNum < 1 || testCaseCountNum > 100) {
 }
 
 function applyTemplateSettings(template: Template | null) {
-  setSelectedTemplate(template)
+  setSelectedTemplate(selectedTemplate)
 
   if (!template) {
     // Reset to defaults
@@ -538,19 +555,15 @@ function applyTemplateSettings(template: Template | null) {
 }
 
 function handleTemplateSelect(template: TemplateFromSelect | null) {
-    setSelectedTemplate(template)
+  setSelectedTemplate(template)
 
-    if (!template) {
-     
-      return
-    }
+  if (!template) return
 
-    const settings = template.template_content
-
-    setModel(settings.model)
-    setTestCaseCount(settings.testCaseCount.toString())
-    setCoverage(settings.coverage)
-  }
+  const settings = template.template_content
+  setModel(settings.model)
+  setTestCaseCount(String(settings.testCaseCount))
+  setCoverage(settings.coverage)
+}
 
 async function fetchProjects() {
   try {
@@ -623,12 +636,30 @@ async function fetchProjects() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Generation Title *</Label>
-                <Input id="title" name="title" placeholder="e.g., User Login Test Cases" required disabled={loading} className="h-10" />
+<Input
+  id="title"
+  name="title"
+  value={generationTitle}
+  onChange={(e) => setGenerationTitle(e.target.value)}
+  placeholder="e.g., User Login Test Cases"
+  required
+  disabled={loading}
+  className="h-10"
+/>
+
+
               </div>
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
-                <Input id="description" name="description" placeholder="Brief description..." disabled={loading} className="h-10" />
-              </div>
+<Input
+  id="description"
+  name="description"
+  value={generationDescription}
+  onChange={(e) => setGenerationDescription(e.target.value)}
+  placeholder="Brief description..."
+  disabled={loading}
+  className="h-10"
+/>              </div>
             </div>
 
             {/* Requirements Section */}
@@ -843,6 +874,8 @@ Example:
 </div>
 
             {/* Settings row */}
+            {!templateApplied && (
+  <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="model">AI Model</Label>
@@ -904,6 +937,8 @@ Example:
                 </SelectContent>
               </Select>
             </div>
+             </>
+)}
 
             <Button type="submit" className="w-full h-11" disabled={loading}>
               {loading ? (

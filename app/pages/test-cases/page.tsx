@@ -1,6 +1,6 @@
 // app/pages/test-cases/page.tsx (Server Component)
 import { Suspense } from "react";
-import { TabbedTestCaseTable } from "@/components/pagecomponents/test-case-table";
+import { TabbedTestCaseTable } from "@/components/testcase-management/test-case-table";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Plus } from "lucide-react";

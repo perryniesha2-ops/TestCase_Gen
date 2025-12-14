@@ -154,6 +154,10 @@ export function TemplateSelect({ value, onSelect, disabled }: TemplateSelectProp
     onSelect(null)
   }
 
+
+
+
+
   const favoriteTemplates = templates.filter(t => t.is_favorite)
 
   return (

@@ -60,6 +60,8 @@ interface ProjectSelectProps {
   value?: string
   onSelect: (project: Project | null) => void
   disabled?: boolean
+  placeholder?: string
+  allowEmpty?: boolean
 }
 
 const projectIcons: Record<string, React.ComponentType<{ className?: string }>> = {

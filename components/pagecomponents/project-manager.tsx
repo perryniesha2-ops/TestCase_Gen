@@ -368,7 +368,10 @@ export function ProjectManager() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-        
+          <h1 className="text-3xl font-bold">Projects</h1>
+          <p className="text-muted-foreground mt-1">
+            Organize your test suites, requirements, and templates
+          </p>
         </div>
         <Button onClick={openNewDialog} size="lg">
           <Plus className="h-5 w-5 mr-2" />

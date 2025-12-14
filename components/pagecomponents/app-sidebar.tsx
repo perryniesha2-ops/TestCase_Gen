@@ -1,5 +1,8 @@
 "use client";
 
+
+import Image from "next/image"
+
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -14,7 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   Home,
   FlaskConical,
@@ -59,7 +62,7 @@ const navigation = [
   { name: "Test Cases", href: "/pages/test-cases", icon: FileText },
   { name: "Test Suites", href: "/pages/test-library", icon: Library },
   { name: "Templates", href: "/pages/template-manager", icon: Layout },
-  { name: "Projects", href: "/pages/proe-manager", icon: Newspaper },
+  { name: "Projects", href: "/pages/project-manager", icon: Newspaper },
 
 
 ];
@@ -156,28 +159,30 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
   const SidebarContent = () => (
     <div className="flex h-full flex-col">
       {/* Brand / Collapse toggle */}
-      <div className={cn("flex h-16 items-center border-b", collapsed ? "px-2" : "px-4")}>
-        <div className={cn("flex items-center gap-0", collapsed && "w-full justify-center")}>
-             <Link
-        href="/pages/dashboard"
-        className={cn(
-          "flex items-center font-semibold shrink-0",
-          collapsed ? "w-full justify-center gap-0" : "gap-2 md:gap-3"
-        )}
-      >
-         <img
-            src="/logo-sq-dark.svg"
-            alt="SynthQA Logo"
-            className="hidden dark:block h-60 md:h-50 w-auto"
-          />
-          <img
-            src="/logo-sq-light.svg"
-            alt="SynthQA Logo"
-            className="block dark:hidden h-50 md:h-50 w-auto"
-          />
-
-
-      </Link>
+      <div className={cn("flex h-20 items-center border-b", collapsed ? "px-2" : "px-4")}>
+        <div className={cn("flex items-center gap-2", collapsed && "w-full justify-center")}>
+              <Link href="/pages/dashboard" className="flex items-center gap-10 md:gap-10 font-semibold">
+    {/* Dark-mode logo */}
+    <Image
+      src="/logo-sq-dark.svg"
+      alt="SynthQA Logo"
+      width={5000      }
+      height={2000}
+      className="hidden dark:inline-block h-20 w-auto sm:h-20"
+      loading="eager"
+      priority
+    />
+    {/* Light-mode logo */}
+    <Image
+      src="/logo-sq-light.svg"
+      alt="SynthQA Logo"
+      width={1000}
+      height={100}
+      className="inline-block dark:hidden h-20 w-auto sm:h-20"
+      loading="eager"
+      priority
+    />
+  </Link>
 
         </div>
         {/* collapse/expand button (desktop only) */}
@@ -292,35 +297,31 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
   return (
     <>
       {/* Desktop Sidebar (collapsible width) */}
-      <aside
-        className={cn(
-          "hidden lg:block border-r bg-background transition-[width] duration-200 ease-in-out",
-          collapsed ? "w-[56px]" : "w-64",
-          className
-        )}
-      >
-        <SidebarContent />
-      </aside>
-
+      <aside className={cn( 
+        "hidden md:block border-r bg-background transition-[width] duration-200 ease-in-out", 
+        collapsed ? "w-[56px]" : "w-64", 
+        className )} > 
+        <SidebarContent /> </aside>
       {/* Mobile Sidebar (Sheet) */}
-      <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
-        <SheetTrigger asChild>
-          <Button variant="outline" size="icon" className="lg:hidden fixed top-4 left-4 z-50">
-            <Menu className="h-4 w-4" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-64">
-          {/* Always expanded in mobile for usability */}
-          <div className="flex h-full flex-col">
-            {/* simple header with close lives in SheetContent already */}
-            <div className="flex-1">
-              {/* Render expanded variant inside mobile */}
-              {/** reuse component but force expanded by temporarily overriding collapsed */}
-              <AppSidebarInnerExpandedForMobile user={user} loading={loading} handleSignOut={handleSignOut} />
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
+     <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}> 
+      <SheetTrigger asChild> 
+        <Button variant="outline" size="icon" className="md:hidden fixed top-4 left-4 z-50"> 
+          <Menu className="h-4 w-4" /> 
+          </Button> 
+          </SheetTrigger>
+          <SheetContent side="left" className="p-0 w-64"> 
+            <SheetHeader className="sr-only"> 
+              <SheetTitle>Navigation Menu</SheetTitle> 
+              </SheetHeader> 
+              <div className="flex h-full flex-col"> 
+                <div className="flex-1"> 
+                  <AppSidebarInnerExpandedForMobile user={user} loading={loading} handleSignOut={handleSignOut} /> 
+                  </div> 
+                  </div> 
+                  </SheetContent> 
+                  </Sheet> 
+
+
     </>
   );
 }

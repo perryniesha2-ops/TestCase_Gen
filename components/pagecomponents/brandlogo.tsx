@@ -15,6 +15,7 @@ export function Logo({ className }: { className?: string }) {
         loading="eager"
         decoding="async"
       />
+      
     </picture>
   );
 }
