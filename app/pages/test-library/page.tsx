@@ -1,4 +1,3 @@
-import { TestSuiteManager } from "@/components/testcase-management/test_suites/test-suite-manager";
 import { TestSuitesPage } from "@/components/testcase-management/test_suites/tests-suites";
 
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
