@@ -13,6 +13,9 @@ import { LoginForm } from "@/components/auth/login-form"
 import {PrivacySheet} from "@/components/legal/PrivacySheet"
 import {TermsSheet} from "@/components/legal/TermsSheet"
 import {ContactSheet} from "@/components/pagecomponents/contactSheet"
+import { Logo } from "@/components/pagecomponents/brandlogo"
+import Image from "next/image"
+
 
 
 
@@ -21,12 +24,28 @@ export default function LoginPage() {
   return (
     <div className="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
       <div className="flex w-full max-w-sm flex-col gap-6">
-        <a href="#" className="flex items-center gap-2 self-center font-medium">
-          <div className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md">
-            <GalleryVerticalEnd className="size-4" />
-          </div>
-          Synth QA
-        </a>
+            <Image
+                 src="/logo-sq-dark.svg"
+                 alt="SynthQA Logo"
+                 width={5000      }
+                 height={2000}
+                 className="hidden dark:inline-block h-20 w-auto sm:h-20"
+                 loading="eager"
+                 priority
+               />
+               {/* Light-mode logo */}
+               <Image
+                 src="/logo-sq-light.svg"
+                 alt="SynthQA Logo"
+                 width={1000}
+                 height={100}
+                 className="inline-block dark:hidden h-20 w-auto sm:h-20"
+                 loading="eager"
+                 priority
+               />
+
+
+            
         <LoginForm />
 
       </div>

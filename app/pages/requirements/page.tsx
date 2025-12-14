@@ -1,5 +1,5 @@
-import { RequirementsList } from "@/components/pagecomponents/requirements-list";
-import { AddRequirementModal } from "@/components/pagecomponents/add-requirement-modal";
+import { RequirementsList } from "@/components/requirements/requirements-list";
+import { AddRequirementModal } from "@/components/requirements/add-requirement-modal";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
