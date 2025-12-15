@@ -72,7 +72,8 @@ export async function middleware(request: NextRequest) {
                           request.nextUrl.pathname.startsWith('/pages/terms')    ||
                           request.nextUrl.pathname.startsWith('/dashboard') ||
                           request.nextUrl.pathname.startsWith('/pages/test-cases') ||
-                          request.nextUrl.pathname.startsWith('/pages/generate')  
+                          request.nextUrl.pathname.startsWith('/pages/generate')  ||
+                          request.nextUrl.pathname.startsWith('/pages/signup')
                        
                          
 
