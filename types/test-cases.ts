@@ -94,6 +94,8 @@ export interface TestSession {
   environment: string
   actual_start?: string
     stats: SessionStats
+    test_cases_completed: number
+    progress_percentage: number
 
 }
 
@@ -156,6 +158,8 @@ export interface TestSuite {
   actual_end_date?: string
   created_at: string
   test_case_count?: number
+  project_id: string | null
+  projects?: Project
   execution_stats?: {
     total: number
     passed: number
@@ -163,8 +167,7 @@ export interface TestSuite {
     skipped: number
     blocked: number
   }
-    project_id: string | null
-    projects?: Project
+   
 }
 
 export interface SessionStats {
@@ -219,6 +222,25 @@ export interface Attachment {
 }
 
 
+
+export type ExecutionHistoryRow = {
+  execution_id: string
+  suite_id: string
+  suite_name: string
+  session_id: string | null
+
+  test_case_id: string
+  test_title: string
+
+  execution_status: ExecutionStatus
+  failure_reason: string | null
+
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+
+  evidence_count: number
+}
 
 
 

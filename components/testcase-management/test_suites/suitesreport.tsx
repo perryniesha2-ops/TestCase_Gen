@@ -501,8 +501,7 @@ async function fetchSuiteExecutionStats(
       {/* Header with Controls */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Test Suite Reports</h2>
-          <p className="text-muted-foreground">Analytics and insights from test execution data</p>
+         
         </div>
         <div className="flex items-center gap-4">
           {showAllSuites && (
@@ -554,7 +553,7 @@ async function fetchSuiteExecutionStats(
           </CardContent>
         </Card>
       ) : (
-        <Tabs defaultValue="overview" className="space-y-6">
+        <Tabs defaultValue="overview" className="space-y-20">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="performance">Test Performance</TabsTrigger>

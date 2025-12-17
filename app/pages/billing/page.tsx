@@ -12,7 +12,8 @@ export default function Billing() {
       <AppSidebar className="hidden md:block" />
 
       <div className="flex min-h-screen flex-col px-4 md:px-6">
-        <SiteHeader />
+        <SiteHeader  title="Billing"
+        subtitle="Manage and Update Your Subsription"/>
 
             <BillingPage />
     </div>

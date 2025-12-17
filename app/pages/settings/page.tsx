@@ -12,7 +12,8 @@ export default function Settings() {
           <AppSidebar className="hidden md:block" />
           {/* Main content */}
           <div className="flex min-h-screen flex-col px-4 md:px-6">
-            <SiteHeader />     
+            <SiteHeader title="Settings"
+        subtitle="Manage your account settings, preferences, and profile information"/>
             
       <SettingsPage />
        </div>

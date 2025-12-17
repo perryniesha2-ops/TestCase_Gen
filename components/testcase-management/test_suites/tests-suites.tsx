@@ -74,6 +74,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
+import { ExecutionHistory } from "./executionhistory"
 
 interface FormData {
   name: string
@@ -396,19 +397,40 @@ export function TestSuitesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Test Suites</h1>
-          <p className="text-muted-foreground">
-            Organize and execute your test cases in collections
-          </p>
+          
         </div>
         <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
           <Plus className="h-4 w-4" />
           New Test Suite
         </Button>
       </div>
+        {/* Main Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="suites" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Test Suites ({testSuites.length})
+          </TabsTrigger>
+        
+        <TabsTrigger value="history" className="flex items-center gap-2">
+       <Clock className="h-4 w-4" />
+        Execution History
+        </TabsTrigger>
+
+          <TabsTrigger value="reports" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Reports &amp; Analytics
+          </TabsTrigger>
+        </TabsList>
+
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      
+
+    
+        {/* Test Suites Tab */}
+        <TabsContent value="suites" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-card border rounded-lg p-4">
           <div className="text-2xl font-bold">{summaryStats.total}</div>
           <div className="text-sm text-muted-foreground">Total Suites</div>
@@ -426,24 +448,9 @@ export function TestSuitesPage() {
           <div className="text-sm text-muted-foreground">Total Test Cases</div>
         </div>
       </div>
-
-      {/* Main Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="suites" className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            Test Suites ({testSuites.length})
-          </TabsTrigger>
-          <TabsTrigger value="reports" className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Reports &amp; Analytics
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Test Suites Tab */}
-        <TabsContent value="suites" className="space-y-4">
           {/* Search and Filter */}
           <div className="flex items-center gap-4">
+            
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -665,7 +672,13 @@ export function TestSuitesPage() {
         <TabsContent value="reports">
           <SuiteReports showAllSuites={true} />
         </TabsContent>
-      </Tabs>
+          
+      {/* Execution Dialog */}
+      <TabsContent value="history">
+  <ExecutionHistory />
+</TabsContent>
+          </Tabs>
+
 
       {/* Create Test Suite Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>

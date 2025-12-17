@@ -78,6 +78,8 @@ import type {
 import { TestCaseFormDialog } from "./test-case-form-dialog"
 import { TestExecutionDialog } from "./test-execution-dialog"
 import { DeleteTestCaseDialog } from "./delete-test-case-dialog"
+import { BulkActionsToolbar } from "./BulkActionsToolbar"
+import { useBulkActions } from "@/hooks/useBulkActions"
 
 const platformIcons = {
   web: Monitor,
@@ -137,6 +139,18 @@ export function TabbedTestCaseTable() {
     fetchProjects()
   }, [])
 
+  const {
+    selectedIds,
+    isProcessing,
+    toggleSelection,
+    selectAll,
+    deselectAll,
+    bulkUpdate,
+    bulkDelete,
+    bulkAddToSuite,
+    bulkExport,
+  } = useBulkActions(testCases, fetchData)
+
   async function fetchProjects() {
     try {
       const supabase = createClient()
@@ -174,6 +188,8 @@ export function TabbedTestCaseTable() {
     }
   }
 
+
+  
   async function fetchData() {
     try {
       setLoading(true)
@@ -447,7 +463,7 @@ export function TabbedTestCaseTable() {
 
       const statusLabels = {
         draft: "Draft",
-        active: "Approved",
+        active: "Active",
         archived: "Archived",
       }
 
@@ -829,6 +845,9 @@ export function TabbedTestCaseTable() {
         </Button>
       </div>
 
+      
+
+
       {/* Tabbed Interface */}
       <Tabs defaultValue="regular" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
@@ -874,9 +893,33 @@ export function TabbedTestCaseTable() {
 
           {/* Test Cases Table */}
           <div className="border rounded-lg">
+          <BulkActionsToolbar 
+          selectedIds={selectedIds} 
+          allTestCases={testCases} 
+          onSelectAll={selectAll} 
+          onDeselectAll={deselectAll} 
+          onBulkUpdate={bulkUpdate} 
+          onBulkDelete={bulkDelete}
+          onBulkAddToSuite={bulkAddToSuite}          
+          onBulkExport={bulkExport}
+
+           />
+            
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[50px]">
+              <Checkbox
+                checked={selectedIds.size === testCases.length && testCases.length > 0}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    selectAll()
+                  } else {
+                    deselectAll()
+                  }
+                }}
+              />
+            </TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead className="w-[140px]">Project</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
@@ -908,6 +951,12 @@ export function TabbedTestCaseTable() {
 
                     return (
                       <TableRow key={testCase.id}>
+                        <TableCell>
+                <Checkbox
+                  checked={selectedIds.has(testCase.id)}
+                  onCheckedChange={() => toggleSelection(testCase.id)}
+                />
+              </TableCell>
                         {/* Title */}
                         <TableCell className="font-medium">
                           <div
@@ -972,7 +1021,7 @@ export function TabbedTestCaseTable() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="draft">Draft</SelectItem>
-                              <SelectItem value="active">Approved</SelectItem>
+                              <SelectItem value="active">Active</SelectItem>
                               <SelectItem value="archived">Archived</SelectItem>
                             </SelectContent>
                           </Select>
