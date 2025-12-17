@@ -20,7 +20,6 @@ import { useTheme as useNextTheme } from "next-themes"
 
 type ThemeOption = "light" | "dark" | "system"
 
-
 interface UserProfile {
   id: string
   email: string
@@ -40,6 +39,26 @@ interface UserProfile {
       count: number
     }
   }
+}
+
+/**
+ * Get display name for AI model
+ */
+function getModelDisplayName(modelKey: string): string {
+  // Latest models (Dec 2024)
+  if (modelKey === "claude-sonnet-4-5") return "Claude Sonnet 4.5"
+  if (modelKey === "claude-haiku-4-5") return "Claude Haiku 4.5"
+  if (modelKey === "claude-opus-4-5") return "Claude Opus 4.5"
+  if (modelKey === "gpt-5-mini") return "GPT-5 Mini"
+  if (modelKey === "gpt-5.2") return "GPT-5.2"
+  if (modelKey === "gpt-4o") return "GPT-4o"
+  if (modelKey === "gpt-4o-mini") return "GPT-4o Mini"
+  
+  // Legacy models
+  if (modelKey.includes("claude-3-5-sonnet")) return "Claude 3.5 Sonnet"
+  if (modelKey.includes("claude-3-5-haiku")) return "Claude 3.5 Haiku"
+  
+  return modelKey
 }
 
 export default function SettingsPage() {
@@ -63,9 +82,10 @@ export default function SettingsPage() {
   const [emailNotifications, setEmailNotifications] = useState(true)
   const [pushNotifications, setPushNotifications] = useState(true)
   const [marketingEmails, setMarketingEmails] = useState(false)
-  const [defaultModel, setDefaultModel] = useState('claude-3-5-sonnet-20241022')
+  const [defaultModel, setDefaultModel] = useState('claude-sonnet-4-5') 
   const [defaultCoverage, setDefaultCoverage] = useState('comprehensive')
   const [defaultCount, setDefaultCount] = useState(10)
+  
 
   const router = useRouter()
   const supabase = createClient()
@@ -77,13 +97,11 @@ export default function SettingsPage() {
   async function fetchUserProfile() {
   try {
     const { data: { user: authUser } } = await supabase.auth.getUser()
-
     if (!authUser) {
       router.push("/pages/login")
       return
     }
 
-    // Default preferences – matches your DB default
     const defaultPreferences: UserProfile["preferences"] = {
       theme: "system",
       notifications: {
@@ -92,13 +110,12 @@ export default function SettingsPage() {
         marketing: false,
       },
       test_case_defaults: {
-        model: "claude-3-5-sonnet-20241022",
+        model: "claude-sonnet-4-5",
         coverage: "comprehensive",
         count: 10,
       },
     }
 
-    // Try to load profile; `maybeSingle` does NOT error on 0 rows
     const { data: profile, error } = await supabase
       .from("user_profiles")
       .select("*")
@@ -113,40 +130,53 @@ export default function SettingsPage() {
 
     let finalProfile = profile
 
-// If there is no profile row yet, create-or-update one using UPSERT
-if (!finalProfile) {
-  const { data: newProfile, error: upsertError } = await supabase
-    .from("user_profiles")
-    .upsert(
-      {
-        id: authUser.id, // PK, FK to auth.users
-        email: authUser.email,
-        full_name: authUser.user_metadata?.full_name ?? null,
-        avatar_url: authUser.user_metadata?.avatar_url ?? null,
-        preferences: authUser.user_metadata?.preferences ?? defaultPreferences,
-      },
-      {
-        onConflict: "id", // matches PRIMARY KEY (id)
-      },
-    )
-    .select("*")
-    .single()
+    if (!finalProfile) {
+      const { data: newProfile, error: upsertError } = await supabase
+        .from("user_profiles")
+        .upsert(
+          {
+            id: authUser.id,
+            email: authUser.email,
+            full_name: authUser.user_metadata?.full_name ?? null,
+            avatar_url: authUser.user_metadata?.avatar_url ?? null,
+            preferences: authUser.user_metadata?.preferences ?? defaultPreferences,
+          },
+          {
+            onConflict: "id",
+          },
+        )
+        .select("*")
+        .single()
 
-  if (upsertError) {
-    console.error("Error upserting user profile:", upsertError)
-    toast.error("Failed to initialize user profile")
-    return
-  }
+      if (upsertError) {
+        console.error("Error upserting user profile:", upsertError)
+        toast.error("Failed to initialize user profile")
+        return
+      }
 
-  finalProfile = newProfile
-}
+      finalProfile = newProfile
+    }
 
-
-    // Merge preferences from profile, auth metadata, and defaults
     const preferences: UserProfile["preferences"] =
       (finalProfile.preferences as UserProfile["preferences"]) ??
       (authUser.user_metadata?.preferences as UserProfile["preferences"]) ??
       defaultPreferences
+
+    const modelMigrations: Record<string, string> = {
+      "claude-3-5-sonnet-20241022": "claude-sonnet-4-5",
+      "claude-3-5-haiku-20241022": "claude-haiku-4-5",
+      "gpt-4o-2024-11-20": "gpt-4o",
+      "gpt-4o-mini-2024-07-18": "gpt-4o-mini",
+    }
+
+    let migratedModel = preferences.test_case_defaults.model
+    if (modelMigrations[migratedModel]) {
+      console.log(`🔄 Migrating model: ${migratedModel} → ${modelMigrations[migratedModel]}`)
+      migratedModel = modelMigrations[migratedModel]
+      
+      // Update in database for future
+      preferences.test_case_defaults.model = migratedModel
+    }
 
     const userProfile: UserProfile = {
       id: authUser.id,
@@ -159,18 +189,17 @@ if (!finalProfile) {
 
     setUser(userProfile)
 
-    // Populate form state
+    // Populate form state with migrated model
     setFullName(userProfile.full_name || "")
     setEmail(userProfile.email)
     setThemePref(preferences.theme)
     setEmailNotifications(preferences.notifications.email)
     setPushNotifications(preferences.notifications.push)
     setMarketingEmails(preferences.notifications.marketing)
-    setDefaultModel(preferences.test_case_defaults.model)
+    setDefaultModel(migratedModel) // ✅ Use migrated model
     setDefaultCoverage(preferences.test_case_defaults.coverage)
     setDefaultCount(preferences.test_case_defaults.count)
 
-    // Sync theme with next-themes
     setNextTheme(preferences.theme)
   } catch (error) {
     console.error("Error fetching user profile:", error)
@@ -179,13 +208,12 @@ if (!finalProfile) {
     setLoading(false)
   }
 }
-
   async function handleAvatarUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file || !user) return
 
     // Validate file
-    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+    if (file.size > 5 * 1024 * 1024) {
       toast.error('File size must be less than 5MB')
       return
     }
@@ -198,7 +226,6 @@ if (!finalProfile) {
     setUploadingAvatar(true)
 
     try {
-      // Upload to Supabase Storage
       const fileExt = file.name.split('.').pop()
       const fileName = `${user.id}-${Date.now()}.${fileExt}`
       
@@ -256,69 +283,70 @@ if (!finalProfile) {
   }
 
   async function handleSaveProfile() {
-  if (!user) return
+    if (!user) return
 
-  setSaving(true)
+    setSaving(true)
 
-  try {
-    const preferences = {
-      theme: themePref,
-      notifications: {
-        email: emailNotifications,
-        push: pushNotifications,
-        marketing: marketingEmails,
-      },
-      test_case_defaults: {
-        model: defaultModel,
-        coverage: defaultCoverage,
-        count: defaultCount,
-      },
-    }
+    try {
+      const preferences = {
+        theme: themePref,
+        notifications: {
+          email: emailNotifications,
+          push: pushNotifications,
+          marketing: marketingEmails,
+        },
+        test_case_defaults: {
+          model: defaultModel,
+          coverage: defaultCoverage,
+          count: defaultCount,
+        },
+      }
 
-    // 1) keep auth metadata in sync
-    const { error: authError } = await supabase.auth.updateUser({
-      data: {
-        full_name: fullName,
-        preferences,
-      },
-    })
-    if (authError) throw authError
-
-    // 2) persist in user_profiles
-    const { error: profileError } = await supabase
-      .from("user_profiles")
-      .update({
-        full_name: fullName,
-        email,
-        preferences,
-        updated_at: new Date().toISOString(),
+      // 1) Update auth metadata
+      const { error: authError } = await supabase.auth.updateUser({
+        data: {
+          full_name: fullName,
+          preferences,
+        },
       })
-      .eq("id", user.id)
+      if (authError) throw authError
 
-    if (profileError) throw profileError
+      // 2) Update user_profiles table
+      const { error: profileError } = await supabase
+        .from("user_profiles")
+        .update({
+          full_name: fullName,
+          email,
+          preferences,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id)
 
-    setUser((prev) =>
-      prev
-        ? {
-            ...prev,
-            full_name: fullName,
-            preferences,
-          }
-        : null,
-    )
+      if (profileError) throw profileError
 
-    // 3) apply theme to UI immediately
-    setNextTheme(themePref)
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              full_name: fullName,
+              preferences,
+            }
+          : null,
+      )
 
-    toast.success("Profile updated successfully!")
-  } catch (error) {
-    console.error("Error updating profile:", error)
-    toast.error("Failed to update profile")
-  } finally {
-    setSaving(false)
+      // 3) Apply theme immediately
+      setNextTheme(themePref)
+
+      toast.success("Profile updated successfully!", {
+        description: "Your defaults will be used in the test case generator"
+      })
+    } catch (error) {
+      console.error("Error updating profile:", error)
+      toast.error("Failed to update profile")
+    } finally {
+      setSaving(false)
+    }
   }
-}
-
 
   async function handleChangePassword() {
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -518,8 +546,6 @@ if (!finalProfile) {
                   </p>
                 </div>
               </div>
-
-              
             </CardContent>
           </Card>
         </TabsContent>
@@ -530,24 +556,32 @@ if (!finalProfile) {
             <CardHeader>
               <CardTitle>Test Case Defaults</CardTitle>
               <CardDescription>
-                Set your default preferences for test case generation
+                Set your default preferences for test case generation. 
+                These will be automatically applied when you generate test cases.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {/* AI Model Selector - ✅ UPDATED */}
                 <div className="space-y-2">
                   <Label htmlFor="defaultModel">Default AI Model</Label>
-                  <Select value={defaultModel} onValueChange={setDefaultModel}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</SelectItem>
-                      <SelectItem value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</SelectItem>
-                      <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                      <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
-                    </SelectContent>
-                  </Select>
+                 <Select value={defaultModel} onValueChange={setDefaultModel}>
+  <SelectTrigger>
+    <SelectValue />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="claude-sonnet-4-5">Claude Sonnet 4.5 </SelectItem>
+    <SelectItem value="claude-haiku-4-5">Claude Haiku 4.5 </SelectItem>
+    <SelectItem value="claude-opus-4-5">Claude Opus 4.5 </SelectItem>
+    <SelectItem value="gpt-5-mini">GPT-5 Mini</SelectItem>
+    <SelectItem value="gpt-5.2">GPT-5.2 </SelectItem>
+    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+    <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
+  </SelectContent>
+</Select>
+                  <p className="text-xs text-muted-foreground">
+                    Currently: <span className="font-medium">{getModelDisplayName(defaultModel)}</span>
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -576,44 +610,52 @@ if (!finalProfile) {
                       <SelectItem value="15">15 test cases</SelectItem>
                       <SelectItem value="20">20 test cases</SelectItem>
                       <SelectItem value="30">30 test cases</SelectItem>
+                      <SelectItem value="50">50 test cases</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+
+              {/* Info Box */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg dark:bg-blue-950/20 dark:border-blue-900">
+                <p className="text-sm text-blue-900 dark:text-blue-100">
+                  💡 <strong>Tip:</strong> These defaults will be automatically applied when you open the test case generator. 
+                  You can always override them for specific generations.
+                </p>
+              </div>
             </CardContent>
           </Card>
 
-         <Card>
-  <CardHeader>
-    <CardTitle>Appearance</CardTitle>
-    <CardDescription>
-      Customize how the application looks and feels
-    </CardDescription>
-  </CardHeader>
-  <CardContent>
-    <div className="space-y-2">
-      <Label htmlFor="theme">Theme</Label>
-      <Select
-        value={themePref}
-        onValueChange={(value) => {
-          const v = value as ThemeOption
-          setThemePref(v)
-          setNextTheme(v)      // updates shadcn / next-themes immediately
-        }}
-      >
-        <SelectTrigger className="w-48">
-          <SelectValue placeholder="Select theme" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="light">Light</SelectItem>
-          <SelectItem value="dark">Dark</SelectItem>
-          <SelectItem value="system">System</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
-  </CardContent>
-</Card>
-
+          <Card>
+            <CardHeader>
+              <CardTitle>Appearance</CardTitle>
+              <CardDescription>
+                Customize how the application looks and feels
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Label htmlFor="theme">Theme</Label>
+                <Select
+                  value={themePref}
+                  onValueChange={(value) => {
+                    const v = value as ThemeOption
+                    setThemePref(v)
+                    setNextTheme(v)
+                  }}
+                >
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Select theme" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="light">Light</SelectItem>
+                    <SelectItem value="dark">Dark</SelectItem>
+                    <SelectItem value="system">System</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Notifications Tab */}
@@ -782,29 +824,29 @@ if (!finalProfile) {
                 </Dialog>
               </div>
             </CardContent>
-            
           </Card>
-          
         </TabsContent>
+
+        {/* Save Button - Shows on all tabs */}
         <div className="flex items-center gap-2 pt-4 border-t">
-                <Button onClick={handleSaveProfile} disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Save Changes
-                    </>
-                  )}
-                </Button>
-                
-                <div className="text-xs text-muted-foreground">
-                  Account created: {new Date(user.created_at).toLocaleDateString()}
-                </div>
-              </div>
+          <Button onClick={handleSaveProfile} disabled={saving}>
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save Changes
+              </>
+            )}
+          </Button>
+          
+          <div className="text-xs text-muted-foreground">
+            Account created: {new Date(user.created_at).toLocaleDateString()}
+          </div>
+        </div>
       </Tabs>
     </div>
   )

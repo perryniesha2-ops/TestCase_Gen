@@ -35,7 +35,6 @@ export function ResetPasswordForm() {
         return
       }
 
-      console.log('🔍 Checking reset token...')
       
       
       setIsValidToken(true)
@@ -64,7 +63,6 @@ export function ResetPasswordForm() {
       formData.append("token", token)
       formData.append("password", password)
 
-      console.log('🔑 Updating password with custom token...')
       const result = await customUpdatePassword(formData)
       
       if (result?.error) {
@@ -80,7 +78,6 @@ export function ResetPasswordForm() {
         }
         setLoading(false)
       } else if (result?.success) {
-        console.log('✅ Password updated successfully!')
         setSuccess(true)
         toast.success("Password updated!", {
           description: result.message || "Your password has been successfully updated.",

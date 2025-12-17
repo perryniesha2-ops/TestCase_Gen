@@ -242,8 +242,16 @@ export type ExecutionHistoryRow = {
   evidence_count: number
 }
 
-
-
+export interface TestAttachment {
+  id: string
+  file_name: string
+  file_path: string
+  file_type: string
+  file_size: number | null  // ✅ Fixed: allow null
+  description?: string | null  // ✅ Also make this explicitly nullable
+  step_number?: number | null  // ✅ And this
+  created_at: string
+}
 
 
 

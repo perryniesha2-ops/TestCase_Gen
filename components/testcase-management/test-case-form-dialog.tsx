@@ -88,9 +88,7 @@ export function TestCaseFormDialog({
   // Populate form when editing
   useEffect(() => {
     if (mode === "edit" && testCase && open) {
-      console.log("📝 Editing test case:", testCase.title)
-      console.log("🔍 Test type from DB:", testCase.test_type)
-      console.log("📁 Project ID from DB:", testCase.project_id)
+   
       
       // Normalize test_type to ensure it matches our options
       const testTypesList = testTypes as readonly string[]
@@ -114,8 +112,7 @@ export function TestCaseFormDialog({
         project_id: testCase.project_id || null,
       })
       
-      console.log("✅ Form populated with test_type:", normalizedTestType)
-      console.log("✅ Form populated with project_id:", testCase.project_id || null)
+     
     } else if (mode === "create" && open) {
       resetForm()
     }
@@ -208,7 +205,6 @@ export function TestCaseFormDialog({
         // Edit mode
         if (!testCase) return
 
-        console.log("💾 Saving test case with project_id:", formData.project_id)
 
         const { error } = await supabase
           .from("test_cases")
@@ -228,7 +224,6 @@ export function TestCaseFormDialog({
 
         if (error) throw error
         
-        console.log("✅ Test case updated successfully with project_id:", formData.project_id)
         toast.success("Test case updated successfully")
       }
 

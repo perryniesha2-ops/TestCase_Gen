@@ -41,16 +41,92 @@ function anthropicTextFromContent(blocks: unknown): string {
   return blocks.filter(isAnthropicTextBlock).map((b) => b.text).join("\n\n").trim();
 }
 
+// ----- AI Model Configuration -----
+// Updated: December 2024
+// Check for updates: https://docs.anthropic.com/claude/docs/models-overview
+//                    https://platform.openai.com/docs/models
+
+const AI_MODELS = {
+  // Anthropic Claude (Latest - December 2024)
+  "claude-sonnet-4-5": "claude-sonnet-4-5-20250514", // Latest Sonnet 4.5 - Recommended
+  "claude-haiku-4-5": "claude-haiku-4-5-20250514", // Latest Haiku 4.5 - Fast
+  "claude-opus-4-5": "claude-opus-4-5-20250514", // Latest Opus 4.5 - Max quality
+  
+  // OpenAI GPT (Latest - December 2024)
+  "gpt-5-mini": "gpt-5-mini", // GPT-5 Mini - Balanced
+  "gpt-5.2": "gpt-5.2", // GPT-5.2 - Premium
+  "gpt-4o": "gpt-4o-2024-11-20", // GPT-4o
+  "gpt-4o-mini": "gpt-4o-mini-2024-07-18", // GPT-4o Mini
+} as const;
+
+// Model metadata for UI display
+const MODEL_INFO = {
+  "claude-sonnet-4-5": {
+    name: "Claude Sonnet 4.5",
+    provider: "Anthropic",
+    description: "Latest Sonnet - Best balance of speed & quality",
+    hint: "Recommended",
+    recommended: true,
+    contextWindow: 200000,
+  },
+  "claude-haiku-4-5": {
+    name: "Claude Haiku 4.5",
+    provider: "Anthropic",
+    description: "Fastest Claude model",
+    hint: "Fast",
+    recommended: false,
+    contextWindow: 200000,
+  },
+  "claude-opus-4-5": {
+    name: "Claude Opus 4.5",
+    provider: "Anthropic",
+    description: "Most capable Claude model",
+    hint: "Max quality",
+    recommended: false,
+    contextWindow: 200000,
+  },
+  "gpt-5-mini": {
+    name: "GPT-5 Mini",
+    provider: "OpenAI",
+    description: "Balanced performance and cost",
+    hint: "Balanced",
+    recommended: false,
+    contextWindow: 128000,
+  },
+  "gpt-5.2": {
+    name: "GPT-5.2",
+    provider: "OpenAI",
+    description: "Premium GPT model",
+    hint: "Premium",
+    recommended: false,
+    contextWindow: 128000,
+  },
+  "gpt-4o": {
+    name: "GPT-4o",
+    provider: "OpenAI",
+    description: "Latest GPT-4o - Multimodal",
+    hint: "",
+    recommended: false,
+    contextWindow: 128000,
+  },
+  "gpt-4o-mini": {
+    name: "GPT-4o Mini",
+    provider: "OpenAI",
+    description: "Cost-effective GPT-4o",
+    hint: "",
+    recommended: false,
+    contextWindow: 128000,
+  },
+} as const;
+
+// Default models
+const DEFAULT_MODEL = "claude-sonnet-4-5";
+const FALLBACK_CLAUDE = "claude-sonnet-4-5";
+const FALLBACK_GPT = "gpt-4o";
+
 // ----- Clients -----
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-
-const AI_MODELS = {
-  "claude-3-5-sonnet-20241022": "claude-3-5-sonnet-20241022",
-  "claude-3-5-haiku-20241022": "claude-3-5-haiku-20241022",
-  "gpt-4o": "gpt-4o",
-  "gpt-4o-mini": "gpt-4o-mini",
-} as const;
 
 const COVERAGE_PROMPTS = {
   standard:
@@ -104,7 +180,7 @@ export async function POST(request: Request) {
 
     const requirements = (body.requirements ?? "").trim();
     const requirement_id = body.requirement_id || null;
-    const model = body.model as ModelKey;
+    const modelKey = (body.model as ModelKey) || DEFAULT_MODEL;
     const testCaseCount = Number(body.testCaseCount ?? 10);
     const coverage = body.coverage as CoverageKey;
     const template = body.template ?? "";
@@ -142,7 +218,7 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    if (!(model in AI_MODELS)) {
+    if (!(modelKey in AI_MODELS)) {
       return NextResponse.json(
         { error: "Unsupported AI model", field: "model" },
         { status: 400 }
@@ -155,13 +231,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Quota check (no logging)
+    // Quota check
     try {
       await checkAndRecordUsage(user.id, testCaseCount);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Usage limit exceeded";
       return NextResponse.json({ error: msg, upgradeRequired: true }, { status: 429 });
     }
+
+    // Get actual model string
+    const model = AI_MODELS[modelKey];
 
     // Prompt
     const coverageInstruction = COVERAGE_PROMPTS[coverage];
@@ -186,51 +265,56 @@ Make the test cases practical, executable, and specific to the requirements.
 Include positive tests, negative tests, boundary conditions, and error handling scenarios as appropriate for the coverage level.`;
 
     // ---- Call LLM (primary, then fallback) ----
-    const isAnthropicModel = (model as string).startsWith("claude");
+    const isAnthropicModel = model.startsWith("claude");
     const primary: "anthropic" | "openai" = isAnthropicModel ? "anthropic" : "openai";
     const fallback: "anthropic" | "openai" = isAnthropicModel ? "openai" : "anthropic";
 
     let rawText = "";
     let usedProvider = "";
+    let usedModel = "";
 
     try {
       if (primary === "anthropic") {
         const res = await anthropic.messages.create({
-          model: AI_MODELS[model],
+          model: model,
           max_tokens: 8000,
           messages: [{ role: "user", content: promptUsed }],
         });
         rawText = anthropicTextFromContent(res.content);
         usedProvider = "anthropic";
+        usedModel = model;
       } else {
         const res = await openai.chat.completions.create({
-          model: AI_MODELS[model],
+          model: model,
           messages: [{ role: "user", content: promptUsed }],
           max_tokens: 8000,
         });
         rawText = res.choices?.[0]?.message?.content ?? "";
         usedProvider = "openai";
+        usedModel = model;
       }
-    } catch {
+    } catch (primaryError) {
       try {
         if (fallback === "anthropic") {
           const res = await anthropic.messages.create({
-            model: "claude-3-5-sonnet-20241022",
+            model: FALLBACK_CLAUDE,
             max_tokens: 8000,
             messages: [{ role: "user", content: promptUsed }],
           });
           rawText = anthropicTextFromContent(res.content);
           usedProvider = "anthropic";
+          usedModel = FALLBACK_CLAUDE;
         } else {
           const res = await openai.chat.completions.create({
-            model: "gpt-4o",
+            model: FALLBACK_GPT,
             messages: [{ role: "user", content: promptUsed }],
             max_tokens: 8000,
           });
           rawText = res.choices?.[0]?.message?.content ?? "";
           usedProvider = "openai";
+          usedModel = FALLBACK_GPT;
         }
-      } catch {
+      } catch (fallbackError) {
         return NextResponse.json(
           { error: "Generation temporarily unavailable. Please try again later." },
           { status: 503 }
@@ -265,7 +349,7 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     let testCases: GeneratedTestCase[] = [];
     try {
       const structured = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-4o-mini-2024-07-18",
         messages: [{ role: "user", content: structurePrompt }],
         response_format: { type: "json_object" },
         max_tokens: 8000,
@@ -302,7 +386,8 @@ Return ONLY valid JSON, no markdown, no explanation.`;
         title,
         description,
         ai_provider: usedProvider === "anthropic" ? "anthropic" : "openai",
-        prompt_used: promptUsed, // stored server-side; not exposed in response
+        ai_model: usedModel, // Store actual model used
+        prompt_used: promptUsed,
       })
       .select()
       .single();
@@ -324,7 +409,7 @@ Return ONLY valid JSON, no markdown, no explanation.`;
       test_type: tc.test_type || "functional",
       priority: normalizePriority(tc.priority),
       preconditions: tc.preconditions ?? null,
-      test_steps: tc.test_steps, // JSONB
+      test_steps: tc.test_steps, 
       expected_result: tc.expected_result,
       is_edge_case: Boolean(tc.is_edge_case),
       is_manual: false,
@@ -349,11 +434,21 @@ Return ONLY valid JSON, no markdown, no explanation.`;
       test_cases: savedCases,
       count: savedCases.length,
       provider_used: usedProvider,
+      model_used: usedModel,
     });
-  } catch {
+  } catch (error) {
+    console.error("Unexpected error:", error);
     return NextResponse.json(
       { error: "Unexpected error. Please try again." },
       { status: 500 }
     );
   }
+}
+
+// ----- Export model info for frontend -----
+export async function GET() {
+  return NextResponse.json({
+    models: MODEL_INFO,
+    defaultModel: DEFAULT_MODEL,
+  });
 }

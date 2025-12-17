@@ -72,8 +72,7 @@ export async function middleware(request: NextRequest) {
                           request.nextUrl.pathname.startsWith('/pages/terms')    ||
                           request.nextUrl.pathname.startsWith('/dashboard') ||
                           request.nextUrl.pathname.startsWith('/pages/test-library') ||
-                          request.nextUrl.pathname.startsWith('/pages/generate')  ||
-                          request.nextUrl.pathname.startsWith('/pages/signup')
+                          request.nextUrl.pathname.startsWith('/pages/generate')  
                        
                          
 
@@ -84,6 +83,7 @@ export async function middleware(request: NextRequest) {
 
   // Auth routes
   const isAuthRoute = request.nextUrl.pathname.startsWith('/pages/login') 
+  
 
   // Auth callback routes (don't redirect these)
   const isAuthCallback = request.nextUrl.pathname.startsWith('/auth/callback')

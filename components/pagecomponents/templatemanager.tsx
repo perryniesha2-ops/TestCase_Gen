@@ -124,6 +124,35 @@ const categoryColors: Record<TemplateCategory, string> = {
   other: 'bg-gray-500',
 }
 
+/**
+ * Get display name for AI model
+ * Handles both old and new model naming conventions
+ */
+function getModelDisplayName(modelKey: string): string {
+  // Latest models (Dec 2024)
+  if (modelKey === "claude-sonnet-4-5") return "Claude Sonnet 4.5"
+  if (modelKey === "claude-haiku-4-5") return "Claude Haiku 4.5"
+  if (modelKey === "claude-opus-4-5") return "Claude Opus 4.5"
+  if (modelKey === "gpt-5-mini") return "GPT-5 Mini"
+  if (modelKey === "gpt-5.2") return "GPT-5.2"
+  if (modelKey === "gpt-4o") return "GPT-4o"
+  if (modelKey === "gpt-4o-mini") return "GPT-4o Mini"
+  
+  // Legacy models (backwards compatibility)
+  if (modelKey.includes("claude-3-5-sonnet")) return "Claude 3.5 Sonnet"
+  if (modelKey.includes("claude-3-5-haiku")) return "Claude 3.5 Haiku"
+  if (modelKey.includes("claude-sonnet-4")) return "Claude Sonnet 4"
+  if (modelKey.includes("claude-opus-4")) return "Claude Opus 4"
+  if (modelKey.includes("gpt-4-turbo")) return "GPT-4 Turbo"
+  if (modelKey.includes("gpt-3.5")) return "GPT-3.5 Turbo"
+  
+  // Fallback - extract readable name
+  if (modelKey.includes("claude")) return "Claude"
+  if (modelKey.includes("gpt")) return "GPT"
+  
+  return modelKey
+}
+
 export function TemplateManager() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [filteredTemplates, setFilteredTemplates] = useState<Template[]>([])
@@ -138,7 +167,7 @@ export function TemplateManager() {
     name: "",
     description: "",
     category: "functional",
-    model: "claude-3-5-sonnet-20241022",
+    model: "claude-sonnet-4-5", 
     testCaseCount: 10,
     coverage: "comprehensive",
     includeEdgeCases: true,
@@ -345,7 +374,7 @@ export function TemplateManager() {
       name: "",
       description: "",
       category: "functional",
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-5", // Updated to latest
       testCaseCount: 10,
       coverage: "comprehensive",
       includeEdgeCases: true,
@@ -580,8 +609,8 @@ export function TemplateManager() {
                       <div className="text-xs text-muted-foreground space-y-1">
                         <div className="flex justify-between">
                           <span>Model:</span>
-                          <span className="font-mono">
-                            {template.template_content.model.includes("claude") ? "Claude" : "GPT"}
+                          <span className="font-medium">
+                            {getModelDisplayName(template.template_content.model)}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -811,14 +840,27 @@ export function TemplateManager() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="claude-3-5-sonnet-20241022">
-                        Claude 3.5 Sonnet (Recommended)
+                      <SelectItem value="claude-sonnet-4-5">
+                        Claude Sonnet 4.5 (Recommended)
                       </SelectItem>
-                      <SelectItem value="claude-3-5-haiku-20241022">
-                        Claude 3.5 Haiku (Fast)
+                      <SelectItem value="claude-haiku-4-5">
+                        Claude Haiku 4.5 (Fast)
                       </SelectItem>
-                      <SelectItem value="gpt-4o">GPT-4o (Alternative)</SelectItem>
-                      <SelectItem value="gpt-4o-mini">GPT-4o Mini (Economical)</SelectItem>
+                      <SelectItem value="claude-opus-4-5">
+                        Claude Opus 4.5 (Max Quality)
+                      </SelectItem>
+                      <SelectItem value="gpt-5-mini">
+                        GPT-5 Mini (Balanced)
+                      </SelectItem>
+                      <SelectItem value="gpt-5.2">
+                        GPT-5.2 (Premium)
+                      </SelectItem>
+                      <SelectItem value="gpt-4o">
+                        GPT-4o
+                      </SelectItem>
+                      <SelectItem value="gpt-4o-mini">
+                        GPT-4o Mini (Economical)
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

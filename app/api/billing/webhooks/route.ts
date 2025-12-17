@@ -11,9 +11,7 @@ apiVersion: "2025-11-17.clover",
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || ''
 
-export async function POST(request: NextRequest) {
-  console.log('🔔 Webhook endpoint called!')
-  
+export async function POST(request: NextRequest) {  
   try {
     const body = await request.text()
     const headersList = await headers()
@@ -28,25 +26,18 @@ export async function POST(request: NextRequest) {
     let event: Stripe.Event
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
-      console.log('✅ Webhook verified:', event.type)
     } catch (err) {
-      console.error('❌ Webhook signature verification failed:', err)
       return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
     }
 
-    // For now, just log all events to see what's happening
-    console.log(`🔔 Processing webhook: ${event.type}`)
-    console.log(`📝 Event data:`, JSON.stringify(event.data.object, null, 2))
 
     const supabase = await createClient()
 
     switch (event.type) {
       case 'checkout.session.completed': {
-        console.log('💳 Checkout completed!')
         const session = event.data.object as Stripe.Checkout.Session
         
         if (session.subscription) {
-          console.log('🔄 Retrieving subscription...')
           const subscription = await stripe.subscriptions.retrieve(session.subscription as string)
           await handleSubscriptionCreated(supabase, subscription)
         }
@@ -54,20 +45,17 @@ export async function POST(request: NextRequest) {
       }
 
       case 'customer.subscription.created': {
-        console.log('📝 Subscription created!')
         const subscription = event.data.object as Stripe.Subscription
         await handleSubscriptionCreated(supabase, subscription)
         break
       }
 
       case 'invoice.payment_succeeded': {
-        console.log('💰 Payment succeeded!')
         // We'll handle this later
         break
       }
 
       default:
-        console.log(`🤷 Unhandled webhook event: ${event.type}`)
     }
 
     return NextResponse.json({ received: true })
@@ -82,7 +70,6 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleSubscriptionCreated(supabase: SupabaseClient, subscription: Stripe.Subscription) {
-  console.log('🔧 Processing subscription creation...')
   
   // First try to get user ID from subscription metadata
   const userId = subscription.metadata?.user_id
@@ -92,12 +79,10 @@ async function handleSubscriptionCreated(supabase: SupabaseClient, subscription:
     return
   }
   
-  console.log('✅ Found user ID in metadata:', userId)
   
   try {
     // Extract subscription tier from metadata
     const planId = subscription.metadata?.plan_id || 'pro'
-    console.log('📦 Plan ID:', planId)
     
     // Map Stripe statuses to our database constraint values
     const mapSubscriptionStatus = (stripeStatus: string) => {
@@ -116,7 +101,6 @@ async function handleSubscriptionCreated(supabase: SupabaseClient, subscription:
     }
 
     const mappedStatus = mapSubscriptionStatus(subscription.status)
-    console.log(`📊 Mapping Stripe status '${subscription.status}' to '${mappedStatus}'`)
     
     // Update user profile directly using the user ID
     const { error: profileError } = await supabase
@@ -135,7 +119,6 @@ async function handleSubscriptionCreated(supabase: SupabaseClient, subscription:
       throw profileError
     }
 
-    console.log('✅ User profile updated successfully!')
 
     // Update usage limits based on plan (with promotional 20 free for new users)
     const planLimits = {
@@ -148,8 +131,7 @@ async function handleSubscriptionCreated(supabase: SupabaseClient, subscription:
     const limits = planLimits[planId as keyof typeof planLimits] || planLimits.pro
 
     const currentMonth = new Date().toISOString().slice(0, 7)
-    console.log('📅 Current month:', currentMonth)
-    console.log('📊 Updating usage with limits:', limits)
+  
     
     // First, check if usage record exists
     const { data: existingUsage } = await supabase
@@ -159,7 +141,6 @@ async function handleSubscriptionCreated(supabase: SupabaseClient, subscription:
       .eq('month', currentMonth)
       .single()
 
-    console.log('🔍 Existing usage record:', existingUsage)
 
     // Prepare the upsert data, preserving current usage if it exists
     const upsertData = {
@@ -172,7 +153,6 @@ async function handleSubscriptionCreated(supabase: SupabaseClient, subscription:
       updated_at: new Date().toISOString()
     }
 
-    console.log('💾 Upserting usage data:', upsertData)
 
     const { data: usageData, error: usageError } = await supabase
       .from('user_usage')
@@ -186,14 +166,11 @@ async function handleSubscriptionCreated(supabase: SupabaseClient, subscription:
       console.error('❌ Error updating usage limits:', usageError)
       // Don't throw here, profile update was successful
     } else {
-      console.log('✅ Usage limits updated successfully!')
-      console.log('📈 Updated usage data:', usageData)
+  
     }
 
-    console.log(`🎉 User ${userId} successfully upgraded to ${planId}!`)
 
   } catch (error) {
-    console.error('❌ Error in handleSubscriptionCreated:', error)
     throw error
   }
 }

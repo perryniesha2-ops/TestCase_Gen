@@ -47,11 +47,18 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
 
 const AI_MODELS = {
+  "claude-sonnet-4-5": "claude-sonnet-4-5-20250514", 
+  "claude-haiku-4-5": "claude-haiku-4-5-20250514", 
+  "claude-opus-4-5": "claude-opus-4-5-20250514", 
+  
+  "gpt-5-mini": "gpt-5-mini", 
+  "gpt-5.2": "gpt-5.2", 
+  "gpt-4o": "gpt-4o-2024-11-20",
+  "gpt-4o-mini": "gpt-4o-mini-2024-07-18", 
+  
   "claude-3-5-sonnet-20241022": "claude-3-5-sonnet-20241022",
   "claude-3-5-haiku-20241022": "claude-3-5-haiku-20241022",
-  "gpt-4o": "gpt-4o",
-  "gpt-4o-mini": "gpt-4o-mini",
-} as const
+} as const;
 
 type ModelKey = keyof typeof AI_MODELS
 
@@ -70,7 +77,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    console.log("✅ User authenticated:", user.id)
 
     // Input
     const body = (await request.json()) as {
@@ -81,9 +87,8 @@ export async function POST(request: Request) {
 
     const requirement = (body.requirement ?? "").trim()
     const platforms = body.platforms || []
-    const model = (body.model as ModelKey) || "claude-3-5-sonnet-20241022"
+    const model = (body.model as ModelKey) || "claude-sonnet-4-5-20250514"
 
-    console.log("📥 Received request:", { requirement, platforms, model })
 
     // Validation
     if (!requirement) {
@@ -137,7 +142,6 @@ export async function POST(request: Request) {
       )
     }
 
-    console.log("✅ Test suite created:", suite.id)
 
     // Generate test cases for each platform
     let totalTestCases = 0
@@ -149,7 +153,6 @@ export async function POST(request: Request) {
 
     for (const platformData of platforms) {
       try {
-        console.log(`🤖 Generating test cases for ${platformData.platform} (${platformData.framework})...`)
 
         // Build prompt for this platform
         const promptUsed = `You are a QA expert specializing in cross-platform testing. Generate 5-7 comprehensive test cases for the following requirement on the ${platformData.platform} platform using ${platformData.framework}.
@@ -194,11 +197,10 @@ Make the test cases practical and executable on ${platformData.platform} with ${
             rawText = res.choices?.[0]?.message?.content ?? ""
           }
         } catch (primaryError) {
-          console.warn(`⚠️ Primary provider failed for ${platformData.platform}, trying fallback...`)
           try {
             if (fallback === "anthropic") {
               const res = await anthropic.messages.create({
-                model: "claude-3-5-sonnet-20241022",
+                model: "claude-sonnet-4-5-20250514",
                 max_tokens: 4096,
                 messages: [{ role: "user", content: promptUsed }],
               })
@@ -222,7 +224,6 @@ Make the test cases practical and executable on ${platformData.platform} with ${
           }
         }
 
-        console.log(`✅ Got raw response for ${platformData.platform} (${rawText.length} chars)`)
 
         // ---- Structure into JSON via OpenAI ----
         const structurePrompt = `Convert the following test cases into a structured JSON array. Each test case should have this exact format:
@@ -277,7 +278,6 @@ Return ONLY valid JSON, no markdown, no explanation.`
 
         if (!Array.isArray(testCases)) testCases = []
 
-        console.log(`✅ Structured ${testCases.length} test cases for ${platformData.platform}`)
 
         if (testCases.length === 0) {
           generationResults.push({
@@ -328,7 +328,6 @@ Return ONLY valid JSON, no markdown, no explanation.`
           count: count
         })
 
-        console.log(`✅ Inserted ${count} test cases for ${platformData.platform}`)
 
       } catch (error) {
         console.error(`❌ Error generating test cases for ${platformData.platform}:`, error)
@@ -340,7 +339,6 @@ Return ONLY valid JSON, no markdown, no explanation.`
       }
     }
 
-    console.log("📊 Generation results:", generationResults)
 
     // Update suite with total test case count
     await supabase

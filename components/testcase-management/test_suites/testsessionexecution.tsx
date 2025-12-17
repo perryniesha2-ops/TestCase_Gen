@@ -45,7 +45,7 @@ import {
 } from "lucide-react"
 
 // Import your types
-import type { TestSuite, TestSession } from "@/types/test-cases"
+import type { TestSuite, TestSession, TestAttachment } from "@/types/test-cases"
 import { ScreenshotUpload } from "../ScreenshotUpload"
 
 
@@ -93,16 +93,6 @@ interface TestSessionExecutionProps {
   onSessionComplete: () => void
 }
 
-interface TestAttachment {
-  id: string
-  file_name: string
-  file_path: string
-  file_type: string
-  file_size: number
-  description?: string
-  step_number?: number
-  created_at: string
-}
 
 export function TestSessionExecution({
   suite,
