@@ -76,6 +76,12 @@ interface CrossPlatformResponse {
   message?: string
   error?: string
   details?: string
+  quota_reached?: boolean
+   usage?: {
+    generated: number
+    limit: number
+    remaining: number
+  }
 }
 
 interface Template {
@@ -192,6 +198,11 @@ export function GeneratorForm() {
   const supabase = createClient();
   const [generationTitle, setGenerationTitle] = useState("")
   const [generationDescription, setGenerationDescription] = useState("")
+  // Cross-platform enhanced state
+const [crossPlatformTestCount, setCrossPlatformTestCount] = useState("10")
+const [crossPlatformCoverage, setCrossPlatformCoverage] = useState<"standard" | "comprehensive" | "exhaustive">("comprehensive")
+const [crossPlatformModel, setCrossPlatformModel] = useState("claude-sonnet-4-5")
+const [crossPlatformTemplate, setCrossPlatformTemplate] = useState<TemplateFromSelect | null>(null)
 
   const router = useRouter()
 
@@ -360,12 +371,13 @@ export function GeneratorForm() {
 
       const data = await response.json()
 
-      if (response.status === 429) {
-        toast.error(data.error, {
-          description: "Upgrade to Pro for 500 test cases/month",
+       if (response.status === 429) {
+        toast.error("Monthly usage limit reached", {
+          description: `You have ${data.remaining || 0} test cases remaining. Upgrade to Pro for 500 test cases/month.`,
+          duration: 8000,
           action: {
             label: "Upgrade",
-            onClick: () => router.push('/billing')
+            onClick: () => router.push('/pages/billing')
           }
         })
         return
@@ -392,9 +404,28 @@ export function GeneratorForm() {
     }
   }
 
+  function handleCrossPlatformTemplateSelect(template: TemplateFromSelect | null) {
+  setCrossPlatformTemplate(template)
+  
+  if (!template) return
+  
+  const settings = template.template_content
+  setCrossPlatformModel(settings.model)
+  setCrossPlatformTestCount(String(settings.testCaseCount))
+  setCrossPlatformCoverage(settings.coverage)
+  
+  toast.success(`Template "${template.name}" applied to all platforms`)
+}
+
   async function handleCrossPlatformSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
+
+     if (!user) {
+      toast.error("Please sign in to generate test cases")
+      router.push('/pages/login')
+      return
+    }
 
     try {
       const formData = new FormData(e.currentTarget)
@@ -405,6 +436,8 @@ export function GeneratorForm() {
         toast.error("Please enter the requirement description.")
         return
       }
+
+
 
       if (selectedPlatforms.length === 0) {
         toast.error("Please select at least one platform.")
@@ -424,11 +457,15 @@ export function GeneratorForm() {
         framework: selectedFrameworks[platformId]
       }))
 
-      const requestPayload = {
-        requirement: requirement.trim(),
-        platforms: platformsData,
-        model: model?.trim() || "claude-sonnet-4-5"
-      }
+     const requestPayload = {
+      requirement: requirement.trim(),
+      platforms: platformsData,
+      model: crossPlatformModel,
+      testCaseCount: parseInt(crossPlatformTestCount, 10),
+      coverage: crossPlatformCoverage,
+      template: crossPlatformTemplate?.id || null,
+    }
+
 
       const response = await fetch("/api/cross-platform-testing", {
         method: "POST",
@@ -438,35 +475,75 @@ export function GeneratorForm() {
 
       const data = await response.json() as CrossPlatformResponse
       
+      if (response.status === 429) {
+        toast.error("Monthly usage limit reached", {
+          description: `You have ${data.usage?.remaining || 0} test cases remaining. Upgrade to generate more.`,
+          duration: 8000,
+          action: {
+            label: "Upgrade",
+            onClick: () => router.push('/platform/billing')
+          }
+        })
+        return
+      }
+
+
       if (!response.ok) {
         if (response.status === 500 && data.generation_results) {
           const failed = data.generation_results.filter((r) => r.error)
           const succeeded = data.generation_results.filter((r) => r.count > 0)
           
           if (succeeded.length > 0) {
-            toast.error(
-              `Generated ${data.total_test_cases || 0} test cases for ${succeeded.length} platform(s). ` +
-              `Failed for: ${failed.map((r) => r.platform).join(', ')}`,
-              { duration: 7000 }
+            toast.warning(
+              `Partial success`,
+              {
+                duration: 8000,
+                description: `Generated ${data.total_test_cases || 0} test cases for ${succeeded.length} platform(s). Failed for: ${failed.map((r) => r.platform).join(', ')}`
+              }
             )
+            router.push(`/pages/test-cases`)
+            return
           } else {
             toast.error(
-              data.error || "Failed to generate test cases for any platform",
+              "Failed to generate test cases",
               { 
-                description: data.details || "Check server logs for details",
+                description: data.error || "All platforms failed. Please try again.",
                 duration: 7000 
               }
             )
           }
         } else {
-          throw new Error(data.error || data.details || `HTTP ${response.status}: Failed to generate cross-platform tests`)
+          throw new Error(data.error || data.details || `Failed to generate cross-platform tests`)
         }
         return
       }
 
-      toast.success("Cross-platform tests generated!", {
-        description: `Created ${data.total_test_cases} test cases across ${selectedPlatforms.length} platform(s)`,
-      })
+     if (data.quota_reached) {
+        toast.warning(
+          "Monthly limit reached!",
+          {
+            duration: 8000,
+            description: `Generated ${data.total_test_cases} test cases. Some platforms were skipped. Upgrade for unlimited generations.`,
+            action: {
+              label: "Upgrade",
+              onClick: () => router.push('/billing')
+            }
+          }
+        )
+      } 
+      // ✅ IMPROVED: Success with low remaining warning
+      else if (data.usage && data.usage.remaining >= 0 && data.usage.remaining <= 5) {
+        toast.success(`Generated ${data.total_test_cases} test cases!`, {
+          duration: 6000,
+          description: `⚠️ Only ${data.usage.remaining} test case${data.usage.remaining === 1 ? '' : 's'} remaining this month`
+        })
+      }
+      // ✅ Normal success
+      else {
+        toast.success("Cross-platform tests generated!", {
+          description: `Created ${data.total_test_cases} test cases across ${selectedPlatforms.length} platform(s)`,
+        })
+      }
 
       router.push(`/pages/test-cases`)
 
@@ -480,6 +557,9 @@ export function GeneratorForm() {
       setLoading(false)
     }
   }
+
+ const estimatedTotal = selectedPlatforms.length * parseInt(crossPlatformTestCount || "5", 10)
+
 
   function handleTemplateSelect(template: TemplateFromSelect | null) {
     setSelectedTemplate(template)
@@ -508,8 +588,6 @@ export function GeneratorForm() {
     }
   }
 
-  const [preferencesLoaded, setPreferencesLoaded] = useState(false) 
-  const [loadedPreferences, setLoadedPreferences] = useState<{ model: string; coverage: string; count: number } | null>(null)
 
 
 function getModelDisplayName(modelKey: string): string { 
@@ -864,7 +942,7 @@ Example:
     <SelectValue placeholder="Select model" />
   </SelectTrigger>
   <SelectContent>
-    <SelectItem value="claude-sonnet-4-5">Claude Sonnet 4.5 (Recommended)</SelectItem>
+    <SelectItem value="claude-sonnet-4-5">Claude Sonnet 4.5</SelectItem>
     <SelectItem value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</SelectItem>
     <SelectItem value="claude-opus-4-5">Claude Opus 4.5 (Max Quality)</SelectItem>
     <SelectItem value="gpt-5-mini">GPT-5 Mini (Balanced)</SelectItem>
@@ -960,6 +1038,114 @@ User authentication functionality that works consistently across web and mobile 
               </p>
             </div>
 
+                {/* ✅ NEW: Template Selection for Cross-Platform */}
+    <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex-1">
+          <Label className="text-sm font-medium mb-2 block">Template (Optional)</Label>
+          <TemplateSelect
+            value={crossPlatformTemplate?.id}
+            onSelect={handleCrossPlatformTemplateSelect}
+            disabled={loading}
+          />
+        </div>
+        <QuickTemplateSave
+          currentSettings={{
+            model: crossPlatformModel,
+            testCaseCount: parseInt(crossPlatformTestCount, 10) || 10,
+            coverage: crossPlatformCoverage,
+          }}
+          onTemplateSaved={() => {
+            toast.success("Cross-platform template saved")
+          }}
+        >
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="whitespace-nowrap mt-6"
+            disabled={loading}
+          >
+            <Save className="h-4 w-4 mr-2" />
+            Save settings
+          </Button>
+        </QuickTemplateSave>
+      </div>
+
+      {crossPlatformTemplate && (
+        <p className="text-xs text-muted-foreground">
+          Template <span className="font-medium">&quot;{crossPlatformTemplate.name}&quot;</span> applied to all platforms.
+        </p>
+      )}
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="space-y-2">
+        <Label htmlFor="crossPlatformModel">AI Model</Label>
+        <Select
+          value={crossPlatformModel}
+          onValueChange={setCrossPlatformModel}
+          disabled={loading}
+        >
+          <SelectTrigger className="h-10">
+            <SelectValue placeholder="Select model" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="claude-sonnet-4-5">Claude Sonnet 4.5</SelectItem>
+            <SelectItem value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</SelectItem>
+            <SelectItem value="claude-opus-4-5">Claude Opus 4.5 (Max Quality)</SelectItem>
+            <SelectItem value="gpt-5-mini">GPT-5 Mini (Balanced)</SelectItem>
+            <SelectItem value="gpt-5.2">GPT-5.2 (Premium)</SelectItem>
+            <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="crossPlatformTestCount">Test Cases per Platform</Label>
+        <Select
+          value={crossPlatformTestCount}
+          onValueChange={setCrossPlatformTestCount}
+          disabled={loading}
+        >
+          <SelectTrigger className="h-10">
+            <SelectValue placeholder="Select count" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="5">5 test cases</SelectItem>
+            <SelectItem value="10">10 test cases (default)</SelectItem>
+            <SelectItem value="15">15 test cases</SelectItem>
+            <SelectItem value="20">20 test cases</SelectItem>
+            <SelectItem value="30">30 test cases</SelectItem>
+            <SelectItem value="50">50 test cases</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Generate this many tests for each platform
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="crossPlatformCoverage">Coverage Level</Label>
+        <Select
+          value={crossPlatformCoverage}
+          onValueChange={(value) =>
+            setCrossPlatformCoverage(value as "standard" | "comprehensive" | "exhaustive")
+          }
+          disabled={loading}
+        >
+          <SelectTrigger className="h-10">
+            <SelectValue placeholder="Select coverage" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="standard">Standard - Main functionality</SelectItem>
+            <SelectItem value="comprehensive">Comprehensive - Edge cases</SelectItem>
+            <SelectItem value="exhaustive">Exhaustive - All scenarios</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+
             {/* Platform Selection */}
             <div className="space-y-4">
               <Label className="text-base font-medium">Target Platforms *</Label>
@@ -1030,23 +1216,7 @@ User authentication functionality that works consistently across web and mobile 
               )}
             </div>
 
-            {/* AI Model Selection */}
-            <div className="space-y-2">
-              <Label htmlFor="model">AI Model</Label>
-             <Select name="model" defaultValue="claude-sonnet-4-5" disabled={loading}>
-  <SelectTrigger className="h-10">
-    <SelectValue placeholder="Select model" />
-  </SelectTrigger>
-  <SelectContent>
-    <SelectItem value="claude-sonnet-4-5">Claude Sonnet 4.5 (Recommended)</SelectItem>
-    <SelectItem value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</SelectItem>
-    <SelectItem value="claude-opus-4-5">Claude Opus 4.5 (Max Quality)</SelectItem>
-    <SelectItem value="gpt-5-mini">GPT-5 Mini (Balanced)</SelectItem>
-    <SelectItem value="gpt-5.2">GPT-5.2 (Premium)</SelectItem>
-    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-  </SelectContent>
-</Select>
-            </div>
+           
 
             <Button 
               type="submit" 

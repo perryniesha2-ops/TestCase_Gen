@@ -3,6 +3,8 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import Anthropic from "@anthropic-ai/sdk"
 import OpenAI from "openai"
+import { checkAndRecordUsage } from "@/lib/usage-tracker";
+
 
 export const runtime = "nodejs"
 
@@ -46,6 +48,18 @@ function normalizePriority(p: unknown): Priority {
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
 
+const COVERAGE_PROMPTS = {
+  standard:
+    "Generate standard test cases covering the main functionality and common scenarios.",
+  comprehensive:
+    "Generate comprehensive test cases covering main functionality, edge cases, error handling, and validation scenarios.",
+  exhaustive:
+    "Generate exhaustive test cases covering all possible scenarios including main functionality, all edge cases, boundary conditions, error handling, security considerations, performance scenarios, and negative test cases.",
+} as const;
+
+type CoverageKey = keyof typeof COVERAGE_PROMPTS;
+
+
 const AI_MODELS = {
   "claude-sonnet-4-5": "claude-sonnet-4-5-20250514", 
   "claude-haiku-4-5": "claude-haiku-4-5-20250514", 
@@ -83,11 +97,17 @@ export async function POST(request: Request) {
       requirement?: string
       platforms?: Array<{ platform: string; framework: string }>
       model?: string
+      testCaseCount?: number | string;
+      coverage?: string;
+      template?: string;
     }
 
     const requirement = (body.requirement ?? "").trim()
     const platforms = body.platforms || []
     const model = (body.model as ModelKey) || "claude-sonnet-4-5-20250514"
+    const testCaseCount = Number(body.testCaseCount ?? 10);
+    const coverage = body.coverage as CoverageKey;
+    const template = body.template ?? "";
 
 
     // Validation
@@ -142,6 +162,12 @@ export async function POST(request: Request) {
       )
     }
 
+     try {
+      await checkAndRecordUsage(user.id, testCaseCount);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Usage limit exceeded";
+      return NextResponse.json({ error: msg, upgradeRequired: true }, { status: 429 });
+    }
 
     // Generate test cases for each platform
     let totalTestCases = 0
