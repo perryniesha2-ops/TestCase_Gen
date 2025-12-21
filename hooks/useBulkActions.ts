@@ -6,7 +6,12 @@ import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import type { TestCase } from "@/types/test-cases"
 
-export function useBulkActions(testCases: TestCase[], onRefresh: () => void) {
+export function useBulkActions(
+  testCases: TestCase[] | any[], 
+  onRefresh: () => void,
+  type: "regular" | "cross-platform" = "regular" 
+) {
+  
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isProcessing, setIsProcessing] = useState(false)
 
@@ -173,6 +178,197 @@ export function useBulkActions(testCases: TestCase[], onRefresh: () => void) {
     toast.success(`Exported ${ids.length} test case${ids.length === 1 ? "" : "s"}`)
     deselectAll()
   }
+  async function bulkApproveCrossPlatform(ids: string[]) {
+    if (type !== "cross-platform") return
+
+    setIsProcessing(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error("Not authenticated")
+
+      // Filter to only pending cases
+      const pendingCases = testCases.filter(
+        (tc: any) => ids.includes(tc.id) && tc.status === "pending"
+      )
+
+      if (pendingCases.length === 0) {
+        toast.error("No pending test cases selected")
+        return
+      }
+
+      let successCount = 0
+      let failCount = 0
+
+      for (const testCase of pendingCases) {
+        try {
+          // Create regular test case
+          const regularTestCase = {
+            user_id: user.id,
+            title: `${testCase.title} (${testCase.platform})`,
+            description: `${testCase.description}\n\nPlatform: ${testCase.platform}\nFramework: ${testCase.framework}`,
+            test_type: testCase.platform,
+            priority: testCase.priority,
+            status: "active",
+            test_steps: testCase.steps.map((step: string, index: number) => ({
+              step_number: index + 1,
+              action: step,
+              expected: testCase.expected_results?.[index] || "As described",
+            })),
+            expected_result: testCase.expected_results?.join(". ") || "All steps pass",
+            preconditions: Array.isArray(testCase.preconditions)
+              ? testCase.preconditions.join(". ")
+              : testCase.preconditions || "",
+            source_type: "cross_platform",
+            source_platform_test_case_id: testCase.id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+
+          // Insert new regular test case
+          const { data: newTestCase, error: insertError } = await supabase
+            .from("test_cases")
+            .insert(regularTestCase)
+            .select()
+            .single()
+
+          if (insertError) throw insertError
+          if(testCase.status=='pending')
+          {
+          // Update cross-platform test case to approved
+          const { error: updateError } = await supabase
+            .from("platform_test_cases")
+            .update({
+              status: "approved",
+              converted_to_test_case_id: newTestCase.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", testCase.id)
+          }else{
+
+                      console.error(`Record Should Be in pending status`)
+
+          }
+
+          successCount++
+        } catch (error) {
+          console.error(`Failed to approve ${testCase.id}:`, error)
+          failCount++
+        }
+      }
+
+      // Show results
+      if (successCount > 0) {
+        toast.success(`Approved and converted ${successCount} test case${successCount === 1 ? "" : "s"}`)
+      }
+      if (failCount > 0) {
+        toast.error(`Failed to approve ${failCount} test case${failCount === 1 ? "" : "s"}`)
+      }
+
+      deselectAll()
+      onRefresh()
+    } catch (error) {
+      console.error("Bulk approve error:", error)
+      toast.error("Failed to bulk approve")
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+ async function bulkRejectCrossPlatform(ids: string[]) {
+    if (type !== "cross-platform") return
+
+    setIsProcessing(true)
+    try {
+      const supabase = createClient()
+
+      // Filter to only pending cases
+      const pendingCases = testCases.filter(
+        (tc: any) => ids.includes(tc.id) && tc.status === "pending"
+      )
+
+      if (pendingCases.length === 0) {
+        toast.error("No pending test cases selected")
+        return
+      }
+
+      // Update to rejected
+      const { error } = await supabase
+        .from("platform_test_cases")
+        .update({
+          status: "rejected",
+          updated_at: new Date().toISOString(),
+        })
+        .in("id", ids)
+
+      if (error) throw error
+
+      toast.success(`Rejected ${pendingCases.length} test case${pendingCases.length === 1 ? "" : "s"}`)
+      deselectAll()
+      onRefresh()
+    } catch (error) {
+      console.error("Bulk reject error:", error)
+      toast.error("Failed to bulk reject")
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  /**
+   * Delete cross-platform test cases
+   */
+  async function bulkDeleteCrossPlatform(ids: string[]) {
+    if (type !== "cross-platform") return
+
+    setIsProcessing(true)
+    try {
+      const supabase = createClient()
+
+      const { error } = await supabase
+        .from("platform_test_cases")
+        .delete()
+        .in("id", ids)
+
+      if (error) throw error
+
+      toast.success(`Deleted ${ids.length} test case${ids.length === 1 ? "" : "s"}`)
+      deselectAll()
+      onRefresh()
+    } catch (error) {
+      console.error("Bulk delete error:", error)
+      toast.error("Failed to delete test cases")
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+   async function bulkUpdateCrossPlatform(ids: string[], updates: any) {
+    if (type !== "cross-platform") return
+
+    setIsProcessing(true)
+    try {
+      const supabase = createClient()
+
+      const { error } = await supabase
+        .from("platform_test_cases")
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .in("id", ids)
+
+      if (error) throw error
+
+      toast.success(`Updated ${ids.length} test case${ids.length === 1 ? "" : "s"}`)
+      deselectAll()
+      onRefresh()
+    } catch (error) {
+      console.error("Bulk update error:", error)
+      toast.error("Failed to update test cases")
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
 
   return {
     selectedIds,
@@ -184,5 +380,9 @@ export function useBulkActions(testCases: TestCase[], onRefresh: () => void) {
     bulkDelete,
     bulkAddToSuite,
     bulkExport,
+    bulkApproveCrossPlatform,
+    bulkRejectCrossPlatform,
+    bulkDeleteCrossPlatform,
+    bulkUpdateCrossPlatform,
   }
 }

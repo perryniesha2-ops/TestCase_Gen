@@ -75,11 +75,12 @@ import type {
 } from "@/types/test-cases"
 
 // ✅ Import dialog components
-import { TestCaseFormDialog } from "./test-case-form-dialog"
-import { TestExecutionDialog } from "./test-execution-dialog"
-import { DeleteTestCaseDialog } from "./delete-test-case-dialog"
+import { TestCaseFormDialog } from "./dialogs/test-case-form-dialog"
+import { TestExecutionDialog } from "./dialogs/test-execution-dialog"
+import { DeleteTestCaseDialog } from "./dialogs/delete-test-case-dialog"
 import { BulkActionsToolbar } from "./BulkActionsToolbar"
 import { useBulkActions } from "@/hooks/useBulkActions"
+import { CrossPlatformBulkActionsToolbar } from "./CrossPlatformBulkActionsToolbar" 
 
 const platformIcons = {
   web: Monitor,
@@ -139,6 +140,11 @@ export function TabbedTestCaseTable() {
     fetchProjects()
   }, [])
 
+   const crossPlatformBulkActions = useBulkActions(
+    crossPlatformCases,
+    fetchData,
+    "cross-platform"
+  )
   const {
     selectedIds,
     isProcessing,
@@ -189,6 +195,24 @@ export function TabbedTestCaseTable() {
   }
 
 
+  function getApprovalStatusBadge(approvalStatus?: string) {
+  const status = approvalStatus || "pending"
+  
+  switch (status) {
+    case "pending":
+      return <Badge className="bg-amber-100 text-amber-800">
+        <Clock className="h-3 w-3 mr-1" />Pending
+      </Badge>
+    case "approved":
+      return <Badge className="bg-green-100 text-green-800">
+        <CheckCircle2 className="h-3 w-3 mr-1" />Approved
+      </Badge>
+    case "rejected":
+      return <Badge className="bg-red-100 text-red-800">
+        <XCircle className="h-3 w-3 mr-1" />Rejected
+      </Badge>
+  }
+}
   
   async function fetchData() {
     try {
@@ -636,6 +660,10 @@ export function TabbedTestCaseTable() {
 
   const crossPlatformStats = {
     total: filteredCrossPlatformCases.length,
+    pending: filteredCrossPlatformCases.filter(tc => !tc.status || tc.status === "pending").length,
+  approved: filteredCrossPlatformCases.filter(tc => tc.status === "approved").length,
+  rejected: filteredCrossPlatformCases.filter(tc => tc.status === "rejected").length,
+  // ... execution stats
     passed: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "passed").length,
     failed: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "failed").length,
     blocked: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "blocked")
@@ -1119,155 +1147,194 @@ export function TabbedTestCaseTable() {
         </TabsContent>
 
         {/* Cross-Platform Tab - Simplified */}
-        <TabsContent value="cross-platform" className="space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-            <div className="bg-card p-4 rounded-lg border">
-              <div className="text-2xl font-bold">{crossPlatformStats.total}</div>
-              <div className="text-sm text-muted-foreground">Total</div>
-            </div>
-            <div className="bg-card p-4 rounded-lg border">
-              <div className="text-2xl font-bold text-green-600">{crossPlatformStats.passed}</div>
-              <div className="text-sm text-muted-foreground">Passed</div>
-            </div>
-            <div className="bg-card p-4 rounded-lg border">
-              <div className="text-2xl font-bold text-red-600">{crossPlatformStats.failed}</div>
-              <div className="text-sm text-muted-foreground">Failed</div>
-            </div>
-            <div className="bg-card p-4 rounded-lg border">
-              <div className="text-2xl font-bold text-orange-600">{crossPlatformStats.blocked}</div>
-              <div className="text-sm text-muted-foreground">Blocked</div>
-            </div>
-            <div className="bg-card p-4 rounded-lg border">
-              <div className="text-2xl font-bold text-blue-600">
-                {crossPlatformStats.inProgress}
+       <TabsContent value="cross-platform" className="space-y-6">
+  {/* Stats */}
+  <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+    <div className="bg-card p-4 rounded-lg border">
+      <div className="text-2xl font-bold">{crossPlatformStats.total}</div>
+      <div className="text-sm text-muted-foreground">Total</div>
+    </div>
+    <div className="bg-card p-4 rounded-lg border">
+      <div className="text-2xl font-bold text-green-600">{crossPlatformStats.passed}</div>
+      <div className="text-sm text-muted-foreground">Passed</div>
+    </div>
+    <div className="bg-card p-4 rounded-lg border">
+      <div className="text-2xl font-bold text-red-600">{crossPlatformStats.failed}</div>
+      <div className="text-sm text-muted-foreground">Failed</div>
+    </div>
+    <div className="bg-card p-4 rounded-lg border">
+      <div className="text-2xl font-bold text-orange-600">{crossPlatformStats.blocked}</div>
+      <div className="text-sm text-muted-foreground">Blocked</div>
+    </div>
+    <div className="bg-card p-4 rounded-lg border">
+      <div className="text-2xl font-bold text-blue-600">{crossPlatformStats.inProgress}</div>
+      <div className="text-sm text-muted-foreground">In Progress</div>
+    </div>
+    <div className="bg-card p-4 rounded-lg border">
+      <div className="text-2xl font-bold text-gray-500">{crossPlatformStats.notRun}</div>
+      <div className="text-sm text-muted-foreground">Not Run</div>
+    </div>
+  </div>
+
+  {/* Bulk Actions + Table */}
+  <div className="border rounded-lg">
+    {/* Bulk Actions Toolbar */}
+    <CrossPlatformBulkActionsToolbar
+      selectedIds={crossPlatformBulkActions.selectedIds}
+      allTestCases={crossPlatformCases}
+      onSelectAll={crossPlatformBulkActions.selectAll}
+      onDeselectAll={crossPlatformBulkActions.deselectAll}
+      onBulkApprove={crossPlatformBulkActions.bulkApproveCrossPlatform}
+      onBulkReject={crossPlatformBulkActions.bulkRejectCrossPlatform}
+      onBulkUpdate={crossPlatformBulkActions.bulkUpdateCrossPlatform}
+      onBulkDelete={crossPlatformBulkActions.bulkDeleteCrossPlatform}
+    />
+
+    {/* Table */}
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {/* ✅ FIXED: Header checkbox using cross-platform functions */}
+          <TableHead className="w-[50px]">
+            <Checkbox
+              checked={
+                crossPlatformBulkActions.selectedIds.size === paginatedCrossPlatformCases.length &&
+                paginatedCrossPlatformCases.length > 0
+              }
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  crossPlatformBulkActions.selectAll()
+                } else {
+                  crossPlatformBulkActions.deselectAll()
+                }
+              }}
+            />
+          </TableHead>
+          <TableHead>Title</TableHead>
+          <TableHead className="w-[100px]">Status</TableHead> 
+          <TableHead className="w-[120px]">Platform</TableHead>
+          <TableHead className="w-[100px]">Framework</TableHead>
+          <TableHead className="w-[100px]">Priority</TableHead>
+          <TableHead className="w-[120px]">Created</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {paginatedCrossPlatformCases.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={8} className="text-center py-12">
+              <div className="flex flex-col items-center gap-2">
+                <Layers className="h-8 w-8 text-muted-foreground" />
+                <p className="text-muted-foreground">No cross-platform test cases found</p>
               </div>
-              <div className="text-sm text-muted-foreground">In Progress</div>
-            </div>
-            <div className="bg-card p-4 rounded-lg border">
-              <div className="text-2xl font-bold text-gray-500">{crossPlatformStats.notRun}</div>
-              <div className="text-sm text-muted-foreground">Not Run</div>
-            </div>
-          </div>
+            </TableCell>
+          </TableRow>
+        ) : (
+          paginatedCrossPlatformCases.map((testCase) => {
+            const exec = execution[testCase.id]
+            const suite = crossPlatformSuites[testCase.suite_id]
+            const Icon = platformIcons[testCase.platform as keyof typeof platformIcons]
 
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead className="w-[100px]">Platform</TableHead>
-                  <TableHead className="w-[100px]">Framework</TableHead>
-                  <TableHead className="w-[100px]">Priority</TableHead>
-                  <TableHead className="w-[150px]">Requirement</TableHead>
-                  <TableHead className="w-[120px]">Created</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedCrossPlatformCases.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12">
-                      <div className="flex flex-col items-center gap-2">
-                        <Layers className="h-8 w-8 text-muted-foreground" />
-                        <p className="text-muted-foreground">No cross-platform test cases found</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  paginatedCrossPlatformCases.map((testCase) => {
-                    const exec = execution[testCase.id]
-                    const suite = crossPlatformSuites[testCase.suite_id]
-                    const Icon = platformIcons[testCase.platform as keyof typeof platformIcons]
+            return (
+              <TableRow key={testCase.id} className="hover:bg-muted/50">
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <Checkbox
+                    checked={crossPlatformBulkActions.selectedIds.has(testCase.id)}
+                    onCheckedChange={() => crossPlatformBulkActions.toggleSelection(testCase.id)}
+                  />
+                </TableCell>
 
-                    return (
-                      <TableRow
-                        key={testCase.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => openTestCaseDialog(testCase, "cross-platform")}
-                      >
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {exec?.status === "passed" && (
-                              <CheckCircle2 className="h-4 w-4 text-green-600" />
-                            )}
-                            {exec?.status === "failed" && (
-                              <XCircle className="h-4 w-4 text-red-600" />
-                            )}
-                            {exec?.status === "blocked" && (
-                              <AlertTriangle className="h-4 w-4 text-orange-600" />
-                            )}
-                            {exec?.status === "skipped" && (
-                              <Circle className="h-4 w-4 text-gray-400" />
-                            )}
-                            {exec?.status === "in_progress" && (
-                              <Clock className="h-4 w-4 text-blue-600" />
-                            )}
-                            {exec?.status === "not_run" && (
-                              <Circle className="h-4 w-4 text-gray-400" />
-                            )}
-                            <span>{testCase.title}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {Icon && <Icon className="h-4 w-4" />}
-                            <Badge variant="default">{testCase.platform}</Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{testCase.framework}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={getPriorityColor(testCase.priority)}>
-                            {testCase.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {suite?.requirement ||
-                            testCase.cross_platform_test_suites?.requirement ||
-                            "N/A"}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {getRelativeTime(testCase.created_at)}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          {crossPlatformTotalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Showing {crossPlatformStartIndex + 1}-
-                {Math.min(crossPlatformEndIndex, filteredCrossPlatformCases.length)} of{" "}
-                {filteredCrossPlatformCases.length} test cases
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCrossPlatformCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={crossPlatformCurrentPage === 1}
+                <TableCell 
+                  className="font-medium cursor-pointer"
+                  onClick={() => openTestCaseDialog(testCase, "cross-platform")}
                 >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setCrossPlatformCurrentPage((p) => Math.min(crossPlatformTotalPages, p + 1))
-                  }
-                  disabled={crossPlatformCurrentPage === crossPlatformTotalPages}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            </div>
-          )}
-        </TabsContent>
+                  <div className="flex items-center gap-2">
+                    {exec?.status === "passed" && (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    )}
+                    {exec?.status === "failed" && (
+                      <XCircle className="h-4 w-4 text-red-600" />
+                    )}
+                    {exec?.status === "blocked" && (
+                      <AlertTriangle className="h-4 w-4 text-orange-600" />
+                    )}
+                    {exec?.status === "skipped" && (
+                      <Circle className="h-4 w-4 text-gray-400" />
+                    )}
+                    {exec?.status === "in_progress" && (
+                      <Clock className="h-4 w-4 text-blue-600" />
+                    )}
+                    {exec?.status === "not_run" && (
+                      <Circle className="h-4 w-4 text-gray-400" />
+                    )}
+                    <span>{testCase.title}</span>
+                  </div>
+                </TableCell>
+<TableCell>
+  {getApprovalStatusBadge(testCase.status)}  {/* ADD */}
+</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    {Icon && <Icon className="h-4 w-4" />}
+                    <Badge variant="default">{testCase.platform}</Badge>
+                  </div>
+                </TableCell>
+
+                <TableCell>
+                  <Badge variant="outline">{testCase.framework}</Badge>
+                </TableCell>
+
+                <TableCell>
+                  <Badge className={getPriorityColor(testCase.priority)}>
+                    {testCase.priority}
+                  </Badge>
+                </TableCell>
+
+               
+
+                <TableCell className="text-muted-foreground text-sm">
+                  {getRelativeTime(testCase.created_at)}
+                </TableCell>
+              </TableRow>
+            )
+          })
+        )}
+      </TableBody>
+    </Table>
+  </div>
+
+  {/* Pagination */}
+  {crossPlatformTotalPages > 1 && (
+    <div className="flex items-center justify-between">
+      <p className="text-sm text-muted-foreground">
+        Showing {crossPlatformStartIndex + 1}-
+        {Math.min(crossPlatformEndIndex, filteredCrossPlatformCases.length)} of{" "}
+        {filteredCrossPlatformCases.length} test cases
+      </p>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCrossPlatformCurrentPage((p) => Math.max(1, p - 1))}
+          disabled={crossPlatformCurrentPage === 1}
+        >
+          <ChevronLeft className="h-4 w-4 mr-1" />
+          Previous
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            setCrossPlatformCurrentPage((p) => Math.min(crossPlatformTotalPages, p + 1))
+          }
+          disabled={crossPlatformCurrentPage === crossPlatformTotalPages}
+        >
+          Next
+          <ChevronRight className="h-4 w-4 ml-1" />
+        </Button>
+      </div>
+    </div>
+  )}
+</TabsContent>
       </Tabs>
 
       {/* Dialogs */}

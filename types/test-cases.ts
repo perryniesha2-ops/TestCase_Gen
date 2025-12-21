@@ -1,7 +1,7 @@
 // app/pages/test-cases/types/test-cases.ts
 
 export type ExecutionStatus = 'not_run' | 'in_progress' | 'passed' | 'failed' | 'blocked' | 'skipped'
-export type ApprovalStatus = 'draft' | 'active' | 'archived'
+export type ApprovalStatus = 'draft' | 'active' | 'archived'| 'pending'| "approved"| "rejected"
 export type Priority = 'low' | 'medium' | 'high' | 'critical'
 
 export interface TestStep {
@@ -247,9 +247,9 @@ export interface TestAttachment {
   file_name: string
   file_path: string
   file_type: string
-  file_size: number | null  // ✅ Fixed: allow null
-  description?: string | null  // ✅ Also make this explicitly nullable
-  step_number?: number | null  // ✅ And this
+  file_size: number | null  
+  description?: string | null  
+  step_number?: number | null  
   created_at: string
 }
 
