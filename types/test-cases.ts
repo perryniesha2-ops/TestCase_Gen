@@ -59,7 +59,7 @@ export interface TestCaseForm {
   preconditions: string
   test_steps: TestStep[]
   expected_result: string
-  status: 'draft' | 'active' | 'archived'
+  status: 'draft' | 'active' | 'archived' |'pending' |"approved"| "rejected"
   project_id?: string | null
 }
 
