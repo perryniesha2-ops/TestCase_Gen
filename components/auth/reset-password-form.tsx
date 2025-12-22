@@ -132,7 +132,7 @@ export function ResetPasswordForm() {
         <CardFooter>
           <Button 
             className="w-full" 
-            onClick={() => router.push("/forgot-password")}
+            onClick={() => router.push("/pages/forgot-password")}
           >
             Request new reset link
           </Button>

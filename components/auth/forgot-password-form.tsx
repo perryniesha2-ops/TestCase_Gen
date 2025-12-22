@@ -142,11 +142,13 @@ export function ForgotPasswordForm() {
               disabled={loading}
             />
           </div>
-          
+                              
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
             <p className="text-sm text-amber-800">
               <strong>Tip:</strong> Click the reset link in your email immediately to avoid expiration issues.
             </p>
+          </div>
+             <div >
           </div>
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">

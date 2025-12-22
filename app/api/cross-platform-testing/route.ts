@@ -3,8 +3,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import Anthropic from "@anthropic-ai/sdk"
 import OpenAI from "openai"
-import { checkAndRecordUsage } from "@/lib/usage-tracker";
-
+import { usageTracker } from "@/lib/usage-tracker"
 
 export const runtime = "nodejs"
 
@@ -44,37 +43,44 @@ function normalizePriority(p: unknown): Priority {
   return ALLOWED_PRIORITIES.has(s as Priority) ? (s as Priority) : "medium"
 }
 
-// ----- Clients -----
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
-
 const COVERAGE_PROMPTS = {
-  standard:
-    "Generate standard test cases covering the main functionality and common scenarios.",
+  standard: "Generate standard test cases covering the main functionality and common scenarios.",
   comprehensive:
     "Generate comprehensive test cases covering main functionality, edge cases, error handling, and validation scenarios.",
   exhaustive:
     "Generate exhaustive test cases covering all possible scenarios including main functionality, all edge cases, boundary conditions, error handling, security considerations, performance scenarios, and negative test cases.",
-} as const;
+} as const
 
-type CoverageKey = keyof typeof COVERAGE_PROMPTS;
-
+type CoverageKey = keyof typeof COVERAGE_PROMPTS
 
 const AI_MODELS = {
-  "claude-sonnet-4-5": "claude-sonnet-4-5-20250514", 
-  "claude-haiku-4-5": "claude-haiku-4-5-20250514", 
-  "claude-opus-4-5": "claude-opus-4-5-20250514", 
-  
-  "gpt-5-mini": "gpt-5-mini", 
-  "gpt-5.2": "gpt-5.2", 
+  "claude-sonnet-4-5": "claude-sonnet-4-5-20250514",
+  "claude-haiku-4-5": "claude-haiku-4-5-20250514",
+  "claude-opus-4-5": "claude-opus-4-5-20250514",
+
+  "gpt-5-mini": "gpt-5-mini",
+  "gpt-5.2": "gpt-5.2",
   "gpt-4o": "gpt-4o-2024-11-20",
-  "gpt-4o-mini": "gpt-4o-mini-2024-07-18", 
-  
+  "gpt-4o-mini": "gpt-4o-mini-2024-07-18",
+
   "claude-3-5-sonnet-20241022": "claude-3-5-sonnet-20241022",
   "claude-3-5-haiku-20241022": "claude-3-5-haiku-20241022",
-} as const;
+} as const
 
 type ModelKey = keyof typeof AI_MODELS
+
+const DEFAULT_MODEL: ModelKey = "claude-sonnet-4-5"
+const FALLBACK_CLAUDE = "claude-sonnet-4-5-20250514"
+const FALLBACK_GPT = "gpt-4o-2024-11-20"
+
+// ----- Clients -----
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+
+function clampCount(n: number, min: number, max: number) {
+  const x = Math.floor(Number(n) || 0)
+  return Math.min(max, Math.max(min, x))
+}
 
 // ----- Handler -----
 export async function POST(request: Request) {
@@ -86,122 +92,121 @@ export async function POST(request: Request) {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-
 
     // Input
     const body = (await request.json()) as {
       requirement?: string
       platforms?: Array<{ platform: string; framework: string }>
       model?: string
-      testCaseCount?: number | string;
-      coverage?: string;
-      template?: string;
+      testCaseCount?: number | string
+      coverage?: string
+      template?: string
     }
 
     const requirement = (body.requirement ?? "").trim()
-    const platforms = body.platforms || []
-    const model = (body.model as ModelKey) || "claude-sonnet-4-5-20250514"
-    const testCaseCount = Number(body.testCaseCount ?? 10);
-    const coverage = body.coverage as CoverageKey;
-    const template = body.template ?? "";
-
+    const platforms = Array.isArray(body.platforms) ? body.platforms : []
+    const modelKey = (body.model as ModelKey) || DEFAULT_MODEL
+    const testCaseCount = clampCount(Number(body.testCaseCount ?? 10), 1, 50)
+    const coverage = (body.coverage as CoverageKey) || "comprehensive"
+    const template = (body.template ?? "").trim()
 
     // Validation
     if (!requirement) {
-      return NextResponse.json(
-        { error: "Requirement is required", field: "requirement" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Requirement is required", field: "requirement" }, { status: 400 })
     }
-
-    if (!Array.isArray(platforms) || platforms.length === 0) {
-      return NextResponse.json(
-        { error: "At least one platform is required", field: "platforms" },
-        { status: 400 }
-      )
+    if (!platforms.length) {
+      return NextResponse.json({ error: "At least one platform is required", field: "platforms" }, { status: 400 })
     }
-
-    // Validate all platforms have frameworks
     for (const p of platforms) {
-      if (!p.platform || !p.framework) {
+      if (!p?.platform || !p?.framework) {
         return NextResponse.json(
           { error: "Each platform must have a framework specified", field: "platforms" },
           { status: 400 }
         )
       }
     }
+    if (!(modelKey in AI_MODELS)) {
+      return NextResponse.json({ error: "Unsupported AI model", field: "model" }, { status: 400 })
+    }
+    if (!(coverage in COVERAGE_PROMPTS)) {
+      return NextResponse.json({ error: "Invalid coverage level", field: "coverage" }, { status: 400 })
+    }
 
-    if (!(model in AI_MODELS)) {
+    // ---- Quota check BEFORE creating suite / generating ----
+    const requestedTotal = testCaseCount * platforms.length
+    const quota = await usageTracker.canGenerateTestCases(user.id, requestedTotal)
+
+    if (!quota.allowed) {
       return NextResponse.json(
-        { error: "Unsupported AI model", field: "model" },
-        { status: 400 }
+        {
+          error: quota.error || "Monthly usage limit exceeded",
+          upgradeRequired: true,
+          usage: {
+            remaining: quota.remaining,
+            requested: requestedTotal,
+            perPlatform: testCaseCount,
+            platforms: platforms.length,
+          },
+        },
+        { status: 429 }
       )
     }
 
-    // Create test suite record
+    // Create suite only after quota passes
     const { data: suite, error: suiteError } = await supabase
       .from("cross_platform_test_suites")
       .insert({
-        requirement: requirement,
-        platforms: platforms.map(p => p.platform),
+        requirement,
+        platforms: platforms.map((p) => p.platform),
         user_id: user.id,
-        generated_at: new Date().toISOString()
+        generated_at: new Date().toISOString(),
       })
       .select()
       .single()
 
     if (suiteError || !suite) {
-      console.error("❌ Error creating test suite:", suiteError)
-      return NextResponse.json(
-        { error: "Failed to create test suite", details: suiteError?.message },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: "Failed to create test suite", details: suiteError?.message }, { status: 500 })
     }
 
-     try {
-      await checkAndRecordUsage(user.id, testCaseCount);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Usage limit exceeded";
-      return NextResponse.json({ error: msg, upgradeRequired: true }, { status: 429 });
-    }
-
-    // Generate test cases for each platform
-    let totalTestCases = 0
-    const generationResults: Array<{ platform: string; count: number; error?: string }> = []
-
-    const isAnthropicModel = (model as string).startsWith("claude")
+    // Provider routing based on selected model
+    const selectedModel = AI_MODELS[modelKey]
+    const isAnthropicModel = selectedModel.startsWith("claude")
     const primary: "anthropic" | "openai" = isAnthropicModel ? "anthropic" : "openai"
     const fallback: "anthropic" | "openai" = isAnthropicModel ? "openai" : "anthropic"
 
+    let totalInserted = 0
+    const generationResults: Array<{ platform: string; count: number; error?: string }> = []
+
     for (const platformData of platforms) {
+      const platformId = platformData.platform
+      const framework = platformData.framework
+
       try {
+        const coverageInstruction = COVERAGE_PROMPTS[coverage]
+        const templateInstruction = template ? `\n\nUse this template structure:\n${template}` : ""
 
-        // Build prompt for this platform
-        const promptUsed = `You are a QA expert specializing in cross-platform testing. Generate 5-7 comprehensive test cases for the following requirement on the ${platformData.platform} platform using ${platformData.framework}.
+        const promptUsed = `${coverageInstruction}
 
-Requirement: ${requirement}
+You are a QA expert specializing in cross-platform testing.
+Generate EXACTLY ${testCaseCount} test cases for the requirement on the "${platformId}" platform using "${framework}".
 
-Generate test cases that cover:
-1. Basic functionality specific to ${platformData.platform}
-2. Platform-specific edge cases
-3. Integration points
-4. Error handling
-5. ${platformData.framework}-specific considerations
+Requirement:
+${requirement}${templateInstruction}
 
 For each test case, provide:
-- A clear, descriptive title
-- Detailed description
-- Preconditions (array of strings)
-- Test steps (array of strings) - be specific to ${platformData.platform} and ${platformData.framework}
-- Expected results (array of strings)
-- Automation hints (array of strings) - specific to ${platformData.framework}
-- Priority (low, medium, high, or critical)
+- title
+- description
+- preconditions (array of strings)
+- steps (array of strings)
+- expected_results (array of strings)
+- automation_hints (array of strings)
+- priority (low, medium, high, critical)
 
-Make the test cases practical and executable on ${platformData.platform} with ${platformData.framework}.`
+Return plain text test cases (no JSON).`
 
         // ---- Call LLM (primary, then fallback) ----
         let rawText = ""
@@ -209,47 +214,36 @@ Make the test cases practical and executable on ${platformData.platform} with ${
         try {
           if (primary === "anthropic") {
             const res = await anthropic.messages.create({
-              model: AI_MODELS[model],
+              model: selectedModel,
               max_tokens: 4096,
               messages: [{ role: "user", content: promptUsed }],
             })
             rawText = anthropicTextFromContent(res.content)
           } else {
             const res = await openai.chat.completions.create({
-              model: AI_MODELS[model],
+              model: selectedModel,
               messages: [{ role: "user", content: promptUsed }],
               max_tokens: 4096,
             })
             rawText = res.choices?.[0]?.message?.content ?? ""
           }
-        } catch (primaryError) {
-          try {
-            if (fallback === "anthropic") {
-              const res = await anthropic.messages.create({
-                model: "claude-sonnet-4-5-20250514",
-                max_tokens: 4096,
-                messages: [{ role: "user", content: promptUsed }],
-              })
-              rawText = anthropicTextFromContent(res.content)
-            } else {
-              const res = await openai.chat.completions.create({
-                model: "gpt-4o",
-                messages: [{ role: "user", content: promptUsed }],
-                max_tokens: 4096,
-              })
-              rawText = res.choices?.[0]?.message?.content ?? ""
-            }
-          } catch (fallbackError) {
-            console.error(`❌ Both providers failed for ${platformData.platform}`)
-            generationResults.push({
-              platform: platformData.platform,
-              count: 0,
-              error: "AI generation failed"
+        } catch {
+          if (fallback === "anthropic") {
+            const res = await anthropic.messages.create({
+              model: FALLBACK_CLAUDE,
+              max_tokens: 4096,
+              messages: [{ role: "user", content: promptUsed }],
             })
-            continue
+            rawText = anthropicTextFromContent(res.content)
+          } else {
+            const res = await openai.chat.completions.create({
+              model: FALLBACK_GPT,
+              messages: [{ role: "user", content: promptUsed }],
+              max_tokens: 4096,
+            })
+            rawText = res.choices?.[0]?.message?.content ?? ""
           }
         }
-
 
         // ---- Structure into JSON via OpenAI ----
         const structurePrompt = `Convert the following test cases into a structured JSON array. Each test case should have this exact format:
@@ -257,10 +251,10 @@ Make the test cases practical and executable on ${platformData.platform} with ${
 {
   "title": "string",
   "description": "string",
-  "preconditions": ["string", "string"],
-  "steps": ["string", "string"],
-  "expected_results": ["string", "string"],
-  "automation_hints": ["string", "string"],
+  "preconditions": ["string"],
+  "steps": ["string"],
+  "expected_results": ["string"],
+  "automation_hints": ["string"],
   "priority": "string (low, medium, high, critical)"
 }
 
@@ -274,51 +268,38 @@ Return ONLY valid JSON, no markdown, no explanation.`
         let testCases: PlatformTestCase[] = []
         try {
           const structured = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
+            model: "gpt-4o-mini-2024-07-18",
             messages: [{ role: "user", content: structurePrompt }],
             response_format: { type: "json_object" },
             max_tokens: 4096,
           })
+
           const content = structured.choices?.[0]?.message?.content ?? "{}"
-          const parsed = JSON.parse(content) as {
-            test_cases?: PlatformTestCase[]
-            testCases?: PlatformTestCase[]
-          }
+          const parsed = JSON.parse(content) as { test_cases?: PlatformTestCase[]; testCases?: PlatformTestCase[] }
+
           testCases = Array.isArray(parsed.test_cases)
             ? parsed.test_cases
             : Array.isArray(parsed.testCases)
             ? parsed.testCases
             : []
-        } catch (structureError) {
-          console.error(`❌ Failed to structure test cases for ${platformData.platform}:`, structureError)
-          // Try naive fallback
-          const match = rawText.match(/\[[\s\S]*\]/)
-          if (match) {
-            try {
-              testCases = JSON.parse(match[0]) as PlatformTestCase[]
-            } catch {
-              testCases = []
-            }
-          }
+        } catch {
+          testCases = []
         }
 
-        if (!Array.isArray(testCases)) testCases = []
-
+        // Enforce EXACTLY N inserts per platform (cap extras)
+        if (testCases.length > testCaseCount) {
+          testCases = testCases.slice(0, testCaseCount)
+        }
 
         if (testCases.length === 0) {
-          generationResults.push({
-            platform: platformData.platform,
-            count: 0,
-            error: "No test cases generated"
-          })
+          generationResults.push({ platform: platformId, count: 0, error: "No test cases generated" })
           continue
         }
 
-        // Prepare test cases for database
-        const testCasesToInsert = testCases.map(tc => ({
+        const testCasesToInsert = testCases.map((tc) => ({
           suite_id: suite.id,
-          platform: platformData.platform,
-          framework: platformData.framework,
+          platform: platformId,
+          framework,
           title: tc.title || "Untitled Test",
           description: tc.description || "",
           preconditions: Array.isArray(tc.preconditions) ? tc.preconditions : [],
@@ -328,83 +309,70 @@ Return ONLY valid JSON, no markdown, no explanation.`
           priority: normalizePriority(tc.priority),
           execution_status: "not_run" as const,
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         }))
 
-        // Insert test cases into database
         const { data: insertedCases, error: insertError } = await supabase
           .from("platform_test_cases")
           .insert(testCasesToInsert)
           .select()
 
         if (insertError) {
-          console.error(`❌ Error inserting test cases for ${platformData.platform}:`, insertError)
-          generationResults.push({
-            platform: platformData.platform,
-            count: 0,
-            error: insertError.message
-          })
+          generationResults.push({ platform: platformId, count: 0, error: insertError.message })
           continue
         }
 
-        const count = insertedCases?.length || 0
-        totalTestCases += count
+        const insertedCount = insertedCases?.length ?? 0
+        totalInserted += insertedCount
+        generationResults.push({ platform: platformId, count: insertedCount })
+      } catch (err) {
         generationResults.push({
-          platform: platformData.platform,
-          count: count
-        })
-
-
-      } catch (error) {
-        console.error(`❌ Error generating test cases for ${platformData.platform}:`, error)
-        generationResults.push({
-          platform: platformData.platform,
+          platform: platformId,
           count: 0,
-          error: error instanceof Error ? error.message : "Unknown error"
+          error: err instanceof Error ? err.message : "Unknown error",
         })
       }
     }
 
+    // Persist suite total count
+    await supabase.from("cross_platform_test_suites").update({ total_test_cases: totalInserted }).eq("id", suite.id)
 
-    // Update suite with total test case count
-    await supabase
-      .from("cross_platform_test_suites")
-      .update({ total_test_cases: totalTestCases })
-      .eq("id", suite.id)
-
-    // Check if any test cases were generated
-    if (totalTestCases === 0) {
-      const errors = generationResults
-        .filter(r => r.error)
-        .map(r => `${r.platform}: ${r.error}`)
-      
+    if (totalInserted === 0) {
       return NextResponse.json(
-        { 
+        {
           error: "Failed to generate any test cases",
-          details: errors.length > 0 ? errors.join("; ") : "Unknown error",
-          generation_results: generationResults
+          generation_results: generationResults,
         },
         { status: 500 }
       )
     }
 
-    const successfulPlatforms = generationResults.filter(r => r.count > 0).length
+    // Record usage ONCE, for what we actually inserted
+    await usageTracker.recordTestCaseGeneration(user.id, totalInserted)
+
+    // Compute remaining after charge (optional, but helps UI)
+    const after = await usageTracker.canGenerateTestCases(user.id, 0)
+
+    const successfulPlatforms = generationResults.filter((r) => r.count > 0).length
 
     return NextResponse.json({
       success: true,
       suite_id: suite.id,
-      total_test_cases: totalTestCases,
-      platforms: platforms.map(p => p.platform),
+      total_test_cases: totalInserted,
+      platforms: platforms.map((p) => p.platform),
       generation_results: generationResults,
-      message: `Successfully generated ${totalTestCases} test cases across ${successfulPlatforms} platform(s)`
+      usage: {
+        remaining: after.remaining,
+        generated: totalInserted,
+        requested: requestedTotal,
+      },
+      message: `Successfully generated ${totalInserted} test cases across ${successfulPlatforms} platform(s)`,
     })
-
   } catch (error) {
-    console.error("❌ Cross-platform generation error:", error)
     return NextResponse.json(
-      { 
+      {
         error: "Unexpected error. Please try again.",
-        details: error instanceof Error ? error.message : "Unknown error"
+        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }
     )

@@ -12,7 +12,7 @@ export function PrivacySheet({
 }: { triggerLabel?: string; side?: "right" | "left" | "top" | "bottom" }) {
   return (
     <LegalSheet
-      title="Synth QA - Privacy Policy"
+      title="SynthQA - Privacy Policy"
       side={side}
       trigger={<Button variant="ghost" size="sm">{triggerLabel}</Button>}
     >

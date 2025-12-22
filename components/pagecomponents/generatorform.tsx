@@ -787,16 +787,7 @@ Example:
                           <p className="text-xs text-blue-700 mb-3">
                             Save as a requirement to reuse it and build your requirement library.
                           </p>
-                          <AddRequirementModal
-                            onRequirementAdded={() => {
-                              fetchRequirements()
-                              toast.success('Requirement saved! You can now select it from Saved Requirements.')
-                            }}
-                          >
-                            <Button type="button" size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-100">
-                              💾 Save as Requirement
-                            </Button>
-                          </AddRequirementModal>
+                         
                         </div>
                       </div>
                     </div>
@@ -821,12 +812,7 @@ Example:
                             : "Example requirements (create your own to save them)"} 
                           <span className="text-destructive">*</span>
                         </Label>
-                        <AddRequirementModal onRequirementAdded={fetchRequirements}>
-                          <Button type="button" variant="outline" size="sm">
-                            <Plus className="h-4 w-4 mr-1" />
-                            New
-                          </Button>
-                        </AddRequirementModal>
+                       
                       </div>
                       
                       <Select 
@@ -929,73 +915,76 @@ Example:
             {/* Settings row */}
             {!templateApplied && (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="model">AI Model</Label>
-                    <Select 
-  name="model"
-  value={model}
-  onValueChange={setModel}
-  disabled={loading}
->
-  <SelectTrigger className="h-10">
-    <SelectValue placeholder="Select model" />
-  </SelectTrigger>
-  <SelectContent>
-    <SelectItem value="claude-sonnet-4-5">Claude Sonnet 4.5</SelectItem>
-    <SelectItem value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</SelectItem>
-    <SelectItem value="claude-opus-4-5">Claude Opus 4.5 (Max Quality)</SelectItem>
-    <SelectItem value="gpt-5-mini">GPT-5 Mini (Balanced)</SelectItem>
-    <SelectItem value="gpt-5.2">GPT-5.2 (Premium)</SelectItem>
-    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-    <SelectItem value="gpt-4o-mini">GPT-4o Mini (Economical)</SelectItem>
-  </SelectContent>
-</Select>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+  {/* AI Model */}
+  <div className="space-y-2">
+    <Label htmlFor="model">AI Model</Label>
+    <Select
+      name="model"
+      value={model}
+      onValueChange={setModel}
+      disabled={loading}
+    >
+      <SelectTrigger className="h-10">
+        <SelectValue placeholder="Select model" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="claude-sonnet-4-5">Claude Sonnet 4.5</SelectItem>
+        <SelectItem value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</SelectItem>
+        <SelectItem value="claude-opus-4-5">Claude Opus 4.5 (Max Quality)</SelectItem>
+        <SelectItem value="gpt-5-mini">GPT-5 Mini (Balanced)</SelectItem>
+        <SelectItem value="gpt-5.2">GPT-5.2 (Premium)</SelectItem>
+        <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+        <SelectItem value="gpt-4o-mini">GPT-4o Mini (Economical)</SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="testCaseCount">Number of Test Cases</Label>
-                    <Select
-                      name="testCaseCount"
-                      value={testCaseCount}
-                      onValueChange={setTestCaseCount}
-                      disabled={loading}
-                    >
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Select count" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="5">5 test cases</SelectItem>
-                        <SelectItem value="10">10 test cases</SelectItem>
-                        <SelectItem value="15">15 test cases</SelectItem>
-                        <SelectItem value="20">20 test cases</SelectItem>
-                        <SelectItem value="30">30 test cases</SelectItem>
-                        <SelectItem value="50">50 test cases</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+  {/* Test Case Count */}
+  <div className="space-y-2">
+    <Label htmlFor="testCaseCount">Number of Test Cases</Label>
+    <Select
+      name="testCaseCount"
+      value={testCaseCount}
+      onValueChange={setTestCaseCount}
+      disabled={loading}
+    >
+      <SelectTrigger className="h-10">
+        <SelectValue placeholder="Select count" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="5">5 test cases</SelectItem>
+        <SelectItem value="10">10 test cases</SelectItem>
+        <SelectItem value="15">15 test cases</SelectItem>
+        <SelectItem value="20">20 test cases</SelectItem>
+        <SelectItem value="30">30 test cases</SelectItem>
+        <SelectItem value="50">50 test cases</SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="coverage">Coverage Level</Label>
-                  <Select
-                    name="coverage"
-                    value={coverage}
-                    onValueChange={(value) =>
-                      setCoverage(value as "standard" | "comprehensive" | "exhaustive")
-                    }
-                    disabled={loading}
-                  >
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select coverage" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="standard">Standard - Main functionality</SelectItem>
-                      <SelectItem value="comprehensive">Comprehensive - Includes edge cases</SelectItem>
-                      <SelectItem value="exhaustive">Exhaustive - All scenarios</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+  {/* Coverage */}
+  <div className="space-y-2">
+    <Label htmlFor="coverage">Coverage Level</Label>
+    <Select
+      name="coverage"
+      value={coverage}
+      onValueChange={(value) =>
+        setCoverage(value as "standard" | "comprehensive" | "exhaustive")
+      }
+      disabled={loading}
+    >
+      <SelectTrigger className="h-10">
+        <SelectValue placeholder="Select coverage" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="standard">Standard</SelectItem>
+        <SelectItem value="comprehensive">Comprehensive</SelectItem>
+        <SelectItem value="exhaustive">Exhaustive</SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
+</div>
               </>
             )}
 
@@ -1083,42 +1072,47 @@ User authentication functionality that works consistently across web and mobile 
       <div className="space-y-2">
         <Label htmlFor="crossPlatformModel">AI Model</Label>
         <Select
-          value={crossPlatformModel}
-          onValueChange={setCrossPlatformModel}
-          disabled={loading}
-        >
+      name="model"
+      value={model}
+      onValueChange={setModel}
+      disabled={loading}
+    >
           <SelectTrigger className="h-10">
             <SelectValue placeholder="Select model" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="claude-sonnet-4-5">Claude Sonnet 4.5</SelectItem>
-            <SelectItem value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</SelectItem>
-            <SelectItem value="claude-opus-4-5">Claude Opus 4.5 (Max Quality)</SelectItem>
-            <SelectItem value="gpt-5-mini">GPT-5 Mini (Balanced)</SelectItem>
-            <SelectItem value="gpt-5.2">GPT-5.2 (Premium)</SelectItem>
-            <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+        <SelectItem value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</SelectItem>
+        <SelectItem value="claude-opus-4-5">Claude Opus 4.5 (Max Quality)</SelectItem>
+        <SelectItem value="gpt-5-mini">GPT-5 Mini (Balanced)</SelectItem>
+        <SelectItem value="gpt-5.2">GPT-5.2 (Premium)</SelectItem>
+        <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+        <SelectItem value="gpt-4o-mini">GPT-4o Mini (Economical)</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="crossPlatformTestCount">Test Cases per Platform</Label>
-        <Select
-          value={crossPlatformTestCount}
-          onValueChange={setCrossPlatformTestCount}
-          disabled={loading}
-        >
+       <Select
+      name="testCaseCount"
+      value={testCaseCount}
+      onValueChange={setTestCaseCount}
+      disabled={loading}
+    >
+
+          
           <SelectTrigger className="h-10">
             <SelectValue placeholder="Select count" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="5">5 test cases</SelectItem>
-            <SelectItem value="10">10 test cases (default)</SelectItem>
-            <SelectItem value="15">15 test cases</SelectItem>
-            <SelectItem value="20">20 test cases</SelectItem>
-            <SelectItem value="30">30 test cases</SelectItem>
-            <SelectItem value="50">50 test cases</SelectItem>
-          </SelectContent>
+        <SelectItem value="5">5 test cases</SelectItem>
+        <SelectItem value="10">10 test cases</SelectItem>
+        <SelectItem value="15">15 test cases</SelectItem>
+        <SelectItem value="20">20 test cases</SelectItem>
+        <SelectItem value="30">30 test cases</SelectItem>
+        <SelectItem value="50">50 test cases</SelectItem>
+      </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
           Generate this many tests for each platform
@@ -1128,20 +1122,21 @@ User authentication functionality that works consistently across web and mobile 
       <div className="space-y-2">
         <Label htmlFor="crossPlatformCoverage">Coverage Level</Label>
         <Select
-          value={crossPlatformCoverage}
-          onValueChange={(value) =>
-            setCrossPlatformCoverage(value as "standard" | "comprehensive" | "exhaustive")
-          }
-          disabled={loading}
-        >
+      name="coverage"
+      value={coverage}
+      onValueChange={(value) =>
+        setCoverage(value as "standard" | "comprehensive" | "exhaustive")
+      }
+      disabled={loading}
+    >
           <SelectTrigger className="h-10">
             <SelectValue placeholder="Select coverage" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="standard">Standard - Main functionality</SelectItem>
-            <SelectItem value="comprehensive">Comprehensive - Edge cases</SelectItem>
-            <SelectItem value="exhaustive">Exhaustive - All scenarios</SelectItem>
-          </SelectContent>
+           <SelectContent>
+        <SelectItem value="standard">Standard</SelectItem>
+        <SelectItem value="comprehensive">Comprehensive</SelectItem>
+        <SelectItem value="exhaustive">Exhaustive</SelectItem>
+      </SelectContent>
         </Select>
       </div>
     </div>
