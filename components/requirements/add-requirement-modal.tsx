@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/tabs"
 import { Plus, Loader2, X, FileText, Settings, Sparkles, FolderOpen } from "lucide-react"
 import { useRouter } from "next/navigation"
+import type { Requirement } from "@/types/requirements"
+
 
 interface Project {
   id: string
@@ -35,9 +37,9 @@ interface Project {
 }
 
 interface AddRequirementModalProps {
-  onRequirementAdded?: () => void
+  onRequirementAdded?: (req: Requirement) => void | Promise<void>
   children?: React.ReactNode
-  defaultProjectId?: string // Allow pre-selecting a project
+  defaultProjectId?: string
 }
 
 type MetadataField = {
@@ -264,7 +266,8 @@ export function AddRequirementModal({
 
       setOpen(false)
       resetForm()
-      onRequirementAdded?.()
+      await onRequirementAdded?.(requirement as Requirement)
+
 
     } catch (error) {
       console.error('Error creating requirement:', error)
@@ -581,7 +584,6 @@ export function AddRequirementModal({
               </TabsContent>
 
               <TabsContent value="advanced" className="space-y-6 pt-2">
-                {/* Test Generation Options - FIXED */}
                 <div className="space-y-4 p-4 border rounded-lg bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-5 w-5 text-purple-600" />

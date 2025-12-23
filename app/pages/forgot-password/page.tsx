@@ -37,3 +37,7 @@ export default function ForgotPasswordPage() {
     </div>
   )
 }
+
+export const metadata = {
+  title: 'SynthQA - Forgot Password?',
+}

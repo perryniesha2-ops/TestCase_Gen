@@ -14,7 +14,7 @@ import Image from "next/image"
 
 import {PrivacySheet} from "@/components/legal/PrivacySheet"
 import {TermsSheet} from "@/components/legal/TermsSheet"
-import {ContactSheet} from "@/components/pagecomponents/contactSheet"
+import {ContactSheet} from "@/components/legal/contactSheet"
 
 
 export default function SignupPage() {
@@ -54,4 +54,7 @@ export default function SignupPage() {
       </div>
     </div>
   )
+}
+export const metadata = {
+  title: 'SynthQA - Signup',
 }

@@ -1,4 +1,4 @@
-import { GeneratorForm } from "@/components/pagecomponents/generatorform";
+import { GeneratorForm } from "@/components/generator/generatorform";
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
 

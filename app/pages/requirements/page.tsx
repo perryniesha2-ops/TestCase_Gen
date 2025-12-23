@@ -14,30 +14,8 @@ export default function RequirementsPage() {
 
       {/* Main content */}
       <div className="flex min-h-screen flex-col px-4 md:px-6">
-        <SiteHeader />
-
-        {/* Page header block (centered) */}
-        <header className="mt-8 max-w-3xl mx-auto text-center space-y-2">
-          <h1 className="text-3xl font-bold">Requirements</h1>
-          <p className="text-muted-foreground">
-            Manage and organize your project requirements to generate targeted test cases.
-          </p>
-        </header>
-
-        {/* Actions row (right-aligned) */}
-        <section className="max-w-5xl mx-auto mt-6 space-y-4 w-full">
-          <div className="flex items-center justify-end gap-2">
-            <AddRequirementModal />
-            <Button asChild variant="outline">
-              <Link href="/pages/generate">
-                <Sparkles className="h-4 w-4 mr-2" />
-                Generate Tests
-              </Link>
-            </Button>
-          </div>
-        </section>
-
-        {/* List (centered container) */}
+         <SiteHeader  title="Requirements"
+        subtitle="Manage and organize your project requirements to generate targeted test cases"/>
         <main className="max-w-5xl mx-auto w-full mt-6">
           <RequirementsList />
         </main>

@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { AddRequirementModal } from "@/components/requirements/add-requirement-modal"
+import { Plus } from "lucide-react"
+import { useRouter } from "next/navigation"
+
 import {
   Select,
   SelectContent,
@@ -51,12 +55,16 @@ export function RequirementsList({
   const [priorityFilter, setPriorityFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
+  
 
   // Dialog State
   const [selectedRequirement, setSelectedRequirement] = useState<Requirement | null>(null)
   const [showDetailsDialog, setShowDetailsDialog] = useState(false)
   const [showLinkDialog, setShowLinkDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
+
+  const router = useRouter()
+
 
   // Projects State
   const [projects, setProjects] = useState<Project[]>([])
@@ -118,6 +126,11 @@ export function RequirementsList({
     currentPage * itemsPerPage
   )
 
+  const handleRequirementAdded = async () => {
+  await fetchRequirements()   
+  router.refresh()            
+}
+
   // Event Handlers
   function handleRowClick(requirement: Requirement) {
     if (selectable && onRequirementSelected) {
@@ -174,6 +187,8 @@ export function RequirementsList({
     setCurrentPage(1)
   }
 
+
+
   // Loading State
   if (loading) {
     return (
@@ -185,6 +200,17 @@ export function RequirementsList({
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-end gap-2">
+<AddRequirementModal
+  defaultProjectId={selectedProject || undefined}
+  onRequirementAdded={handleRequirementAdded}
+>
+  <Button>
+    <Plus className="h-4 w-4 mr-2" />
+    New Requirement
+  </Button>
+</AddRequirementModal>
+</div>
       {/* Filters Section */}
       <div className="flex items-center gap-4">
         {/* Search Input */}
