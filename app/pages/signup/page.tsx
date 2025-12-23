@@ -56,5 +56,5 @@ export default function SignupPage() {
   )
 }
 export const metadata = {
-  title: 'SynthQA - Signup',
+  title: 'SynthQA - Sign Up',
 }

@@ -1,31 +1,44 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
 import { customResetPassword } from "@/app/auth/actions/auth"
+import { cn } from "@/lib/utils"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldSeparator,
+} from "@/components/ui/field"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Mail, ArrowLeft, AlertTriangle } from "lucide-react"
+
+import { ArrowLeft, AlertTriangle, Mail } from "lucide-react"
 
 export function ForgotPasswordForm() {
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
   const [email, setEmail] = useState("")
   const searchParams = useSearchParams()
-  
-  // Check for error parameters (like expired token)
-  const error = searchParams.get('error')
+
+  const error = searchParams.get("error")
 
   useEffect(() => {
-    if (error === 'expired') {
+    if (error === "expired") {
       toast.error("Reset link expired", {
         description: "The password reset link has expired. Please request a new one.",
-        duration: 5000
+        duration: 5000,
       })
     }
   }, [error])
@@ -38,131 +51,154 @@ export function ForgotPasswordForm() {
 
     try {
       const result = await customResetPassword(formData)
-      
+
       if (result?.error) {
-        toast.error("Reset failed", {
-          description: result.error,
-        })
-        setLoading(false)
+        toast.error("Reset failed", { description: result.error })
       } else if (result?.success) {
+        const enteredEmail = String(formData.get("email") || "")
+        setEmail(enteredEmail)
         setSent(true)
-        setEmail(formData.get("email") as string)
-        toast.success("Reset email sent!", {
-          description: result.message,
-        })
-        setLoading(false)
+        toast.success("Reset email sent!", { description: result.message })
+      } else {
+        toast.error("Reset failed", { description: "Please try again." })
       }
-    } catch (error) {
+    } catch (err) {
+      console.error(err)
       toast.error("An unexpected error occurred")
-      console.error(error)
+    } finally {
       setLoading(false)
     }
   }
 
+  // --- SENT STATE (styled like LoginForm) ---
   if (sent) {
     return (
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-            <Mail className="h-6 w-6 text-primary" />
-          </div>
-          <CardTitle className="text-2xl">Check your email</CardTitle>
-          <CardDescription>
-            We&apos;ve sent a password reset link to <strong>{email}</strong>
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Alert>
-            <Mail className="h-4 w-4" />
-            <AlertDescription>
-              Click the link in the email to reset your password. The link will expire in 1 hour.
-            </AlertDescription>
-          </Alert>
-          
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-            <p className="text-sm text-blue-800">
-              <strong>Important:</strong> Click the reset link as soon as you receive it. If you wait too long, the link may expire and you&apos;ll need to request a new one.
-            </p>
-          </div>
-        </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
-          <p className="text-sm text-muted-foreground text-center">
-            Didn&apos;t receive the email? Check your spam folder or{" "}
-            <button
-              onClick={() => {
-                setSent(false)
-                setEmail("")
-              }}
-              className="text-primary hover:underline"
-            >
-              try again
-            </button>
-          </p>
-          <Link href="/pages/login">
-            <Button variant="ghost" className="w-full">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to login
-            </Button>
-          </Link>
-        </CardFooter>
-      </Card>
+      <div className={cn("flex flex-col gap-6")}>
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">Check your email</CardTitle>
+          </CardHeader>
+
+          <CardContent>
+            <FieldGroup>
+              <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
+                We&apos;ve sent a reset link to <span className="font-medium">{email}</span>
+              </FieldSeparator>
+
+              <Field>
+                <Alert>
+                  <Mail className="h-4 w-4" />
+                  <AlertDescription>
+                    Click the link in the email to reset your password. The link expires in 1 hour.
+                  </AlertDescription>
+                </Alert>
+              </Field>
+
+              {error === "expired" && (
+                <Field>
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      Your previous reset link expired. This new link will also expire in 1 hour.
+                    </AlertDescription>
+                  </Alert>
+                </Field>
+              )}
+
+              <Field>
+                <Button
+                  type="button"
+                  className="w-full"
+                  variant="outline"
+                  onClick={() => {
+                    setSent(false)
+                    setEmail("")
+                  }}
+                  disabled={loading}
+                >
+                  Send another link
+                </Button>
+
+                <FieldDescription className="text-center">
+                  Didn&apos;t receive the email? Check spam/junk, or try another address.
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <Button asChild variant="ghost" className="w-full">
+                  <Link href="/pages/login">
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Back to login
+                  </Link>
+                </Button>
+              </Field>
+            </FieldGroup>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
+  // --- DEFAULT STATE (styled like LoginForm) ---
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <CardTitle className="text-2xl">Reset password</CardTitle>
-        <CardDescription>
-          Enter your email address and we&apos;ll send you a link to reset your password
-        </CardDescription>
-      </CardHeader>
-      
-      {error === 'expired' && (
-        <CardContent className="pb-0">
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              Your previous reset link has expired. Please request a new one below.
-            </AlertDescription>
-          </Alert>
+    <div className={cn("flex flex-col gap-6")}>
+      <Card>
+        <CardHeader className="text-center">
+          <CardTitle className="text-xl">Reset password</CardTitle>
+        </CardHeader>
+
+        <CardContent>
+          {error === "expired" && (
+            <div className="mb-4">
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  Your reset link expired. Request a new one below.
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit}>
+            <FieldGroup>
+              <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
+                Enter your email to receive a reset link
+              </FieldSeparator>
+
+              <Field>
+                <FieldLabel htmlFor="email">Email</FieldLabel>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  required
+                  disabled={loading}
+                />
+              </Field>
+
+              <Field>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? "Sending..." : "Send reset link"}
+                </Button>
+
+                <FieldDescription className="text-center">
+                  Remembered your password? <Link className="hover:underline" href="/pages/login">Back to login</Link>
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <Button asChild variant="ghost" className="w-full">
+                  <Link href="/pages/login">
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Back to login
+                  </Link>
+                </Button>
+              </Field>
+            </FieldGroup>
+          </form>
         </CardContent>
-      )}
-      
-      <form onSubmit={handleSubmit}>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email address</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="you@example.com"
-              required
-              disabled={loading}
-            />
-          </div>
-                              
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
-            <p className="text-sm text-amber-800">
-              <strong>Tip:</strong> Click the reset link in your email immediately to avoid expiration issues.
-            </p>
-          </div>
-             <div >
-          </div>
-        </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Sending..." : "Send reset link"}
-          </Button>
-          <Link href="/pages/login">
-            <Button variant="ghost" className="w-full">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to login
-            </Button>
-          </Link>
-        </CardFooter>
-      </form>
-    </Card>
+      </Card>
+    </div>
   )
 }
