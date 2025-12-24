@@ -12,7 +12,7 @@ export  function TermsSheet({
 }: { triggerLabel?: string; side?: "right" | "left" | "top" | "bottom" }) {
   return (
     <LegalSheet
-      title="Synth QA - Terms of Service"
+      title="SynthQA - Terms of Service"
       side={side}
       trigger={<Button variant="ghost" size="sm">{triggerLabel}</Button>}
     >

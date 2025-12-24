@@ -65,6 +65,35 @@ const categoryIcons: Record<TemplateCategory, React.ComponentType<{ className?: 
   other: FileText,
 }
 
+/**
+ * Get display name for AI model
+ * Handles both old and new model naming conventions
+ */
+function getModelDisplayName(modelKey: string): string {
+  // Latest models (Dec 2024)
+  if (modelKey === "claude-sonnet-4-5") return "Claude Sonnet 4.5"
+  if (modelKey === "claude-haiku-4-5") return "Claude Haiku 4.5"
+  if (modelKey === "claude-opus-4-5") return "Claude Opus 4.5"
+  if (modelKey === "gpt-5-mini") return "GPT-5 Mini"
+  if (modelKey === "gpt-5.2") return "GPT-5.2"
+  if (modelKey === "gpt-4o") return "GPT-4o"
+  if (modelKey === "gpt-4o-mini") return "GPT-4o Mini"
+  
+  // Legacy models (backwards compatibility)
+  if (modelKey.includes("claude-3-5-sonnet")) return "Claude 3.5 Sonnet"
+  if (modelKey.includes("claude-3-5-haiku")) return "Claude 3.5 Haiku"
+  if (modelKey.includes("claude-sonnet-4")) return "Claude Sonnet 4"
+  if (modelKey.includes("claude-opus-4")) return "Claude Opus 4"
+  if (modelKey.includes("gpt-4-turbo")) return "GPT-4 Turbo"
+  if (modelKey.includes("gpt-3.5")) return "GPT-3.5 Turbo"
+  
+  // Fallback - extract readable name
+  if (modelKey.includes("claude")) return "Claude"
+  if (modelKey.includes("gpt")) return "GPT"
+  
+  return modelKey
+}
+
 export function TemplateSelect({ value, onSelect, disabled }: TemplateSelectProps) {
   const [templates, setTemplates] = useState<Template[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
@@ -154,10 +183,6 @@ export function TemplateSelect({ value, onSelect, disabled }: TemplateSelectProp
     onSelect(null)
   }
 
-
-
-
-
   const favoriteTemplates = templates.filter(t => t.is_favorite)
 
   return (
@@ -216,9 +241,7 @@ export function TemplateSelect({ value, onSelect, disabled }: TemplateSelectProp
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Model:</span>
                 <span className="font-medium">
-                  {selectedTemplate.template_content.model.includes("claude")
-                    ? "Claude"
-                    : "GPT"}
+                  {getModelDisplayName(selectedTemplate.template_content.model)}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -288,9 +311,6 @@ export function TemplateSelect({ value, onSelect, disabled }: TemplateSelectProp
                           <div className="flex items-center gap-2">
                             <Icon className="h-4 w-4" />
                             <span>{template.name}</span>
-                            
-                              
-                          
                           </div>
                         </SelectItem>
                       )
@@ -347,13 +367,7 @@ export function TemplateSelect({ value, onSelect, disabled }: TemplateSelectProp
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-muted-foreground">AI Model:</span>
                     <span className="font-medium">
-                      {selectedTemplate.template_content.model.includes("sonnet")
-                        ? "Claude 3.5 Sonnet"
-                        : selectedTemplate.template_content.model.includes("haiku")
-                        ? "Claude 3.5 Haiku"
-                        : selectedTemplate.template_content.model.includes("gpt-4o-mini")
-                        ? "GPT-4o Mini"
-                        : "GPT-4o"}
+                      {getModelDisplayName(selectedTemplate.template_content.model)}
                     </span>
                   </div>
                   <div className="flex justify-between py-2 border-b">

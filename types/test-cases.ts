@@ -1,8 +1,10 @@
 // app/pages/test-cases/types/test-cases.ts
 
 export type ExecutionStatus = 'not_run' | 'in_progress' | 'passed' | 'failed' | 'blocked' | 'skipped'
-export type ApprovalStatus = 'draft' | 'active' | 'archived'
+export type ApprovalStatus = 'draft' | 'active' | 'archived'| 'pending'| "approved"| "rejected"
 export type Priority = 'low' | 'medium' | 'high' | 'critical'
+export type AutomationMode = "manual" | "partial" | "automated"
+
 
 export interface TestStep {
   step_number: number
@@ -59,7 +61,7 @@ export interface TestCaseForm {
   preconditions: string
   test_steps: TestStep[]
   expected_result: string
-  status: 'draft' | 'active' | 'archived'
+  status: 'draft' | 'active' | 'archived' |'pending' |"approved"| "rejected"
   project_id?: string | null
 }
 
@@ -94,6 +96,8 @@ export interface TestSession {
   environment: string
   actual_start?: string
     stats: SessionStats
+    test_cases_completed: number
+    progress_percentage: number
 
 }
 
@@ -156,6 +160,8 @@ export interface TestSuite {
   actual_end_date?: string
   created_at: string
   test_case_count?: number
+  project_id: string | null
+  projects?: Project
   execution_stats?: {
     total: number
     passed: number
@@ -163,8 +169,12 @@ export interface TestSuite {
     skipped: number
     blocked: number
   }
-    project_id: string | null
-    projects?: Project
+  automation?: {
+    eligible_count: number
+    scripted_count: number
+    mode: AutomationMode
+  }
+   
 }
 
 export interface SessionStats {
@@ -220,10 +230,45 @@ export interface Attachment {
 
 
 
+export type ExecutionHistoryRow = {
+  execution_id: string
+  suite_id: string
+  suite_name: string
+  session_id: string | null
 
+  test_case_id: string
+  test_title: string
 
+  execution_status: ExecutionStatus
+  failure_reason: string | null
 
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
 
+  evidence_count: number
+}
+
+export interface TestAttachment {
+  id: string
+  file_name: string
+  file_path: string
+  file_type: string
+  file_size: number | null  
+  description?: string | null  
+  step_number?: number | null  
+  created_at: string
+}
+
+export type AutomationScript = {
+  id: string
+  test_case_id: string
+  framework?: string | null
+  status?: string | null
+  script_content: string | null
+  updated_at?: string | null
+  created_at?: string | null
+}
 
 
 

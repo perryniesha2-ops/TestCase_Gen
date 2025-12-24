@@ -52,7 +52,6 @@ function dlog(msg: string, meta?: Record<string, unknown>) {
         )
       : "";
     // eslint-disable-next-line no-console
-    console.debug(`[usage] ${msg}${safe ? " " + safe : ""}`);
   } catch {
     // swallow logging errors
   }

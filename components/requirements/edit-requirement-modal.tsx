@@ -167,15 +167,8 @@ export function EditRequirementModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="
-          w-[96vw]
-          sm:max-w-3xl
-          lg:max-w-4xl
-          max-h-[92vh]
-          overflow-hidden
-          p-0
-        "
+          <DialogContent 
+        className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
         onInteractOutside={(e) => e.preventDefault()}
       >
         {/* Sticky header with top-right close */}

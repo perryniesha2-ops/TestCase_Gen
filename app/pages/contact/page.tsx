@@ -87,15 +87,16 @@ export default function ContactUs() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <Link
-                  href="/pages/contact"
+                  href="/pages/help/test-cases"
                   className="group flex items-start gap-3 rounded-md border p-3 hover:bg-accent transition"
                 >
                   <LifeBuoy className="mt-0.5 h-4 w-4 text-primary" />
                   <div className="flex-1">
-                    <div className="font-medium">Help Center-Coming Soon</div>
+                    <div className="font-medium">Help Center</div>
                     <p className="text-sm text-muted-foreground">
                       Guides for generating, managing, and exporting test cases.
                     </p>
+                    
                   </div>
                   <ArrowRight className="h-4 w-4 opacity-0 transition group-hover:opacity-100" />
                 </Link>

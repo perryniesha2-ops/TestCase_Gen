@@ -24,6 +24,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+  SheetClose,
+} from "@/components/ui/sheet"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
@@ -59,6 +68,7 @@ import {
   RotateCcw,
   FolderOpen,
   ChevronDown,
+  Code2, 
 } from "lucide-react"
 
 // ✅ Import types from new file
@@ -72,12 +82,20 @@ import type {
   ExecutionStatus,
   Project,
   ExecutionDetails,
+  AutomationScript,
 } from "@/types/test-cases"
 
 // ✅ Import dialog components
-import { TestCaseFormDialog } from "./test-case-form-dialog"
-import { TestExecutionDialog } from "./test-execution-dialog"
-import { DeleteTestCaseDialog } from "./delete-test-case-dialog"
+import { TestCaseFormDialog } from "./dialogs/test-case-form-dialog"
+import { TestExecutionDialog } from "./dialogs/test-execution-dialog"
+import { DeleteTestCaseDialog } from "./dialogs/delete-test-case-dialog"
+import { BulkActionsToolbar } from "./BulkActionsToolbar"
+import { useBulkActions } from "@/hooks/useBulkActions"
+import { CrossPlatformBulkActionsToolbar } from "./CrossPlatformBulkActionsToolbar" 
+import { ScriptGenerator } from '@/components/automation/scriptGenerator'
+import { ScriptEditorDialog } from "@/components/automation/script-editor-dialog"
+
+
 
 const platformIcons = {
   web: Monitor,
@@ -126,6 +144,33 @@ export function TabbedTestCaseTable() {
   const generationId = searchParams.get("generation")
   const sessionId = searchParams.get("session")
 
+  // Script Generation
+const [showScriptGenerator, setShowScriptGenerator] = useState(false)
+const [automatingTestCase, setAutomatingTestCase] = useState<TestCase | null>(null)
+const [automatedTestCases, setAutomatedTestCases] = useState<Set<string>>(new Set())
+const [checkingAutomation, setCheckingAutomation] = useState(false)
+const [scriptsByTestCase, setScriptsByTestCase] = useState<Record<string, AutomationScript>>({})
+const [scriptLoadingId, setScriptLoadingId] = useState<string | null>(null)
+const [showScriptEditor, setShowScriptEditor] = useState(false)
+const [activeScriptId, setActiveScriptId] = useState<string | null>(null)
+const [activeScriptTitle, setActiveScriptTitle] = useState<string>("")
+
+
+
+
+// Actions
+const [showActionSheet, setShowActionSheet] = useState(false)
+const [actionSheetCase, setActionSheetCase] = useState<TestCase | null>(null)
+const actionIsAutomated = !!actionSheetCase && automatedTestCases.has(actionSheetCase.id)
+
+const actionGenerationTitle =
+  actionSheetCase?.generation_id
+    ? generations[actionSheetCase.generation_id]?.title
+    : undefined
+
+
+
+
   useEffect(() => {
     fetchData()
     if (sessionId) {
@@ -136,6 +181,23 @@ export function TabbedTestCaseTable() {
   useEffect(() => {
     fetchProjects()
   }, [])
+
+   const crossPlatformBulkActions = useBulkActions(
+    crossPlatformCases,
+    fetchData,
+    "cross-platform"
+  )
+  const {
+    selectedIds,
+    isProcessing,
+    toggleSelection,
+    selectAll,
+    deselectAll,
+    bulkUpdate,
+    bulkDelete,
+    bulkAddToSuite,
+    bulkExport,
+  } = useBulkActions(testCases, fetchData)
 
   async function fetchProjects() {
     try {
@@ -174,6 +236,26 @@ export function TabbedTestCaseTable() {
     }
   }
 
+
+  function getApprovalStatusBadge(approvalStatus?: string) {
+  const status = approvalStatus || "pending"
+  
+  switch (status) {
+    case "pending":
+      return <Badge className="bg-amber-100 text-amber-800">
+        <Clock className="h-3 w-3 mr-1" />Pending
+      </Badge>
+    case "approved":
+      return <Badge className="bg-green-100 text-green-800">
+        <CheckCircle2 className="h-3 w-3 mr-1" />Approved
+      </Badge>
+    case "rejected":
+      return <Badge className="bg-red-100 text-red-800">
+        <XCircle className="h-3 w-3 mr-1" />Rejected
+      </Badge>
+  }
+}
+  
   async function fetchData() {
     try {
       setLoading(true)
@@ -206,6 +288,12 @@ export function TabbedTestCaseTable() {
 
       if (testCasesError) throw testCasesError
       setTestCases(testCasesData || [])
+
+      const testCaseIds = testCasesData?.map(tc => tc.id) || []
+    if (testCaseIds.length > 0) {
+      await checkForAutomationScripts(testCaseIds)
+    }
+
 
       // Fetch cross-platform test cases
       const { data: crossPlatformData, error: crossPlatformError } = await supabase
@@ -415,6 +503,13 @@ export function TabbedTestCaseTable() {
     })
   }
 
+
+  function openAutomationDialog(testCase: TestCase) {
+  setAutomatingTestCase(testCase)
+  setShowScriptGenerator(true)
+}
+
+
   async function markTestResult(testCaseId: string, status: ExecutionStatus) {
     setSelectedTestCase(testCases.find((tc) => tc.id === testCaseId) || null)
 
@@ -447,7 +542,7 @@ export function TabbedTestCaseTable() {
 
       const statusLabels = {
         draft: "Draft",
-        active: "Approved",
+        active: "Active",
         archived: "Archived",
       }
 
@@ -620,6 +715,10 @@ export function TabbedTestCaseTable() {
 
   const crossPlatformStats = {
     total: filteredCrossPlatformCases.length,
+    pending: filteredCrossPlatformCases.filter(tc => !tc.status || tc.status === "pending").length,
+  approved: filteredCrossPlatformCases.filter(tc => tc.status === "approved").length,
+  rejected: filteredCrossPlatformCases.filter(tc => tc.status === "rejected").length,
+  // ... execution stats
     passed: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "passed").length,
     failed: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "failed").length,
     blocked: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "blocked")
@@ -740,6 +839,61 @@ export function TabbedTestCaseTable() {
     )
   }
 
+  async function checkForAutomationScripts(testCaseIds: string[]) {
+  if (testCaseIds.length === 0) return
+  
+  setCheckingAutomation(true)
+  try {
+    const supabase = createClient()
+    
+    // Batch check for automation scripts
+   const { data, error } = await supabase
+  .from("automation_scripts")
+  .select("id, test_case_id, status, framework, updated_at")
+  .in("test_case_id", testCaseIds)
+    
+    if (error) {
+      console.error('Error checking automation scripts:', error)
+      return
+    }
+    
+    // Create set of test case IDs that have scripts
+    const automatedIds = new Set(
+      data?.map(script => script.test_case_id) || []
+    )
+    
+    setAutomatedTestCases(automatedIds)
+    const map: Record<string, AutomationScript> = {}
+    ;(data || []).forEach((s) => {
+      map[s.test_case_id] = s as AutomationScript
+    })
+    setScriptsByTestCase(map)
+  } catch (error) {
+    console.error('Error checking automation:', error)
+  } finally {
+    setCheckingAutomation(false)
+  }
+}
+
+
+function openScriptEditor(testCase: TestCase) {
+  const script = scriptsByTestCase[testCase.id]
+  if (!script?.id) {
+    toast.error("No script found for this test case yet.")
+    return
+  }
+  setActiveScriptId(script.id)
+  setActiveScriptTitle(testCase.title)
+  setShowScriptEditor(true)
+}
+
+
+function openActionSheet(testCase: TestCase) {
+  setActionSheetCase(testCase)
+  setShowActionSheet(true)
+}
+
+
   return (
     <div className="space-y-6">
       {/* Session Info */}
@@ -828,6 +982,10 @@ export function TabbedTestCaseTable() {
           Export
         </Button>
       </div>
+  
+
+      
+
 
       {/* Tabbed Interface */}
       <Tabs defaultValue="regular" className="w-full">
@@ -874,16 +1032,39 @@ export function TabbedTestCaseTable() {
 
           {/* Test Cases Table */}
           <div className="border rounded-lg">
+          <BulkActionsToolbar 
+          selectedIds={selectedIds} 
+          allTestCases={testCases} 
+          onSelectAll={selectAll} 
+          onDeselectAll={deselectAll} 
+          onBulkUpdate={bulkUpdate} 
+          onBulkDelete={bulkDelete}
+          onBulkAddToSuite={bulkAddToSuite}          
+          onBulkExport={bulkExport}
+
+           />
+            
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[50px]">
+              <Checkbox
+                checked={selectedIds.size === testCases.length && testCases.length > 0}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    selectAll()
+                  } else {
+                    deselectAll()
+                  }
+                }}
+              />
+            </TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead className="w-[140px]">Project</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead className="w-[100px]">Priority</TableHead>
                   <TableHead className="w-[100px]">Type</TableHead>
-                  <TableHead className="w-[150px]">Generation</TableHead>
-                  <TableHead className="w-[120px]">Created</TableHead>
+                  <TableHead className="w-[100px]">Automation</TableHead>
                   <TableHead className="w-[80px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -905,9 +1086,16 @@ export function TabbedTestCaseTable() {
                   paginatedTestCases.map((testCase) => {
                     const exec = execution[testCase.id]
                     const generation = generations[testCase.generation_id]
+                    const isAutomated = automatedTestCases.has(testCase.id)
 
                     return (
                       <TableRow key={testCase.id}>
+                        <TableCell>
+                <Checkbox
+                  checked={selectedIds.has(testCase.id)}
+                  onCheckedChange={() => toggleSelection(testCase.id)}
+                />
+              </TableCell>
                         {/* Title */}
                         <TableCell className="font-medium">
                           <div
@@ -972,7 +1160,7 @@ export function TabbedTestCaseTable() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="draft">Draft</SelectItem>
-                              <SelectItem value="active">Approved</SelectItem>
+                              <SelectItem value="active">Active</SelectItem>
                               <SelectItem value="archived">Archived</SelectItem>
                             </SelectContent>
                           </Select>
@@ -990,52 +1178,71 @@ export function TabbedTestCaseTable() {
                           <Badge variant="secondary">{testCase.test_type}</Badge>
                         </TableCell>
 
-                        {/* Generation */}
-                        <TableCell className="text-muted-foreground text-sm">
-                          {generation?.title || "Manual"}
-                        </TableCell>
-
-                        {/* Created */}
-                        <TableCell className="text-muted-foreground text-sm">
-                          {getRelativeTime(testCase.created_at)}
-                        </TableCell>
-
+                      
+{/* Automation */}
+<TableCell>
+  {checkingAutomation ? (
+    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+  ) : isAutomated ? (
+    <button
+      type="button"
+      onClick={() => openScriptEditor(testCase)}
+      className="inline-flex"
+    >
+      <Badge className="gap-1 bg-purple-100 text-purple-700 hover:bg-purple-200">
+        <Code2 className="h-3 w-3" />
+        Automated
+      </Badge>
+    </button>
+  ) : (
+    <Badge variant="outline" className="text-muted-foreground">
+      Manual
+    </Badge>
+  )}
+</TableCell>
+                       
                         {/* Actions */}
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => openTestCaseDialog(testCase, "regular")}
-                              >
-                                <Eye className="h-4 w-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openEditDialog(testCase)}>
-                                <Edit3 className="h-4 w-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => openDeleteDialog(testCase)}
-                                className="text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
+                       <TableCell className="text-right">
+  <Button
+    variant="ghost"
+    size="sm"
+    className="h-8 w-8 p-0"
+    onClick={() => openActionSheet(testCase)}
+  >
+    <MoreHorizontal className="h-4 w-4" />
+  </Button>
+</TableCell>
+
                       </TableRow>
                     )
                   })
                 )}
               </TableBody>
             </Table>
+
+{/* Automation Script Generator Dialog */}
+{automatingTestCase && (
+  <ScriptGenerator
+    testCase={{
+      id: automatingTestCase.id,
+      title: automatingTestCase.title,
+      description: automatingTestCase.description,
+      test_steps: automatingTestCase.test_steps
+    }}
+    open={showScriptGenerator}
+    onOpenChange={setShowScriptGenerator}
+    onScriptGenerated={(scriptId) => {
+      toast.success("Automation script generated!", {
+        description: "Your Playwright test script is ready"
+      })
+      setShowScriptGenerator(false)
+      setAutomatingTestCase(null)
+    }}
+  />
+)}
+
+
+
           </div>
 
           {/* Pagination */}
@@ -1070,155 +1277,195 @@ export function TabbedTestCaseTable() {
         </TabsContent>
 
         {/* Cross-Platform Tab - Simplified */}
-        <TabsContent value="cross-platform" className="space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-            <div className="bg-card p-4 rounded-lg border">
-              <div className="text-2xl font-bold">{crossPlatformStats.total}</div>
-              <div className="text-sm text-muted-foreground">Total</div>
-            </div>
-            <div className="bg-card p-4 rounded-lg border">
-              <div className="text-2xl font-bold text-green-600">{crossPlatformStats.passed}</div>
-              <div className="text-sm text-muted-foreground">Passed</div>
-            </div>
-            <div className="bg-card p-4 rounded-lg border">
-              <div className="text-2xl font-bold text-red-600">{crossPlatformStats.failed}</div>
-              <div className="text-sm text-muted-foreground">Failed</div>
-            </div>
-            <div className="bg-card p-4 rounded-lg border">
-              <div className="text-2xl font-bold text-orange-600">{crossPlatformStats.blocked}</div>
-              <div className="text-sm text-muted-foreground">Blocked</div>
-            </div>
-            <div className="bg-card p-4 rounded-lg border">
-              <div className="text-2xl font-bold text-blue-600">
-                {crossPlatformStats.inProgress}
+       <TabsContent value="cross-platform" className="space-y-6">
+  {/* Stats */}
+  <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+    <div className="bg-card p-4 rounded-lg border">
+      <div className="text-2xl font-bold">{crossPlatformStats.total}</div>
+      <div className="text-sm text-muted-foreground">Total</div>
+    </div>
+    <div className="bg-card p-4 rounded-lg border">
+      <div className="text-2xl font-bold text-green-600">{crossPlatformStats.passed}</div>
+      <div className="text-sm text-muted-foreground">Passed</div>
+    </div>
+    <div className="bg-card p-4 rounded-lg border">
+      <div className="text-2xl font-bold text-red-600">{crossPlatformStats.failed}</div>
+      <div className="text-sm text-muted-foreground">Failed</div>
+    </div>
+    <div className="bg-card p-4 rounded-lg border">
+      <div className="text-2xl font-bold text-orange-600">{crossPlatformStats.blocked}</div>
+      <div className="text-sm text-muted-foreground">Blocked</div>
+    </div>
+    <div className="bg-card p-4 rounded-lg border">
+      <div className="text-2xl font-bold text-blue-600">{crossPlatformStats.inProgress}</div>
+      <div className="text-sm text-muted-foreground">In Progress</div>
+    </div>
+    <div className="bg-card p-4 rounded-lg border">
+      <div className="text-2xl font-bold text-gray-500">{crossPlatformStats.notRun}</div>
+      <div className="text-sm text-muted-foreground">Not Run</div>
+    </div>
+  </div>
+
+  {/* Bulk Actions + Table */}
+  <div className="border rounded-lg">
+    {/* Bulk Actions Toolbar */}
+    <CrossPlatformBulkActionsToolbar
+      selectedIds={crossPlatformBulkActions.selectedIds}
+      allTestCases={crossPlatformCases}
+      onSelectAll={crossPlatformBulkActions.selectAll}
+      onDeselectAll={crossPlatformBulkActions.deselectAll}
+      onBulkApprove={crossPlatformBulkActions.bulkApproveCrossPlatform}
+      onBulkReject={crossPlatformBulkActions.bulkRejectCrossPlatform}
+      onBulkUpdate={crossPlatformBulkActions.bulkUpdateCrossPlatform}
+      onBulkDelete={crossPlatformBulkActions.bulkDeleteCrossPlatform}
+    />
+
+    {/* Table */}
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {/* ✅ FIXED: Header checkbox using cross-platform functions */}
+          <TableHead className="w-[50px]">
+            <Checkbox
+              checked={
+                crossPlatformBulkActions.selectedIds.size === paginatedCrossPlatformCases.length &&
+                paginatedCrossPlatformCases.length > 0
+              }
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  crossPlatformBulkActions.selectAll()
+                } else {
+                  crossPlatformBulkActions.deselectAll()
+                }
+              }}
+            />
+          </TableHead>
+          <TableHead>Title</TableHead>
+          <TableHead className="w-[100px]">Status</TableHead> 
+          <TableHead className="w-[120px]">Platform</TableHead>
+          <TableHead className="w-[100px]">Framework</TableHead>
+          <TableHead className="w-[100px]">Priority</TableHead>
+          <TableHead className="w-[120px]">Created</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {paginatedCrossPlatformCases.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={8} className="text-center py-12">
+              <div className="flex flex-col items-center gap-2">
+                <Layers className="h-8 w-8 text-muted-foreground" />
+                <p className="text-muted-foreground">No cross-platform test cases found</p>
               </div>
-              <div className="text-sm text-muted-foreground">In Progress</div>
-            </div>
-            <div className="bg-card p-4 rounded-lg border">
-              <div className="text-2xl font-bold text-gray-500">{crossPlatformStats.notRun}</div>
-              <div className="text-sm text-muted-foreground">Not Run</div>
-            </div>
-          </div>
+            </TableCell>
+          </TableRow>
+        ) : (
+          paginatedCrossPlatformCases.map((testCase) => {
+            const exec = execution[testCase.id]
+            const suite = crossPlatformSuites[testCase.suite_id]
+            const Icon = platformIcons[testCase.platform as keyof typeof platformIcons]
+            
 
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead className="w-[100px]">Platform</TableHead>
-                  <TableHead className="w-[100px]">Framework</TableHead>
-                  <TableHead className="w-[100px]">Priority</TableHead>
-                  <TableHead className="w-[150px]">Requirement</TableHead>
-                  <TableHead className="w-[120px]">Created</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedCrossPlatformCases.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12">
-                      <div className="flex flex-col items-center gap-2">
-                        <Layers className="h-8 w-8 text-muted-foreground" />
-                        <p className="text-muted-foreground">No cross-platform test cases found</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  paginatedCrossPlatformCases.map((testCase) => {
-                    const exec = execution[testCase.id]
-                    const suite = crossPlatformSuites[testCase.suite_id]
-                    const Icon = platformIcons[testCase.platform as keyof typeof platformIcons]
+            return (
+              <TableRow key={testCase.id} className="hover:bg-muted/50">
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <Checkbox
+                    checked={crossPlatformBulkActions.selectedIds.has(testCase.id)}
+                    onCheckedChange={() => crossPlatformBulkActions.toggleSelection(testCase.id)}
+                  />
+                </TableCell>
 
-                    return (
-                      <TableRow
-                        key={testCase.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => openTestCaseDialog(testCase, "cross-platform")}
-                      >
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {exec?.status === "passed" && (
-                              <CheckCircle2 className="h-4 w-4 text-green-600" />
-                            )}
-                            {exec?.status === "failed" && (
-                              <XCircle className="h-4 w-4 text-red-600" />
-                            )}
-                            {exec?.status === "blocked" && (
-                              <AlertTriangle className="h-4 w-4 text-orange-600" />
-                            )}
-                            {exec?.status === "skipped" && (
-                              <Circle className="h-4 w-4 text-gray-400" />
-                            )}
-                            {exec?.status === "in_progress" && (
-                              <Clock className="h-4 w-4 text-blue-600" />
-                            )}
-                            {exec?.status === "not_run" && (
-                              <Circle className="h-4 w-4 text-gray-400" />
-                            )}
-                            <span>{testCase.title}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {Icon && <Icon className="h-4 w-4" />}
-                            <Badge variant="default">{testCase.platform}</Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{testCase.framework}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={getPriorityColor(testCase.priority)}>
-                            {testCase.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {suite?.requirement ||
-                            testCase.cross_platform_test_suites?.requirement ||
-                            "N/A"}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {getRelativeTime(testCase.created_at)}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          {crossPlatformTotalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Showing {crossPlatformStartIndex + 1}-
-                {Math.min(crossPlatformEndIndex, filteredCrossPlatformCases.length)} of{" "}
-                {filteredCrossPlatformCases.length} test cases
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCrossPlatformCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={crossPlatformCurrentPage === 1}
+                <TableCell 
+                  className="font-medium cursor-pointer"
+                  onClick={() => openTestCaseDialog(testCase, "cross-platform")}
                 >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setCrossPlatformCurrentPage((p) => Math.min(crossPlatformTotalPages, p + 1))
-                  }
-                  disabled={crossPlatformCurrentPage === crossPlatformTotalPages}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            </div>
-          )}
-        </TabsContent>
+                  <div className="flex items-center gap-2">
+                    {exec?.status === "passed" && (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    )}
+                    {exec?.status === "failed" && (
+                      <XCircle className="h-4 w-4 text-red-600" />
+                    )}
+                    {exec?.status === "blocked" && (
+                      <AlertTriangle className="h-4 w-4 text-orange-600" />
+                    )}
+                    {exec?.status === "skipped" && (
+                      <Circle className="h-4 w-4 text-gray-400" />
+                    )}
+                    {exec?.status === "in_progress" && (
+                      <Clock className="h-4 w-4 text-blue-600" />
+                    )}
+                    {exec?.status === "not_run" && (
+                      <Circle className="h-4 w-4 text-gray-400" />
+                    )}
+                    <span>{testCase.title}</span>
+                  </div>
+                </TableCell>
+<TableCell>
+  {getApprovalStatusBadge(testCase.status)}  {/* ADD */}
+</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    {Icon && <Icon className="h-4 w-4" />}
+                    <Badge variant="default">{testCase.platform}</Badge>
+                  </div>
+                </TableCell>
+
+                <TableCell>
+                  <Badge variant="outline">{testCase.framework}</Badge>
+                </TableCell>
+
+                <TableCell>
+                  <Badge className={getPriorityColor(testCase.priority)}>
+                    {testCase.priority}
+                  </Badge>
+                </TableCell>
+
+               
+
+                <TableCell className="text-muted-foreground text-sm">
+                  {getRelativeTime(testCase.created_at)}
+                </TableCell>
+              </TableRow>
+            )
+          })
+        )}
+      </TableBody>
+    </Table>
+  </div>
+
+  {/* Pagination */}
+  {crossPlatformTotalPages > 1 && (
+    <div className="flex items-center justify-between">
+      <p className="text-sm text-muted-foreground">
+        Showing {crossPlatformStartIndex + 1}-
+        {Math.min(crossPlatformEndIndex, filteredCrossPlatformCases.length)} of{" "}
+        {filteredCrossPlatformCases.length} test cases
+      </p>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCrossPlatformCurrentPage((p) => Math.max(1, p - 1))}
+          disabled={crossPlatformCurrentPage === 1}
+        >
+          <ChevronLeft className="h-4 w-4 mr-1" />
+          Previous
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            setCrossPlatformCurrentPage((p) => Math.min(crossPlatformTotalPages, p + 1))
+          }
+          disabled={crossPlatformCurrentPage === crossPlatformTotalPages}
+        >
+          Next
+          <ChevronRight className="h-4 w-4 ml-1" />
+        </Button>
+      </div>
+    </div>
+  )}
+</TabsContent>
       </Tabs>
 
       {/* Dialogs */}
@@ -1274,6 +1521,229 @@ export function TabbedTestCaseTable() {
           }
         }}
       />
+{/* Script Editor Dialog */}
+{activeScriptId && (
+  <ScriptEditorDialog
+  open={showScriptEditor}
+  onOpenChange={(open) => {
+    setShowScriptEditor(open)
+    if (!open) {
+      setActiveScriptId(null)
+      setActiveScriptTitle("")
+    }
+  }}
+  scriptId={activeScriptId}          // string | null (correct)
+  testCaseTitle={activeScriptTitle}  // correct prop name
+  onSaved={() => fetchData()}
+/>
+
+)}
+
+<Sheet open={showActionSheet} onOpenChange={setShowActionSheet}>
+  <SheetContent
+    side="right"
+    className="
+      w-[640px] sm:w-[720px] md:w-[820px]
+      max-w-[95vw]
+      p-0
+      overflow-hidden
+    "
+  >
+    {/* 3-row layout: header / scroll body / footer */}
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      
+      <div className="border-b px-6 py-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <SheetTitle className="truncate">
+              {actionSheetCase?.title ?? "Test case"}
+              
+            </SheetTitle>
+            <SheetDescription className="mt-1">
+              
+            </SheetDescription>
+
+            {/* Badges row */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {actionSheetCase?.priority && (
+                <Badge className={getPriorityColor(actionSheetCase.priority)}>
+                  {actionSheetCase.priority}
+                </Badge>
+              )}
+              {"test_type" in (actionSheetCase ?? {}) && actionSheetCase?.test_type && (
+                <Badge variant="secondary">{actionSheetCase.test_type}</Badge>
+              )}
+              {actionIsAutomated ? (
+                <Badge className="gap-1 bg-purple-100 text-purple-700">
+                  <Code2 className="h-3 w-3" />
+                  Automated
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-muted-foreground">
+                  Manual
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          
+        </div>
+      </div>
+
+      {/* Body (scroll) */}
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div className="space-y-6">
+          {/* Section: metadata */}
+          <div className="rounded-lg border bg-background">
+            <div className="border-b px-4 py-3">
+              <p className="text-sm font-medium">Details</p>
+            </div>
+            <div className="px-4 py-4 space-y-3 text-sm">
+              {/* Move Generation + Created here (removed from table) */}
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">Generation</span>
+                <span className="text-right">
+                  {("generation_id" in (actionSheetCase ?? {}) &&
+                    generations?.[(actionSheetCase as any).generation_id]?.title) ||
+                    "Manual"}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">Created</span>
+                <span className="text-right">
+                  {actionSheetCase?.created_at
+                    ? new Date(actionSheetCase.created_at).toLocaleString()
+                    : "—"}
+                </span>
+              </div>
+
+              {/* Add more fields if you want */}
+              {"projects" in (actionSheetCase ?? {}) && (actionSheetCase as any)?.projects?.name && (
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Project</span>
+                  <span className="text-right">{(actionSheetCase as any).projects.name}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Section: description */}
+          <div className="rounded-lg border bg-background">
+            <div className="border-b px-4 py-3">
+              <p className="text-sm font-medium">Description</p>
+            </div>
+            <div className="px-4 py-4">
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                {actionSheetCase?.description || "No description provided."}
+              </p>
+            </div>
+          </div>
+
+          {/* Section: quick actions (small buttons) */}
+          <div className="rounded-lg border bg-background">
+            <div className="border-b px-4 py-3">
+              <p className="text-sm font-medium">Actions</p>
+            </div>
+
+            <div className="px-4 py-4 space-y-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full justify-start h-9 px-3"
+                onClick={() => {
+                  if (!actionSheetCase) return
+                  openTestCaseDialog(actionSheetCase as any, "regular")
+                  setShowActionSheet(false)
+                }}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                View Details
+              </Button>
+
+              {"test_steps" in (actionSheetCase ?? {}) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full justify-start h-9 px-3"
+                  onClick={() => {
+                    if (!actionSheetCase) return
+                    openEditDialog(actionSheetCase as any)
+                    setShowActionSheet(false)
+                  }}
+                >
+                  <Edit3 className="h-4 w-4 mr-2" />
+                  Edit
+                </Button>
+              )}
+
+              {!actionIsAutomated ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full justify-start h-9 px-3"
+                  onClick={() => {
+                    if (!actionSheetCase) return
+                    openAutomationDialog(actionSheetCase as any)
+                    setShowActionSheet(false)
+                  }}
+                  disabled={
+                    !("test_steps" in (actionSheetCase ?? {})) ||
+                    !(actionSheetCase as any).test_steps?.length
+                  }
+                >
+                  <Code2 className="h-4 w-4 mr-2" />
+                  Generate Script
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full justify-start h-9 px-3"
+                  onClick={() => {
+                    if (!actionSheetCase) return
+                    openScriptEditor(actionSheetCase as any)
+                    setShowActionSheet(false)
+                  }}
+                >
+                  <Code2 className="h-4 w-4 mr-2" />
+                  View / Edit Script
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer (sticky) */}
+      <div className="border-t px-6 py-5 bg-background">
+        <div className="flex items-center justify-between gap-3">
+          <SheetClose asChild>
+            <Button size="sm" variant="outline" className="h-9 px-4">
+              Close
+            </Button>
+          </SheetClose>
+
+          <Button
+            size="sm"
+            variant="destructive"
+            className="h-9 px-4"
+            onClick={() => {
+              if (!actionSheetCase) return
+              openDeleteDialog(actionSheetCase as any)
+              setShowActionSheet(false)
+            }}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete
+          </Button>
+        </div>
+      </div>
+    </div>
+  </SheetContent>
+</Sheet>
+
 
       {/* Test Case Details Dialog */}
       {selectedCase && (

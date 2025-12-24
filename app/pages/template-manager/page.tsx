@@ -1,5 +1,5 @@
 
-import { TemplateManager } from "@/components/pagecomponents/templatemanager"
+import { TemplateManager } from "@/components/templates/templatemanager"
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
 
@@ -11,15 +11,14 @@ export default function TemplatesPage() {
     
           {/* Main content */}
           <div className="flex min-h-screen flex-col px-4 md:px-6">
-            <SiteHeader />
-             <header className="mt-8 max-w-3xl mx-auto text-center space-y-2">
-          <h1 className="text-3xl font-bold">Templates</h1>
-           <p className="text-muted-foreground">
-            Create and manage reusable test case generation templates
-          </p>
-          </header>
+            <SiteHeader title="Templates"
+        subtitle="Create and manage reusable test case generation templates"/>
+          <main className="mt-6 flex-1 w-full">
+ 
 
       <TemplateManager />
+              </main>
+
     </div>
     </div>
 

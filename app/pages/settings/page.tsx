@@ -1,6 +1,6 @@
 // app/pages/settings/page.tsx
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar"
-import SettingsPage from "@/components/pagecomponents/settings-page"
+import SettingsPage from "@/components/settings/settings-page"
 import { SiteHeader } from "@/components/pagecomponents/site-header"
 
 
@@ -12,7 +12,8 @@ export default function Settings() {
           <AppSidebar className="hidden md:block" />
           {/* Main content */}
           <div className="flex min-h-screen flex-col px-4 md:px-6">
-            <SiteHeader />     
+            <SiteHeader title="Settings"
+        subtitle="Manage your account settings, preferences, and profile information"/>
             
       <SettingsPage />
        </div>

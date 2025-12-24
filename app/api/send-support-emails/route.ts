@@ -52,7 +52,7 @@ ${message}
 `;
 
     const { data, error } = await resend.emails.send({
-      from: "Synth QA <support@synthqa.app>",
+      from: "SynthQA <support@synthqa.app>",
       to: ["support@synthqa.app"],
       // replyTo: email, // optional: forward replies to sender
       subject: `[Support] ${subject}`,

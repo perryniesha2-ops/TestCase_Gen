@@ -25,7 +25,6 @@ export default function EmailConfirmationForm() {
       try {
         const token = searchParams.get('token')
         
-        console.log('🔍 Confirmation token found:', !!token)
         
         if (!token) {
           setError('Invalid confirmation link - no token found')
@@ -33,7 +32,6 @@ export default function EmailConfirmationForm() {
           return
         }
 
-        console.log('🎯 Confirming email with custom token...')
         
         const formData = new FormData()
         formData.append('token', token)
@@ -41,7 +39,6 @@ export default function EmailConfirmationForm() {
         const result = await confirmEmail(formData)
         
         if (result.success) {
-          console.log('✅ Email confirmed successfully!')
           setConfirmed(true)
           toast.success(result.message || 'Email confirmed successfully!')
         } else {

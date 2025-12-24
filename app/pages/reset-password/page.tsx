@@ -5,6 +5,8 @@ import { ClientPageWrapper } from '@/components/auth/client-page-wrapper'
 export default function ResetPasswordPage() {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
+
+      
        <ClientPageWrapper>
       <ResetPasswordForm />
       </ClientPageWrapper>

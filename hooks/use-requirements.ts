@@ -28,8 +28,7 @@ export function useRequirements(projectFilter?: string) {
         return
       }
 
-      console.log('Fetching requirements for user:', user.id)
-      console.log('Project filter:', projectFilter)
+  
 
       // ✅ Build query WITH project join
       let query = supabase
@@ -55,8 +54,6 @@ export function useRequirements(projectFilter?: string) {
         return
       }
 
-      console.log('Requirements loaded:', reqData?.length || 0)
-      console.log('Sample requirement:', reqData?.[0])
 
       // Calculate coverage for each requirement
       const requirementsWithCoverage = await Promise.all(

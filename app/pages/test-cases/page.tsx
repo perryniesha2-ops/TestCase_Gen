@@ -1,6 +1,6 @@
 // app/pages/test-cases/page.tsx (Server Component)
 import { Suspense } from "react";
-import { TabbedTestCaseTable } from "@/components/testcase-management/test-case-table";
+import { TabbedTestCaseTable } from "@/components/testcase-management/test-cases/test-case-table";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Plus } from "lucide-react";
@@ -13,12 +13,9 @@ export default function TestCasesPage() {
       <AppSidebar className="hidden md:block" />
 
       <div className="flex min-h-screen flex-col px-4 md:px-6">
-        <SiteHeader />
-        <header className="mt-6 max-w-6xl mx-auto space-y-2">
-          <h1 className="text-3xl font-bold text-center">Test Cases</h1>
-          <p className="text-muted-foreground">Manage and organize your test cases across all projects.</p>
-        </header>
-
+        <SiteHeader title="Test Cases"
+        subtitle="Manage and organize your test cases across all projects"/>
+       
         <section className="max-w-6xl mx-auto mt-6 space-y-4 w-full">
           <div className="flex items-center justify-end">
             

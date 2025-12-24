@@ -21,17 +21,25 @@ type UserProfile = {
   avatar_url?: string;
 };
 
+type SiteHeaderProps = {
+  className?: string
+  title?: string
+  subtitle?: string
+}
+
+
 function initials(name?: string, email?: string) {
   const n = (name ?? "").trim();
   if (n) return n.split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? "").join("") || "U";
   return (email?.[0] ?? "U").toUpperCase();
 }
 
-export function SiteHeader({ className }: { className?: string }) {
+export function SiteHeader({ className, title, subtitle }: SiteHeaderProps) {
   const { theme, setTheme } = useTheme();
   const [user, setUser] = React.useState<UserProfile | null>(null);
   const [loading, setLoading] = React.useState(true);
   const supabase = React.useMemo(() => createClient(), []);
+
 
   React.useEffect(() => {
     (async () => {
@@ -61,7 +69,19 @@ export function SiteHeader({ className }: { className?: string }) {
   return (
     <header className={cn("sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur", className)}>
       <div className="mx-auto flex h-20 max-w-screen-2xl items-center gap-2 px-3">
-        
+         {title && (
+      <div className="flex flex-col">
+        <h1 className="text-lg font-semibold leading-tight">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="text-sm text-muted-foreground leading-tight">
+            {subtitle}
+          </p>
+        )}
+      </div>
+    )}
+
         <div className="ml-auto flex items-center gap-2">
           <Button
             size="icon"

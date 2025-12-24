@@ -12,7 +12,7 @@ import { Separator,SeparatorDemo } from "@/components/ui/separator"
 import { LoginForm } from "@/components/auth/login-form"
 import {PrivacySheet} from "@/components/legal/PrivacySheet"
 import {TermsSheet} from "@/components/legal/TermsSheet"
-import {ContactSheet} from "@/components/pagecomponents/contactSheet"
+import {ContactSheet} from "@/components/legal/contactSheet"
 import { Logo } from "@/components/pagecomponents/brandlogo"
 import Image from "next/image"
 
@@ -61,4 +61,7 @@ export default function LoginPage() {
     </div>
 
   )
+}
+export const metadata = {
+  title: 'SynthQA - Login',
 }

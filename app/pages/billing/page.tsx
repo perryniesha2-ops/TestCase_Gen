@@ -1,8 +1,8 @@
 // app/billing/page.tsx
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar"
-import BillingPage from "@/components/pagecomponents/billingmanagment"
+import BillingPage from "@/components/billing/billingmanagment"
 import { SiteHeader } from "@/components/pagecomponents/site-header";
-import PromotionalBanner from "@/components/pagecomponents/billingmanagment"
+import PromotionalBanner from "@/components/billing/billingmanagment"
 
 
 
@@ -12,7 +12,8 @@ export default function Billing() {
       <AppSidebar className="hidden md:block" />
 
       <div className="flex min-h-screen flex-col px-4 md:px-6">
-        <SiteHeader />
+        <SiteHeader  title="Billing"
+        subtitle="Manage and Update Your Subsription"/>
 
             <BillingPage />
     </div>
