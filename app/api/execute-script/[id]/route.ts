@@ -1,4 +1,4 @@
-// app/api/execute-script/[id]/route.ts
+// app/api/execute-script/[id]/route.ts - FIXED for Next.js 15
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -8,9 +8,12 @@ import { createClient } from '@/lib/supabase/server'
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> } // ✅ params is now a Promise
 ) {
   try {
+    // ✅ Await params in Next.js 15
+    const { id } = await params
+    
     const supabase = await createClient()
     
     // Get execution with all related data
@@ -24,7 +27,7 @@ export async function GET(
           framework
         )
       `)
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
     
     if (execError) {
@@ -36,7 +39,7 @@ export async function GET(
     const { data: steps, error: stepsError } = await supabase
       .from('script_execution_steps')
       .select('*')
-      .eq('execution_id', params.id)
+      .eq('execution_id', id)
       .order('step_number', { ascending: true })
     
     if (stepsError) {
@@ -79,16 +82,19 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> } // ✅ params is now a Promise
 ) {
   try {
+    // ✅ Await params
+    const { id } = await params
+    
     const supabase = await createClient()
     
     // Get execution
     const { data: execution, error: fetchError } = await supabase
       .from('script_executions')
-      .select('status')
-      .eq('id', params.id)
+      .select('execution_status')
+      .eq('id', id)
       .single()
     
     if (fetchError) {
@@ -96,15 +102,15 @@ export async function DELETE(
     }
     
     // If running, mark as cancelled
-    if (execution.status === 'running') {
+    if (execution.execution_status === 'running') {
       const { error: updateError } = await supabase
         .from('script_executions')
         .update({
-          status: 'cancelled',
+          execution_status: 'cancelled',
           completed_at: new Date().toISOString(),
           error_message: 'Cancelled by user'
         })
-        .eq('id', params.id)
+        .eq('id', id)
       
       if (updateError) throw updateError
       
@@ -118,7 +124,7 @@ export async function DELETE(
     const { error: deleteStepsError } = await supabase
       .from('script_execution_steps')
       .delete()
-      .eq('execution_id', params.id)
+      .eq('execution_id', id)
     
     if (deleteStepsError) {
       console.error('Error deleting steps:', deleteStepsError)
@@ -127,7 +133,7 @@ export async function DELETE(
     const { error: deleteError } = await supabase
       .from('script_executions')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
     
     if (deleteError) throw deleteError
     
@@ -154,16 +160,19 @@ export async function DELETE(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> } // ✅ params is now a Promise
 ) {
   try {
+    // ✅ Await params
+    const { id } = await params
+    
     const body = await request.json()
     const { status, error_message } = body
     
     const supabase = await createClient()
     
     const updates: any = {
-      status,
+      execution_status: status,
       updated_at: new Date().toISOString()
     }
     
@@ -178,7 +187,7 @@ export async function PATCH(
     const { data, error } = await supabase
       .from('script_executions')
       .update(updates)
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single()
     
