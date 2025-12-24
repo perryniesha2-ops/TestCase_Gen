@@ -1,6 +1,6 @@
 // app/pages/settings/page.tsx
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar"
-import SettingsPage from "@/components/pagecomponents/settings-page"
+import SettingsPage from "@/components/settings/settings-page"
 import { SiteHeader } from "@/components/pagecomponents/site-header"
 
 

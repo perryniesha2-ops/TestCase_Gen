@@ -3,6 +3,8 @@
 export type ExecutionStatus = 'not_run' | 'in_progress' | 'passed' | 'failed' | 'blocked' | 'skipped'
 export type ApprovalStatus = 'draft' | 'active' | 'archived'| 'pending'| "approved"| "rejected"
 export type Priority = 'low' | 'medium' | 'high' | 'critical'
+export type AutomationMode = "manual" | "partial" | "automated"
+
 
 export interface TestStep {
   step_number: number
@@ -167,6 +169,11 @@ export interface TestSuite {
     skipped: number
     blocked: number
   }
+  automation?: {
+    eligible_count: number
+    scripted_count: number
+    mode: AutomationMode
+  }
    
 }
 
@@ -253,7 +260,15 @@ export interface TestAttachment {
   created_at: string
 }
 
-
+export type AutomationScript = {
+  id: string
+  test_case_id: string
+  framework?: string | null
+  status?: string | null
+  script_content: string | null
+  updated_at?: string | null
+  created_at?: string | null
+}
 
 
 

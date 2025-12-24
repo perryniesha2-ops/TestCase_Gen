@@ -1,5 +1,5 @@
 
-import { TemplateManager } from "@/components/pagecomponents/templatemanager"
+import { TemplateManager } from "@/components/templates/templatemanager"
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
 

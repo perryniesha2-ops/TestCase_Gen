@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet"
 import { TestSessionExecution } from "./testsessionexecution"
 import {
   Play,
@@ -34,6 +35,7 @@ import {
   Search,
   Filter,
   FolderOpen,
+  Code2, Zap,Loader2,
 } from "lucide-react"
 import { TestSuite, TestSession, SuiteType, SessionStats, Project } from "@/types/test-cases"
 import { TestSuiteDetailsDialog } from "./testSuiteDetailsDialog"
@@ -85,6 +87,12 @@ interface FormData {
   project_id: string
 }
 
+type SuiteEditForm = {
+  name: string
+  status: string
+  suite_type: SuiteType
+}
+
 export function TestSuitesPage() {
   const [testSuites, setTestSuites] = useState<TestSuite[]>([])
   const [loading, setLoading] = useState(true)
@@ -101,6 +109,23 @@ export function TestSuitesPage() {
   const [executingSuite, setExecutingSuite] = useState<TestSuite | null>(null)
   const [showExecutionDialog, setShowExecutionDialog] = useState(false)
 
+  //script generation
+  const [generatingScripts, setGeneratingScripts] = useState<string | null>(null)
+  const [runningAutomation, setRunningAutomation] = useState<string | null>(null)
+
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerSuite, setDrawerSuite] = useState<TestSuite | null>(null)
+  const [editingSuite, setEditingSuite] = useState<TestSuite | null>(null)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editSaving, setEditSaving] = useState(false)
+
+
+function openSuiteDrawer(suite: TestSuite) {
+  setDrawerSuite(suite)
+  setDrawerOpen(true)
+}
+
+
   const [formData, setFormData] = useState<FormData>({
     name: "",
     description: "",
@@ -109,6 +134,8 @@ export function TestSuitesPage() {
     planned_end_date: "",
     project_id: "",
   })
+
+  
 
   useEffect(() => {
     fetchTestSuites()
@@ -163,13 +190,59 @@ export function TestSuitesPage() {
               { total: 0, passed: 0, failed: 0, skipped: 0, blocked: 0 }
             ) ?? { total: 0, passed: 0, failed: 0, skipped: 0, blocked: 0 }
 
+            const { data: suiteCases, error: suiteCasesError } = await supabase
+  .from("test_suite_cases")
+  .select(`
+    test_case_id,
+    test_cases (
+      id,
+      test_steps
+    )
+  `)
+  .eq("suite_id", suite.id)
+
+if (suiteCasesError) throw suiteCasesError
+
+const eligibleCaseIds = (suiteCases ?? [])
+  .map((row: any) => {
+    const tc = Array.isArray(row.test_cases) ? row.test_cases[0] : row.test_cases
+    const hasSteps = Array.isArray(tc?.test_steps) && tc.test_steps.length > 0
+    return hasSteps ? row.test_case_id : null
+  })
+  .filter(Boolean) as string[]
+
+const eligible_count = eligibleCaseIds.length
+
+let scripted_count = 0
+if (eligibleCaseIds.length > 0) {
+  const { data: scripts, error: scriptsError } = await supabase
+    .from("automation_scripts")
+    .select("test_case_id")
+    .in("test_case_id", eligibleCaseIds)
+
+  if (scriptsError) throw scriptsError
+  scripted_count = scripts?.length ?? 0
+}
+
+const mode: "manual" | "partial" | "automated" =
+  eligible_count > 0 && scripted_count === eligible_count
+    ? "automated"
+    : scripted_count > 0
+      ? "partial"
+      : "manual"
+
+
           return {
             ...suite,
             test_case_count: testCases?.length || 0,
             execution_stats: stats,
+              automation: { eligible_count, scripted_count, mode },
+
           }
         })
       )
+
+      
 
       setTestSuites(suitesWithStats)
     } catch (error) {
@@ -179,6 +252,15 @@ export function TestSuitesPage() {
       setLoading(false)
     }
   }
+
+
+  useEffect(() => {
+  if (!drawerSuite) return
+  const updated = testSuites.find((s) => s.id === drawerSuite.id)
+  if (updated) setDrawerSuite(updated)
+}, [testSuites, drawerSuite?.id])
+
+
 
   async function fetchProjects() {
     try {
@@ -249,6 +331,150 @@ export function TestSuitesPage() {
     }
   }
 
+
+  type ScriptableTestStep = {
+  step_number: number
+  action: string
+  expected: string
+  data?: string
+}
+
+type ScriptableTestCase = {
+  id: string
+  title: string
+  description: string
+  test_steps: ScriptableTestStep[]
+}
+
+type SuiteCaseRow = {
+  test_case_id: string
+  test_cases: ScriptableTestCase | ScriptableTestCase[] | null
+}
+
+async function generateSuiteScripts(suite: TestSuite) {
+  setGeneratingScripts(suite.id)
+
+  try {
+    const supabase = createClient()
+
+    // Get all test cases in suite
+    const { data, error: fetchError } = await supabase
+      .from("test_suite_cases")
+      .select(
+        `
+        test_case_id,
+        test_cases (
+          id,
+          title,
+          description,
+          test_steps
+        )
+      `
+      )
+      .eq("suite_id", suite.id)
+
+    if (fetchError) throw fetchError
+
+    const rows = (data ?? []) as SuiteCaseRow[]
+
+    // Normalize join shape: test_cases can be object OR array OR null
+    const testCases: ScriptableTestCase[] = rows
+      .map((r) => (Array.isArray(r.test_cases) ? r.test_cases[0] : r.test_cases))
+      .filter((tc): tc is ScriptableTestCase => {
+        if (!tc) return false
+        return Array.isArray(tc.test_steps) && tc.test_steps.length > 0
+      })
+
+    if (testCases.length === 0) {
+      toast.error("No test cases with steps found in this suite")
+      return
+    }
+
+    let generated = 0
+    let skipped = 0
+    let failed = 0
+
+    for (const testCase of testCases) {
+      try {
+        // Check if script already exists (use maybeSingle to avoid errors when none exists)
+        const { data: existing, error: existingError } = await supabase
+          .from("automation_scripts")
+          .select("id")
+          .eq("test_case_id", testCase.id)
+          .maybeSingle()
+
+        // If there was a real error (not "no rows"), treat as failure
+        if (existingError) {
+          console.error("Error checking existing script:", existingError)
+          failed++
+          continue
+        }
+
+        if (existing?.id) {
+          skipped++
+          continue
+        }
+
+        const response = await fetch("/api/generate-script", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            testCaseId: testCase.id,
+            testName: testCase.title,
+            testSteps: testCase.test_steps,
+            framework: "playwright",
+            timeout: 30000,
+          }),
+        })
+
+        if (!response.ok) {
+          failed++
+          // Optional: read text for debugging without crashing
+          const msg = await response.text().catch(() => "")
+          console.error(`Generate script failed for ${testCase.id}:`, response.status, msg)
+          continue
+        }
+
+        generated++
+      } catch (err) {
+        failed++
+        console.error(`Failed to generate script for ${testCase.title}:`, err)
+      }
+    }
+
+    toast.success(`Generated ${generated} scripts`, {
+      description: [
+        skipped > 0 ? `Skipped ${skipped} (already have scripts)` : null,
+        failed > 0 ? `Failed ${failed}` : null,
+      ]
+        .filter(Boolean)
+        .join(" • "),
+    })
+
+    await fetchTestSuites() // Refresh
+  } catch (error) {
+    console.error("Error generating suite scripts:", error)
+    toast.error("Failed to generate automation scripts")
+  } finally {
+    setGeneratingScripts(null)
+  }
+}
+
+async function runSuiteAutomation(suite: TestSuite) {
+  setRunningAutomation(suite.id)
+  
+  try {
+    // This will be Week 2 implementation
+    // For now, just show a message
+    toast.info('Automation execution coming in Week 2!', {
+      description: 'Script generation is complete. Execution engine coming soon.'
+    })
+  } finally {
+    setRunningAutomation(null)
+  }
+}
+
+
   async function deleteTestSuite(suiteId: string) {
     const confirmed = window.confirm(
       "Delete this test suite and all its assigned sessions, executions and links? This cannot be undone."
@@ -315,6 +541,8 @@ export function TestSuitesPage() {
       case "integration":
         return "bg-purple-500 text-white"
       case "automated":
+        return "bg-green-500 text-white"
+      case "partial":
         return "bg-orange-500 text-white"
       default:
         return "bg-gray-500 text-white"
@@ -391,6 +619,67 @@ export function TestSuitesPage() {
     completed: testSuites.filter((s) => s.status === "completed").length,
     totalTests: testSuites.reduce((sum, s) => sum + (s.test_case_count || 0), 0),
   }
+
+  
+  function getDisplaySuiteType(suite: TestSuite) {
+  if (suite.suite_type !== "manual") return suite.suite_type
+  const mode = suite.automation?.mode
+  if (mode === "automated") return "automated"
+  if (mode === "partial") return "partial"
+  return "manual"
+}
+
+const [suiteEditForm, setSuiteEditForm] = useState<SuiteEditForm>({
+  name: "",
+  status: "active",
+  suite_type: "manual",
+})
+
+function openEditSuite(suite: TestSuite) {
+  setEditingSuite(suite)
+  setSuiteEditForm({
+    name: suite.name ?? "",
+    status: suite.status ?? "active",
+    suite_type: suite.suite_type ?? "manual",
+  })
+  setEditOpen(true)
+}
+
+
+async function updateSuiteDetails() {
+  if (!editingSuite) return
+
+  setEditSaving(true)
+  try {
+    const supabase = createClient()
+
+    const { error } = await supabase
+      .from("test_suites")
+      .update({
+        name: suiteEditForm.name.trim(),
+        status: suiteEditForm.status,
+        suite_type: suiteEditForm.suite_type,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", editingSuite.id)
+
+    if (error) throw error
+
+    toast.success("Suite updated")
+    setEditOpen(false)
+    setEditingSuite(null)
+
+    // Refresh list + drawer suite
+    await fetchTestSuites()
+  } catch (err) {
+    console.error("Error updating suite:", err)
+    toast.error("Failed to update suite")
+  } finally {
+    setEditSaving(false)
+  }
+}
+
+
 
   return (
     <div className="space-y-6">
@@ -504,7 +793,7 @@ export function TestSuitesPage() {
                   <TableHead className="w-[100px]">Status</TableHead>
                   <TableHead className="w-[100px]">Test Cases</TableHead>
                   <TableHead className="w-[200px]">Progress</TableHead>
-                  <TableHead className="w-[180px]">Actions</TableHead>
+                  <TableHead className="w-[180px]">Details</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -544,9 +833,9 @@ export function TestSuitesPage() {
 
                       {/* Type */}
                       <TableCell>
-                        <Badge className={getSuiteTypeColor(suite.suite_type)}>
-                          {suite.suite_type}
-                        </Badge>
+                      <Badge className={getSuiteTypeColor(getDisplaySuiteType(suite))}>
+                        {getDisplaySuiteType(suite)}
+                      </Badge>
                       </TableCell>
 
                       {/* Project */}
@@ -615,51 +904,18 @@ export function TestSuitesPage() {
                       </TableCell>
 
                       {/* Actions */}
-                      <TableCell>
+                    <TableCell className="text-right">
                         <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => startSuiteExecution(suite)}
-                            className="gap-1"
-                          >
-                            <Play className="h-3 w-3" />
-                            Run
-                          </Button>
+  <Button
+    variant="ghost"
+    size="sm"
+    onClick={() => openSuiteDrawer(suite)}
+  >
+    Details
+  </Button>
+   </div>
+</TableCell>
 
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedSuite(suite)
-                                  setShowDetailsDialog(true)
-                                }}
-                              >
-                                <Settings className="h-4 w-4 mr-2" />
-                                Manage Suite
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => startSuiteExecution(suite)}
-                              >
-                                <Play className="h-4 w-4 mr-2" />
-                                Run Tests
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => deleteTestSuite(suite.id)}
-                                className="text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -881,6 +1137,312 @@ export function TestSuitesPage() {
           onSessionComplete={handleExecutionComplete}
         />
       )}
+<Dialog open={editOpen} onOpenChange={setEditOpen}>
+  <DialogContent className="max-w-xl">
+    <DialogHeader>
+      <DialogTitle>Edit Test Suite</DialogTitle>
+      <DialogDescription>
+        Update suite name, status, and type.
+      </DialogDescription>
+    </DialogHeader>
+
+    <div className="space-y-4 py-4">
+      <div className="space-y-2">
+        <Label htmlFor="edit-name">Suite Name</Label>
+        <Input
+          id="edit-name"
+          value={suiteEditForm.name}
+          onChange={(e) => setSuiteEditForm((p) => ({ ...p, name: e.target.value }))}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Status</Label>
+        <Select
+          value={suiteEditForm.status}
+          onValueChange={(v) => setSuiteEditForm((p) => ({ ...p, status: v }))}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="completed">Completed</SelectItem>
+            <SelectItem value="archived">Archived</SelectItem>
+            <SelectItem value="draft">Draft</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Suite Type</Label>
+        <Select
+          value={suiteEditForm.suite_type}
+          onValueChange={(v: SuiteType) =>
+            setSuiteEditForm((p) => ({ ...p, suite_type: v }))
+          }
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="manual">Manual</SelectItem>
+            <SelectItem value="automated">Automated</SelectItem>
+            <SelectItem value="regression">Regression</SelectItem>
+            <SelectItem value="smoke">Smoke</SelectItem>
+            <SelectItem value="integration">Integration</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+
+    <DialogFooter>
+      <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editSaving}>
+        Cancel
+      </Button>
+      <Button
+        onClick={updateSuiteDetails}
+        disabled={editSaving || !suiteEditForm.name.trim()}
+        className="gap-2"
+      >
+        {editSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+        Save changes
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
+
+
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+  <SheetContent
+    side="right"
+    className="
+      w-[720px] sm:w-[820px] lg:w-[960px]
+      max-w-[95vw]
+      h-dvh
+      p-0
+      overflow-hidden
+    "
+  >
+    {/* 3-row layout */}
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <div className="border-b px-6 py-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <SheetTitle className="truncate">
+              {drawerSuite?.name ?? "Suite"}
+            </SheetTitle>
+            <SheetDescription className="mt-1">
+            </SheetDescription>
+
+            {drawerSuite && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {getStatusBadge(drawerSuite.status)}
+                <Badge className={getSuiteTypeColor(getDisplaySuiteType(drawerSuite))}>
+                  {getDisplaySuiteType(drawerSuite)}
+                </Badge>
+
+                <Badge variant="outline" className="text-muted-foreground">
+                  {drawerSuite.test_case_count ?? 0} cases
+                </Badge>
+
+                <Badge
+                  variant="outline"
+                  className={
+                    drawerSuite.automation?.mode === "automated"
+                      ? "border-green-500 text-green-600"
+                      : drawerSuite.automation?.mode === "partial"
+                        ? "border-orange-500 text-orange-600"
+                        : "border-muted-foreground text-muted-foreground"
+                  }
+                >
+                  {drawerSuite.automation?.mode === "automated"
+                    ? "Automation: Automated"
+                    : drawerSuite.automation?.mode === "partial"
+                      ? "Automation: Partial"
+                      : "Automation: Manual"}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {(drawerSuite.automation?.scripted_count ?? 0)}/
+                    {(drawerSuite.automation?.eligible_count ?? 0)}
+                  </span>
+                </Badge>
+              </div>
+            )}
+          </div>
+
+          
+        </div>
+      </div>
+
+      {/* Body (scroll) */}
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        {drawerSuite && (
+          <div className="space-y-6">
+            {/* Primary actions */}
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                size="sm"
+                className="h-9 gap-2"
+                onClick={() => startSuiteExecution(drawerSuite)}
+              >
+                <Play className="h-4 w-4" />
+                Run tests
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 gap-2"
+                onClick={() => runSuiteAutomation(drawerSuite)}
+                disabled={
+                  runningAutomation === drawerSuite.id ||
+                  drawerSuite.automation?.mode !== "automated"
+                }
+                title={
+                  drawerSuite.automation?.mode !== "automated"
+                    ? "Generate scripts for all eligible test cases to enable automation."
+                    : "Run automation"
+                }
+              >
+                {runningAutomation === drawerSuite.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Zap className="h-4 w-4" />
+                )}
+                Run automation
+              </Button>
+            </div>
+
+            {/* Automation scripts */}
+            <div className="rounded-lg border bg-background">
+              <div className="border-b px-4 py-3">
+                <p className="text-sm font-medium">Automation scripts</p>
+              </div>
+
+              <div className="px-4 py-4 space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Coverage</span>
+                  <span className="font-medium">
+                    {(drawerSuite.automation?.scripted_count ?? 0)}/
+                    {(drawerSuite.automation?.eligible_count ?? 0)} scripted
+                  </span>
+                </div>
+
+                <Progress
+                  value={
+                    (drawerSuite.automation?.eligible_count ?? 0) > 0
+                      ? ((drawerSuite.automation?.scripted_count ?? 0) /
+                          (drawerSuite.automation?.eligible_count ?? 1)) *
+                        100
+                      : 0
+                  }
+                  className="h-2"
+                />
+
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="w-full h-9 gap-2"
+                  onClick={() => generateSuiteScripts(drawerSuite)}
+                  disabled={
+                    generatingScripts === drawerSuite.id ||
+                    (drawerSuite.automation?.eligible_count ?? 0) === 0
+                  }
+                >
+                  {generatingScripts === drawerSuite.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Code2 className="h-4 w-4" />
+                  )}
+                  Generate missing scripts
+                </Button>
+
+                {(drawerSuite.automation?.eligible_count ?? 0) === 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    No eligible test cases found (test cases must have steps).
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Configuration */}
+            <div className="rounded-lg border bg-background">
+              <div className="border-b px-4 py-3">
+                <p className="text-sm font-medium">Configuration</p>
+              </div>
+
+              <div className="px-4 py-4 space-y-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full h-9 justify-start gap-2"
+                  onClick={() => {
+                    setSelectedSuite(drawerSuite)
+                    setShowDetailsDialog(true)
+                  }}
+                >
+                  <Settings className="h-4 w-4" />
+                  Manage Suite
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full h-9 justify-start gap-2"
+                  onClick={() => openEditSuite(drawerSuite)}
+                >
+                  <Edit3 className="h-4 w-4" />
+                  Edit suite details
+                </Button>
+              </div>
+            </div>
+
+            {/* Danger zone */}
+            <div className="rounded-lg border border-destructive/40 bg-background">
+              <div className="border-b px-4 py-3">
+                <p className="text-sm font-medium text-destructive">Danger zone</p>
+              </div>
+
+              <div className="px-4 py-4 space-y-3">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="w-full h-9 gap-2"
+                  onClick={async () => {
+                    await deleteTestSuite(drawerSuite.id)
+                    setDrawerOpen(false)
+                    setDrawerSuite(null)
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete suite
+                </Button>
+
+                <div className="text-xs text-muted-foreground">
+                  This deletes the suite and related sessions/executions. This cannot be undone.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer (sticky) */}
+      <div className="border-t px-6 py-4 bg-background">
+        <div className="flex items-center justify-end gap-2">
+          <SheetClose asChild>
+            <Button size="sm" variant="outline" className="h-8 px-3">
+              Close
+            </Button>
+          </SheetClose>
+        </div>
+      </div>
+    </div>
+  </SheetContent>
+</Sheet>
+
     </div>
   )
 }

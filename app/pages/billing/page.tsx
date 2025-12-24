@@ -1,8 +1,8 @@
 // app/billing/page.tsx
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar"
-import BillingPage from "@/components/pagecomponents/billingmanagment"
+import BillingPage from "@/components/billing/billingmanagment"
 import { SiteHeader } from "@/components/pagecomponents/site-header";
-import PromotionalBanner from "@/components/pagecomponents/billingmanagment"
+import PromotionalBanner from "@/components/billing/billingmanagment"
 
 
 

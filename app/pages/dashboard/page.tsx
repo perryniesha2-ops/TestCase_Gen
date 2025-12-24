@@ -1,4 +1,4 @@
-import { TestManagementDashboard  } from "@/components/pagecomponents/dashboard";
+import { TestManagementDashboard  } from "@/components/dashboard/dashboard";
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
 

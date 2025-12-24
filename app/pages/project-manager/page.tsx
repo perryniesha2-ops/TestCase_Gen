@@ -1,5 +1,5 @@
 
-import { ProjectManager } from "@/components/pagecomponents/project-manager"
+import { ProjectManager } from "@/components/projects/project-manager"
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
 

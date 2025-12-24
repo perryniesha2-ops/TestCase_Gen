@@ -15,8 +15,8 @@ import { Loader2, Sparkles, Info, FileText, Plus, FlaskConical, Layers, Monitor,
 import { AddRequirementModal } from "@/components/requirements/add-requirement-modal"
 import Link from "next/link"
 import { checkAndRecordUsage } from '@/lib/usage-tracker'
-import { TemplateSelect } from "@/components/pagecomponents/template-select"
-import { QuickTemplateSave } from "@/components/pagecomponents/quick-templates"
+import { TemplateSelect } from "@/components/templates/template-select"
+import { QuickTemplateSave } from "@/components/templates/quick-templates"
 
 type TemplateCategory = 'functional' | 'security' | 'performance' | 'integration' | 'regression' | 'accessibility' | 'other'
 
