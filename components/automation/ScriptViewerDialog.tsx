@@ -13,7 +13,8 @@ import {
   AlertTriangle, 
   Loader2,
   Code2,
-  CheckCircle2
+  CheckCircle2,
+  Play,
 } from "lucide-react"
 import { toast } from "sonner"
 import dynamic from 'next/dynamic'
@@ -63,6 +64,8 @@ export function ScriptViewerDialog({
   const errorCount = (!hasImports || !hasTest) ? 1 : 0
 
   const [isFullscreen, setIsFullscreen] = useState(false)
+
+  const [executing, setExecuting] = useState(false)
 
   async function handleSave() {
     if (!onSave || readonly) return
@@ -114,6 +117,34 @@ export function ScriptViewerDialog({
       onOpenChange(false)
     }
   }
+
+
+  async function handleRun() {
+  setExecuting(true)
+  try {
+    const response = await fetch('/api/execute-script', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scriptId: script.id,
+        browser: 'chromium',
+        headless: true
+      })
+    })
+    
+    const data = await response.json()
+    
+    if (data.success) {
+      toast.success('Test started! Execution ID: ' + data.executionId)
+    } else {
+      toast.error('Failed: ' + data.error)
+    }
+  } catch (error) {
+    toast.error('Execution failed')
+  } finally {
+    setExecuting(false)
+  }
+}
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -200,6 +231,24 @@ export function ScriptViewerDialog({
               Download
             </Button>
             
+            <Button 
+  variant="default" 
+  size="sm" 
+  onClick={handleRun}
+  disabled={executing}
+>
+  {executing ? (
+    <>
+      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+      Running...
+    </>
+  ) : (
+    <>
+      <Play className="h-4 w-4 mr-2" />
+      Run Test
+    </>
+  )}
+</Button>
             {!readonly && onSave && (
               <Button 
                 variant="default" 

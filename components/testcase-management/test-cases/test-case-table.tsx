@@ -137,6 +137,8 @@ export function TabbedTestCaseTable() {
   const selectedProjectName = selectedProject
     ? projects.find((p) => p.id === selectedProject)?.name
     : null
+  const [pendingResultStatus, setPendingResultStatus] = useState<ExecutionStatus | null>(null)
+
 
   const itemsPerPage = 10
   const router = useRouter()
@@ -187,6 +189,8 @@ const actionGenerationTitle =
     fetchData,
     "cross-platform"
   )
+
+  
   const {
     selectedIds,
     isProcessing,
@@ -428,6 +432,8 @@ const actionGenerationTitle =
       if (!user) return
 
       const currentExecution = execution[testCaseId]
+      const effectiveStatus = updates.status || currentExecution.status
+
       const executionData = {
         test_case_id: testCaseId,
         executed_by: user.id,
@@ -441,12 +447,13 @@ const actionGenerationTitle =
         browser: updates.browser || currentExecution.browser,
         os_version: updates.os_version || currentExecution.os_version,
         started_at:
-          currentExecution.started_at ||
-          (updates.status === "in_progress" ? new Date().toISOString() : null),
+  currentExecution.started_at ||
+  (effectiveStatus !== "not_run" ? new Date().toISOString() : null),
         completed_at:
-          updates.status === "passed" || updates.status === "failed"
-            ? new Date().toISOString()
-            : null,
+         ["passed", "failed", "blocked", "skipped"].includes(effectiveStatus)
+    ? new Date().toISOString()
+    : null,
+
         updated_at: new Date().toISOString(),
       }
 
@@ -511,14 +518,18 @@ const actionGenerationTitle =
 
 
   async function markTestResult(testCaseId: string, status: ExecutionStatus) {
-    setSelectedTestCase(testCases.find((tc) => tc.id === testCaseId) || null)
+  const tc = testCases.find((t) => t.id === testCaseId) || null
+  setSelectedTestCase(tc)
 
-    if (status === "passed") {
-      await saveExecutionResult(testCaseId, status, {})
-    } else {
-      setShowExecutionDialog(true)
-    }
+  if (status === "passed") {
+    await saveExecutionResult(testCaseId, "passed", {})
+    return
   }
+
+  setPendingResultStatus(status)
+  setShowExecutionDialog(true)
+}
+
 
   async function updateTestCaseStatus(
     testCaseId: string,
@@ -1483,25 +1494,29 @@ function openActionSheet(testCase: TestCase) {
       />
 
       <TestExecutionDialog
-        open={showExecutionDialog}
-        initialData={
-          selectedTestCase
-            ? {
-                notes: execution[selectedTestCase.id]?.notes,
-                failure_reason: execution[selectedTestCase.id]?.failure_reason,
-                environment: execution[selectedTestCase.id]?.test_environment || "staging",
-                browser: execution[selectedTestCase.id]?.browser,
-                os_version: execution[selectedTestCase.id]?.os_version,
-              }
-            : undefined
+  open={showExecutionDialog}
+  status={pendingResultStatus ?? "failed"}
+  initialData={
+    selectedTestCase
+      ? {
+          notes: execution[selectedTestCase.id]?.notes,
+          failure_reason: execution[selectedTestCase.id]?.failure_reason,
+          environment: execution[selectedTestCase.id]?.test_environment || "staging",
+          browser: execution[selectedTestCase.id]?.browser,
+          os_version: execution[selectedTestCase.id]?.os_version,
         }
-        onClose={() => setShowExecutionDialog(false)}
-        onSave={(details) => {
-          if (selectedTestCase) {
-            saveExecutionResult(selectedTestCase.id, "failed", details)
-          }
-        }}
-      />
+      : undefined
+  }
+  onClose={() => {
+    setShowExecutionDialog(false)
+    setPendingResultStatus(null)
+  }}
+  onSave={(details) => {
+    if (!selectedTestCase) return
+    const status = pendingResultStatus ?? "failed"
+    void saveExecutionResult(selectedTestCase.id, status, details)
+  }}
+/>
 
       <DeleteTestCaseDialog
         testCase={deletingTestCase}

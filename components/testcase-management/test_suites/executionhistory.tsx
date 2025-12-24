@@ -55,12 +55,12 @@ import {
   XCircle,
   ChevronDown,
   ChevronUp,
-  BarChart3,
+  BarChart3, AlertTriangle, MinusCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 
 type ExecutionStatus = "not_run" | "in_progress" | "passed" | "failed" | "skipped" | "blocked"
-type AllowedStatus = "passed" | "failed"
+type AllowedStatus = "passed" | "failed" | "skipped" | "blocked"
 type StatusFilter = "all" | AllowedStatus
 
 type ExecutionHistoryRow = {
@@ -144,6 +144,8 @@ export function ExecutionHistory() {
   const [evidenceLoading, setEvidenceLoading] = useState(false)
   const [evidence, setEvidence] = useState<AttachmentRow[]>([])
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const INCLUDED_STATUSES: AllowedStatus[] = ["passed", "failed", "blocked", "skipped"]
+
 
   useEffect(() => {
     void fetchSuites()
@@ -211,7 +213,7 @@ export function ExecutionHistory() {
         .from("test_executions")
         .select("id", { count: "exact", head: true })
         .eq("executed_by", auth.user.id)
-        .in("execution_status", ["passed", "failed"])
+        .in("execution_status", INCLUDED_STATUSES)
 
       let dataQuery = supabase
         .from("test_executions")
@@ -232,7 +234,7 @@ export function ExecutionHistory() {
         `
         )
         .eq("executed_by", auth.user.id)
-        .in("execution_status", ["passed", "failed"])
+        .in("execution_status", INCLUDED_STATUSES)
         .order("created_at", { ascending: false })
 
       // Apply filters to both queries
@@ -281,7 +283,7 @@ export function ExecutionHistory() {
           test_case_id: e.test_case_id,
           test_title: e.test_cases?.title ?? "Unknown Test",
           test_description: e.test_cases?.description ?? null,
-          execution_status: e.execution_status === "failed" ? "failed" : "passed",
+          execution_status: (e.execution_status as AllowedStatus) ?? "passed",
           execution_notes: e.execution_notes ?? null,
           failure_reason: e.failure_reason ?? null,
           created_at: e.created_at,
@@ -503,15 +505,18 @@ export function ExecutionHistory() {
     }
 
     // Group by date
-    const byDate = new Map<string, { passed: number; failed: number; total: number }>()
+const byDate = new Map<string, { passed: number; failed: number; blocked: number; skipped: number; total: number }>()
     
     rows.forEach((r) => {
       const date = new Date(r.created_at).toLocaleDateString()
-      const existing = byDate.get(date) || { passed: 0, failed: 0, total: 0 }
+      const existing = byDate.get(date) || { passed: 0, failed: 0, blocked:0, skipped: 0,total: 0 }
       
       existing.total++
-      if (r.execution_status === "passed") existing.passed++
-      if (r.execution_status === "failed") existing.failed++
+if (r.execution_status === "passed") existing.passed++
+if (r.execution_status === "failed") existing.failed++
+if (r.execution_status === "blocked") existing.blocked++
+if (r.execution_status === "skipped") existing.skipped++
+
       
       byDate.set(date, existing)
     })
@@ -545,21 +550,41 @@ export function ExecutionHistory() {
   }
 
   function statusBadge(s: AllowedStatus) {
-    if (s === "passed") {
+  switch (s) {
+    case "passed":
       return (
         <Badge className="bg-green-600 gap-1">
           <CheckCircle2 className="h-3 w-3" />
           Passed
         </Badge>
       )
-    }
-    return (
-      <Badge variant="destructive" className="gap-1">
-        <XCircle className="h-3 w-3" />
-        Failed
-      </Badge>
-    )
+
+    case "failed":
+      return (
+        <Badge variant="destructive" className="gap-1">
+          <XCircle className="h-3 w-3" />
+          Failed
+        </Badge>
+      )
+
+    case "blocked":
+      return (
+        <Badge className="bg-orange-600 gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          Blocked
+        </Badge>
+      )
+
+    case "skipped":
+      return (
+        <Badge className="bg-slate-600 gap-1">
+          <MinusCircle className="h-3 w-3" />
+          Skipped
+        </Badge>
+      )
   }
+}
+
 
   // Stats for dashboard
   const stats = useMemo(() => {
@@ -572,7 +597,7 @@ export function ExecutionHistory() {
   }, [rows])
 
   return (
-    <div className="space-y-6">
+  <div className="space-y-4 text-sm">
       {/* Stats Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
@@ -603,7 +628,7 @@ export function ExecutionHistory() {
 
       {/* Main History Table */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4">
+  <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
           <CardTitle>Execution History</CardTitle>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -645,11 +670,13 @@ export function ExecutionHistory() {
               <SelectTrigger className="w-[140px]">
                 <SelectValue placeholder="All results" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All results</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-                <SelectItem value="passed">Passed</SelectItem>
-              </SelectContent>
+             <SelectContent>
+  <SelectItem value="all">All results</SelectItem>
+  <SelectItem value="passed">Passed</SelectItem>
+  <SelectItem value="failed">Failed</SelectItem>
+  <SelectItem value="blocked">Blocked</SelectItem>
+  <SelectItem value="skipped">Skipped</SelectItem>
+</SelectContent>
             </Select>
 
             <div className="flex items-center gap-2">
@@ -678,7 +705,7 @@ export function ExecutionHistory() {
           </div>
         </CardHeader>
 
-        <CardContent>
+  <CardContent className="pt-0">
           {loading ? (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -696,7 +723,7 @@ export function ExecutionHistory() {
                     <TableHead className="w-[40px]"></TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Suite</TableHead>
-                    <TableHead>Test Case</TableHead>
+                    <TableHead className="max-w-[360px] w-[360px]">Test Case</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Duration</TableHead>
                     <TableHead>Evidence</TableHead>
@@ -736,11 +763,7 @@ export function ExecutionHistory() {
                           <TableCell className="font-medium">{r.suite_name}</TableCell>
                           <TableCell>
                             <div className="font-medium">{r.test_title}</div>
-                            {r.test_description && (
-                              <div className="text-xs text-muted-foreground line-clamp-1">
-                                {r.test_description}
-                              </div>
-                            )}
+                              
                           </TableCell>
                           <TableCell>{statusBadge(r.execution_status)}</TableCell>
                           <TableCell>

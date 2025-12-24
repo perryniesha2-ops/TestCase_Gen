@@ -22,11 +22,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { ExecutionDetails } from "@/types/test-cases"
+import type { ExecutionDetails, ExecutionStatus } from "@/types/test-cases"
 
 interface TestExecutionDialogProps {
   open: boolean
   initialData?: ExecutionDetails
+  status: ExecutionStatus
   onClose: () => void
   onSave: (details: ExecutionDetails) => void
 }
@@ -66,6 +67,25 @@ export function TestExecutionDialog({
     os_version: "",
   }
 
+
+const reasonLabel =
+  status === "failed"
+    ? "Failure Reason"
+    : status === "blocked"
+    ? "Blocked Reason"
+    : status === "skipped"
+    ? "Skipped Reason"
+    : "Reason"
+
+const reasonPlaceholder =
+  status === "failed"
+    ? "Describe what went wrong..."
+    : status === "blocked"
+    ? "Why is this blocked? (dependency, env issue, missing access, etc.)"
+    : status === "skipped"
+    ? "Why was this skipped? (out of scope, not applicable, etc.)"
+    : "Add a reason..."
+  
   return (
     <Dialog 
       open={open} 
@@ -74,10 +94,12 @@ export function TestExecutionDialog({
     >
       <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle>Test Execution Details</DialogTitle>
-          <DialogDescription>
-            Provide additional details about the test execution result.
-          </DialogDescription>
+         <DialogTitle>
+  {status === "failed" ? "Mark as Failed" : status === "blocked" ? "Mark as Blocked" : "Mark as Skipped"}
+</DialogTitle>
+<DialogDescription>
+  Add context for this result. This will be saved to the execution record.
+</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
@@ -131,27 +153,35 @@ export function TestExecutionDialog({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="failure_reason">Failure Reason</Label>
-            <Textarea
-              id="failure_reason"
-              defaultValue={defaultFormData.failure_reason}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, failure_reason: e.target.value }))
-              }
-              placeholder="Describe what went wrong..."
-              rows={3}
-            />
-          </div>
+         <div className="space-y-2">
+  <Label htmlFor="failure_reason">{reasonLabel}</Label>
+  <Textarea
+    id="failure_reason"
+    defaultValue={defaultFormData.failure_reason}
+    onChange={(e) =>
+      setFormData((prev) => ({ ...prev, failure_reason: e.target.value }))
+    }
+    placeholder={reasonPlaceholder}
+    rows={3}
+  />
+</div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} className="bg-red-600 hover:bg-red-700">
-            Save Result
-          </Button>
+          <Button
+  onClick={handleSave}
+  className={
+    status === "failed"
+      ? "bg-red-600 hover:bg-red-700"
+      : status === "blocked"
+      ? "bg-orange-600 hover:bg-orange-700"
+      : status === "skipped"
+      ? "bg-slate-600 hover:bg-slate-700"
+      : ""
+  }
+>
+  Save Result
+</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
