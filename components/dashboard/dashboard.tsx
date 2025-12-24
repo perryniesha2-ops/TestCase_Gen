@@ -125,57 +125,75 @@ export function TestManagementDashboard() {
   }
 
   async function fetchTestCaseMetrics() {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
 
-    // Get test cases
-    const { data: testCases } = await supabase
-      .from('test_cases')
-      .select('id, execution_status')
-      .eq('user_id', user.id)
+  // 1) Get test case ids for this user (active only if you want)
+  const { data: testCases, error: tcErr } = await supabase
+    .from("test_cases")
+    .select("id")
+    .eq("user_id", user.id)
+    .neq("status", "archived")
 
-    if (!testCases) return
-
-    // Get latest executions for each test case
-    const testCaseIds = testCases.map(tc => tc.id)
-    const { data: executions } = await supabase
-      .from('test_executions')
-      .select('test_case_id, execution_status, created_at')
-      .in('test_case_id', testCaseIds)
-      .order('created_at', { ascending: false })
-
-    // Get latest execution per test case
-    const latestExecutions = executions?.reduce((acc, exec) => {
-      if (!acc[exec.test_case_id]) {
-        acc[exec.test_case_id] = exec.execution_status
-      }
-      return acc
-    }, {} as Record<string, string>) || {}
-
-    // Calculate metrics
-    const statusCounts = testCaseIds.reduce((acc, testCaseId) => {
-      const status = latestExecutions[testCaseId] || 'not_run'
-      acc[status] = (acc[status] || 0) + 1
-      return acc
-    }, {} as Record<string, number>)
-
-    const total = testCases.length
-    const passed = statusCounts.passed || 0
-
+  if (tcErr) throw tcErr
+  if (!testCases || testCases.length === 0) {
     setMetrics(prev => ({
       ...prev,
-      test_cases: {
-        total,
-        passed,
-        failed: statusCounts.failed || 0,
-        blocked: statusCounts.blocked || 0,
-        skipped: statusCounts.skipped || 0,
-        not_run: statusCounts.not_run || 0,
-        pass_rate: total > 0 ? Math.round((passed / total) * 100) : 0
-      }
+      test_cases: { total: 0, passed: 0, failed: 0, blocked: 0, skipped: 0, not_run: 0, pass_rate: 0 }
     }))
+    return
   }
+
+  const testCaseIds = testCases.map(tc => tc.id)
+
+  // 2) Get latest execution status for those test cases (1 row per test case that has executions)
+  const { data: latestRows, error: leErr } = await supabase
+    .from("v_test_case_latest_execution")
+    .select("test_case_id, execution_status")
+    .in("test_case_id", testCaseIds)
+
+  if (leErr) throw leErr
+
+  const latestMap = (latestRows || []).reduce((acc, row) => {
+    acc[row.test_case_id] = row.execution_status
+    return acc
+  }, {} as Record<string, string>)
+
+  // 3) Count statuses. Anything missing from latestMap is "not_run".
+  const counts = {
+    passed: 0,
+    failed: 0,
+    blocked: 0,
+    skipped: 0,
+    not_run: 0,
+  }
+
+  for (const id of testCaseIds) {
+    const status = latestMap[id] ?? "not_run"
+    if (status === "passed") counts.passed++
+    else if (status === "failed") counts.failed++
+    else if (status === "blocked") counts.blocked++
+    else if (status === "skipped") counts.skipped++
+    else counts.not_run++
+  }
+
+  const total = testCaseIds.length
+  const pass_rate = total > 0 ? Math.round((counts.passed / total) * 100) : 0
+
+  setMetrics(prev => ({
+    ...prev,
+    test_cases: {
+      total,
+      passed: counts.passed,
+      failed: counts.failed,
+      blocked: counts.blocked,
+      skipped: counts.skipped,
+      not_run: counts.not_run,
+      pass_rate,
+    },
+  }))
+}
 
   async function fetchRequirementsMetrics() {
     const supabase = createClient()
@@ -300,46 +318,30 @@ export function TestManagementDashboard() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
-  // Get recent executions with proper join
-  const { data: executions } = await supabase
-    .from('test_executions')
+  const { data, error } = await supabase
+    .from("test_executions")
     .select(`
       id,
       execution_status,
       created_at,
-      test_case_id
+      test_case_id,
+      test_cases ( title )
     `)
-    .eq('executed_by', user.id)
-    .order('created_at', { ascending: false })
+    .eq("executed_by", user.id)
+    .order("created_at", { ascending: false })
     .limit(5)
 
-  if (!executions) return
+  if (error) throw error
 
-  // Get test case titles separately to avoid join issues
-  const testCaseIds = executions.map(e => e.test_case_id)
-  const { data: testCases } = await supabase
-    .from('test_cases')
-    .select('id, title')
-    .in('id', testCaseIds)
-
-  // Create a map for quick lookups
-  const testCaseMap = testCases?.reduce((acc, tc) => {
-    acc[tc.id] = tc.title
-    return acc
-  }, {} as Record<string, string>) || {}
-
-  const activity = executions.map(exec => ({
+  const activity = (data || []).map((exec) => ({
     id: exec.id,
-    type: 'execution' as const,
-    description: `Test "${testCaseMap[exec.test_case_id] || 'Unknown Test'}" ${exec.execution_status}`,
+    type: "execution" as const,
+    description: `Test "${(exec as any).test_cases?.title || "Unknown Test"}" ${exec.execution_status}`,
     timestamp: exec.created_at,
-    status: exec.execution_status
+    status: exec.execution_status,
   }))
 
-  setMetrics(prev => ({
-    ...prev,
-    recent_activity: activity
-  }))
+  setMetrics(prev => ({ ...prev, recent_activity: activity }))
 }
 
   function getStatusIcon(status: string) {

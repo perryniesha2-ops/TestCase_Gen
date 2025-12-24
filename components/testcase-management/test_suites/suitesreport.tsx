@@ -102,11 +102,69 @@ export function SuiteReports({ suiteId, showAllSuites = false }: SuiteReportsPro
     const suites = await fetchAvailableSuites()
 
     // 2) Fetch all report data using the fresh suite list
-    await Promise.all([
-      fetchSuiteExecutionStats(suites),
-      fetchTestCasePerformance(),
-      fetchExecutionTrends(),
-    ])
+   const supabase = createClient()
+const { data: { user } } = await supabase.auth.getUser()
+if (!user) return
+
+const days = parseInt(timeRange, 10)
+const suiteFilter = selectedSuite !== "all" ? selectedSuite : null
+
+const [statsRes, perfRes, trendsRes] = await Promise.all([
+  supabase.rpc("get_suite_execution_stats", {
+    p_user_id: user.id,
+    p_days: days,
+    p_suite_id: suiteFilter,
+  }),
+  supabase.rpc("get_test_case_performance", {
+    p_user_id: user.id,
+    p_days: days,
+    p_suite_id: suiteFilter,
+    p_limit: 200,
+  }),
+  supabase.rpc("get_execution_trends_daily", {
+    p_user_id: user.id,
+    p_days: days,
+    p_suite_id: suiteFilter,
+  }),
+])
+
+if (statsRes.error) throw statsRes.error
+if (perfRes.error) throw perfRes.error
+if (trendsRes.error) throw trendsRes.error
+
+setSuiteStats((statsRes.data || []).map((row: any) => ({
+  suite_id: row.suite_id,
+  suite_name: row.suite_name,
+  suite_type: row.suite_type,
+  execution_count: row.execution_count,
+  total_tests: row.total_tests,
+  avg_pass_rate: row.avg_pass_rate,
+  avg_execution_time: row.avg_execution_time,
+  last_execution: row.last_execution ?? "",
+  trend: row.trend as "up" | "down" | "stable",
+})))
+
+setTestCasePerformance((perfRes.data || []).map((row: any) => ({
+  test_case_id: row.test_case_id,
+  test_title: row.test_title,
+  total_executions: row.total_executions,
+  pass_rate: row.pass_rate,
+  avg_execution_time: row.avg_execution_time,
+  last_failure_date: row.last_failure_date ?? undefined,
+  failure_frequency: row.failure_frequency,
+  last_failure_reason: row.last_failure_reason ?? undefined,
+})))
+
+setExecutionTrends((trendsRes.data || []).map((row: any) => ({
+  date: row.date,
+  passed: row.passed,
+  failed: row.failed,
+  blocked: row.blocked,
+  skipped: row.skipped,
+  total: row.total,
+})))
+
+    
   } catch (error) {
     console.error('Error fetching reports data:', error)
     setError('Failed to load report data')
