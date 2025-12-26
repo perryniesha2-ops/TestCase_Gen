@@ -124,10 +124,12 @@ export default function ExtensionPage() {
                   <p className="font-medium">QA Test Recorder v1.0.0</p>
                   <p className="text-sm text-muted-foreground">Chrome Extension (.zip)</p>
                 </div>
-                <Button className="gap-2">
-                  <Download className="h-4 w-4" />
-                  Download
-                </Button>
+              <Button className="gap-2" asChild>
+  <a href="/extensions/qa-test-recorder-chrome-v1.0.0.zip" download>
+    <Download className="h-4 w-4" />
+    Download
+  </a>
+</Button>
               </div>
               <p className="text-xs text-muted-foreground">
                 Compatible with Chrome 88+ and Edge 88+

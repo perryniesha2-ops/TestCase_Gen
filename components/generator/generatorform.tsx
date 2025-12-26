@@ -907,7 +907,7 @@ Example:
               {selectedTemplate && (
                 <p className="text-xs text-muted-foreground">
                   Template <span className="font-medium">&quot;{selectedTemplate.name}&quot;</span> is applied. 
-                  You can still adjust settings below before generating.
+                  You can still adjust settings before generating.
                 </p>
               )}
             </div>
