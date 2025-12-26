@@ -10,8 +10,7 @@ export interface TestStep {
   step_number: number
   action: string
   expected: string
-  data:string
-
+  data?: any
 }
 
 export interface TestCase {
