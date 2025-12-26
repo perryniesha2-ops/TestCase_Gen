@@ -9,7 +9,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "build:extension": "node public/browser-extension/build.js"
+
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
