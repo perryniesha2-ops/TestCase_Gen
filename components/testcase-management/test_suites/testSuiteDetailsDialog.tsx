@@ -45,7 +45,7 @@ import {
   Code2, // ✅ ADDED
 } from "lucide-react"
 import type { Project } from "@/types/test-cases"
-import { ScriptGenerator } from '@/components/automation//scriptGenerator'
+import { ScriptGenerator } from '@/components/automation/generator'
 
 interface TestSuite {
   id: string

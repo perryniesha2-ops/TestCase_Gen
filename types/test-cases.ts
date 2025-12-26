@@ -10,6 +10,8 @@ export interface TestStep {
   step_number: number
   action: string
   expected: string
+  data:string
+
 }
 
 export interface TestCase {
@@ -28,6 +30,7 @@ export interface TestCase {
   created_at: string
   project_id?: string | null
   projects?: Project
+  updated_at: string
   
 }
 

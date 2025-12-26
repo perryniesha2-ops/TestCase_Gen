@@ -1,9 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -11,26 +10,52 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Save, RefreshCcw, Code2, Play } from "lucide-react"
-import { ScriptEditor } from "./scriptEditor"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Code2,
+  Loader2,
+  Save,
+  Copy,
+  Download,
+  RotateCcw,
+  Sparkles,
+  AlertTriangle,
+  Trash2,
+  Maximize2,
+  Minimize2,
+} from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
-type ScriptEditorDialogProps = {
+interface ScriptEditorDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   scriptId: string | null
-  testCaseTitle?: string
+  testCaseTitle: string
   onSaved?: () => void
 }
 
-type AutomationScriptRow = {
+interface AutomationScript {
   id: string
   test_case_id: string
-  framework: string | null
-  status: string | null
-  script_content: string | null
-  updated_at: string | null
+  script_name: string
+  framework: string
+  script_content: string
+  status: "draft" | "ready" | "needs_review" | "active" | "archived"
+  created_at: string
+  updated_at: string
 }
 
 export function ScriptEditorDialog({
@@ -40,214 +65,483 @@ export function ScriptEditorDialog({
   testCaseTitle,
   onSaved,
 }: ScriptEditorDialogProps) {
+  const [script, setScript] = useState<AutomationScript | null>(null)
+  const [editedContent, setEditedContent] = useState("")
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [script, setScript] = useState<AutomationScriptRow | null>(null)
-  const [draft, setDraft] = useState("")
+  const [regenerating, setRegenerating] = useState(false)
+  const [hasChanges, setHasChanges] = useState(false)
+  const [activeTab, setActiveTab] = useState<"editor" | "info">("editor")
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [executing, setExecuting] = useState(false)
-
-
-  const canSave = useMemo(() => {
-    if (!script) return false
-    return (draft ?? "") !== (script.script_content ?? "")
-  }, [draft, script])
 
   useEffect(() => {
-    if (!open) return
-
-    // Reset state each time dialog opens
-    setScript(null)
-    setDraft("")
-
-    if (!scriptId) return
-
-    ;(async () => {
-      setLoading(true)
-      try {
-        const supabase = createClient()
-        const { data, error } = await supabase
-          .from("automation_scripts")
-          .select("id, test_case_id, framework, status, script_content, updated_at")
-          .eq("id", scriptId)
-          .single()
-
-        if (error) throw error
-
-        const row = data as AutomationScriptRow
-        setScript(row)
-        setDraft(row.script_content ?? "")
-      } catch (err) {
-        console.error("Failed to load script:", err)
-        toast.error("Failed to load automation script")
-      } finally {
-        setLoading(false)
-      }
-    })()
+    if (open && scriptId) {
+      fetchScript()
+    } else {
+      setScript(null)
+      setEditedContent("")
+      setHasChanges(false)
+      setActiveTab("editor")
+      setIsFullscreen(false)
+    }
   }, [open, scriptId])
 
-  // change handleSave to accept the script string coming from ScriptEditor
-  async function handleSave(nextScript: string) {
-    if (!script) return
+  useEffect(() => {
+    if (script) {
+      setHasChanges(editedContent !== script.script_content)
+    }
+  }, [editedContent, script])
+
+  async function fetchScript() {
+    if (!scriptId) return
+
+    setLoading(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("automation_scripts")
+        .select("*")
+        .eq("id", scriptId)
+        .single()
+
+      if (error) throw error
+
+      setScript(data)
+      setEditedContent(data.script_content)
+    } catch (error) {
+      console.error("Error fetching script:", error)
+      toast.error("Failed to load script")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function saveScript() {
+    if (!script || !hasChanges) return
+
     setSaving(true)
     try {
       const supabase = createClient()
+
       const { error } = await supabase
         .from("automation_scripts")
         .update({
-          script_content: nextScript,
+          script_content: editedContent,
           updated_at: new Date().toISOString(),
         })
         .eq("id", script.id)
 
       if (error) throw error
 
-      // keep local state in sync so header timestamps / canSave indicators are accurate
-      setScript((prev) =>
-        prev
-          ? { ...prev, script_content: nextScript, updated_at: new Date().toISOString() }
-          : prev
-      )
-      setDraft(nextScript) // optional, if you still want draft state for footer messaging
-
-      toast.success("Script updated")
+      setScript({
+        ...script,
+        script_content: editedContent,
+      })
+      setHasChanges(false)
+      toast.success("Script saved successfully!")
       onSaved?.()
-      onOpenChange(false)
-    } catch (err) {
-      console.error("Failed to save script:", err)
-      toast.error("Failed to update script")
+    } catch (error) {
+      console.error("Error saving script:", error)
+      toast.error("Failed to save script")
     } finally {
       setSaving(false)
     }
   }
 
-  async function handleRun() {
-    if (!script) {
-      toast.error("No script loaded")
-      return
-    }
+  async function regenerateScript() {
+    if (!script) return
 
-    setExecuting(true)
+    const confirmed = confirm(
+      "This will regenerate the script using AI. Your current changes will be replaced. Continue?"
+    )
+    if (!confirmed) return
+
+    setRegenerating(true)
     try {
-      const response = await fetch('/api/execute-script', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/generate-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          scriptId: script.id, // ✅ Fixed: Now includes script ID
-          browser: 'chromium',
-          headless: true
-        })
+          testCaseId: script.test_case_id,
+          forceRegenerate: true,
+        }),
       })
-      
+
       const data = await response.json()
-      
-      if (data.success) {
-        toast.success('Test started! Execution ID: ' + data.executionId)
-      } else {
-        toast.error('Failed: ' + data.error)
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to regenerate script")
       }
+
+      setEditedContent(data.script.script_content)
+      setScript(data.script)
+      setHasChanges(false)
+      toast.success("Script regenerated!")
     } catch (error) {
-      toast.error('Execution failed')
+      console.error("Error regenerating script:", error)
+      toast.error(error instanceof Error ? error.message : "Failed to regenerate script")
     } finally {
-      setExecuting(false)
+      setRegenerating(false)
     }
   }
 
-  const language =
-    (script?.framework ?? "").toLowerCase().includes("playwright") ? "typescript" : "typescript"
+  async function deleteScript() {
+    if (!script) return
+
+    setDeleting(true)
+    try {
+      const response = await fetch(`/api/automation-scripts?id=${script.id}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to delete script")
+      }
+
+      toast.success("Script deleted")
+      onOpenChange(false)
+      onSaved?.()
+    } catch (error) {
+      console.error("Error deleting script:", error)
+      toast.error("Failed to delete script")
+    } finally {
+      setDeleting(false)
+      setShowDeleteDialog(false)
+    }
+  }
+
+  function copyToClipboard() {
+    navigator.clipboard.writeText(editedContent)
+    toast.success("Copied to clipboard!")
+  }
+
+  function downloadScript() {
+    const blob = new Blob([editedContent], { type: "text/plain" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${testCaseTitle.replace(/\s+/g, "-").toLowerCase()}.spec.ts`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.success("Script downloaded!")
+  }
+
+  function resetChanges() {
+    if (!script) return
+    const confirmed = confirm("Discard all changes and reset to saved version?")
+    if (confirmed) {
+      setEditedContent(script.script_content)
+      setHasChanges(false)
+      toast.success("Changes discarded")
+    }
+  }
+
+  const todoCount = (editedContent.match(/\/\/ TODO:/g) || []).length
+  const hasCriticalTodos = editedContent.includes('TODO: Update selector')
+  const lineCount = editedContent.split('\n').length
+
+  if (loading && !script) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-6xl">
+          <DialogHeader>
+            <DialogTitle>Loading Script</DialogTitle>
+            <DialogDescription>Please wait while we load your automation script...</DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className={`
-          p-0 overflow-hidden
-          w-[calc(100vw-2rem)]
-          sm:w-[calc(100vw-3rem)]
-          md:w-[calc(100vw-4rem)]
-          max-w-[1200px]
-          lg:max-w-[1400px]
-          h-[92vh]
-          ${isFullscreen ? "w-screen h-screen max-w-none max-h-none m-0 rounded-none" : ""}
-        `}
-      >
-        {/* Header */}
-        <DialogHeader className="space-y-1">
-          <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30 flex-shrink-0">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <Code2 className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-              <DialogTitle className="flex items-center gap-2">
-                Automation Script
-              </DialogTitle>
-              <DialogDescription>
-                {testCaseTitle ? `Test case: ${testCaseTitle}` : "View and edit your generated script."}
-              </DialogDescription>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent 
+          className={`${
+            isFullscreen 
+              ? 'w-screen h-screen max-w-none max-h-none m-0 rounded-none' 
+              : 'max-w-[95vw] w-[1400px] max-h-[95vh]'
+          } flex flex-col p-0 overflow-hidden`}
+        >
+          <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <Code2 className="h-5 w-5 text-purple-500" />
+              {testCaseTitle}
+            </DialogTitle>
+            <DialogDescription className="flex items-center gap-3 flex-wrap">
+              <Badge variant="secondary">{script?.framework}</Badge>
+              {script?.status && (
+                <Badge
+                  variant={
+                    script.status === "ready"
+                      ? "default"
+                      : script.status === "needs_review"
+                      ? "destructive"
+                      : "secondary"
+                  }
+                >
+                  {script.status}
+                </Badge>
+              )}
+              {todoCount > 0 && (
+                <Badge variant="outline" className="gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {todoCount} TODO{todoCount !== 1 ? 's' : ''}
+                </Badge>
+              )}
+              <Badge variant="outline" className="gap-1">
+                {lineCount} lines
+              </Badge>
+            </DialogDescription>
+          </DialogHeader>
+
+<div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-2
+  bg-muted/40 text-foreground border-b border-border flex-shrink-0">
+            {/* Left: Primary actions */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={saveScript}
+                disabled={!hasChanges || saving}
+                className="gap-2"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" />
+                    Save
+                  </>
+                )}
+              </Button>
+
+              {hasChanges && (
+                <Badge variant="secondary" className="text-xs">
+                  Unsaved
+                </Badge>
+              )}
             </div>
+
+            {/* Center: Quick actions */}
+            <div className="flex items-center gap-1 justify-center">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={copyToClipboard}
+                title="Copy to clipboard"
+                className="text-foreground hover:bg-muted"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={downloadScript}
+                title="Download script"
+                className="text-foreground hover:bg-muted"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={resetChanges}
+                disabled={!hasChanges}
+                title="Reset changes"
+                className="text-foreground hover:bg-muted"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+
+              <div className="h-4 w-px bg-border mx-1" />
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={regenerateScript}
+                disabled={regenerating}
+                title="Regenerate with AI"
+                className="text-foreground hover:bg-muted"
+              >
+                {regenerating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsFullscreen(!isFullscreen)}
+                title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              >
+                {isFullscreen ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+
+            {/* Right: Delete */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowDeleteDialog(true)}
+              title="Delete script"
+            >
+<Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
           </div>
-        </DialogHeader>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {script?.framework && <Badge variant="outline">{script.framework}</Badge>}
-          {script?.status && <Badge variant="secondary">{script.status}</Badge>}
-          {script?.updated_at && (
-            <span className="text-xs text-muted-foreground">
-              Updated {new Date(script.updated_at).toLocaleString()}
-            </span>
-          )}
-        </div>
-
-        {/* Body */}
-        <div className="overflow-y-auto px-6 py-4">
-          {loading ? (
-            <div className="py-16 flex items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : !script ? (
-            <div className="py-10 text-sm text-muted-foreground">No script found.</div>
-          ) : (
-            <div className="space-y-2">
-              <Label>Script (editable)</Label>
-
-              <ScriptEditor
-                key={script?.id ?? "no-script"}
-                initialScript={script?.script_content ?? ""}
-                testName={testCaseTitle ?? "Automation Script"}
-                onSave={handleSave}
-                height="520px"
-              />
-            </div>
-          )}
-
-          <Button 
-            onClick={handleRun} 
-            disabled={executing || !script}
-            className="mt-4"
-          >
-            {executing ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Running...
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4 mr-2" />
-                Run Test
-              </>
-            )}
-          </Button>
-        </div>
-
-        {/* Footer */}
-        <div className="border-t bg-background px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-muted-foreground">
-              {script ? (canSave ? "Unsaved changes" : "All changes saved") : ""}
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex-1 flex flex-col overflow-hidden min-h-0">
+            <div className="px-6 pt-4 flex-shrink-0">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="editor">
+                  <Code2 className="h-4 w-4 mr-2" />
+                  Editor
+                </TabsTrigger>
+                <TabsTrigger value="info">
+                  <AlertTriangle className="h-4 w-4 mr-2" />
+                  Info {todoCount > 0 && `(${todoCount})`}
+                </TabsTrigger>
+              </TabsList>
             </div>
 
-            <div className="flex items-center gap-3">
-            </div>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+            <TabsContent value="editor" className="flex-1 px-6 pb-6 flex flex-col overflow-hidden min-h-0">
+              <div className="mb-2 flex-shrink-0">
+                <Label>Script Content ({lineCount} lines, {editedContent.length} characters)</Label>
+              </div>
+              <div className="flex-1 overflow-auto border rounded-lg" style={{ backgroundColor: 'oklch(0.13 0.028 261.692)' }}>
+                <Textarea
+                  value={editedContent}
+                  onChange={(e) => setEditedContent(e.target.value)}
+                  className="w-full h-full min-h-full font-mono text-[13px] resize-none bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 leading-relaxed p-4"
+                  style={{
+                    tabSize: 2,
+                    color: 'oklch(0.985 0.002 247.839)', // foreground color from dark theme
+                  }}
+                  placeholder="// Your automation script here..."
+                  spellCheck={false}
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="info" className="flex-1 px-6 pb-6 overflow-auto min-h-0">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-semibold mb-2">Script Analysis</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between p-3 bg-card rounded-lg border">
+                      <span className="text-sm">TODO Items</span>
+                      <Badge variant={todoCount > 0 ? "secondary" : "outline"}>
+                        {todoCount}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-card rounded-lg border">
+                      <span className="text-sm">Critical TODOs</span>
+                      <Badge variant={hasCriticalTodos ? "destructive" : "outline"}>
+                        {hasCriticalTodos ? "Yes" : "No"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-card rounded-lg border">
+                      <span className="text-sm">Lines of Code</span>
+                      <Badge variant="outline">
+                        {lineCount}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-card rounded-lg border">
+                      <span className="text-sm">Characters</span>
+                      <Badge variant="outline">
+                        {editedContent.length}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                {hasCriticalTodos && (
+<div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-2
+  bg-muted/40 text-foreground border-b border-border flex-shrink-0">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h4 className="font-semibold text-amber-900">Needs Review</h4>
+                        <p className="text-sm text-amber-700 mt-1">
+                          This script contains placeholder selectors that need to be updated
+                          with actual values from your application.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <h3 className="font-semibold mb-2">Metadata</h3>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Created</span>
+                      <span>{script?.created_at ? new Date(script.created_at).toLocaleString() : 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Updated</span>
+                      <span>{script?.updated_at ? new Date(script.updated_at).toLocaleString() : 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Framework</span>
+                      <span>{script?.framework}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Automation Script?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the automation script. This action cannot be undone.
+              You can always regenerate the script later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={deleteScript}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Script"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

@@ -85,15 +85,15 @@ import type {
   AutomationScript,
 } from "@/types/test-cases"
 
-// ✅ Import dialog components
 import { TestCaseFormDialog } from "./dialogs/test-case-form-dialog"
 import { TestExecutionDialog } from "./dialogs/test-execution-dialog"
 import { DeleteTestCaseDialog } from "./dialogs/delete-test-case-dialog"
 import { BulkActionsToolbar } from "./BulkActionsToolbar"
 import { useBulkActions } from "@/hooks/useBulkActions"
 import { CrossPlatformBulkActionsToolbar } from "./CrossPlatformBulkActionsToolbar" 
-import { ScriptGenerator } from '@/components/automation/scriptGenerator'
-import { ScriptEditorDialog } from "@/components/automation/script-editor-dialog"
+import { ScriptGenerator } from '@/components/automation/generator'
+import { ScriptEditorDialog } from '@/components/automation/script-editor-dialog'
+import { TestCaseActionSheet } from './test-case-action-sheet'
 
 
 
@@ -1248,6 +1248,7 @@ function openActionSheet(testCase: TestCase) {
       })
       setShowScriptGenerator(false)
       setAutomatingTestCase(null)
+      fetchData()
     }}
   />
 )}
@@ -1547,217 +1548,25 @@ function openActionSheet(testCase: TestCase) {
       setActiveScriptTitle("")
     }
   }}
-  scriptId={activeScriptId}          // string | null (correct)
-  testCaseTitle={activeScriptTitle}  // correct prop name
+  scriptId={activeScriptId}          
+  testCaseTitle={activeScriptTitle}  
   onSaved={() => fetchData()}
 />
 
 )}
 
-<Sheet open={showActionSheet} onOpenChange={setShowActionSheet}>
-  <SheetContent
-    side="right"
-    className="
-      w-[640px] sm:w-[720px] md:w-[820px]
-      max-w-[95vw]
-      p-0
-      overflow-hidden
-    "
-  >
-    {/* 3-row layout: header / scroll body / footer */}
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      
-      <div className="border-b px-6 py-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <SheetTitle className="truncate">
-              {actionSheetCase?.title ?? "Test case"}
-              
-            </SheetTitle>
-            <SheetDescription className="mt-1">
-              
-            </SheetDescription>
+<TestCaseActionSheet
+  testCase={actionSheetCase}
+  open={showActionSheet}
+  onOpenChange={setShowActionSheet}
+  onEdit={openEditDialog}
+  onDelete={openDeleteDialog}
+  onViewDetails={(testCase) => openTestCaseDialog(testCase, "regular")} 
+  isAutomated={actionSheetCase ? automatedTestCases.has(actionSheetCase.id) : false} 
+  onOpenScriptEditor={openScriptEditor} 
+  onOpenAutomationDialog={openAutomationDialog} 
+/>
 
-            {/* Badges row */}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {actionSheetCase?.priority && (
-                <Badge className={getPriorityColor(actionSheetCase.priority)}>
-                  {actionSheetCase.priority}
-                </Badge>
-              )}
-              {"test_type" in (actionSheetCase ?? {}) && actionSheetCase?.test_type && (
-                <Badge variant="secondary">{actionSheetCase.test_type}</Badge>
-              )}
-              {actionIsAutomated ? (
-                <Badge className="gap-1 bg-purple-100 text-purple-700">
-                  <Code2 className="h-3 w-3" />
-                  Automated
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="text-muted-foreground">
-                  Manual
-                </Badge>
-              )}
-            </div>
-          </div>
-
-          
-        </div>
-      </div>
-
-      {/* Body (scroll) */}
-      <div className="flex-1 overflow-y-auto px-6 py-5">
-        <div className="space-y-6">
-          {/* Section: metadata */}
-          <div className="rounded-lg border bg-background">
-            <div className="border-b px-4 py-3">
-              <p className="text-sm font-medium">Details</p>
-            </div>
-            <div className="px-4 py-4 space-y-3 text-sm">
-              {/* Move Generation + Created here (removed from table) */}
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Generation</span>
-                <span className="text-right">
-                  {("generation_id" in (actionSheetCase ?? {}) &&
-                    generations?.[(actionSheetCase as any).generation_id]?.title) ||
-                    "Manual"}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Created</span>
-                <span className="text-right">
-                  {actionSheetCase?.created_at
-                    ? new Date(actionSheetCase.created_at).toLocaleString()
-                    : "—"}
-                </span>
-              </div>
-
-              {/* Add more fields if you want */}
-              {"projects" in (actionSheetCase ?? {}) && (actionSheetCase as any)?.projects?.name && (
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-muted-foreground">Project</span>
-                  <span className="text-right">{(actionSheetCase as any).projects.name}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Section: description */}
-          <div className="rounded-lg border bg-background">
-            <div className="border-b px-4 py-3">
-              <p className="text-sm font-medium">Description</p>
-            </div>
-            <div className="px-4 py-4">
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                {actionSheetCase?.description || "No description provided."}
-              </p>
-            </div>
-          </div>
-
-          {/* Section: quick actions (small buttons) */}
-          <div className="rounded-lg border bg-background">
-            <div className="border-b px-4 py-3">
-              <p className="text-sm font-medium">Actions</p>
-            </div>
-
-            <div className="px-4 py-4 space-y-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full justify-start h-9 px-3"
-                onClick={() => {
-                  if (!actionSheetCase) return
-                  openTestCaseDialog(actionSheetCase as any, "regular")
-                  setShowActionSheet(false)
-                }}
-              >
-                <Eye className="h-4 w-4 mr-2" />
-                View Details
-              </Button>
-
-              {"test_steps" in (actionSheetCase ?? {}) && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full justify-start h-9 px-3"
-                  onClick={() => {
-                    if (!actionSheetCase) return
-                    openEditDialog(actionSheetCase as any)
-                    setShowActionSheet(false)
-                  }}
-                >
-                  <Edit3 className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
-              )}
-
-              {!actionIsAutomated ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full justify-start h-9 px-3"
-                  onClick={() => {
-                    if (!actionSheetCase) return
-                    openAutomationDialog(actionSheetCase as any)
-                    setShowActionSheet(false)
-                  }}
-                  disabled={
-                    !("test_steps" in (actionSheetCase ?? {})) ||
-                    !(actionSheetCase as any).test_steps?.length
-                  }
-                >
-                  <Code2 className="h-4 w-4 mr-2" />
-                  Generate Script
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full justify-start h-9 px-3"
-                  onClick={() => {
-                    if (!actionSheetCase) return
-                    openScriptEditor(actionSheetCase as any)
-                    setShowActionSheet(false)
-                  }}
-                >
-                  <Code2 className="h-4 w-4 mr-2" />
-                  View / Edit Script
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer (sticky) */}
-      <div className="border-t px-6 py-5 bg-background">
-        <div className="flex items-center justify-between gap-3">
-          <SheetClose asChild>
-            <Button size="sm" variant="outline" className="h-9 px-4">
-              Close
-            </Button>
-          </SheetClose>
-
-          <Button
-            size="sm"
-            variant="destructive"
-            className="h-9 px-4"
-            onClick={() => {
-              if (!actionSheetCase) return
-              openDeleteDialog(actionSheetCase as any)
-              setShowActionSheet(false)
-            }}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </Button>
-        </div>
-      </div>
-    </div>
-  </SheetContent>
-</Sheet>
 
 
       {/* Test Case Details Dialog */}
