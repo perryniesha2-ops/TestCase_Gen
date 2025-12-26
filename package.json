@@ -56,9 +56,7 @@
     "sonner": "^2.0.7",
     "stripe": "^20.0.0",
     "tailwind-merge": "^3.4.0",
-    "zip": "^1.2.0",
-    "build:extension": "node public/browser-extension/build.js"
-
+    "zip": "^1.2.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",
