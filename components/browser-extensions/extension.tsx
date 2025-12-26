@@ -365,19 +365,19 @@ export default function ExtensionPage() {
           </p>
           <div className="flex flex-col gap-2">
             <Button variant="outline" className="justify-start gap-2" asChild>
-              <a href="/docs/extension-guide" target="_blank">
+              <a href="/pages/docs/extension-guide" target="_blank">
                 <ExternalLink className="h-4 w-4" />
                 Installation Guide
               </a>
             </Button>
             <Button variant="outline" className="justify-start gap-2" asChild>
-              <a href="/docs/troubleshooting" target="_blank">
+              <a href="/pages/docs/troubleshooting" target="_blank">
                 <ExternalLink className="h-4 w-4" />
                 Troubleshooting
               </a>
             </Button>
             <Button variant="outline" className="justify-start gap-2" asChild>
-              <a href="mailto:support@yourcompany.com">
+              <a href="/pages/contact">
                 <ExternalLink className="h-4 w-4" />
                 Contact Support
               </a>
