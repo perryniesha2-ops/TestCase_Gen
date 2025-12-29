@@ -1120,13 +1120,13 @@ async function updateSuiteDetails() {
 
       {/* Test Suite Details Dialog */}
       {selectedSuite && (
-        <TestSuiteDetailsDialog
-          suite={selectedSuite}
-          open={showDetailsDialog}
-          onOpenChange={setShowDetailsDialog}
-          onSuiteUpdated={fetchTestSuites}
-        />
-      )}
+  <TestSuiteDetailsDialog
+    suite={selectedSuite}
+    open={showDetailsDialog}
+    onOpenChange={setShowDetailsDialog}
+    onSuiteUpdated={fetchTestSuites}
+  />
+)}
 
       {/* Test Session Execution Dialog */}
       {executingSuite && (

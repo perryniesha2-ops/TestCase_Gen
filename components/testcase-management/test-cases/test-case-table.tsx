@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -24,15 +25,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetFooter,
-  SheetClose,
-} from "@/components/ui/sheet"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
@@ -42,6 +34,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu"
+
 import {
   CheckCircle2,
   XCircle,
@@ -68,10 +61,9 @@ import {
   RotateCcw,
   FolderOpen,
   ChevronDown,
-  Code2, 
 } from "lucide-react"
 
-// ✅ Import types from new file
+// ✅ Types
 import type {
   TestCase,
   CrossPlatformTestCase,
@@ -82,7 +74,6 @@ import type {
   ExecutionStatus,
   Project,
   ExecutionDetails,
-  AutomationScript,
 } from "@/types/test-cases"
 
 import { TestCaseFormDialog } from "./dialogs/test-case-form-dialog"
@@ -90,12 +81,8 @@ import { TestExecutionDialog } from "./dialogs/test-execution-dialog"
 import { DeleteTestCaseDialog } from "./dialogs/delete-test-case-dialog"
 import { BulkActionsToolbar } from "./BulkActionsToolbar"
 import { useBulkActions } from "@/hooks/useBulkActions"
-import { CrossPlatformBulkActionsToolbar } from "./CrossPlatformBulkActionsToolbar" 
-import { ScriptGenerator } from '@/components/automation/playwrite-scripts/generator'
-import { ScriptEditorDialog } from '@/components/automation/playwrite-scripts/script-editor-dialog'
-import { TestCaseActionSheet } from './test-case-action-sheet'
-
-
+import { CrossPlatformBulkActionsToolbar } from "./CrossPlatformBulkActionsToolbar"
+import { TestCaseActionSheet } from "./test-case-action-sheet"
 
 const platformIcons = {
   web: Monitor,
@@ -110,7 +97,9 @@ export function TabbedTestCaseTable() {
   const [testCases, setTestCases] = useState<TestCase[]>([])
   const [crossPlatformCases, setCrossPlatformCases] = useState<CrossPlatformTestCase[]>([])
   const [generations, setGenerations] = useState<Record<string, Generation>>({})
-  const [crossPlatformSuites, setCrossPlatformSuites] = useState<Record<string, CrossPlatformSuite>>({})
+  const [crossPlatformSuites, setCrossPlatformSuites] = useState<Record<string, CrossPlatformSuite>>(
+    {}
+  )
   const [loading, setLoading] = useState(true)
   const [execution, setExecution] = useState<TestExecution>({})
   const [searchTerm, setSearchTerm] = useState("")
@@ -134,11 +123,12 @@ export function TabbedTestCaseTable() {
 
   // Test session state
   const [currentSession, setCurrentSession] = useState<TestSession | null>(null)
-  const selectedProjectName = selectedProject
-    ? projects.find((p) => p.id === selectedProject)?.name
-    : null
+  const selectedProjectName = selectedProject ? projects.find((p) => p.id === selectedProject)?.name : null
   const [pendingResultStatus, setPendingResultStatus] = useState<ExecutionStatus | null>(null)
 
+  // Actions (sheet)
+  const [showActionSheet, setShowActionSheet] = useState(false)
+  const [actionSheetCase, setActionSheetCase] = useState<TestCase | null>(null)
 
   const itemsPerPage = 10
   const router = useRouter()
@@ -146,51 +136,21 @@ export function TabbedTestCaseTable() {
   const generationId = searchParams.get("generation")
   const sessionId = searchParams.get("session")
 
-  // Script Generation
-const [showScriptGenerator, setShowScriptGenerator] = useState(false)
-const [automatingTestCase, setAutomatingTestCase] = useState<TestCase | null>(null)
-const [automatedTestCases, setAutomatedTestCases] = useState<Set<string>>(new Set())
-const [checkingAutomation, setCheckingAutomation] = useState(false)
-const [scriptsByTestCase, setScriptsByTestCase] = useState<Record<string, AutomationScript>>({})
-const [scriptLoadingId, setScriptLoadingId] = useState<string | null>(null)
-const [showScriptEditor, setShowScriptEditor] = useState(false)
-const [activeScriptId, setActiveScriptId] = useState<string | null>(null)
-const [activeScriptTitle, setActiveScriptTitle] = useState<string>("")
-
-
-
-
-// Actions
-const [showActionSheet, setShowActionSheet] = useState(false)
-const [actionSheetCase, setActionSheetCase] = useState<TestCase | null>(null)
-const actionIsAutomated = !!actionSheetCase && automatedTestCases.has(actionSheetCase.id)
-
-const actionGenerationTitle =
-  actionSheetCase?.generation_id
-    ? generations[actionSheetCase.generation_id]?.title
-    : undefined
-
-
-
-
   useEffect(() => {
     fetchData()
     if (sessionId) {
       fetchTestSession()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generationId, sessionId, selectedProject])
 
   useEffect(() => {
     fetchProjects()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-   const crossPlatformBulkActions = useBulkActions(
-    crossPlatformCases,
-    fetchData,
-    "cross-platform"
-  )
+  const crossPlatformBulkActions = useBulkActions(crossPlatformCases, fetchData, "cross-platform")
 
-  
   const {
     selectedIds,
     isProcessing,
@@ -210,11 +170,13 @@ const actionGenerationTitle =
         data: { user },
       } = await supabase.auth.getUser()
       if (!user) return
+
       const { data, error } = await supabase
         .from("projects")
         .select("id, name, color, icon")
         .eq("user_id", user.id)
         .order("name")
+
       if (error) throw error
       setProjects(data || [])
     } catch (error) {
@@ -240,26 +202,41 @@ const actionGenerationTitle =
     }
   }
 
-
   function getApprovalStatusBadge(approvalStatus?: string) {
-  const status = approvalStatus || "pending"
-  
-  switch (status) {
-    case "pending":
-      return <Badge className="bg-amber-100 text-amber-800">
-        <Clock className="h-3 w-3 mr-1" />Pending
-      </Badge>
-    case "approved":
-      return <Badge className="bg-green-100 text-green-800">
-        <CheckCircle2 className="h-3 w-3 mr-1" />Approved
-      </Badge>
-    case "rejected":
-      return <Badge className="bg-red-100 text-red-800">
-        <XCircle className="h-3 w-3 mr-1" />Rejected
-      </Badge>
+    const status = approvalStatus || "pending"
+
+    switch (status) {
+      case "pending":
+        return (
+          <Badge className="bg-amber-100 text-amber-800">
+            <Clock className="h-3 w-3 mr-1" />
+            Pending
+          </Badge>
+        )
+      case "approved":
+        return (
+          <Badge className="bg-green-100 text-green-800">
+            <CheckCircle2 className="h-3 w-3 mr-1" />
+            Approved
+          </Badge>
+        )
+      case "rejected":
+        return (
+          <Badge className="bg-red-100 text-red-800">
+            <XCircle className="h-3 w-3 mr-1" />
+            Rejected
+          </Badge>
+        )
+      default:
+        return (
+          <Badge className="bg-amber-100 text-amber-800">
+            <Clock className="h-3 w-3 mr-1" />
+            Pending
+          </Badge>
+        )
+    }
   }
-}
-  
+
   async function fetchData() {
     try {
       setLoading(true)
@@ -280,24 +257,12 @@ const actionGenerationTitle =
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
 
-      if (generationId) {
-        testCaseQuery = testCaseQuery.eq("generation_id", generationId)
-      }
-
-      if (selectedProject) {
-        testCaseQuery = testCaseQuery.eq("project_id", selectedProject)
-      }
+      if (generationId) testCaseQuery = testCaseQuery.eq("generation_id", generationId)
+      if (selectedProject) testCaseQuery = testCaseQuery.eq("project_id", selectedProject)
 
       const { data: testCasesData, error: testCasesError } = await testCaseQuery
-
       if (testCasesError) throw testCasesError
       setTestCases(testCasesData || [])
-
-      const testCaseIds = testCasesData?.map(tc => tc.id) || []
-    if (testCaseIds.length > 0) {
-      await checkForAutomationScripts(testCaseIds)
-    }
-
 
       // Fetch cross-platform test cases
       const { data: crossPlatformData, error: crossPlatformError } = await supabase
@@ -327,7 +292,6 @@ const actionGenerationTitle =
         .eq("user_id", user.id)
 
       if (generationsError) throw generationsError
-
       const generationsMap: Record<string, Generation> = {}
       generationsData?.forEach((gen) => {
         generationsMap[gen.id] = gen
@@ -341,7 +305,6 @@ const actionGenerationTitle =
         .eq("user_id", user.id)
 
       if (suitesError) throw suitesError
-
       const suitesMap: Record<string, CrossPlatformSuite> = {}
       suitesData?.forEach((suite) => {
         suitesMap[suite.id] = suite
@@ -379,37 +342,31 @@ const actionGenerationTitle =
       }
 
       const { data, error } = await query
-
       if (error) throw error
 
       const executionMap: TestExecution = {}
-
-      data?.forEach((execution) => {
-        if (!executionMap[execution.test_case_id]) {
-          executionMap[execution.test_case_id] = {
-            id: execution.id,
-            status: execution.execution_status,
-            completedSteps: execution.completed_steps || [],
-            failedSteps: execution.failed_steps || [],
-            notes: execution.execution_notes,
-            failure_reason: execution.failure_reason,
-            started_at: execution.started_at,
-            completed_at: execution.completed_at,
-            duration_minutes: execution.duration_minutes,
-            test_environment: execution.test_environment,
-            browser: execution.browser,
-            os_version: execution.os_version,
+      data?.forEach((executionRow) => {
+        if (!executionMap[executionRow.test_case_id]) {
+          executionMap[executionRow.test_case_id] = {
+            id: executionRow.id,
+            status: executionRow.execution_status,
+            completedSteps: executionRow.completed_steps || [],
+            failedSteps: executionRow.failed_steps || [],
+            notes: executionRow.execution_notes,
+            failure_reason: executionRow.failure_reason,
+            started_at: executionRow.started_at,
+            completed_at: executionRow.completed_at,
+            duration_minutes: executionRow.duration_minutes,
+            test_environment: executionRow.test_environment,
+            browser: executionRow.browser,
+            os_version: executionRow.os_version,
           }
         }
       })
 
-      ;[...testCaseIds, ...crossPlatformIds].forEach((testCaseId) => {
-        if (!executionMap[testCaseId]) {
-          executionMap[testCaseId] = {
-            status: "not_run",
-            completedSteps: [],
-            failedSteps: [],
-          }
+      ;[...testCaseIds, ...crossPlatformIds].forEach((id) => {
+        if (!executionMap[id]) {
+          executionMap[id] = { status: "not_run", completedSteps: [], failedSteps: [] }
         }
       })
 
@@ -419,10 +376,7 @@ const actionGenerationTitle =
     }
   }
 
-  async function saveExecutionProgress(
-    testCaseId: string,
-    updates: Partial<TestExecution[string]>
-  ) {
+  async function saveExecutionProgress(testCaseId: string, updates: Partial<TestExecution[string]>) {
     try {
       const supabase = createClient()
       const {
@@ -443,17 +397,16 @@ const actionGenerationTitle =
         failed_steps: updates.failedSteps || currentExecution.failedSteps,
         execution_notes: updates.notes || currentExecution.notes,
         failure_reason: updates.failure_reason || currentExecution.failure_reason,
-        test_environment: updates.test_environment || currentExecution.test_environment || "staging",
+        test_environment:
+          updates.test_environment || currentExecution.test_environment || "staging",
         browser: updates.browser || currentExecution.browser,
         os_version: updates.os_version || currentExecution.os_version,
         started_at:
-  currentExecution.started_at ||
-  (effectiveStatus !== "not_run" ? new Date().toISOString() : null),
-        completed_at:
-         ["passed", "failed", "blocked", "skipped"].includes(effectiveStatus)
-    ? new Date().toISOString()
-    : null,
-
+          currentExecution.started_at ||
+          (effectiveStatus !== "not_run" ? new Date().toISOString() : null),
+        completed_at: ["passed", "failed", "blocked", "skipped"].includes(effectiveStatus)
+          ? new Date().toISOString()
+          : null,
         updated_at: new Date().toISOString(),
       }
 
@@ -475,10 +428,7 @@ const actionGenerationTitle =
 
         setExecution((prev) => ({
           ...prev,
-          [testCaseId]: {
-            ...prev[testCaseId],
-            id: data.id,
-          },
+          [testCaseId]: { ...prev[testCaseId], id: data.id },
         }))
       }
     } catch (error) {
@@ -506,57 +456,41 @@ const actionGenerationTitle =
 
     saveExecutionProgress(testCaseId, {
       completedSteps: updatedSteps,
-      status: currentExecution.status === "not_run" ? "in_progress" : currentExecution.status,
+      status:
+        currentExecution.status === "not_run" ? "in_progress" : currentExecution.status,
     })
   }
 
-
-  function openAutomationDialog(testCase: TestCase) {
-  setAutomatingTestCase(testCase)
-  setShowScriptGenerator(true)
-}
-
-
   async function markTestResult(testCaseId: string, status: ExecutionStatus) {
-  const tc = testCases.find((t) => t.id === testCaseId) || null
-  setSelectedTestCase(tc)
+    const tc = testCases.find((t) => t.id === testCaseId) || null
+    setSelectedTestCase(tc)
 
-  if (status === "passed") {
-    await saveExecutionResult(testCaseId, "passed", {})
-    return
+    if (status === "passed") {
+      await saveExecutionResult(testCaseId, "passed", {})
+      return
+    }
+
+    setPendingResultStatus(status)
+    setShowExecutionDialog(true)
   }
 
-  setPendingResultStatus(status)
-  setShowExecutionDialog(true)
-}
-
-
-  async function updateTestCaseStatus(
-    testCaseId: string,
-    newStatus: "draft" | "active" | "archived"
-  ) {
+  async function updateTestCaseStatus(testCaseId: string, newStatus: "draft" | "active" | "archived") {
     setUpdating(testCaseId)
     try {
       const supabase = createClient()
 
       const { error } = await supabase
         .from("test_cases")
-        .update({
-          status: newStatus,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
         .eq("id", testCaseId)
 
       if (error) throw error
 
-      setTestCases((prev) => prev.map((tc) => (tc.id === testCaseId ? { ...tc, status: newStatus } : tc)))
+      setTestCases((prev) =>
+        prev.map((tc) => (tc.id === testCaseId ? { ...tc, status: newStatus } : tc))
+      )
 
-      const statusLabels = {
-        draft: "Draft",
-        active: "Active",
-        archived: "Archived",
-      }
-
+      const statusLabels = { draft: "Draft", active: "Active", archived: "Archived" }
       toast.success(`Status updated to ${statusLabels[newStatus]}`)
     } catch (error) {
       console.error("Error updating test case status:", error)
@@ -566,18 +500,14 @@ const actionGenerationTitle =
     }
   }
 
-  async function saveExecutionResult(
-    testCaseId: string,
-    status: ExecutionStatus,
-    details: ExecutionDetails
-  ) {
+  async function saveExecutionResult(testCaseId: string, status: ExecutionStatus, details: ExecutionDetails) {
     const startTime = execution[testCaseId]?.started_at
     const duration = startTime
       ? Math.round((new Date().getTime() - new Date(startTime).getTime()) / 60000)
       : undefined
 
     await saveExecutionProgress(testCaseId, {
-      status: status,
+      status,
       duration_minutes: duration,
       notes: details.notes,
       failure_reason: details.failure_reason,
@@ -590,7 +520,7 @@ const actionGenerationTitle =
       ...prev,
       [testCaseId]: {
         ...prev[testCaseId],
-        status: status,
+        status,
         completed_at: new Date().toISOString(),
         duration_minutes: duration,
       },
@@ -650,13 +580,15 @@ const actionGenerationTitle =
     setShowDeleteDialog(true)
   }
 
-  function openTestCaseDialog(
-    testCase: TestCase | CrossPlatformTestCase,
-    type: "regular" | "cross-platform"
-  ) {
+  function openTestCaseDialog(testCase: TestCase | CrossPlatformTestCase, type: "regular" | "cross-platform") {
     setSelectedCase(testCase)
     setSelectedCaseType(type)
     setShowDetailsDialog(true)
+  }
+
+  function openActionSheet(testCase: TestCase) {
+    setActionSheetCase(testCase)
+    setShowActionSheet(true)
   }
 
   function getPriorityColor(priority: string) {
@@ -726,21 +658,15 @@ const actionGenerationTitle =
 
   const crossPlatformStats = {
     total: filteredCrossPlatformCases.length,
-    pending: filteredCrossPlatformCases.filter(tc => !tc.status || tc.status === "pending").length,
-  approved: filteredCrossPlatformCases.filter(tc => tc.status === "approved").length,
-  rejected: filteredCrossPlatformCases.filter(tc => tc.status === "rejected").length,
-  // ... execution stats
+    pending: filteredCrossPlatformCases.filter((tc) => !tc.status || tc.status === "pending").length,
+    approved: filteredCrossPlatformCases.filter((tc) => tc.status === "approved").length,
+    rejected: filteredCrossPlatformCases.filter((tc) => tc.status === "rejected").length,
     passed: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "passed").length,
     failed: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "failed").length,
-    blocked: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "blocked")
-      .length,
-    skipped: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "skipped")
-      .length,
-    inProgress: filteredCrossPlatformCases.filter(
-      (tc) => execution[tc.id]?.status === "in_progress"
-    ).length,
-    notRun: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "not_run")
-      .length,
+    blocked: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "blocked").length,
+    skipped: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "skipped").length,
+    inProgress: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "in_progress").length,
+    notRun: filteredCrossPlatformCases.filter((tc) => execution[tc.id]?.status === "not_run").length,
   }
 
   function getProjectColor(color: string): string {
@@ -763,10 +689,7 @@ const actionGenerationTitle =
     setCurrentPage(1)
   }
 
-  const renderTestSteps = (
-    testCase: TestCase | CrossPlatformTestCase,
-    type: "regular" | "cross-platform"
-  ) => {
+  const renderTestSteps = (testCase: TestCase | CrossPlatformTestCase, type: "regular" | "cross-platform") => {
     if (type === "regular") {
       const regularCase = testCase as TestCase
       return regularCase.test_steps.map((step) => {
@@ -808,38 +731,38 @@ const actionGenerationTitle =
           </div>
         )
       })
-    } else {
-      const crossPlatformCase = testCase as CrossPlatformTestCase
-      return (
-        crossPlatformCase.steps?.map((step, index) => {
-          const stepNumber = index + 1
-          const isCompleted = execution[testCase.id]?.completedSteps.includes(stepNumber)
-          return (
-            <div key={stepNumber} className="flex gap-3 p-3 rounded-lg border bg-card">
-              <Checkbox
-                checked={isCompleted}
-                onCheckedChange={() => toggleStep(testCase.id, stepNumber)}
-                className="mt-1"
-              />
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs bg-muted px-2 py-1 rounded">
-                    Step {stepNumber}
-                  </span>
-                  <span className={isCompleted ? "line-through text-muted-foreground" : ""}>
-                    {step}
-                  </span>
-                </div>
-                <div className="text-sm text-muted-foreground pl-16">
-                  <span className="font-semibold">Expected:</span>{" "}
-                  {crossPlatformCase.expected_results?.[index] || "Expected result defined"}
-                </div>
+    }
+
+    const crossPlatformCase = testCase as CrossPlatformTestCase
+    return (
+      crossPlatformCase.steps?.map((step, index) => {
+        const stepNumber = index + 1
+        const isCompleted = execution[testCase.id]?.completedSteps.includes(stepNumber)
+        return (
+          <div key={stepNumber} className="flex gap-3 p-3 rounded-lg border bg-card">
+            <Checkbox
+              checked={isCompleted}
+              onCheckedChange={() => toggleStep(testCase.id, stepNumber)}
+              className="mt-1"
+            />
+            <div className="flex-1 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs bg-muted px-2 py-1 rounded">
+                  Step {stepNumber}
+                </span>
+                <span className={isCompleted ? "line-through text-muted-foreground" : ""}>
+                  {step}
+                </span>
+              </div>
+              <div className="text-sm text-muted-foreground pl-16">
+                <span className="font-semibold">Expected:</span>{" "}
+                {crossPlatformCase.expected_results?.[index] || "Expected result defined"}
               </div>
             </div>
-          )
-        }) || []
-      )
-    }
+          </div>
+        )
+      }) || []
+    )
   }
 
   if (loading) {
@@ -849,61 +772,6 @@ const actionGenerationTitle =
       </div>
     )
   }
-
-  async function checkForAutomationScripts(testCaseIds: string[]) {
-  if (testCaseIds.length === 0) return
-  
-  setCheckingAutomation(true)
-  try {
-    const supabase = createClient()
-    
-    // Batch check for automation scripts
-   const { data, error } = await supabase
-  .from("automation_scripts")
-  .select("id, test_case_id, status, framework, updated_at")
-  .in("test_case_id", testCaseIds)
-    
-    if (error) {
-      console.error('Error checking automation scripts:', error)
-      return
-    }
-    
-    // Create set of test case IDs that have scripts
-    const automatedIds = new Set(
-      data?.map(script => script.test_case_id) || []
-    )
-    
-    setAutomatedTestCases(automatedIds)
-    const map: Record<string, AutomationScript> = {}
-    ;(data || []).forEach((s) => {
-      map[s.test_case_id] = s as AutomationScript
-    })
-    setScriptsByTestCase(map)
-  } catch (error) {
-    console.error('Error checking automation:', error)
-  } finally {
-    setCheckingAutomation(false)
-  }
-}
-
-
-function openScriptEditor(testCase: TestCase) {
-  const script = scriptsByTestCase[testCase.id]
-  if (!script?.id) {
-    toast.error("No script found for this test case yet.")
-    return
-  }
-  setActiveScriptId(script.id)
-  setActiveScriptTitle(testCase.title)
-  setShowScriptEditor(true)
-}
-
-
-function openActionSheet(testCase: TestCase) {
-  setActionSheetCase(testCase)
-  setShowActionSheet(true)
-}
-
 
   return (
     <div className="space-y-6">
@@ -926,7 +794,7 @@ function openActionSheet(testCase: TestCase) {
       )}
 
       {/* Header with Search and Actions */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -944,7 +812,7 @@ function openActionSheet(testCase: TestCase) {
         {/* Project Filter */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="min-w-[180px] justify-between">
+            <Button variant="outline" className="min-w-[220px] justify-between">
               {selectedProjectName ? (
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <FolderOpen className="h-4 w-4 shrink-0" />
@@ -956,7 +824,7 @@ function openActionSheet(testCase: TestCase) {
               <ChevronDown className="h-4 w-4 ml-2 shrink-0 opacity-50" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[220px]">
+          <DropdownMenuContent align="end" className="w-[240px]">
             <DropdownMenuLabel>Filter by Project</DropdownMenuLabel>
             <DropdownMenuSeparator />
 
@@ -967,12 +835,9 @@ function openActionSheet(testCase: TestCase) {
             {projects.length > 0 && <DropdownMenuSeparator />}
 
             {projects.map((project) => (
-              <DropdownMenuItem
-                key={project.id}
-                onClick={() => handleProjectFilterChange(project.id)}
-              >
+              <DropdownMenuItem key={project.id} onClick={() => handleProjectFilterChange(project.id)}>
                 <FolderOpen className={`h-4 w-4 mr-2 ${getProjectColor(project.color)}`} />
-                <span>{project.name}</span>
+                <span className="truncate">{project.name}</span>
               </DropdownMenuItem>
             ))}
 
@@ -984,19 +849,17 @@ function openActionSheet(testCase: TestCase) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button onClick={openCreateDialog} className="gap-2">
-          <Plus className="h-4 w-4" />
-          New Test Case
-        </Button>
-        <Button variant="outline" size="default">
-          <FileDown className="h-4 w-4 mr-2" />
-          Export
-        </Button>
+        <div className="flex gap-2 md:gap-3">
+          <Button onClick={openCreateDialog} className="gap-2">
+            <Plus className="h-4 w-4" />
+            New Test Case
+          </Button>
+          <Button variant="outline" size="default">
+            <FileDown className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+        </div>
       </div>
-  
-
-      
-
 
       {/* Tabbed Interface */}
       <Tabs defaultValue="regular" className="w-full">
@@ -1013,7 +876,7 @@ function openActionSheet(testCase: TestCase) {
 
         {/* Regular Test Cases Tab */}
         <TabsContent value="regular" className="space-y-6">
-          {/* Test Stats */}
+          {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
             <div className="bg-card p-4 rounded-lg border">
               <div className="text-2xl font-bold">{regularStats.total}</div>
@@ -1041,48 +904,44 @@ function openActionSheet(testCase: TestCase) {
             </div>
           </div>
 
-          {/* Test Cases Table */}
-          <div className="border rounded-lg">
-          <BulkActionsToolbar 
-          selectedIds={selectedIds} 
-          allTestCases={testCases} 
-          onSelectAll={selectAll} 
-          onDeselectAll={deselectAll} 
-          onBulkUpdate={bulkUpdate} 
-          onBulkDelete={bulkDelete}
-          onBulkAddToSuite={bulkAddToSuite}          
-          onBulkExport={bulkExport}
+          {/* Table */}
+          <div className="border rounded-lg overflow-hidden">
+            <BulkActionsToolbar
+              selectedIds={selectedIds}
+              allTestCases={testCases}
+              onSelectAll={selectAll}
+              onDeselectAll={deselectAll}
+              onBulkUpdate={bulkUpdate}
+              onBulkDelete={bulkDelete}
+              onBulkAddToSuite={bulkAddToSuite}
+              onBulkExport={bulkExport}
+            />
 
-           />
-            
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[50px]">
-              <Checkbox
-                checked={selectedIds.size === testCases.length && testCases.length > 0}
-                onCheckedChange={(checked) => {
-                  if (checked) {
-                    selectAll()
-                  } else {
-                    deselectAll()
-                  }
-                }}
-              />
-            </TableHead>
+                    <Checkbox
+                      checked={selectedIds.size === testCases.length && testCases.length > 0}
+                      onCheckedChange={(checked) => {
+                        if (checked) selectAll()
+                        else deselectAll()
+                      }}
+                    />
+                  </TableHead>
                   <TableHead>Title</TableHead>
-                  <TableHead className="w-[140px]">Project</TableHead>
-                  <TableHead className="w-[120px]">Status</TableHead>
-                  <TableHead className="w-[100px]">Priority</TableHead>
-                  <TableHead className="w-[100px]">Type</TableHead>
-                  <TableHead className="w-[100px]">Automation</TableHead>
-                  <TableHead className="w-[80px]">Actions</TableHead>
+                  <TableHead className="w-[160px]">Project</TableHead>
+                  <TableHead className="w-[140px]">Status</TableHead>
+                  <TableHead className="w-[110px]">Priority</TableHead>
+                  <TableHead className="w-[120px]">Type</TableHead>
+                  <TableHead className="w-[80px] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
                 {paginatedTestCases.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-12">
+                    <TableCell colSpan={7} className="text-center py-12">
                       <div className="flex flex-col items-center gap-2">
                         <FlaskConical className="h-8 w-8 text-muted-foreground" />
                         <p className="text-muted-foreground">No test cases found</p>
@@ -1096,18 +955,16 @@ function openActionSheet(testCase: TestCase) {
                 ) : (
                   paginatedTestCases.map((testCase) => {
                     const exec = execution[testCase.id]
-                    const generation = generations[testCase.generation_id]
-                    const isAutomated = automatedTestCases.has(testCase.id)
 
                     return (
                       <TableRow key={testCase.id}>
                         <TableCell>
-                <Checkbox
-                  checked={selectedIds.has(testCase.id)}
-                  onCheckedChange={() => toggleSelection(testCase.id)}
-                />
-              </TableCell>
-                        {/* Title */}
+                          <Checkbox
+                            checked={selectedIds.has(testCase.id)}
+                            onCheckedChange={() => toggleSelection(testCase.id)}
+                          />
+                        </TableCell>
+
                         <TableCell className="font-medium">
                           <div
                             className="flex items-center gap-2 cursor-pointer hover:text-primary"
@@ -1122,31 +979,20 @@ function openActionSheet(testCase: TestCase) {
                             {exec?.status === "blocked" && (
                               <AlertTriangle className="h-4 w-4 text-orange-600" />
                             )}
-                            {exec?.status === "skipped" && (
-                              <Circle className="h-4 w-4 text-gray-400" />
-                            )}
-                            {exec?.status === "in_progress" && (
-                              <Clock className="h-4 w-4 text-blue-600" />
-                            )}
-                            {exec?.status === "not_run" && (
-                              <Circle className="h-4 w-4 text-gray-400" />
-                            )}
-                            <span>{testCase.title}</span>
-                            {exec?.duration_minutes && (
-                              <span className="text-xs text-muted-foreground">
-                                ({exec.duration_minutes}m)
-                              </span>
-                            )}
+                            {exec?.status === "skipped" && <Circle className="h-4 w-4 text-gray-400" />}
+                            {exec?.status === "in_progress" && <Clock className="h-4 w-4 text-blue-600" />}
+                            {exec?.status === "not_run" && <Circle className="h-4 w-4 text-gray-400" />}
+                            <span className="truncate">{testCase.title}</span>
+                            {exec?.duration_minutes ? (
+                              <span className="text-xs text-muted-foreground">({exec.duration_minutes}m)</span>
+                            ) : null}
                           </div>
                         </TableCell>
 
-                        {/* Project */}
                         <TableCell>
                           {testCase.projects ? (
-                            <div className="flex items-center gap-2">
-                              <FolderOpen
-                                className={`h-4 w-4 ${getProjectColor(testCase.projects.color)}`}
-                              />
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FolderOpen className={`h-4 w-4 ${getProjectColor(testCase.projects.color)}`} />
                               <span className="text-sm truncate">{testCase.projects.name}</span>
                             </div>
                           ) : (
@@ -1154,7 +1000,6 @@ function openActionSheet(testCase: TestCase) {
                           )}
                         </TableCell>
 
-                        {/* Status */}
                         <TableCell>
                           <Select
                             value={testCase.status}
@@ -1163,10 +1008,10 @@ function openActionSheet(testCase: TestCase) {
                             }
                             disabled={updating === testCase.id}
                           >
-                            <SelectTrigger className="w-[120px] h-8">
-                              {updating === testCase.id && (
+                            <SelectTrigger className="w-[140px] h-8">
+                              {updating === testCase.id ? (
                                 <Loader2 className="h-3 w-3 animate-spin mr-2" />
-                              )}
+                              ) : null}
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -1177,84 +1022,30 @@ function openActionSheet(testCase: TestCase) {
                           </Select>
                         </TableCell>
 
-                        {/* Priority */}
                         <TableCell>
-                          <Badge className={getPriorityColor(testCase.priority)}>
-                            {testCase.priority}
-                          </Badge>
+                          <Badge className={getPriorityColor(testCase.priority)}>{testCase.priority}</Badge>
                         </TableCell>
 
-                        {/* Type */}
                         <TableCell>
                           <Badge variant="secondary">{testCase.test_type}</Badge>
                         </TableCell>
 
-                      
-{/* Automation */}
-<TableCell>
-  {checkingAutomation ? (
-    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-  ) : isAutomated ? (
-    <button
-      type="button"
-      onClick={() => openScriptEditor(testCase)}
-      className="inline-flex"
-    >
-      <Badge className="gap-1 bg-purple-100 text-purple-700 hover:bg-purple-200">
-        <Code2 className="h-3 w-3" />
-        Automated
-      </Badge>
-    </button>
-  ) : (
-    <Badge variant="outline" className="text-muted-foreground">
-      Manual
-    </Badge>
-  )}
-</TableCell>
-                       
-                        {/* Actions */}
-                       <TableCell className="text-right">
-  <Button
-    variant="ghost"
-    size="sm"
-    className="h-8 w-8 p-0"
-    onClick={() => openActionSheet(testCase)}
-  >
-    <MoreHorizontal className="h-4 w-4" />
-  </Button>
-</TableCell>
-
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => openActionSheet(testCase)}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     )
                   })
                 )}
               </TableBody>
             </Table>
-
-{/* Automation Script Generator Dialog */}
-{automatingTestCase && (
-  <ScriptGenerator
-    testCase={{
-      id: automatingTestCase.id,
-      title: automatingTestCase.title,
-      description: automatingTestCase.description,
-      test_steps: automatingTestCase.test_steps
-    }}
-    open={showScriptGenerator}
-    onOpenChange={setShowScriptGenerator}
-    onScriptGenerated={(scriptId) => {
-      toast.success("Automation script generated!", {
-        description: "Your Playwright test script is ready"
-      })
-      setShowScriptGenerator(false)
-      setAutomatingTestCase(null)
-      fetchData()
-    }}
-  />
-)}
-
-
-
           </div>
 
           {/* Pagination */}
@@ -1288,196 +1079,174 @@ function openActionSheet(testCase: TestCase) {
           )}
         </TabsContent>
 
-        {/* Cross-Platform Tab - Simplified */}
-       <TabsContent value="cross-platform" className="space-y-6">
-  {/* Stats */}
-  <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-    <div className="bg-card p-4 rounded-lg border">
-      <div className="text-2xl font-bold">{crossPlatformStats.total}</div>
-      <div className="text-sm text-muted-foreground">Total</div>
-    </div>
-    <div className="bg-card p-4 rounded-lg border">
-      <div className="text-2xl font-bold text-green-600">{crossPlatformStats.passed}</div>
-      <div className="text-sm text-muted-foreground">Passed</div>
-    </div>
-    <div className="bg-card p-4 rounded-lg border">
-      <div className="text-2xl font-bold text-red-600">{crossPlatformStats.failed}</div>
-      <div className="text-sm text-muted-foreground">Failed</div>
-    </div>
-    <div className="bg-card p-4 rounded-lg border">
-      <div className="text-2xl font-bold text-orange-600">{crossPlatformStats.blocked}</div>
-      <div className="text-sm text-muted-foreground">Blocked</div>
-    </div>
-    <div className="bg-card p-4 rounded-lg border">
-      <div className="text-2xl font-bold text-blue-600">{crossPlatformStats.inProgress}</div>
-      <div className="text-sm text-muted-foreground">In Progress</div>
-    </div>
-    <div className="bg-card p-4 rounded-lg border">
-      <div className="text-2xl font-bold text-gray-500">{crossPlatformStats.notRun}</div>
-      <div className="text-sm text-muted-foreground">Not Run</div>
-    </div>
-  </div>
+        {/* Cross-Platform Tab */}
+        <TabsContent value="cross-platform" className="space-y-6">
+          {/* Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+            <div className="bg-card p-4 rounded-lg border">
+              <div className="text-2xl font-bold">{crossPlatformStats.total}</div>
+              <div className="text-sm text-muted-foreground">Total</div>
+            </div>
+            <div className="bg-card p-4 rounded-lg border">
+              <div className="text-2xl font-bold text-green-600">{crossPlatformStats.passed}</div>
+              <div className="text-sm text-muted-foreground">Passed</div>
+            </div>
+            <div className="bg-card p-4 rounded-lg border">
+              <div className="text-2xl font-bold text-red-600">{crossPlatformStats.failed}</div>
+              <div className="text-sm text-muted-foreground">Failed</div>
+            </div>
+            <div className="bg-card p-4 rounded-lg border">
+              <div className="text-2xl font-bold text-orange-600">{crossPlatformStats.blocked}</div>
+              <div className="text-sm text-muted-foreground">Blocked</div>
+            </div>
+            <div className="bg-card p-4 rounded-lg border">
+              <div className="text-2xl font-bold text-blue-600">{crossPlatformStats.inProgress}</div>
+              <div className="text-sm text-muted-foreground">In Progress</div>
+            </div>
+            <div className="bg-card p-4 rounded-lg border">
+              <div className="text-2xl font-bold text-gray-500">{crossPlatformStats.notRun}</div>
+              <div className="text-sm text-muted-foreground">Not Run</div>
+            </div>
+          </div>
 
-  {/* Bulk Actions + Table */}
-  <div className="border rounded-lg">
-    {/* Bulk Actions Toolbar */}
-    <CrossPlatformBulkActionsToolbar
-      selectedIds={crossPlatformBulkActions.selectedIds}
-      allTestCases={crossPlatformCases}
-      onSelectAll={crossPlatformBulkActions.selectAll}
-      onDeselectAll={crossPlatformBulkActions.deselectAll}
-      onBulkApprove={crossPlatformBulkActions.bulkApproveCrossPlatform}
-      onBulkReject={crossPlatformBulkActions.bulkRejectCrossPlatform}
-      onBulkUpdate={crossPlatformBulkActions.bulkUpdateCrossPlatform}
-      onBulkDelete={crossPlatformBulkActions.bulkDeleteCrossPlatform}
-    />
-
-    {/* Table */}
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {/* ✅ FIXED: Header checkbox using cross-platform functions */}
-          <TableHead className="w-[50px]">
-            <Checkbox
-              checked={
-                crossPlatformBulkActions.selectedIds.size === paginatedCrossPlatformCases.length &&
-                paginatedCrossPlatformCases.length > 0
-              }
-              onCheckedChange={(checked) => {
-                if (checked) {
-                  crossPlatformBulkActions.selectAll()
-                } else {
-                  crossPlatformBulkActions.deselectAll()
-                }
-              }}
+          {/* Bulk + Table */}
+          <div className="border rounded-lg overflow-hidden">
+            <CrossPlatformBulkActionsToolbar
+              selectedIds={crossPlatformBulkActions.selectedIds}
+              allTestCases={crossPlatformCases}
+              onSelectAll={crossPlatformBulkActions.selectAll}
+              onDeselectAll={crossPlatformBulkActions.deselectAll}
+              onBulkApprove={crossPlatformBulkActions.bulkApproveCrossPlatform}
+              onBulkReject={crossPlatformBulkActions.bulkRejectCrossPlatform}
+              onBulkUpdate={crossPlatformBulkActions.bulkUpdateCrossPlatform}
+              onBulkDelete={crossPlatformBulkActions.bulkDeleteCrossPlatform}
             />
-          </TableHead>
-          <TableHead>Title</TableHead>
-          <TableHead className="w-[100px]">Status</TableHead> 
-          <TableHead className="w-[120px]">Platform</TableHead>
-          <TableHead className="w-[100px]">Framework</TableHead>
-          <TableHead className="w-[100px]">Priority</TableHead>
-          <TableHead className="w-[120px]">Created</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {paginatedCrossPlatformCases.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={8} className="text-center py-12">
-              <div className="flex flex-col items-center gap-2">
-                <Layers className="h-8 w-8 text-muted-foreground" />
-                <p className="text-muted-foreground">No cross-platform test cases found</p>
-              </div>
-            </TableCell>
-          </TableRow>
-        ) : (
-          paginatedCrossPlatformCases.map((testCase) => {
-            const exec = execution[testCase.id]
-            const suite = crossPlatformSuites[testCase.suite_id]
-            const Icon = platformIcons[testCase.platform as keyof typeof platformIcons]
-            
 
-            return (
-              <TableRow key={testCase.id} className="hover:bg-muted/50">
-                <TableCell onClick={(e) => e.stopPropagation()}>
-                  <Checkbox
-                    checked={crossPlatformBulkActions.selectedIds.has(testCase.id)}
-                    onCheckedChange={() => crossPlatformBulkActions.toggleSelection(testCase.id)}
-                  />
-                </TableCell>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[50px]">
+                    <Checkbox
+                      checked={
+                        crossPlatformBulkActions.selectedIds.size ===
+                          paginatedCrossPlatformCases.length && paginatedCrossPlatformCases.length > 0
+                      }
+                      onCheckedChange={(checked) => {
+                        if (checked) crossPlatformBulkActions.selectAll()
+                        else crossPlatformBulkActions.deselectAll()
+                      }}
+                    />
+                  </TableHead>
+                  <TableHead>Title</TableHead>
+                  <TableHead className="w-[120px]">Status</TableHead>
+                  <TableHead className="w-[140px]">Platform</TableHead>
+                  <TableHead className="w-[120px]">Framework</TableHead>
+                  <TableHead className="w-[120px]">Priority</TableHead>
+                  <TableHead className="w-[140px]">Created</TableHead>
+                </TableRow>
+              </TableHeader>
 
-                <TableCell 
-                  className="font-medium cursor-pointer"
-                  onClick={() => openTestCaseDialog(testCase, "cross-platform")}
+              <TableBody>
+                {paginatedCrossPlatformCases.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-12">
+                      <div className="flex flex-col items-center gap-2">
+                        <Layers className="h-8 w-8 text-muted-foreground" />
+                        <p className="text-muted-foreground">No cross-platform test cases found</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedCrossPlatformCases.map((testCase) => {
+                    const exec = execution[testCase.id]
+                    const Icon =
+                      platformIcons[testCase.platform as keyof typeof platformIcons]
+
+                    return (
+                      <TableRow key={testCase.id} className="hover:bg-muted/50">
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={crossPlatformBulkActions.selectedIds.has(testCase.id)}
+                            onCheckedChange={() => crossPlatformBulkActions.toggleSelection(testCase.id)}
+                          />
+                        </TableCell>
+
+                        <TableCell
+                          className="font-medium cursor-pointer"
+                          onClick={() => openTestCaseDialog(testCase, "cross-platform")}
+                        >
+                          <div className="flex items-center gap-2">
+                            {exec?.status === "passed" && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                            {exec?.status === "failed" && <XCircle className="h-4 w-4 text-red-600" />}
+                            {exec?.status === "blocked" && <AlertTriangle className="h-4 w-4 text-orange-600" />}
+                            {exec?.status === "skipped" && <Circle className="h-4 w-4 text-gray-400" />}
+                            {exec?.status === "in_progress" && <Clock className="h-4 w-4 text-blue-600" />}
+                            {exec?.status === "not_run" && <Circle className="h-4 w-4 text-gray-400" />}
+                            <span className="truncate">{testCase.title}</span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>{getApprovalStatusBadge(testCase.status)}</TableCell>
+
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {Icon ? <Icon className="h-4 w-4" /> : null}
+                            <Badge variant="default">{testCase.platform}</Badge>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <Badge variant="outline">{testCase.framework}</Badge>
+                        </TableCell>
+
+                        <TableCell>
+                          <Badge className={getPriorityColor(testCase.priority)}>{testCase.priority}</Badge>
+                        </TableCell>
+
+                        <TableCell className="text-muted-foreground text-sm">
+                          {getRelativeTime(testCase.created_at)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Pagination */}
+          {crossPlatformTotalPages > 1 && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Showing {crossPlatformStartIndex + 1}-
+                {Math.min(crossPlatformEndIndex, filteredCrossPlatformCases.length)} of{" "}
+                {filteredCrossPlatformCases.length} test cases
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCrossPlatformCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={crossPlatformCurrentPage === 1}
                 >
-                  <div className="flex items-center gap-2">
-                    {exec?.status === "passed" && (
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    )}
-                    {exec?.status === "failed" && (
-                      <XCircle className="h-4 w-4 text-red-600" />
-                    )}
-                    {exec?.status === "blocked" && (
-                      <AlertTriangle className="h-4 w-4 text-orange-600" />
-                    )}
-                    {exec?.status === "skipped" && (
-                      <Circle className="h-4 w-4 text-gray-400" />
-                    )}
-                    {exec?.status === "in_progress" && (
-                      <Clock className="h-4 w-4 text-blue-600" />
-                    )}
-                    {exec?.status === "not_run" && (
-                      <Circle className="h-4 w-4 text-gray-400" />
-                    )}
-                    <span>{testCase.title}</span>
-                  </div>
-                </TableCell>
-<TableCell>
-  {getApprovalStatusBadge(testCase.status)}  {/* ADD */}
-</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    {Icon && <Icon className="h-4 w-4" />}
-                    <Badge variant="default">{testCase.platform}</Badge>
-                  </div>
-                </TableCell>
-
-                <TableCell>
-                  <Badge variant="outline">{testCase.framework}</Badge>
-                </TableCell>
-
-                <TableCell>
-                  <Badge className={getPriorityColor(testCase.priority)}>
-                    {testCase.priority}
-                  </Badge>
-                </TableCell>
-
-               
-
-                <TableCell className="text-muted-foreground text-sm">
-                  {getRelativeTime(testCase.created_at)}
-                </TableCell>
-              </TableRow>
-            )
-          })
-        )}
-      </TableBody>
-    </Table>
-  </div>
-
-  {/* Pagination */}
-  {crossPlatformTotalPages > 1 && (
-    <div className="flex items-center justify-between">
-      <p className="text-sm text-muted-foreground">
-        Showing {crossPlatformStartIndex + 1}-
-        {Math.min(crossPlatformEndIndex, filteredCrossPlatformCases.length)} of{" "}
-        {filteredCrossPlatformCases.length} test cases
-      </p>
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setCrossPlatformCurrentPage((p) => Math.max(1, p - 1))}
-          disabled={crossPlatformCurrentPage === 1}
-        >
-          <ChevronLeft className="h-4 w-4 mr-1" />
-          Previous
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            setCrossPlatformCurrentPage((p) => Math.min(crossPlatformTotalPages, p + 1))
-          }
-          disabled={crossPlatformCurrentPage === crossPlatformTotalPages}
-        >
-          Next
-          <ChevronRight className="h-4 w-4 ml-1" />
-        </Button>
-      </div>
-    </div>
-  )}
-</TabsContent>
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setCrossPlatformCurrentPage((p) => Math.min(crossPlatformTotalPages, p + 1))
+                  }
+                  disabled={crossPlatformCurrentPage === crossPlatformTotalPages}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* Dialogs */}
@@ -1495,29 +1264,29 @@ function openActionSheet(testCase: TestCase) {
       />
 
       <TestExecutionDialog
-  open={showExecutionDialog}
-  status={pendingResultStatus ?? "failed"}
-  initialData={
-    selectedTestCase
-      ? {
-          notes: execution[selectedTestCase.id]?.notes,
-          failure_reason: execution[selectedTestCase.id]?.failure_reason,
-          environment: execution[selectedTestCase.id]?.test_environment || "staging",
-          browser: execution[selectedTestCase.id]?.browser,
-          os_version: execution[selectedTestCase.id]?.os_version,
+        open={showExecutionDialog}
+        status={pendingResultStatus ?? "failed"}
+        initialData={
+          selectedTestCase
+            ? {
+                notes: execution[selectedTestCase.id]?.notes,
+                failure_reason: execution[selectedTestCase.id]?.failure_reason,
+                environment: execution[selectedTestCase.id]?.test_environment || "staging",
+                browser: execution[selectedTestCase.id]?.browser,
+                os_version: execution[selectedTestCase.id]?.os_version,
+              }
+            : undefined
         }
-      : undefined
-  }
-  onClose={() => {
-    setShowExecutionDialog(false)
-    setPendingResultStatus(null)
-  }}
-  onSave={(details) => {
-    if (!selectedTestCase) return
-    const status = pendingResultStatus ?? "failed"
-    void saveExecutionResult(selectedTestCase.id, status, details)
-  }}
-/>
+        onClose={() => {
+          setShowExecutionDialog(false)
+          setPendingResultStatus(null)
+        }}
+        onSave={(details) => {
+          if (!selectedTestCase) return
+          const status = pendingResultStatus ?? "failed"
+          void saveExecutionResult(selectedTestCase.id, status, details)
+        }}
+      />
 
       <DeleteTestCaseDialog
         testCase={deletingTestCase}
@@ -1530,44 +1299,24 @@ function openActionSheet(testCase: TestCase) {
           fetchData()
           if (deletingTestCase) {
             setExecution((prev) => {
-              const newExecution = { ...prev }
-              delete newExecution[deletingTestCase.id]
-              return newExecution
+              const next = { ...prev }
+              delete next[deletingTestCase.id]
+              return next
             })
           }
         }}
       />
-{/* Script Editor Dialog */}
-{activeScriptId && (
-  <ScriptEditorDialog
-  open={showScriptEditor}
-  onOpenChange={(open) => {
-    setShowScriptEditor(open)
-    if (!open) {
-      setActiveScriptId(null)
-      setActiveScriptTitle("")
-    }
-  }}
-  scriptId={activeScriptId}          
-  testCaseTitle={activeScriptTitle}  
-  onSaved={() => fetchData()}
-/>
 
-)}
-
-<TestCaseActionSheet
-  testCase={actionSheetCase}
-  open={showActionSheet}
-  onOpenChange={setShowActionSheet}
-  onEdit={openEditDialog}
-  onDelete={openDeleteDialog}
-  onViewDetails={(testCase) => openTestCaseDialog(testCase, "regular")} 
-  isAutomated={actionSheetCase ? automatedTestCases.has(actionSheetCase.id) : false} 
-  onOpenScriptEditor={openScriptEditor} 
-  onOpenAutomationDialog={openAutomationDialog} 
-/>
-
-
+      {/* Action Sheet (refactored: no automation props) */}
+      <TestCaseActionSheet
+        testCase={actionSheetCase}
+        open={showActionSheet}
+        onOpenChange={setShowActionSheet}
+        onEdit={openEditDialog}
+        onDelete={openDeleteDialog}
+        onViewDetails={(tc) => openTestCaseDialog(tc, "regular")}
+        isAutomated={false}
+      />
 
       {/* Test Case Details Dialog */}
       {selectedCase && (
@@ -1578,7 +1327,7 @@ function openActionSheet(testCase: TestCase) {
           >
             <DialogHeader className="sticky top-0 z-10 bg-background p-6 border-b">
               <div className="flex items-start justify-between">
-                <div className="space-y-2 flex-1">
+                <div className="space-y-2 flex-1 min-w-0">
                   <DialogTitle className="flex items-center gap-3">
                     {execution[selectedCase.id]?.status === "passed" && (
                       <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -1598,8 +1347,9 @@ function openActionSheet(testCase: TestCase) {
                     {execution[selectedCase.id]?.status === "not_run" && (
                       <Circle className="h-5 w-5 text-gray-400" />
                     )}
-                    {selectedCase.title}
+                    <span className="truncate">{selectedCase.title}</span>
                   </DialogTitle>
+
                   <div className="flex items-center gap-2 flex-wrap pt-2">
                     <Badge className={getPriorityColor(selectedCase.priority)}>
                       {selectedCase.priority}
@@ -1607,9 +1357,7 @@ function openActionSheet(testCase: TestCase) {
                     {selectedCaseType === "regular" ? (
                       <Badge variant="secondary">{(selectedCase as TestCase).test_type}</Badge>
                     ) : (
-                      <Badge variant="default">
-                        {(selectedCase as CrossPlatformTestCase).platform}
-                      </Badge>
+                      <Badge variant="default">{(selectedCase as CrossPlatformTestCase).platform}</Badge>
                     )}
                     <span className="text-xs">
                       {execution[selectedCase.id]?.completedSteps.length || 0}/
@@ -1618,12 +1366,13 @@ function openActionSheet(testCase: TestCase) {
                         : (selectedCase as CrossPlatformTestCase).steps?.length || 0}{" "}
                       steps
                     </span>
-                    {execution[selectedCase.id]?.duration_minutes && (
+                    {execution[selectedCase.id]?.duration_minutes ? (
                       <span className="text-xs">
                         <Clock className="h-3 w-3 inline mr-1" />
                         {execution[selectedCase.id].duration_minutes}m
                       </span>
-                    )}
+                    ) : null}
+
                     {selectedCaseType === "regular" && (
                       <Button
                         variant="ghost"
@@ -1636,6 +1385,7 @@ function openActionSheet(testCase: TestCase) {
                     )}
                   </div>
                 </div>
+
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1654,25 +1404,25 @@ function openActionSheet(testCase: TestCase) {
                   <p className="text-sm text-muted-foreground">{selectedCase.description}</p>
                 </div>
 
-                {execution[selectedCase.id]?.notes && (
+                {execution[selectedCase.id]?.notes ? (
                   <div>
                     <h4 className="font-semibold mb-2">Execution Notes</h4>
                     <p className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
                       {execution[selectedCase.id].notes}
                     </p>
                   </div>
-                )}
+                ) : null}
 
-                {execution[selectedCase.id]?.failure_reason && (
+                {execution[selectedCase.id]?.failure_reason ? (
                   <div>
                     <h4 className="font-semibold mb-2 text-red-600">Failure Reason</h4>
                     <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">
                       {execution[selectedCase.id].failure_reason}
                     </p>
                   </div>
-                )}
+                ) : null}
 
-                {selectedCase.preconditions && (
+                {selectedCase.preconditions ? (
                   <div>
                     <h4 className="font-semibold mb-2">Preconditions</h4>
                     <p className="text-sm text-muted-foreground">
@@ -1681,7 +1431,7 @@ function openActionSheet(testCase: TestCase) {
                         : (selectedCase as CrossPlatformTestCase).preconditions.join(", ")}
                     </p>
                   </div>
-                )}
+                ) : null}
 
                 <div>
                   <h4 className="font-semibold mb-3">Test Steps</h4>
@@ -1703,9 +1453,7 @@ function openActionSheet(testCase: TestCase) {
             <div className="px-6 py-4 border-t grid grid-cols-2 md:grid-cols-5 gap-2 flex-shrink-0">
               <Button
                 onClick={() => markTestResult(selectedCase.id, "passed")}
-                disabled={
-                  execution[selectedCase.id]?.status === "passed" || updating === selectedCase.id
-                }
+                disabled={execution[selectedCase.id]?.status === "passed" || updating === selectedCase.id}
                 variant={execution[selectedCase.id]?.status === "passed" ? "default" : "outline"}
                 size="sm"
               >
@@ -1716,14 +1464,11 @@ function openActionSheet(testCase: TestCase) {
                 )}
                 Pass
               </Button>
+
               <Button
                 onClick={() => markTestResult(selectedCase.id, "failed")}
-                disabled={
-                  execution[selectedCase.id]?.status === "failed" || updating === selectedCase.id
-                }
-                variant={
-                  execution[selectedCase.id]?.status === "failed" ? "destructive" : "outline"
-                }
+                disabled={execution[selectedCase.id]?.status === "failed" || updating === selectedCase.id}
+                variant={execution[selectedCase.id]?.status === "failed" ? "destructive" : "outline"}
                 size="sm"
               >
                 {updating === selectedCase.id ? (
@@ -1733,28 +1478,27 @@ function openActionSheet(testCase: TestCase) {
                 )}
                 Fail
               </Button>
+
               <Button
                 onClick={() => markTestResult(selectedCase.id, "blocked")}
-                disabled={
-                  execution[selectedCase.id]?.status === "blocked" || updating === selectedCase.id
-                }
+                disabled={execution[selectedCase.id]?.status === "blocked" || updating === selectedCase.id}
                 variant={execution[selectedCase.id]?.status === "blocked" ? "secondary" : "outline"}
                 size="sm"
               >
                 <AlertTriangle className="h-4 w-4 mr-1" />
                 Block
               </Button>
+
               <Button
                 onClick={() => markTestResult(selectedCase.id, "skipped")}
-                disabled={
-                  execution[selectedCase.id]?.status === "skipped" || updating === selectedCase.id
-                }
+                disabled={execution[selectedCase.id]?.status === "skipped" || updating === selectedCase.id}
                 variant="outline"
                 size="sm"
               >
                 <Circle className="h-4 w-4 mr-1" />
                 Skip
               </Button>
+
               <Button onClick={() => resetTest(selectedCase.id)} variant="ghost" size="sm">
                 <RotateCcw className="h-4 w-4 mr-1" />
                 Reset
