@@ -125,7 +125,7 @@ export default function ExtensionPage() {
                   <p className="text-sm text-muted-foreground">Chrome Extension (.zip)</p>
                 </div>
               <Button className="gap-2" asChild>
-  <a href="/extensions/qa-test-recorder-chrome-v1.0.0.zip" download>
+  <a href="/extension/qa-test-recorder-chrome-v1.0.0.zip" download>
     <Download className="h-4 w-4" />
     Download
   </a>

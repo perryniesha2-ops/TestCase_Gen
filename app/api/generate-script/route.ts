@@ -1,4 +1,4 @@
-// app/api/generate-script/route.ts - ALLOW REGENERATION
+// app/api/generate-script/route.ts - COMPLETE VERSION
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import Anthropic from "@anthropic-ai/sdk"
@@ -31,6 +31,7 @@ CRITICAL OBJECTIVES:
 3. Provide specific, executable code for every step
 4. Use Playwright best practices (semantic selectors, proper waits)
 5. Make the script as complete as possible given the available information
+6. When test data is provided, create a testData object and use those values
 
 SELECTOR STRATEGY:
 
@@ -63,6 +64,27 @@ SELECTOR STRATEGY:
    await expect(page.locator('.price, [class*="price"]')).toContainText('$')
    \`\`\`
 
+TEST DATA USAGE:
+When test data is provided (e.g., email, password, username), follow this pattern:
+\`\`\`typescript
+import { test, expect } from '@playwright/test'
+
+test('Test name', async ({ page }) => {
+  // Test data
+  const testData = {
+    email: 'provided-email@example.com',
+    password: 'provided-password',
+    // ... other provided data
+  }
+  
+  // Use testData.email instead of hardcoded values
+  await page.fill('[name="email"]', testData.email)
+  await page.fill('[name="password"]', testData.password)
+  
+  // Rest of test...
+})
+\`\`\`
+
 KEY RULES:
 1. Never use generic placeholders
 2. Always provide fallback selectors
@@ -71,6 +93,7 @@ KEY RULES:
 5. Use toContainText() instead of exact matches
 6. Only add TODO if genuinely cannot infer selector
 7. Prefer working code over perfection
+8. When test data provided, use it throughout the script
 
 OUTPUT FORMAT REMINDER:
 Generate ONLY the TypeScript code. No explanations. No markdown. Just code.
@@ -92,9 +115,9 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { 
       testCaseId, 
-      applicationUrl, 
+      applicationUrl,  // Changed from appUrl for consistency
       testData,
-      forceRegenerate = false // ✅ NEW: Allow forcing regeneration
+      forceRegenerate = false
     } = body
 
     if (!testCaseId) {
@@ -111,39 +134,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Test case not found" }, { status: 404 })
     }
 
-    // ✅ CHANGED: Check for existing script
+    // Check for existing script
     const { data: existingScript } = await supabase
       .from("automation_scripts")
-      .select("id")
+      .select("*")
       .eq("test_case_id", testCaseId)
-      .eq("user_id", user.id) // ✅ Only check user's own scripts
+      .eq("user_id", user.id)
       .maybeSingle()
 
-    // ✅ CHANGED: Handle existing script differently
+    // Handle existing script
     if (existingScript && !forceRegenerate) {
-      // If script exists and not forcing regeneration, return it
       console.log("⚠️ Script already exists:", existingScript.id)
-      
-      // Get full script data
-      const { data: fullScript } = await supabase
-        .from("automation_scripts")
-        .select("*")
-        .eq("id", existingScript.id)
-        .single()
       
       return NextResponse.json({
         success: true,
-        script: fullScript,
+        script: existingScript,
         metadata: {
-          todoCount: (fullScript?.script_content?.match(/\/\/ TODO:/g) || []).length,
-          hasCriticalTodos: fullScript?.script_content?.includes('TODO: Update selector'),
+          todoCount: (existingScript.script_content?.match(/\/\/ TODO:/g) || []).length,
+          hasCriticalTodos: existingScript.script_content?.includes('TODO: Update selector'),
           missingInfo: [],
-          isExisting: true // ✅ Flag that this is existing script
+          isExisting: true,
+          needsReview: existingScript.status === "needs_review"
         }
       })
     }
 
-    // ✅ CHANGED: If forceRegenerate, delete old script first
+    // If forceRegenerate, delete old script first
     if (existingScript && forceRegenerate) {
       console.log("🔄 Regenerating script, deleting old one:", existingScript.id)
       await supabase
@@ -152,7 +168,7 @@ export async function POST(request: Request) {
         .eq("id", existingScript.id)
     }
 
-    // Build prompt
+    // Build prompt with all context
     const testStepsText = Array.isArray(testCase.test_steps)
       ? testCase.test_steps
           .map((step: any) => `Step ${step.step_number}: ${step.action}\nExpected: ${step.expected}`)
@@ -163,8 +179,12 @@ export async function POST(request: Request) {
       ? `\n\nAPPLICATION BASE URL: ${applicationUrl}\nUse this as the base for all navigation steps.`
       : ''
 
-    const testDataContext = testData
-      ? `\n\nTEST DATA PROVIDED:\n${JSON.stringify(testData, null, 2)}\nUse this data in the script where applicable.`
+    // Format test data for prompt
+    const testDataContext = testData && Object.keys(testData).length > 0
+      ? `\n\nTEST DATA PROVIDED:\n${Object.entries(testData)
+          .filter(([_, value]) => value) // Only include non-empty values
+          .map(([key, value]) => `- ${key}: "${value}"`)
+          .join('\n')}\n\nIMPORTANT: Create a testData object at the top of the test and use these values throughout the script. Do NOT use placeholder values like "test@example.com" - use the provided test data instead.`
       : ''
 
     const preconditionsText = testCase.preconditions 
@@ -187,6 +207,9 @@ ${testCase.expected_result}
 REMEMBER: Output ONLY TypeScript code. No explanations. End with }); and stop.`
 
     console.log("🤖 Generating new script for test case:", testCase.title)
+    if (testData && Object.keys(testData).length > 0) {
+      console.log("📊 Using test data:", Object.keys(testData))
+    }
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
@@ -199,6 +222,7 @@ REMEMBER: Output ONLY TypeScript code. No explanations. End with }); and stop.`
     // Clean up markdown code blocks
     scriptContent = scriptContent
       .replace(/```typescript\n?/g, "")
+      .replace(/```ts\n?/g, "")
       .replace(/```\n?/g, "")
       .trim()
 
@@ -237,6 +261,7 @@ REMEMBER: Output ONLY TypeScript code. No explanations. End with }); and stop.`
       required?: boolean
     }> = []
     
+    // Check for missing application URL
     if (!applicationUrl && (scriptContent.includes('example.com') || scriptContent.includes('shop.example.com'))) {
       missingInfo.push({
         field: 'applicationUrl',
@@ -248,7 +273,8 @@ REMEMBER: Output ONLY TypeScript code. No explanations. End with }); and stop.`
       })
     }
     
-    if (scriptContent.includes('test@example.com') || scriptContent.includes('user@') || scriptContent.includes('@shop.com')) {
+    // Check for missing test email
+    if (!testData?.email && (scriptContent.includes('test@example.com') || scriptContent.includes('user@') || scriptContent.includes('@shop.com'))) {
       missingInfo.push({
         field: 'testEmail',
         label: 'Test Email',
@@ -259,7 +285,8 @@ REMEMBER: Output ONLY TypeScript code. No explanations. End with }); and stop.`
       })
     }
     
-    if (scriptContent.match(/fill\(['"].*password.*['"]/i) && !testData?.password) {
+    // Check for missing test password
+    if (!testData?.password && scriptContent.match(/fill\(['"].*password.*['"]/i)) {
       missingInfo.push({
         field: 'testPassword',
         label: 'Test Password',
@@ -300,7 +327,7 @@ REMEMBER: Output ONLY TypeScript code. No explanations. End with }); and stop.`
         hasCriticalTodos,
         missingInfo,
         needsReview: hasCriticalTodos,
-        isExisting: false // ✅ This is a new script
+        isExisting: false
       }
     })
 
@@ -311,6 +338,54 @@ REMEMBER: Output ONLY TypeScript code. No explanations. End with }); and stop.`
         success: false,
         error: error instanceof Error ? error.message : "Failed to generate script" 
       },
+      { status: 500 }
+    )
+  }
+}
+
+// GET endpoint to check if script exists
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const testCaseId = searchParams.get("testCaseId")
+
+    if (!testCaseId) {
+      return NextResponse.json(
+        { success: false, error: "Missing testCaseId" },
+        { status: 400 }
+      )
+    }
+
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    const { data: scripts, error } = await supabase
+      .from("automation_scripts")
+      .select("*")
+      .eq("test_case_id", testCaseId)
+      .eq("user_id", user.id)
+
+    if (error) {
+      throw error
+    }
+
+    return NextResponse.json({
+      success: true,
+      scripts: scripts || []
+    })
+  } catch (error) {
+    console.error("Error checking scripts:", error)
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
       { status: 500 }
     )
   }

@@ -27,7 +27,7 @@ import {
 import { Loader2, Save, X, Plus, Trash2, FolderOpen, Code2, Sparkles } from "lucide-react"
 import type { TestCase, TestCaseForm, TestStep, Project } from "@/types/test-cases"
 import { testTypes } from "@/types/test-cases"
-import { ScriptGenerator } from '@/components/automation/generator'
+import { ScriptGenerator } from '@/components/automation/playwrite-scripts/generator'
 import { Separator } from "@/components/ui/separator"
 
 interface TestCaseFormDialogProps {

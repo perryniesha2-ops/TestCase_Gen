@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 300px;
+      padding: 16px;
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .icon {
+      width: 48px;
+      height: 48px;
+      background: #6366f1;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 20px;
+    }
+    .title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+    }
+    .subtitle {
+      font-size: 12px;
+      color: #6b7280;
+      margin: 0;
+    }
+    .status {
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status.active {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .status.inactive {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .status.active .status-dot {
+      background: #10b981;
+    }
+    .status.inactive .status-dot {
+      background: #f59e0b;
+    }
+    .info {
+      font-size: 13px;
+      color: #4b5563;
+      margin-bottom: 16px;
+      padding: 12px;
+      background: #f3f4f6;
+      border-radius: 8px;
+    }
+    .info-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .info-item:last-child {
+      margin-bottom: 0;
+    }
+    .label {
+      color: #6b7280;
+    }
+    .value {
+      font-weight: 500;
+      color: #111827;
+    }
+    .instructions {
+      font-size: 12px;
+      color: #6b7280;
+      line-height: 1.6;
+    }
+    .instructions h4 {
+      margin: 0 0 8px 0;
+      color: #374151;
+      font-size: 13px;
+    }
+    .instructions ol {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .instructions li {
+      margin-bottom: 6px;
+    }
+    .button {
+      width: 100%;
+      padding: 10px;
+      background: #6366f1;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+    .button:hover {
+      background: #4f46e5;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="icon">QA</div>
+    <div>
+      <h3 class="title">QA Test Recorder</h3>
+      <p class="subtitle">Browser automation extension</p>
+    </div>
+  </div>
+
+  <div id="status" class="status inactive">
+    <span class="status-dot"></span>
+    <span>Checking status...</span>
+  </div>
+
+  <div class="info">
+    <div class="info-item">
+      <span class="label">Version</span>
+      <span class="value">1.0.0</span>
+    </div>
+  </div>
+
+  <div class="instructions">
+    <h4>How to Use:</h4>
+    <ol>
+      <li>Open your QA application</li>
+      <li>Navigate to Test Cases</li>
+      <li>Click action menu on any test</li>
+      <li>Go to "Browser Extension" tab</li>
+      <li>Start recording or running tests</li>
+    </ol>
+  </div>
+
+  <button class="button" id="openApp">Open QA Application</button>
+
+  <script src="popup.js"></script>
+</body>
+</html>

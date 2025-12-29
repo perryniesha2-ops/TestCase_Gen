@@ -37,8 +37,8 @@ import {
   AlertCircle,
   Info,
 } from "lucide-react"
-import { BrowserRecorder } from "@/components/browser-extensions/browser-recorder"
-import { BrowserTestExecutor } from "@/components/browser-extensions/browser-test-executor"
+import {BrowserRecorderAI } from "@/components/automation/screen-recording-automation/ai-browser-recorder"
+import { TestExecutor } from "@/components/automation/screen-recording-automation/test-executor"
 import type { TestCase } from "@/types/test-cases"
 import type { BrowserExecutionResult } from "@/types/browser-automation"
 
@@ -291,7 +291,7 @@ export function TestCaseActionSheet({
                           </div>
                         </div>
                       ) : (
-                        <BrowserRecorder
+                        <BrowserRecorderAI
                           testCaseId={testCase.id}
                           testCaseTitle={testCase.title}
                           onRecordingComplete={(recordingId: string) => {
@@ -347,25 +347,27 @@ export function TestCaseActionSheet({
                 )}
 
                 {/* Execution Section */}
-                {activeRecordingId && (
-                  <div className="rounded-lg border bg-background">
-                    <div className="border-b px-4 py-3">
-                      <p className="text-sm font-medium">Run Test</p>
-                    </div>
-                    <div className="px-4 py-4">
-                      <BrowserTestExecutor
-                        testCaseId={testCase.id}
-                        recordingId={activeRecordingId}
-                        onExecutionComplete={(result: BrowserExecutionResult) => {
-                          toast.success("Execution complete!")
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
+{activeRecordingId && (() => {
+  const activeRecording = recordings.find(r => r.id === activeRecordingId)
+  if (!activeRecording) return null
+  
+  return (
+    <div className="rounded-lg border bg-background">
+      <div className="border-b px-4 py-3">
+        <p className="text-sm font-medium">Run Test</p>
+      </div>
+      <div className="px-4 py-4">
+        <TestExecutor
+          recording={activeRecording}
+          onClose={() => fetchRecordings()}
+        />
+      </div>
+    </div>
+  )
+})()}
 
-                {/* Info Card */}
-                <div className="rounded-lg border bg-muted/50 p-4">
+{/* Info Card */}
+<div className="rounded-lg border bg-muted/50 p-4">
                   <h4 className="font-semibold text-sm flex items-center gap-2 mb-3">
                     <MonitorSmartphone className="h-4 w-4" />
                     Browser Extension Benefits

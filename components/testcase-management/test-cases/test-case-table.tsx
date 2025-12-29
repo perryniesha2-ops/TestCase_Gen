@@ -91,8 +91,8 @@ import { DeleteTestCaseDialog } from "./dialogs/delete-test-case-dialog"
 import { BulkActionsToolbar } from "./BulkActionsToolbar"
 import { useBulkActions } from "@/hooks/useBulkActions"
 import { CrossPlatformBulkActionsToolbar } from "./CrossPlatformBulkActionsToolbar" 
-import { ScriptGenerator } from '@/components/automation/generator'
-import { ScriptEditorDialog } from '@/components/automation/script-editor-dialog'
+import { ScriptGenerator } from '@/components/automation/playwrite-scripts/generator'
+import { ScriptEditorDialog } from '@/components/automation/playwrite-scripts/script-editor-dialog'
 import { TestCaseActionSheet } from './test-case-action-sheet'
 
 
