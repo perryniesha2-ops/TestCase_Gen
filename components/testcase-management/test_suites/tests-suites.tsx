@@ -77,6 +77,9 @@ import {
 } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
 import { ExecutionHistory } from "./executionhistory"
+import { TriagePanel } from "./triage-panel"
+import { TestCaseQuickViewDialog } from "../test-cases/dialogs/test-case-view-dialog"
+
 
 interface FormData {
   name: string
@@ -109,15 +112,17 @@ export function TestSuitesPage() {
   const [executingSuite, setExecutingSuite] = useState<TestSuite | null>(null)
   const [showExecutionDialog, setShowExecutionDialog] = useState(false)
 
-  //script generation
-  const [generatingScripts, setGeneratingScripts] = useState<string | null>(null)
-  const [runningAutomation, setRunningAutomation] = useState<string | null>(null)
+
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerSuite, setDrawerSuite] = useState<TestSuite | null>(null)
   const [editingSuite, setEditingSuite] = useState<TestSuite | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
+
+  const [openTestCase, setOpenTestCase] = useState(false)
+const [activeTestCaseId, setActiveTestCaseId] = useState<string | null>(null)
+
 
 
 function openSuiteDrawer(suite: TestSuite) {
@@ -214,15 +219,6 @@ const eligibleCaseIds = (suiteCases ?? [])
 const eligible_count = eligibleCaseIds.length
 
 let scripted_count = 0
-if (eligibleCaseIds.length > 0) {
-  const { data: scripts, error: scriptsError } = await supabase
-    .from("automation_scripts")
-    .select("test_case_id")
-    .in("test_case_id", eligibleCaseIds)
-
-  if (scriptsError) throw scriptsError
-  scripted_count = scripts?.length ?? 0
-}
 
 const mode: "manual" | "partial" | "automated" =
   eligible_count > 0 && scripted_count === eligible_count
@@ -351,175 +347,28 @@ type SuiteCaseRow = {
   test_cases: ScriptableTestCase | ScriptableTestCase[] | null
 }
 
-async function generateSuiteScripts(suite: TestSuite) {
-  setGeneratingScripts(suite.id)
-
-  try {
-    const supabase = createClient()
-
-    // Get all test cases in suite
-    const { data, error: fetchError } = await supabase
-      .from("test_suite_cases")
-      .select(
-        `
-        test_case_id,
-        test_cases (
-          id,
-          title,
-          description,
-          test_steps
-        )
-      `
-      )
-      .eq("suite_id", suite.id)
-
-    if (fetchError) throw fetchError
-
-    const rows = (data ?? []) as SuiteCaseRow[]
-
-    // Normalize join shape: test_cases can be object OR array OR null
-    const testCases: ScriptableTestCase[] = rows
-      .map((r) => (Array.isArray(r.test_cases) ? r.test_cases[0] : r.test_cases))
-      .filter((tc): tc is ScriptableTestCase => {
-        if (!tc) return false
-        return Array.isArray(tc.test_steps) && tc.test_steps.length > 0
-      })
-
-    if (testCases.length === 0) {
-      toast.error("No test cases with steps found in this suite")
-      return
-    }
-
-    let generated = 0
-    let skipped = 0
-    let failed = 0
-
-    for (const testCase of testCases) {
-      try {
-        // Check if script already exists (use maybeSingle to avoid errors when none exists)
-        const { data: existing, error: existingError } = await supabase
-          .from("automation_scripts")
-          .select("id")
-          .eq("test_case_id", testCase.id)
-          .maybeSingle()
-
-        // If there was a real error (not "no rows"), treat as failure
-        if (existingError) {
-          console.error("Error checking existing script:", existingError)
-          failed++
-          continue
-        }
-
-        if (existing?.id) {
-          skipped++
-          continue
-        }
-
-        const response = await fetch("/api/generate-script", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            testCaseId: testCase.id,
-            testName: testCase.title,
-            testSteps: testCase.test_steps,
-            framework: "playwright",
-            timeout: 30000,
-          }),
-        })
-
-        if (!response.ok) {
-          failed++
-          // Optional: read text for debugging without crashing
-          const msg = await response.text().catch(() => "")
-          console.error(`Generate script failed for ${testCase.id}:`, response.status, msg)
-          continue
-        }
-
-        generated++
-      } catch (err) {
-        failed++
-        console.error(`Failed to generate script for ${testCase.title}:`, err)
-      }
-    }
-
-    toast.success(`Generated ${generated} scripts`, {
-      description: [
-        skipped > 0 ? `Skipped ${skipped} (already have scripts)` : null,
-        failed > 0 ? `Failed ${failed}` : null,
-      ]
-        .filter(Boolean)
-        .join(" • "),
-    })
-
-    await fetchTestSuites() // Refresh
-  } catch (error) {
-    console.error("Error generating suite scripts:", error)
-    toast.error("Failed to generate automation scripts")
-  } finally {
-    setGeneratingScripts(null)
-  }
-}
-
-async function runSuiteAutomation(suite: TestSuite) {
-  setRunningAutomation(suite.id)
-  
-  try {
-    // This will be Week 2 implementation
-    // For now, just show a message
-    toast.info('Automation execution coming in Week 2!', {
-      description: 'Script generation is complete. Execution engine coming soon.'
-    })
-  } finally {
-    setRunningAutomation(null)
-  }
-}
-
 
   async function deleteTestSuite(suiteId: string) {
-    const confirmed = window.confirm(
-      "Delete this test suite and all its assigned sessions, executions and links? This cannot be undone."
-    )
-    if (!confirmed) return
+  const ok = window.confirm(
+    "Delete this test suite? Executions will be kept in history."
+  )
+  if (!ok) return
 
-    try {
-      const supabase = createClient()
+  const res = await fetch(`/api/suites/${suiteId}/delete`, { method: "DELETE" })
 
-      // Delete sessions for this suite
-      const { data: sessions } = await supabase
-        .from("test_run_sessions")
-        .select("id")
-        .eq("suite_id", suiteId)
+  const raw = await res.text().catch(() => "")
+  let payload: any = null
+  try { payload = raw ? JSON.parse(raw) : null } catch {}
 
-      const sessionIds = (sessions ?? []).map((s) => s.id)
-
-      // Delete executions for those sessions
-      if (sessionIds.length > 0) {
-        await supabase.from("test_executions").delete().in("session_id", sessionIds)
-      }
-
-      // Delete executions with suite_id
-      await supabase.from("test_executions").delete().eq("suite_id", suiteId)
-
-      // Delete sessions
-      if (sessionIds.length > 0) {
-        await supabase.from("test_run_sessions").delete().in("id", sessionIds)
-      }
-
-      // Delete junction rows
-      await supabase.from("test_suite_cases").delete().eq("suite_id", suiteId)
-
-      // Delete the suite
-      const { error } = await supabase.from("test_suites").delete().eq("id", suiteId)
-
-      if (error) throw error
-
-      setTestSuites((prev) => prev.filter((s) => s.id !== suiteId))
-      toast.success("Test suite deleted")
-    } catch (error) {
-      console.error("Error deleting test suite:", error)
-      toast.error("Failed to delete test suite")
-    }
+  if (!res.ok) {
+    console.error("Delete suite failed:", res.status, payload ?? raw)
+    throw new Error(payload?.error ? `${payload.error}` : `Delete failed (${res.status})`)
   }
+
+  setTestSuites((prev) => prev.filter((s) => s.id !== suiteId))
+  toast.success("Test suite deleted")
+}
+
 
   function resetForm() {
     setFormData({
@@ -623,9 +472,7 @@ async function runSuiteAutomation(suite: TestSuite) {
   
   function getDisplaySuiteType(suite: TestSuite) {
   if (suite.suite_type !== "manual") return suite.suite_type
-  const mode = suite.automation?.mode
-  if (mode === "automated") return "automated"
-  if (mode === "partial") return "partial"
+
   return "manual"
 }
 
@@ -757,7 +604,6 @@ async function updateSuiteDetails() {
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
                 <SelectItem value="manual">Manual</SelectItem>
-                <SelectItem value="automated">Automated</SelectItem>
                 <SelectItem value="regression">Regression</SelectItem>
                 <SelectItem value="smoke">Smoke</SelectItem>
                 <SelectItem value="integration">Integration</SelectItem>
@@ -986,7 +832,6 @@ async function updateSuiteDetails() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="manual">Manual Testing</SelectItem>
-                  <SelectItem value="automated">Automated Testing</SelectItem>
                   <SelectItem value="regression">Regression Testing</SelectItem>
                   <SelectItem value="smoke">Smoke Testing</SelectItem>
                   <SelectItem value="integration">Integration Testing</SelectItem>
@@ -1187,7 +1032,6 @@ async function updateSuiteDetails() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="manual">Manual</SelectItem>
-            <SelectItem value="automated">Automated</SelectItem>
             <SelectItem value="regression">Regression</SelectItem>
             <SelectItem value="smoke">Smoke</SelectItem>
             <SelectItem value="integration">Integration</SelectItem>
@@ -1224,7 +1068,10 @@ async function updateSuiteDetails() {
       p-0
       overflow-hidden
     "
+     onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
   >
+    
     {/* 3-row layout */}
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -1248,26 +1095,7 @@ async function updateSuiteDetails() {
                   {drawerSuite.test_case_count ?? 0} cases
                 </Badge>
 
-                <Badge
-                  variant="outline"
-                  className={
-                    drawerSuite.automation?.mode === "automated"
-                      ? "border-green-500 text-green-600"
-                      : drawerSuite.automation?.mode === "partial"
-                        ? "border-orange-500 text-orange-600"
-                        : "border-muted-foreground text-muted-foreground"
-                  }
-                >
-                  {drawerSuite.automation?.mode === "automated"
-                    ? "Automation: Automated"
-                    : drawerSuite.automation?.mode === "partial"
-                      ? "Automation: Partial"
-                      : "Automation: Manual"}
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {(drawerSuite.automation?.scripted_count ?? 0)}/
-                    {(drawerSuite.automation?.eligible_count ?? 0)}
-                  </span>
-                </Badge>
+               
               </div>
             )}
           </div>
@@ -1291,81 +1119,32 @@ async function updateSuiteDetails() {
                 Run tests
               </Button>
 
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-9 gap-2"
-                onClick={() => runSuiteAutomation(drawerSuite)}
-                disabled={
-                  runningAutomation === drawerSuite.id ||
-                  drawerSuite.automation?.mode !== "automated"
-                }
-                title={
-                  drawerSuite.automation?.mode !== "automated"
-                    ? "Generate scripts for all eligible test cases to enable automation."
-                    : "Run automation"
-                }
-              >
-                {runningAutomation === drawerSuite.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Zap className="h-4 w-4" />
-                )}
-                Run automation
-              </Button>
             </div>
 
-            {/* Automation scripts */}
-            <div className="rounded-lg border bg-background">
-              <div className="border-b px-4 py-3">
-                <p className="text-sm font-medium">Automation scripts</p>
-              </div>
+           
+<TriagePanel
+    suiteId={drawerSuite.id}
+    onOpenManageSuite={() => {
+      setSelectedSuite(drawerSuite)
+      setShowDetailsDialog(true)
+    }}
+    // optional – if you have a test case editor route/modal:
+    onOpenTestCase={(id) => {
+        setActiveTestCaseId(id)
+    setOpenTestCase(true)
+      toast.info("Open test case", { description: id })
+    }}
+  />
 
-              <div className="px-4 py-4 space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Coverage</span>
-                  <span className="font-medium">
-                    {(drawerSuite.automation?.scripted_count ?? 0)}/
-                    {(drawerSuite.automation?.eligible_count ?? 0)} scripted
-                  </span>
-                </div>
-
-                <Progress
-                  value={
-                    (drawerSuite.automation?.eligible_count ?? 0) > 0
-                      ? ((drawerSuite.automation?.scripted_count ?? 0) /
-                          (drawerSuite.automation?.eligible_count ?? 1)) *
-                        100
-                      : 0
-                  }
-                  className="h-2"
-                />
-
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="w-full h-9 gap-2"
-                  onClick={() => generateSuiteScripts(drawerSuite)}
-                  disabled={
-                    generatingScripts === drawerSuite.id ||
-                    (drawerSuite.automation?.eligible_count ?? 0) === 0
-                  }
-                >
-                  {generatingScripts === drawerSuite.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Code2 className="h-4 w-4" />
-                  )}
-                  Generate missing scripts
-                </Button>
-
-                {(drawerSuite.automation?.eligible_count ?? 0) === 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    No eligible test cases found (test cases must have steps).
-                  </div>
-                )}
-              </div>
-            </div>
+    <TestCaseQuickViewDialog
+  open={openTestCase}
+  onOpenChange={(v) => {
+    setOpenTestCase(v)
+    if (!v) setActiveTestCaseId(null)
+  }}
+  testCaseId={activeTestCaseId}
+/>          
+          
 
             {/* Configuration */}
             <div className="rounded-lg border bg-background">

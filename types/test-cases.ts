@@ -10,7 +10,7 @@ export interface TestStep {
   step_number: number
   action: string
   expected: string
-  data?: any
+  data?: unknown
 }
 
 export interface TestCase {
