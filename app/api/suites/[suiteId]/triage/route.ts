@@ -1,12 +1,11 @@
 // app/api/suites/[suiteId]/triage/route.ts
+import type { NextRequest } from "next/server"
 import { NextResponse } from "next/server"
+
 import { createClient } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
 
-// -----------------------------
-// Types (match your UI types)
-// -----------------------------
 type Priority = "low" | "medium" | "high" | "critical"
 type TriageCategory = "quick_win" | "high_value" | "needs_prep" | "not_recommended"
 
@@ -30,7 +29,6 @@ type TriageRow = {
   eligible: boolean
   category: TriageCategory
 
-  // 0..10
   value: number
   effort: number
   confidence: number
@@ -38,7 +36,6 @@ type TriageRow = {
   reasons: string[]
   fix_suggestions: FixSuggestion[]
 
-  // Optional (keep if your UI still shows script badges)
   has_script?: boolean
   script_status?: string | null
 }
@@ -61,9 +58,7 @@ type TestCaseShape = {
   automation_status?: string | null
 }
 
-// -----------------------------
-// Optional fallback helper
-// -----------------------------
+
 function extractSuiteIdFromUrl(req: Request): string | null {
   try {
     const { pathname } = new URL(req.url)
