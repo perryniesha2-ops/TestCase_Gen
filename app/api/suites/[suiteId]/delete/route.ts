@@ -1,14 +1,21 @@
 // app/api/suites/[suiteId]/delete/route.ts
 import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createClient as createAdminClient } from "@supabase/supabase-js"
 
 export const runtime = "nodejs"
 
+type Ctx = {
+  params: {
+    suiteId: string
+  }
+}
+
+
 function extractSuiteIdFromUrl(req: Request): string | null {
   try {
     const { pathname } = new URL(req.url)
-    // /api/suites/<suiteId>/delete
     const parts = pathname.split("/").filter(Boolean)
     const suitesIdx = parts.indexOf("suites")
     const suiteId = suitesIdx >= 0 ? parts[suitesIdx + 1] : null
@@ -18,18 +25,13 @@ function extractSuiteIdFromUrl(req: Request): string | null {
   }
 }
 
-export async function DELETE(
-  req: Request,
-  ctx?: { params?: { suiteId?: string } }
-) {
+export async function DELETE(req: NextRequest, ctx: Ctx) {
   try {
+  
     const suiteId = ctx?.params?.suiteId ?? extractSuiteIdFromUrl(req)
 
-    if (!suiteId) {
-      return NextResponse.json(
-        { error: "Missing suiteId", debug: { url: req.url, params: ctx?.params ?? null } },
-        { status: 400 }
-      )
+  if (!suiteId) {
+      return NextResponse.json({ error: "Missing suiteId" }, { status: 400 })
     }
 
 
