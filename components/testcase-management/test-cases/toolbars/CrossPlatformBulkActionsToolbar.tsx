@@ -1,9 +1,8 @@
-// components/test-cases/BulkActionsToolbar.tsx
+// components/testcase-management/test-cases/CrossPlatformBulkActionsToolbar.tsx
 "use client"
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,46 +16,38 @@ import {
   Square,
   ChevronDown,
   X,
-  FileText,
-  FolderOpen,
+  CheckCircle2,
+  XCircle,
   Trash2,
-  Download,
-  PlayCircle,
+  FileText,
 } from "lucide-react"
-import { BulkUpdateDialog } from "../test-cases/dialogs/BulkUpdateDialog"
-import type { TestCase } from "@/types/test-cases"
+import { BulkUpdateDialog } from "../dialogs/BulkUpdateDialog"
+import type { CrossPlatformTestCase } from "@/types/test-cases"
 
-interface BulkActionsToolbarProps {
+interface CrossPlatformBulkActionsToolbarProps {
   selectedIds: Set<string>
-  allTestCases: TestCase[]
+  allTestCases: CrossPlatformTestCase[]
   onSelectAll: () => void
   onDeselectAll: () => void
-  onBulkUpdate: (ids: string[], updates: Partial<TestCase>) => Promise<void>
+  onBulkApprove: (ids: string[]) => Promise<void>
+  onBulkReject: (ids: string[]) => Promise<void>
+onBulkUpdate: (ids: string[], updates: Partial<CrossPlatformTestCase>) => Promise<void>
   onBulkDelete: (ids: string[]) => Promise<void>
-  onBulkAddToSuite: (ids: string[], suiteId: string) => Promise<void>
-  onBulkExport: (ids: string[]) => void
 }
 
-type BulkAction = 
-  | "status"
-  | "priority"
-  | "project"
-  | "suite"
-  | "export"
-  | "delete"
+type BulkAction = "approve" | "reject" | "priority" | "delete"
+type DialogAction = "approve" | "reject" | "priority"
 
-type DialogAction = "status" | "priority" | "project" | "suite"
-
-export function BulkActionsToolbar({
+export function CrossPlatformBulkActionsToolbar({
   selectedIds,
   allTestCases,
   onSelectAll,
   onDeselectAll,
+  onBulkApprove,
+  onBulkReject,
   onBulkUpdate,
   onBulkDelete,
-  onBulkAddToSuite,
-  onBulkExport,
-}: BulkActionsToolbarProps) {
+}: CrossPlatformBulkActionsToolbarProps) {
   const [showDialog, setShowDialog] = useState(false)
   const [currentAction, setCurrentAction] = useState<DialogAction | null>(null)
 
@@ -64,19 +55,20 @@ export function BulkActionsToolbar({
   const totalCount = allTestCases.length
   const allSelected = selectedCount === totalCount && totalCount > 0
 
+
+  const pendingCount = allTestCases.filter(
+    (tc) => selectedIds.has(tc.id) && (!tc.status || tc.status === "pending")
+  ).length
+
   function handleActionClick(action: BulkAction) {
-    if (action === "export") {
-      onBulkExport(Array.from(selectedIds))
-      return
-    }
-    
     if (action === "delete") {
       handleBulkDelete()
       return
     }
-    
-    // Only open dialog for actions that need it
-    setCurrentAction(action)
+
+    // ✅ FIXED: Always allow clicking approve/reject
+    // The dialog and hook will handle validation
+    setCurrentAction(action as DialogAction)
     setShowDialog(true)
   }
 
@@ -93,7 +85,7 @@ export function BulkActionsToolbar({
     }
   }
 
-  async function handleBulkUpdate(updates: Partial<TestCase>) {
+  async function handleBulkUpdate(updates: Partial<CrossPlatformTestCase>) {
     try {
       await onBulkUpdate(Array.from(selectedIds), updates)
       setShowDialog(false)
@@ -103,13 +95,23 @@ export function BulkActionsToolbar({
     }
   }
 
-  async function handleAddToSuite(suiteId: string) {
+  async function handleBulkApprove() {
     try {
-      await onBulkAddToSuite(Array.from(selectedIds), suiteId)
+      await onBulkApprove(Array.from(selectedIds))
       setShowDialog(false)
       setCurrentAction(null)
     } catch (error) {
-      console.error("Bulk add to suite error:", error)
+      console.error("Bulk approve error:", error)
+    }
+  }
+
+  async function handleBulkReject() {
+    try {
+      await onBulkReject(Array.from(selectedIds))
+      setShowDialog(false)
+      setCurrentAction(null)
+    } catch (error) {
+      console.error("Bulk reject error:", error)
     }
   }
 
@@ -118,7 +120,7 @@ export function BulkActionsToolbar({
   return (
     <>
       <div className="flex items-center gap-3 p-4 bg-primary/5 border-b border-primary/20">
-        {/* Selection Info */}
+        {/* Selection Toggle */}
         <Button
           variant="ghost"
           size="sm"
@@ -133,14 +135,15 @@ export function BulkActionsToolbar({
           {allSelected ? "Deselect All" : "Select All"}
         </Button>
 
+        {/* Selection Info */}
         <div className="flex items-center gap-2">
-         
-            {selectedCount} selected
-          
+          <span className="font-medium">{selectedCount} selected</span>
           {selectedCount < totalCount && (
-            <span className="text-sm text-muted-foreground">
-              of {totalCount}
-            </span>
+            <span className="text-sm text-muted-foreground">of {totalCount}</span>
+          )}
+          {/* ✅ FIXED: Show pending count if any */}
+          {pendingCount > 0 && (
+            <span className="text-sm text-amber-600">({pendingCount} pending)</span>
           )}
         </div>
 
@@ -150,43 +153,47 @@ export function BulkActionsToolbar({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="default" size="sm" className="gap-2">
-               Actions
+              Actions
               <ChevronDown className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel>Update {selectedCount} test cases</DropdownMenuLabel>
+            <DropdownMenuLabel>
+              Update {selectedCount} test case{selectedCount === 1 ? "" : "s"}
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            
-            <DropdownMenuItem onClick={() => handleActionClick("status")}>
-              <FileText className="h-4 w-4 mr-2" />
-              Change Status
+
+            {/* ✅ FIXED: Always show Approve, disable if no pending */}
+            <DropdownMenuItem
+              onClick={() => handleActionClick("approve")}
+              disabled={pendingCount === 0}
+              className="text-green-600 focus:text-green-700 disabled:text-muted-foreground disabled:opacity-50"
+            >
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Approve & Convert {pendingCount > 0 ? `(${pendingCount})` : ""}
             </DropdownMenuItem>
-            
+
+            {/* ✅ FIXED: Always show Reject, disable if no pending */}
+            <DropdownMenuItem
+              onClick={() => handleActionClick("reject")}
+              disabled={pendingCount === 0}
+              className="text-orange-600 focus:text-orange-700 disabled:text-muted-foreground disabled:opacity-50"
+            >
+              <XCircle className="h-4 w-4 mr-2" />
+              Reject {pendingCount > 0 ? `(${pendingCount})` : ""}
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            {/* Change Priority */}
             <DropdownMenuItem onClick={() => handleActionClick("priority")}>
               <FileText className="h-4 w-4 mr-2" />
               Change Priority
             </DropdownMenuItem>
-            
-            <DropdownMenuItem onClick={() => handleActionClick("project")}>
-              <FolderOpen className="h-4 w-4 mr-2" />
-              Assign to Project
-            </DropdownMenuItem>
-            
-            <DropdownMenuItem onClick={() => handleActionClick("suite")}>
-              <PlayCircle className="h-4 w-4 mr-2" />
-              Add to Suite
-            </DropdownMenuItem>
-            
+
             <DropdownMenuSeparator />
-            
-            <DropdownMenuItem onClick={() => handleActionClick("export")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export as CSV
-            </DropdownMenuItem>
-            
-            <DropdownMenuSeparator />
-            
+
+            {/* Delete */}
             <DropdownMenuItem
               onClick={() => handleActionClick("delete")}
               className="text-destructive focus:text-destructive"
@@ -216,8 +223,11 @@ export function BulkActionsToolbar({
           onOpenChange={setShowDialog}
           action={currentAction}
           selectedCount={selectedCount}
+          type="cross-platform"
+          pendingCount={pendingCount}
           onUpdate={handleBulkUpdate}
-          onAddToSuite={handleAddToSuite}
+          onApprove={handleBulkApprove}
+          onReject={handleBulkReject}
         />
       )}
     </>

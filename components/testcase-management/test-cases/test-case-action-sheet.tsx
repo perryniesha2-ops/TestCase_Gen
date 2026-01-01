@@ -22,6 +22,7 @@ import {
   Trash2,
   AlertCircle,
   CheckCircle2,
+  Play, 
 } from "lucide-react"
 import type { TestCase } from "@/types/test-cases"
 
@@ -32,10 +33,7 @@ interface TestCaseActionSheetProps {
   onEdit: (testCase: TestCase) => void
   onDelete: (testCase: TestCase) => void
   onViewDetails: (testCase: TestCase) => void
-  /**
-   * Retained for compatibility with the caller, but no longer used here
-   * because automation/execution UI was removed per request.
-   */
+  onRunTest: (testCase: TestCase) => void
   isAutomated: boolean
 }
 
@@ -46,6 +44,7 @@ export function TestCaseActionSheet({
   onEdit,
   onDelete,
   onViewDetails,
+  onRunTest,
 }: TestCaseActionSheetProps) {
   const priorityClassName = useMemo(() => {
     const p = testCase?.priority
@@ -161,18 +160,17 @@ export function TestCaseActionSheet({
 
                   <div className="flex gap-2 pt-4 border-t">
                     <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1 h-9 gap-2"
-                      onClick={() => {
-                        onViewDetails(testCase)
-                        onOpenChange(false)
-                      }}
-                    >
-                      <Eye className="h-4 w-4" />
-                      Full Details View
-                    </Button>
-
+              size="sm"
+              className="flex-1 h-9 gap-2"
+              onClick={() => {
+                onRunTest(testCase)
+                onOpenChange(false) // close sheet
+              }}
+            >
+              <Play className="h-4 w-4" />
+              Run Test
+            </Button>
+            
                     <Button
                       size="sm"
                       variant="outline"
@@ -236,9 +234,7 @@ export function TestCaseActionSheet({
                     <CheckCircle2 className="h-4 w-4" />
                     Next steps
                   </h4>
-                  <p className="text-sm text-muted-foreground">
-                    Use “Full Details View” to review step coverage, attachments, and execution notes.
-                  </p>
+                  
                 </div>
               ) : null}
             </div>
