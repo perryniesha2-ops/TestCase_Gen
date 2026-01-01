@@ -6,16 +6,10 @@ import { createClient as createAdminClient } from "@supabase/supabase-js"
 
 export const runtime = "nodejs"
 
-type Ctx = {
-  params: {
-    suiteId: string
-  }
-}
-
-
 function extractSuiteIdFromUrl(req: Request): string | null {
   try {
     const { pathname } = new URL(req.url)
+    // expected: /api/suites/<suiteId>/delete
     const parts = pathname.split("/").filter(Boolean)
     const suitesIdx = parts.indexOf("suites")
     const suiteId = suitesIdx >= 0 ? parts[suitesIdx + 1] : null
@@ -25,15 +19,29 @@ function extractSuiteIdFromUrl(req: Request): string | null {
   }
 }
 
-export async function DELETE(req: NextRequest, ctx: Ctx) {
+// Supports ctx.params being either an object OR a Promise<object>
+async function getSuiteIdFromContext(ctx: unknown): Promise<string | null> {
+  const paramsMaybe = (ctx as any)?.params
+  if (!paramsMaybe) return null
+
+  // If it's a Promise, await it; otherwise use as-is
+  const params = typeof paramsMaybe?.then === "function" ? await paramsMaybe : paramsMaybe
+  const suiteId = params?.suiteId
+  return typeof suiteId === "string" && suiteId.trim().length > 0 ? suiteId.trim() : null
+}
+
+export async function DELETE(req: NextRequest, ctx: unknown) {
   try {
-  
-    const suiteId = ctx?.params?.suiteId ?? extractSuiteIdFromUrl(req)
+    const suiteId =
+      (await getSuiteIdFromContext(ctx)) ??
+      extractSuiteIdFromUrl(req)
 
-  if (!suiteId) {
-      return NextResponse.json({ error: "Missing suiteId" }, { status: 400 })
+    if (!suiteId) {
+      return NextResponse.json(
+        { error: "Missing suiteId", debug: { url: req.url } },
+        { status: 400 }
+      )
     }
-
 
     // Auth (cookie-based)
     const supabase = await createClient()
@@ -46,7 +54,7 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Verify suite ownership (use normal client so RLS applies)
+    // Verify suite ownership (RLS applies)
     const { data: suite, error: suiteErr } = await supabase
       .from("test_suites")
       .select("id, user_id")
@@ -61,14 +69,14 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     }
 
     if (!suite) {
-      return NextResponse.json({ error: "Suite not found" }, { status: 404 })
+      return NextResponse.json({ error: "Suite not found", suiteId }, { status: 404 })
     }
 
     if (suite.user_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
-    // Admin client (service role) for updates/deletes that should bypass RLS
+    // Admin client (service role)
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     if (!url || !serviceKey) {
@@ -82,9 +90,8 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
-    // 1) Detach executions so history remains, and suite FK no longer blocks delete
-    //    IMPORTANT: suite_id FK has no ON DELETE SET NULL in your schema.
-    const { error: detachExecErr, count: detachedExecCount } = await admin
+    // 1) Detach executions so suite delete isn't blocked
+    const { error: detachExecErr } = await admin
       .from("test_executions")
       .update({ suite_id: null })
       .eq("suite_id", suiteId)
@@ -96,8 +103,8 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
       )
     }
 
-    // 2) Delete run sessions for suite (execution.session_id will auto-null due to FK ON DELETE SET NULL)
-    const { error: delSessionsErr, count: deletedSessionsCount } = await admin
+    // 2) Delete suite run sessions
+    const { error: delSessionsErr } = await admin
       .from("test_run_sessions")
       .delete()
       .eq("suite_id", suiteId)
@@ -110,7 +117,7 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     }
 
     // 3) Delete suite-case links
-    const { error: delLinksErr, count: deletedLinksCount } = await admin
+    const { error: delLinksErr } = await admin
       .from("test_suite_cases")
       .delete()
       .eq("suite_id", suiteId)
@@ -122,7 +129,7 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
       )
     }
 
-    // 4) Delete suite
+    // 4) Delete suite (and verify it actually deleted)
     const { error: delSuiteErr } = await admin
       .from("test_suites")
       .delete()
@@ -135,13 +142,28 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
       )
     }
 
-    return NextResponse.json({
-      success: true,
-      suiteId,
-      detached_executions: detachedExecCount ?? 0,
-      deleted_sessions: deletedSessionsCount ?? 0,
-      deleted_links: deletedLinksCount ?? 0,
-    })
+    // Confirm it’s gone (prevents “silent no-op”)
+    const { data: stillThere, error: confirmErr } = await admin
+      .from("test_suites")
+      .select("id")
+      .eq("id", suiteId)
+      .maybeSingle()
+
+    if (confirmErr) {
+      return NextResponse.json(
+        { error: "Delete completed but confirmation failed", details: confirmErr.message },
+        { status: 500 }
+      )
+    }
+
+    if (stillThere) {
+      return NextResponse.json(
+        { error: "Suite still exists after delete (no-op)", suiteId },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ success: true, suiteId })
   } catch (err) {
     console.error("suite delete route error:", err)
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 })
