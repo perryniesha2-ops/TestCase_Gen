@@ -1,7 +1,6 @@
 // app/api/suites/[suiteId]/triage/route.ts
 import type { NextRequest } from "next/server"
 import { NextResponse } from "next/server"
-
 import { createClient } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -25,17 +24,13 @@ type TriageRow = {
   title: string
   test_type: string
   priority: Priority
-
   eligible: boolean
   category: TriageCategory
-
   value: number
   effort: number
   confidence: number
-
   reasons: string[]
   fix_suggestions: FixSuggestion[]
-
   has_script?: boolean
   script_status?: string | null
 }
@@ -58,7 +53,6 @@ type TestCaseShape = {
   automation_status?: string | null
 }
 
-
 function extractSuiteIdFromUrl(req: Request): string | null {
   try {
     const { pathname } = new URL(req.url)
@@ -66,7 +60,7 @@ function extractSuiteIdFromUrl(req: Request): string | null {
     const parts = pathname.split("/").filter(Boolean)
     const suitesIdx = parts.indexOf("suites")
     const suiteId = suitesIdx >= 0 ? parts[suitesIdx + 1] : null
-    return suiteId && suiteId.length > 0 ? suiteId : null
+    return suiteId && suiteId.trim().length > 0 ? suiteId.trim() : null
   } catch {
     return null
   }
@@ -190,7 +184,7 @@ function scoreConfidence(tc: TestCaseShape): number {
   if (steps.length === 0) return 0
 
   const incomplete = steps.filter((s) => !(s.action ?? "").trim() || !(s.expected ?? "").trim()).length
-  const vague = steps.filter((s) => isVague(s.expected ?? "")).length
+const vague = steps.filter((s) => isVague(s.expected ?? "")).length
 
   const hasExpectedResult = Boolean(tc.expected_result && tc.expected_result.trim().length > 0)
   const hasPreconditions = Boolean(tc.preconditions && tc.preconditions.trim().length > 0)
@@ -229,17 +223,22 @@ function buildReasons(tc: TestCaseShape, value: number, effort: number, confiden
   return reasons.slice(0, 3)
 }
 
-// -----------------------------
-// Handler (canonical signature)
-// -----------------------------
-export async function GET(req: Request, { params }: { params: { suiteId: string } }) {
+type RouteCtx = { params: { suiteId: string } } | { params: Promise<{ suiteId: string }> }
+
+async function readSuiteId(req: NextRequest, ctx: RouteCtx): Promise<string | null> {
+  const p: any = (ctx as any).params
+  const resolved = typeof p?.then === "function" ? await p : p
+  const suiteId = resolved?.suiteId ? String(resolved.suiteId) : null
+  return suiteId ?? extractSuiteIdFromUrl(req)
+}
+
+export async function GET(req: NextRequest, ctx: RouteCtx) {
   try {
-    // Canonical params, plus optional fallback
-    const suiteId = params?.suiteId ?? extractSuiteIdFromUrl(req)
+    const suiteId = await readSuiteId(req, ctx)
 
     if (!suiteId) {
       return NextResponse.json(
-        { error: "Missing suiteId", debug: { url: req.url, params: params ?? null } },
+        { error: "Missing suiteId", debug: { url: req.url } },
         { status: 400 }
       )
     }
@@ -292,7 +291,7 @@ export async function GET(req: Request, { params }: { params: { suiteId: string 
       return NextResponse.json(empty)
     }
 
-    // OPTIONAL: script status lookup (remove this whole block if you’re removing automation)
+    // OPTIONAL: script status lookup (remove if you’re removing automation)
     const ids = testCases.map((tc) => tc.id)
     const { data: scripts } = await supabase
       .from("automation_scripts")
