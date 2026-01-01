@@ -1,4 +1,5 @@
 // app/api/test-cases/[testCaseId]/improve/route.ts
+import type { NextRequest } from "next/server"
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import OpenAI from "openai"
@@ -13,7 +14,7 @@ type ImproveResponse = {
   preconditions?: string | null
   expected_result: string
   test_steps: TestStep[]
-  notes?: string[] // optional rationale bullets
+  notes?: string[]
 }
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
@@ -32,10 +33,17 @@ function isValidSteps(steps: unknown): steps is TestStep[] {
   )
 }
 
-export async function POST(
-  req: Request,
-  { params }: { params: { testCaseId: string } }
-) {
+type RouteCtx =
+  | { params: { testCaseId: string } }
+  | { params: Promise<{ testCaseId: string }> }
+
+async function readTestCaseId(ctx: RouteCtx): Promise<string> {
+  const p: any = (ctx as any).params
+  const resolved = typeof p?.then === "function" ? await p : p
+  return String(resolved?.testCaseId ?? "")
+}
+
+export async function POST(req: NextRequest, ctx: RouteCtx) {
   try {
     const supabase = await createClient()
     const {
@@ -47,7 +55,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const testCaseId = params.testCaseId
+    const testCaseId = await readTestCaseId(ctx)
     if (!testCaseId) {
       return NextResponse.json({ error: "Missing testCaseId" }, { status: 400 })
     }
@@ -62,7 +70,9 @@ export async function POST(
 
     const { data: tc, error: tcErr } = await supabase
       .from("test_cases")
-      .select("id, user_id, title, description, preconditions, test_steps, expected_result, test_type, priority")
+      .select(
+        "id, user_id, title, description, preconditions, test_steps, expected_result, test_type, priority"
+      )
       .eq("id", testCaseId)
       .eq("user_id", user.id)
       .single()
@@ -113,13 +123,9 @@ Steps JSON: ${JSON.stringify(tc.test_steps ?? [], null, 2)}
     const parsed = JSON.parse(content) as ImproveResponse
 
     if (!parsed.expected_result || !isValidSteps(parsed.test_steps)) {
-      return NextResponse.json(
-        { error: "Model returned invalid structure" },
-        { status: 502 }
-      )
+      return NextResponse.json({ error: "Model returned invalid structure" }, { status: 502 })
     }
 
-    // normalize step numbers
     const normalizedSteps = parsed.test_steps.map((s, idx) => ({
       step_number: idx + 1,
       action: s.action.trim(),
@@ -133,8 +139,6 @@ Steps JSON: ${JSON.stringify(tc.test_steps ?? [], null, 2)}
         expected_result: parsed.expected_result.trim(),
         test_steps: normalizedSteps,
         updated_at: new Date().toISOString(),
-        // optional: mark automatable
-        // automation_status: "automatable",
       })
       .eq("id", tc.id)
       .eq("user_id", user.id)
