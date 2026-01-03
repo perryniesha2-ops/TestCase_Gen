@@ -1,8 +1,8 @@
-import Link from "next/link"
-import { ArrowRight, Sparkles } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { MotionDiv } from "./motion"
-import { CheckCircle2 } from "lucide-react"
+import Link from "next/link";
+import { ArrowRight, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { MotionDiv } from "./motion";
+import { CheckCircle2 } from "lucide-react";
 
 export function ScreenshotShowcase() {
   return (
@@ -13,29 +13,38 @@ export function ScreenshotShowcase() {
             From requirement → suite → execution
           </h3>
           <p className="text-sm text-muted-foreground sm:text-base">
-            Paste a requirement, pick coverage and platforms, and generate reviewable test cases.
-            Save them into suites, run them continuously, and report on health across releases.
+            Paste a requirement, pick coverage and platforms, and generate
+            reviewable test cases. Save them into suites, run them continuously,
+            and report on health across releases.
           </p>
           <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
             <li className="flex items-start gap-2">
               <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
-              <span>Adjust coverage and negative paths by story, epic, or suite.</span>
+              <span>
+                Adjust coverage and negative paths by story, epic, or suite.
+              </span>
             </li>
             <li className="flex items-start gap-2">
               <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
-              <span>Templates for API, UI, mobile, accessibility and performance testing.</span>
+              <span>
+                Templates for API, UI, mobile, accessibility and performance
+                testing.
+              </span>
             </li>
             <li className="flex items-start gap-2">
               <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
-              <span>Cost meter, model controls and export-ready formats (CSV, Jira, and more).</span>
+              <span>
+                Cost meter, model controls and export-ready formats (CSV, Jira,
+                and more).
+              </span>
             </li>
           </ul>
           <div className="mt-5 flex flex-wrap gap-3">
             <Button asChild>
-              <Link href="/pages/signup">Try SynthQA free</Link>
+              <Link href="/signup">Try SynthQA free</Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/pages/generate">Open generator</Link>
+              <Link href="/generate">Open generator</Link>
             </Button>
           </div>
         </div>
@@ -46,12 +55,14 @@ export function ScreenshotShowcase() {
               <span className="h-2 w-2 rounded-full bg-red-400" />
               <span className="h-2 w-2 rounded-full bg-amber-300" />
               <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              <span className="ml-3 text-xs text-muted-foreground">synthqa.app · Test suites</span>
+              <span className="ml-3 text-xs text-muted-foreground">
+                synthqa.app · Test suites
+              </span>
             </div>
             <div className="aspect-[16/10] w-full bg-muted/40" />
           </div>
         </div>
       </div>
     </section>
-  )
+  );
 }

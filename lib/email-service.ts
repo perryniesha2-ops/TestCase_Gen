@@ -1,42 +1,42 @@
 // lib/email-service.ts
-import { Resend } from 'resend'
+import { Resend } from "resend";
 
 export interface ResetEmailData {
-  to: string
-  token: string
-  expiresAt: Date
+  to: string;
+  token: string;
+  expiresAt: Date;
 }
 
 export interface ConfirmationEmailData {
-  to: string
-  token: string
-  expiresAt: Date
-  userName?: string
+  to: string;
+  token: string;
+  expiresAt: Date;
+  userName?: string;
 }
 
 export class EmailService {
-  private resend: Resend | null = null
-  private apiKey: string
+  private resend: Resend | null = null;
+  private apiKey: string;
 
   constructor(apiKey: string) {
-    this.apiKey = apiKey
+    this.apiKey = apiKey;
   }
 
   // Lazy initialization of Resend client
   private getResend(): Resend {
     if (!this.resend) {
       if (!this.apiKey) {
-        throw new Error('Resend API key is not configured')
+        throw new Error("Resend API key is not configured");
       }
-      this.resend = new Resend(this.apiKey)
+      this.resend = new Resend(this.apiKey);
     }
-    return this.resend
+    return this.resend;
   }
 
   // Send password reset email
   async sendPasswordResetEmail(data: ResetEmailData): Promise<boolean> {
-    const resetUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/pages/reset-password?token=${data.token}`
-    
+    const resetUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password?token=${data.token}`;
+
     const emailHtml = `
       <!DOCTYPE html>
       <html>
@@ -103,34 +103,34 @@ export class EmailService {
           </div>
         </body>
       </html>
-    `
+    `;
 
     try {
-      const resend = this.getResend()
+      const resend = this.getResend();
       const { data: emailData, error } = await resend.emails.send({
-        from: process.env.RESEND_FROM || 'SynthQA <onboarding@resend.dev>',
+        from: process.env.RESEND_FROM || "SynthQA <onboarding@resend.dev>",
         to: data.to,
-        subject: '🔐 Reset Your Password - SynthQA',
-        html: emailHtml
-      })
+        subject: "🔐 Reset Your Password - SynthQA",
+        html: emailHtml,
+      });
 
       if (error) {
-        console.error('Password reset email error:', error)
-        return false
+        console.error("Password reset email error:", error);
+        return false;
       }
 
-      return true
+      return true;
     } catch (error) {
-      console.error('Password reset email send failed:', error)
-      return false
+      console.error("Password reset email send failed:", error);
+      return false;
     }
   }
 
   // Send email confirmation email
   async sendConfirmationEmail(data: ConfirmationEmailData): Promise<boolean> {
-    const confirmUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/pages/confirm-email?token=${data.token}`
-    const userName = data.userName || 'there'
-    
+    const confirmUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/confirm-email?token=${data.token}`;
+    const userName = data.userName || "there";
+
     const emailHtml = `
       <!DOCTYPE html>
       <html>
@@ -164,7 +164,9 @@ export class EmailService {
             </div>
             
             <div class="content">
-              <p style="font-size: 18px; margin-bottom: 20px;">Hello${userName !== 'there' ? ` ${userName}` : ''},</p>
+              <p style="font-size: 18px; margin-bottom: 20px;">Hello${
+                userName !== "there" ? ` ${userName}` : ""
+              },</p>
               
               <p style="font-size: 16px; line-height: 1.6;">Welcome to SynthQA! We're excited to have you on board. To get started, please confirm your email address by clicking the button below:</p>
               
@@ -204,55 +206,55 @@ export class EmailService {
           </div>
         </body>
       </html>
-    `
+    `;
 
     try {
-      const resend = this.getResend()
+      const resend = this.getResend();
       const { data: emailData, error } = await resend.emails.send({
-        from: process.env.RESEND_FROM || 'SynthQA <onboarding@resend.dev>',
+        from: process.env.RESEND_FROM || "SynthQA <onboarding@resend.dev>",
         to: data.to,
-        subject: '🎉 Welcome to SynthQA! Please confirm your email',
-        html: emailHtml
-      })
+        subject: "🎉 Welcome to SynthQA! Please confirm your email",
+        html: emailHtml,
+      });
 
       if (error) {
-        console.error('Confirmation email error:', error)
-        return false
+        console.error("Confirmation email error:", error);
+        return false;
       }
 
-      return true
+      return true;
     } catch (error) {
-      console.error('Confirmation email send failed:', error)
-      return false
+      console.error("Confirmation email send failed:", error);
+      return false;
     }
   }
 
   // Test Resend connection
   async testConnection(): Promise<boolean> {
     try {
-      const response = await fetch('https://api.resend.com/domains', {
+      const response = await fetch("https://api.resend.com/domains", {
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      
-      return response.ok
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      return response.ok;
     } catch (error) {
-      console.error('Resend connection test failed:', error)
-      return false
+      console.error("Resend connection test failed:", error);
+      return false;
     }
   }
 }
 
 // Factory function to create email service with Resend
 export function createEmailService(): EmailService | null {
-  const apiKey = process.env.RESEND_API_KEY
+  const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {
-    console.error('RESEND_API_KEY environment variable is not set')
-    return null
+    console.error("RESEND_API_KEY environment variable is not set");
+    return null;
   }
 
-  return new EmailService(apiKey)
+  return new EmailService(apiKey);
 }

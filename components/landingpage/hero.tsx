@@ -1,12 +1,12 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { motion, useReducedMotion, type Variants } from "framer-motion"
-import { ArrowRight, CheckCircle2, Sparkles } from "lucide-react"
+import Link from "next/link";
+import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { ArrowRight, CheckCircle2, Sparkles } from "lucide-react";
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 const container: Variants = {
   hidden: { opacity: 0 },
@@ -14,7 +14,7 @@ const container: Variants = {
     opacity: 1,
     transition: { staggerChildren: 0.07, delayChildren: 0.05 },
   },
-}
+};
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 14 },
@@ -23,15 +23,15 @@ const fadeUp: Variants = {
     y: 0,
     transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] },
   },
-}
+};
 
 const fadeIn: Variants = {
   hidden: { opacity: 0 },
   show: { opacity: 1, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } },
-}
+};
 
 export function Hero() {
-  const reduce = useReducedMotion()
+  const reduce = useReducedMotion();
 
   return (
     <section className="border-b">
@@ -59,16 +59,23 @@ export function Hero() {
               in minutes.
             </h1>
             <p className="text-balance text-base text-muted-foreground sm:text-lg">
-              SynthQA combines OpenAI & Anthropic to generate structured, cross-platform test
-              suites—with steps, inputs, and assertions you can actually run and maintain.
+              SynthQA combines OpenAI & Anthropic to generate structured,
+              cross-platform test suites—with steps, inputs, and assertions you
+              can actually run and maintain.
             </p>
           </motion.div>
 
-          <motion.div variants={fadeUp} className="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+          <motion.div
+            variants={fadeUp}
+            className="flex flex-wrap items-center justify-center gap-3 lg:justify-start"
+          >
             {/* CTA micro-interactions */}
-            <motion.div whileHover={reduce ? undefined : { y: -2 }} whileTap={reduce ? undefined : { scale: 0.98 }}>
+            <motion.div
+              whileHover={reduce ? undefined : { y: -2 }}
+              whileTap={reduce ? undefined : { scale: 0.98 }}
+            >
               <Button asChild size="lg" className="gap-2">
-                <Link href="/pages/signup">
+                <Link href="/signup">
                   Start free
                   <motion.span
                     className="inline-flex"
@@ -81,7 +88,10 @@ export function Hero() {
               </Button>
             </motion.div>
 
-            <motion.div whileHover={reduce ? undefined : { y: -2 }} whileTap={reduce ? undefined : { scale: 0.98 }}>
+            <motion.div
+              whileHover={reduce ? undefined : { y: -2 }}
+              whileTap={reduce ? undefined : { scale: 0.98 }}
+            >
               <Button asChild size="lg" variant="outline">
                 <Link href="#demo">Watch product overview</Link>
               </Button>
@@ -92,7 +102,10 @@ export function Hero() {
             No credit card required · Designed for QA engineers, SDETs & teams
           </motion.p>
 
-          <motion.div variants={fadeUp} className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-3">
+          <motion.div
+            variants={fadeUp}
+            className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-3"
+          >
             {[
               "Web, mobile & API coverage in one place",
               "Edge cases, negatives & regression suites",
@@ -129,7 +142,11 @@ export function Hero() {
                     "radial-gradient(600px 260px at 20% 30%, hsl(var(--primary) / 0.25), transparent 60%), radial-gradient(520px 240px at 80% 60%, hsl(var(--primary) / 0.18), transparent 60%)",
                 }}
                 animate={{ x: [0, 18, -12, 0], y: [0, -10, 14, 0] }}
-                transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+                transition={{
+                  duration: 10,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
               />
             )}
 
@@ -157,8 +174,8 @@ export function Hero() {
                     Requirement
                   </div>
                   <p>
-                    “As a user, I want to log in with email and password so that I can access my
-                    dashboard.”
+                    “As a user, I want to log in with email and password so that
+                    I can access my dashboard.”
                   </p>
                 </div>
 
@@ -197,5 +214,5 @@ export function Hero() {
         </motion.div>
       </div>
     </section>
-  )
+  );
 }

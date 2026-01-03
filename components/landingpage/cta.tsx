@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { motion, useReducedMotion } from "framer-motion"
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { motion, useReducedMotion } from "framer-motion";
 
 export function CTA() {
-  const reduceMotion = useReducedMotion()
+  const reduceMotion = useReducedMotion();
 
   return (
     <motion.section
@@ -22,20 +22,23 @@ export function CTA() {
             Start free. Upgrade when your team is ready.
           </h3>
           <p className="text-sm text-muted-foreground sm:text-base">
-            Generate up to 50 test cases on the free tier. Move to paid when you need higher
-            volume, team workspaces, and advanced reporting.
+            Generate up to 50 test cases on the free tier. Move to paid when you
+            need higher volume, team workspaces, and advanced reporting.
           </p>
         </div>
 
         <div className="mt-6 flex flex-wrap justify-center gap-3">
-          <motion.div whileHover={reduceMotion ? undefined : { scale: 1.02 }} transition={{ duration: 0.15 }}>
+          <motion.div
+            whileHover={reduceMotion ? undefined : { scale: 1.02 }}
+            transition={{ duration: 0.15 }}
+          >
             <Button asChild size="lg">
-              <Link href="/pages/signup">Create account</Link>
+              <Link href="/signup">Create account</Link>
             </Button>
           </motion.div>
 
           <Button asChild size="lg" variant="outline">
-            <Link href="/pages/pricing">View pricing & limits</Link>
+            <Link href="/pricing">View pricing & limits</Link>
           </Button>
         </div>
 
@@ -44,5 +47,5 @@ export function CTA() {
         </p>
       </div>
     </motion.section>
-  )
+  );
 }

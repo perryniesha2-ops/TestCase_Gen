@@ -1,14 +1,14 @@
-// app/pages/test-cases/components/test-case-form-dialog.tsx
-"use client"
+// app/test-cases/components/test-case-form-dialog.tsx
+"use client";
 
-import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { toast } from "sonner"
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -16,27 +16,27 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 
-import { Loader2, Save, X, Plus, Trash2, FolderOpen } from "lucide-react"
+import { Loader2, Save, X, Plus, Trash2, FolderOpen } from "lucide-react";
 
-import type { TestCase, TestCaseForm, Project } from "@/types/test-cases"
-import { testTypes } from "@/types/test-cases"
+import type { TestCase, TestCaseForm, Project } from "@/types/test-cases";
+import { testTypes } from "@/types/test-cases";
 
 interface TestCaseFormDialogProps {
-  open: boolean
-  mode: "create" | "edit"
-  testCase?: TestCase | null
-  generationId?: string | null
-  onClose: () => void
-  onSuccess: () => void
+  open: boolean;
+  mode: "create" | "edit";
+  testCase?: TestCase | null;
+  generationId?: string | null;
+  onClose: () => void;
+  onSuccess: () => void;
 }
 
 export function TestCaseFormDialog({
@@ -57,26 +57,26 @@ export function TestCaseFormDialog({
     expected_result: "",
     status: "draft",
     project_id: null,
-  })
+  });
 
-  const [saving, setSaving] = useState(false)
-  const [projects, setProjects] = useState<Project[]>([])
+  const [saving, setSaving] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
 
   // Fetch projects on mount
   useEffect(() => {
-    void fetchProjects()
+    void fetchProjects();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []);
 
   // Populate form when editing / reset when creating
   useEffect(() => {
-    if (!open) return
+    if (!open) return;
 
     if (mode === "edit" && testCase) {
-      const testTypesList = testTypes as readonly string[]
+      const testTypesList = testTypes as readonly string[];
       const normalizedTestType = testTypesList.includes(testCase.test_type)
         ? testCase.test_type
-        : "functional"
+        : "functional";
 
       setFormData({
         title: testCase.title,
@@ -88,34 +88,34 @@ export function TestCaseFormDialog({
         expected_result: testCase.expected_result,
         status: testCase.status,
         project_id: testCase.project_id || null,
-      })
-      return
+      });
+      return;
     }
 
     if (mode === "create") {
-      resetForm()
+      resetForm();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, testCase, open])
+  }, [mode, testCase, open]);
 
   async function fetchProjects() {
     try {
-      const supabase = createClient()
+      const supabase = createClient();
       const {
         data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) return
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
       const { data, error } = await supabase
         .from("projects")
         .select("id, name, color, icon")
         .eq("user_id", user.id)
-        .order("name")
+        .order("name");
 
-      if (error) throw error
-      setProjects(data || [])
+      if (error) throw error;
+      setProjects(data || []);
     } catch (error) {
-      console.error("Error fetching projects:", error)
+      console.error("Error fetching projects:", error);
     }
   }
 
@@ -130,7 +130,7 @@ export function TestCaseFormDialog({
       expected_result: "",
       status: "draft",
       project_id: null,
-    })
+    });
   }
 
   function addTestStep() {
@@ -140,7 +140,7 @@ export function TestCaseFormDialog({
         ...prev.test_steps,
         { step_number: prev.test_steps.length + 1, action: "", expected: "" },
       ],
-    }))
+    }));
   }
 
   function removeTestStep(index: number) {
@@ -149,47 +149,55 @@ export function TestCaseFormDialog({
       test_steps: prev.test_steps
         .filter((_, i) => i !== index)
         .map((step, i) => ({ ...step, step_number: i + 1 })),
-    }))
+    }));
   }
 
-  function updateTestStep(index: number, field: "action" | "expected", value: string) {
+  function updateTestStep(
+    index: number,
+    field: "action" | "expected",
+    value: string
+  ) {
     setFormData((prev) => ({
       ...prev,
       test_steps: prev.test_steps.map((step, i) =>
         i === index ? { ...step, [field]: value } : step
       ),
-    }))
+    }));
   }
 
   async function handleSubmit() {
-    setSaving(true)
+    setSaving(true);
     try {
-      const supabase = createClient()
+      const supabase = createClient();
       const {
         data: { user },
-      } = await supabase.auth.getUser()
+      } = await supabase.auth.getUser();
 
       if (!user) {
-        toast.error("Please log in to save test cases")
-        return
+        toast.error("Please log in to save test cases");
+        return;
       }
 
-      if (!formData.title.trim() || !formData.description.trim() || !formData.expected_result.trim()) {
-        toast.error("Please fill in all required fields")
-        return
+      if (
+        !formData.title.trim() ||
+        !formData.description.trim() ||
+        !formData.expected_result.trim()
+      ) {
+        toast.error("Please fill in all required fields");
+        return;
       }
 
       if (!formData.test_steps?.length) {
-        toast.error("Add at least one test step")
-        return
+        toast.error("Add at least one test step");
+        return;
       }
 
       const hasIncompleteSteps = formData.test_steps.some(
         (s) => !s.action.trim() || !s.expected.trim()
-      )
+      );
       if (hasIncompleteSteps) {
-        toast.error("Please complete all test steps")
-        return
+        toast.error("Please complete all test steps");
+        return;
       }
 
       if (mode === "create") {
@@ -212,12 +220,12 @@ export function TestCaseFormDialog({
             project_id: formData.project_id,
           })
           .select()
-          .single()
+          .single();
 
-        if (error) throw error
-        toast.success("Test case created successfully")
+        if (error) throw error;
+        toast.success("Test case created successfully");
       } else {
-        if (!testCase) return
+        if (!testCase) return;
 
         const { error } = await supabase
           .from("test_cases")
@@ -233,26 +241,28 @@ export function TestCaseFormDialog({
             project_id: formData.project_id,
             updated_at: new Date().toISOString(),
           })
-          .eq("id", testCase.id)
+          .eq("id", testCase.id);
 
-        if (error) throw error
-        toast.success("Test case updated successfully")
+        if (error) throw error;
+        toast.success("Test case updated successfully");
       }
 
-      onSuccess()
-      onClose()
-      resetForm()
+      onSuccess();
+      onClose();
+      resetForm();
     } catch (error) {
-      console.error("Error saving test case:", error)
-      toast.error(`Failed to ${mode === "create" ? "create" : "update"} test case`)
+      console.error("Error saving test case:", error);
+      toast.error(
+        `Failed to ${mode === "create" ? "create" : "update"} test case`
+      );
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   function handleClose() {
-    onClose()
-    resetForm()
+    onClose();
+    resetForm();
   }
 
   return (
@@ -292,7 +302,9 @@ export function TestCaseFormDialog({
             <Input
               id="title"
               value={formData.title}
-              onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, title: e.target.value }))
+              }
               placeholder="Enter test case title"
               required
             />
@@ -303,7 +315,9 @@ export function TestCaseFormDialog({
               <Label htmlFor="test_type">Test Type</Label>
               <Select
                 value={formData.test_type}
-                onValueChange={(value) => setFormData((prev) => ({ ...prev, test_type: value }))}
+                onValueChange={(value) =>
+                  setFormData((prev) => ({ ...prev, test_type: value }))
+                }
               >
                 <SelectTrigger id="test_type">
                   <SelectValue placeholder="Select test type" />
@@ -322,9 +336,9 @@ export function TestCaseFormDialog({
               <Label htmlFor="priority">Priority</Label>
               <Select
                 value={formData.priority}
-                onValueChange={(value: "low" | "medium" | "high" | "critical") =>
-                  setFormData((prev) => ({ ...prev, priority: value }))
-                }
+                onValueChange={(
+                  value: "low" | "medium" | "high" | "critical"
+                ) => setFormData((prev) => ({ ...prev, priority: value }))}
               >
                 <SelectTrigger id="priority">
                   <SelectValue placeholder="Select priority" />
@@ -362,7 +376,10 @@ export function TestCaseFormDialog({
               <Select
                 value={formData.project_id || "none"}
                 onValueChange={(value) =>
-                  setFormData((prev) => ({ ...prev, project_id: value === "none" ? null : value }))
+                  setFormData((prev) => ({
+                    ...prev,
+                    project_id: value === "none" ? null : value,
+                  }))
                 }
               >
                 <SelectTrigger id="project">
@@ -390,7 +407,12 @@ export function TestCaseFormDialog({
             <Textarea
               id="description"
               value={formData.description}
-              onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  description: e.target.value,
+                }))
+              }
               placeholder="Describe what this test case covers"
               rows={3}
               required
@@ -402,7 +424,12 @@ export function TestCaseFormDialog({
             <Textarea
               id="preconditions"
               value={formData.preconditions}
-              onChange={(e) => setFormData((prev) => ({ ...prev, preconditions: e.target.value }))}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  preconditions: e.target.value,
+                }))
+              }
               placeholder="Any prerequisites or setup required before running this test"
               rows={2}
             />
@@ -411,7 +438,12 @@ export function TestCaseFormDialog({
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
               <Label>Test Steps *</Label>
-              <Button type="button" variant="outline" size="sm" onClick={addTestStep}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addTestStep}
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Step
               </Button>
@@ -419,9 +451,14 @@ export function TestCaseFormDialog({
 
             <div className="space-y-3">
               {formData.test_steps.map((step, index) => (
-                <div key={step.step_number} className="border rounded-lg p-4 space-y-3">
+                <div
+                  key={step.step_number}
+                  className="border rounded-lg p-4 space-y-3"
+                >
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm">Step {step.step_number}</span>
+                    <span className="font-medium text-sm">
+                      Step {step.step_number}
+                    </span>
                     {formData.test_steps.length > 1 && (
                       <Button
                         type="button"
@@ -441,7 +478,9 @@ export function TestCaseFormDialog({
                     <Input
                       id={`action-${index}`}
                       value={step.action}
-                      onChange={(e) => updateTestStep(index, "action", e.target.value)}
+                      onChange={(e) =>
+                        updateTestStep(index, "action", e.target.value)
+                      }
                       placeholder="What action should be performed?"
                       required
                     />
@@ -452,7 +491,9 @@ export function TestCaseFormDialog({
                     <Input
                       id={`expected-${index}`}
                       value={step.expected}
-                      onChange={(e) => updateTestStep(index, "expected", e.target.value)}
+                      onChange={(e) =>
+                        updateTestStep(index, "expected", e.target.value)
+                      }
                       placeholder="What should happen after performing the action?"
                       required
                     />
@@ -467,7 +508,12 @@ export function TestCaseFormDialog({
             <Textarea
               id="expected_result"
               value={formData.expected_result}
-              onChange={(e) => setFormData((prev) => ({ ...prev, expected_result: e.target.value }))}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  expected_result: e.target.value,
+                }))
+              }
               placeholder="What should be the final outcome of this test case?"
               rows={3}
               required
@@ -489,11 +535,15 @@ export function TestCaseFormDialog({
               !formData.expected_result.trim()
             }
           >
-            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+            {saving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
             {mode === "create" ? "Create Test Case" : "Update Test Case"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

@@ -8,7 +8,13 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
@@ -73,7 +79,7 @@ const plans: Plan[] = [
     name: "Free",
     price: 0,
     yearlyPrice: 0,
-    description: "Perfect for getting started", 
+    description: "Perfect for getting started",
     icon: Sparkles,
     features: [
       { name: "20 AI-generated test cases/month", included: true }, // Updated from 10
@@ -192,7 +198,11 @@ const faqs = [
 // ------------------------- Helpers -------------------------
 
 function fmtUSD(n: number) {
-  return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  return n.toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
 }
 function priceFor(plan: Plan, isYearly: boolean): number | null {
   return isYearly ? plan.yearlyPrice : plan.price;
@@ -206,7 +216,10 @@ function yearlySavings(plan: Plan): number {
 function usagePct(u?: UserProfile["usage"]): number {
   if (!u) return 0;
   if (u.monthly_limit <= 0) return 0;
-  return Math.min(100, Math.round((u.test_cases_generated / u.monthly_limit) * 100));
+  return Math.min(
+    100,
+    Math.round((u.test_cases_generated / u.monthly_limit) * 100)
+  );
 }
 
 // ------------------------- Page -------------------------
@@ -220,71 +233,84 @@ export default function BillingPage() {
   const router = useRouter();
   const supabase = createClient();
 
-React.useEffect(() => {
-  (async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push("/pages/login");
-        return;
-      }
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) {
+          router.push("/login");
+          return;
+        }
 
-      // Fetch real user profile from database
-      const { data: profile, error } = await supabase
-        .from('user_profiles')
-        .select(`
+        // Fetch real user profile from database
+        const { data: profile, error } = await supabase
+          .from("user_profiles")
+          .select(
+            `
           *,
           user_usage(
             test_cases_generated,
             api_calls_used,
             monthly_limit_test_cases
           )
-        `)
-        .eq('id', user.id)
-        .single();
+        `
+          )
+          .eq("id", user.id)
+          .single();
 
-      if (error) {
-        console.error('Error fetching profile:', error);
-        // Fallback to mock data if database isn't set up yet
-        const mock: UserProfile = {
-          id: user.id,
-          email: user.email || "",
-          subscription_tier: "free",
-          subscription_status: "active",
-          usage: { test_cases_generated: 3, api_calls_used: 15, monthly_limit: 10 },
-        };
-        setUser(mock);
-      } else {
-        // Use real data from database
-        const realProfile: UserProfile = {
-          id: profile.id,
-          email: profile.email,
-          subscription_tier: profile.subscription_tier || 'free',
-          subscription_status: profile.subscription_status || 'active',
-          trial_ends_at: profile.trial_ends_at,
-          usage: {
-            test_cases_generated: profile.user_usage?.[0]?.test_cases_generated || 0,
-            api_calls_used: profile.user_usage?.[0]?.api_calls_used || 0,
-            monthly_limit: profile.user_usage?.[0]?.monthly_limit_test_cases || 10,
-          },
-        };
-        setUser(realProfile);
+        if (error) {
+          console.error("Error fetching profile:", error);
+          // Fallback to mock data if database isn't set up yet
+          const mock: UserProfile = {
+            id: user.id,
+            email: user.email || "",
+            subscription_tier: "free",
+            subscription_status: "active",
+            usage: {
+              test_cases_generated: 3,
+              api_calls_used: 15,
+              monthly_limit: 10,
+            },
+          };
+          setUser(mock);
+        } else {
+          // Use real data from database
+          const realProfile: UserProfile = {
+            id: profile.id,
+            email: profile.email,
+            subscription_tier: profile.subscription_tier || "free",
+            subscription_status: profile.subscription_status || "active",
+            trial_ends_at: profile.trial_ends_at,
+            usage: {
+              test_cases_generated:
+                profile.user_usage?.[0]?.test_cases_generated || 0,
+              api_calls_used: profile.user_usage?.[0]?.api_calls_used || 0,
+              monthly_limit:
+                profile.user_usage?.[0]?.monthly_limit_test_cases || 10,
+            },
+          };
+          setUser(realProfile);
+        }
+      } catch (e) {
+        console.error(e);
+        toast.error("Failed to load billing information");
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      console.error(e);
-      toast.error("Failed to load billing information");
-    } finally {
-      setLoading(false);
-    }
-  })();
-}, [router, supabase]);
+    })();
+  }, [router, supabase]);
 
   async function handleSubscribe(planId: Tier) {
     if (!user) return;
     setBillingLoading(true);
     try {
       if (planId === "enterprise") {
-        window.open("mailto:sales@synthqa.com?subject=Enterprise Plan Inquiry", "_blank");
+        window.open(
+          "mailto:sales@synthqa.com?subject=Enterprise Plan Inquiry",
+          "_blank"
+        );
         return;
       }
       if (planId === "free") {
@@ -320,28 +346,54 @@ React.useEffect(() => {
     );
   }
 
-  const currentPlan = plans.find((p) => p.id === user?.subscription_tier) ?? plans[0];
+  const currentPlan =
+    plans.find((p) => p.id === user?.subscription_tier) ?? plans[0];
 
   return (
     <div className="relative">
       {/* subtle bg gradient */}
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-[-15%] -z-10 h-[420px] bg-gradient-to-b from-primary/10 via-primary/5 to-transparent" />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-[-15%] -z-10 h-[420px] bg-gradient-to-b from-primary/10 via-primary/5 to-transparent"
+      />
 
       <div className="container mx-auto max-w-6xl px-4 py-10">
         <PromotionalBanner />
 
         {/* Header */}
         <div className="mb-10 text-center">
-          <Badge variant="secondary" className="mb-3">Pricing</Badge>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Choose your plan</h1>
-          <p className="mt-2 text-muted-foreground">Start free, upgrade as you grow.</p>
+          <Badge variant="secondary" className="mb-3">
+            Pricing
+          </Badge>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            Choose your plan
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            Start free, upgrade as you grow.
+          </p>
 
           {/* Billing toggle */}
           <div className="mt-6 flex items-center justify-center gap-3">
-            <span className={cn("text-sm", !isYearly ? "font-medium" : "text-muted-foreground")}>Monthly</span>
+            <span
+              className={cn(
+                "text-sm",
+                !isYearly ? "font-medium" : "text-muted-foreground"
+              )}
+            >
+              Monthly
+            </span>
             <Switch checked={isYearly} onCheckedChange={setIsYearly} />
-            <span className={cn("text-sm", isYearly ? "font-medium" : "text-muted-foreground")}>Yearly</span>
-            <Badge variant="outline" className="ml-2">Save up to 20%</Badge>
+            <span
+              className={cn(
+                "text-sm",
+                isYearly ? "font-medium" : "text-muted-foreground"
+              )}
+            >
+              Yearly
+            </span>
+            <Badge variant="outline" className="ml-2">
+              Save up to 20%
+            </Badge>
           </div>
         </div>
 
@@ -353,24 +405,47 @@ React.useEffect(() => {
                 <BarChart3 className="h-5 w-5" />
                 Current usage
               </CardTitle>
-              <CardDescription>Your usage this month on the {currentPlan.name} plan</CardDescription>
+              <CardDescription>
+                Your usage this month on the {currentPlan.name} plan
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
                 <div className="mb-2 flex justify-between text-sm">
                   <span>AI-generated test cases</span>
                   <span>
-                    {user.usage.test_cases_generated} / {user.usage.monthly_limit}
+                    {user.usage.test_cases_generated} /{" "}
+                    {user.usage.monthly_limit}
                   </span>
                 </div>
                 <Progress value={usagePct(user.usage)} />
               </div>
 
               <div className="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Stat icon={FlaskConical} label="Generated" value={String(user.usage.test_cases_generated)} iconClass="text-primary" />
-                <Stat icon={FileText} label="Manual Tests" value="∞" iconClass="text-green-600" />
-                <Stat icon={CreditCard} label="API Calls" value={String(user.usage.api_calls_used)} iconClass="text-blue-600" />
-                <Stat icon={Crown} label="Plan" value={user.subscription_tier.toUpperCase()} iconClass="text-yellow-500" />
+                <Stat
+                  icon={FlaskConical}
+                  label="Generated"
+                  value={String(user.usage.test_cases_generated)}
+                  iconClass="text-primary"
+                />
+                <Stat
+                  icon={FileText}
+                  label="Manual Tests"
+                  value="∞"
+                  iconClass="text-green-600"
+                />
+                <Stat
+                  icon={CreditCard}
+                  label="API Calls"
+                  value={String(user.usage.api_calls_used)}
+                  iconClass="text-blue-600"
+                />
+                <Stat
+                  icon={Crown}
+                  label="Plan"
+                  value={user.subscription_tier.toUpperCase()}
+                  iconClass="text-yellow-500"
+                />
               </div>
             </CardContent>
           </Card>
@@ -394,14 +469,20 @@ React.useEffect(() => {
         <Card className="mb-10">
           <CardHeader>
             <CardTitle>Frequently asked questions</CardTitle>
-            <CardDescription>Everything you need to know about our pricing and plans.</CardDescription>
+            <CardDescription>
+              Everything you need to know about our pricing and plans.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Accordion type="single" collapsible className="w-full">
               {faqs.map((f, i) => (
                 <AccordionItem key={i} value={`item-${i}`}>
-                  <AccordionTrigger className="text-left">{f.q}</AccordionTrigger>
-                  <AccordionContent className="text-muted-foreground">{f.a}</AccordionContent>
+                  <AccordionTrigger className="text-left">
+                    {f.q}
+                  </AccordionTrigger>
+                  <AccordionContent className="text-muted-foreground">
+                    {f.a}
+                  </AccordionContent>
                 </AccordionItem>
               ))}
             </Accordion>
@@ -412,9 +493,12 @@ React.useEffect(() => {
         <Card className="border-primary/30 bg-gradient-to-r from-primary/10 to-primary/5">
           <CardContent className="py-10 text-center">
             <Building className="mx-auto mb-4 h-12 w-12 text-primary" />
-            <h2 className="text-2xl font-semibold tracking-tight">Need something custom?</h2>
+            <h2 className="text-2xl font-semibold tracking-tight">
+              Need something custom?
+            </h2>
             <p className="mx-auto mt-2 max-w-2xl text-muted-foreground">
-              Enterprise plans include custom integrations, on-prem deployment, dedicated support, and unlimited usage.
+              Enterprise plans include custom integrations, on-prem deployment,
+              dedicated support, and unlimited usage.
             </p>
             <div className="mt-6">
               <Button size="lg" onClick={() => handleSubscribe("enterprise")}>
@@ -465,16 +549,33 @@ function PlanCard({
 }) {
   const Icon = plan.icon;
   const price = priceFor(plan, isYearly); // can be null
-  const showSavings = isYearly && plan.price != null && plan.yearlyPrice != null && plan.yearlyPrice < plan.price;
+  const showSavings =
+    isYearly &&
+    plan.price != null &&
+    plan.yearlyPrice != null &&
+    plan.yearlyPrice < plan.price;
   const savings = showSavings ? yearlySavings(plan) : 0;
 
   return (
-    <Card className={cn("relative", plan.popular && "ring-2 ring-primary", isCurrent && "border-primary")}>
+    <Card
+      className={cn(
+        "relative",
+        plan.popular && "ring-2 ring-primary",
+        isCurrent && "border-primary"
+      )}
+    >
       {plan.popular && (
-        <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Most Popular</Badge>
+        <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
+          Most Popular
+        </Badge>
       )}
       <CardHeader className="pb-4 text-center">
-        <Icon className={cn("mx-auto mb-4 h-12 w-12", plan.popular ? "text-primary" : "text-muted-foreground")} />
+        <Icon
+          className={cn(
+            "mx-auto mb-4 h-12 w-12",
+            plan.popular ? "text-primary" : "text-muted-foreground"
+          )}
+        />
         <CardTitle className="text-2xl">{plan.name}</CardTitle>
         <CardDescription>{plan.description}</CardDescription>
         <div className="mt-4">
@@ -483,7 +584,9 @@ function PlanCard({
               <span className="text-4xl font-bold">{fmtUSD(price)}</span>
               <span className="text-muted-foreground">/mo</span>
               {showSavings && (
-                <div className="text-sm font-medium text-green-600">Save {fmtUSD(savings)}/yr</div>
+                <div className="text-sm font-medium text-green-600">
+                  Save {fmtUSD(savings)}/yr
+                </div>
               )}
             </div>
           ) : (
@@ -499,7 +602,9 @@ function PlanCard({
           disabled={billingLoading || isCurrent}
           onClick={onSelect}
         >
-          {billingLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          {billingLoading ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : null}
           {isCurrent ? "Current Plan" : plan.cta}
         </Button>
 
@@ -511,7 +616,9 @@ function PlanCard({
               ) : (
                 <X className="mt-0.5 h-4 w-4 text-muted-foreground" />
               )}
-              <span className={cn(!f.included && "text-muted-foreground")}>{f.name}</span>
+              <span className={cn(!f.included && "text-muted-foreground")}>
+                {f.name}
+              </span>
             </li>
           ))}
         </ul>
@@ -535,8 +642,8 @@ function PromotionalBanner() {
           </div>
         </div>
         <p className="text-center text-green-700 mt-2">
-          Get <strong>20 free AI-generated test cases</strong> per month instead of 10. 
-          No credit card required. Limited to first 50 users!
+          Get <strong>20 free AI-generated test cases</strong> per month instead
+          of 10. No credit card required. Limited to first 50 users!
         </p>
       </CardContent>
     </Card>

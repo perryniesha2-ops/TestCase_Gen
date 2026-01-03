@@ -1,16 +1,27 @@
 // app/(dashboard)/guides/browser-extension-troubleshooting/page.tsx
-"use client"
+"use client";
 
-import * as React from "react"
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -28,20 +39,20 @@ import {
   Play,
   Code2,
   ListChecks,
-} from "lucide-react"
-import {Logo} from '@/components/pagecomponents/brandlogo'
-import {Footer} from '@/components/landingpage/footer'
+} from "lucide-react";
+import { Logo } from "@/components/pagecomponents/brandlogo";
+import { Footer } from "@/components/landingpage/footer";
 
-type TocItem = { id: string; title: string; icon?: React.ReactNode }
+type TocItem = { id: string; title: string; icon?: React.ReactNode };
 
 function CodeBlock({ code, label }: { code: string; label?: string }) {
-  const [copied, setCopied] = React.useState(false)
+  const [copied, setCopied] = React.useState(false);
 
   async function onCopy() {
     try {
-      await navigator.clipboard.writeText(code)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1200)
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
     } catch {
       // Ignore clipboard errors
     }
@@ -51,7 +62,12 @@ function CodeBlock({ code, label }: { code: string; label?: string }) {
     <div className="rounded-xl border bg-muted/40">
       <div className="flex items-center justify-between px-3 py-2 border-b">
         <div className="text-xs text-muted-foreground">{label ?? "Code"}</div>
-        <Button variant="ghost" size="sm" className="h-7 gap-2" onClick={onCopy}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-2"
+          onClick={onCopy}
+        >
           <Copy className="h-4 w-4" />
           {copied ? "Copied" : "Copy"}
         </Button>
@@ -60,7 +76,7 @@ function CodeBlock({ code, label }: { code: string; label?: string }) {
         <code>{code}</code>
       </pre>
     </div>
-  )
+  );
 }
 
 function Section({
@@ -69,40 +85,94 @@ function Section({
   kicker,
   children,
 }: {
-  id: string
-  title: string
-  kicker?: string
-  children: React.ReactNode
+  id: string;
+  title: string;
+  kicker?: string;
+  children: React.ReactNode;
 }) {
   return (
     <section id={id} className="scroll-mt-24">
       <div className="mb-4">
         {kicker ? (
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">{kicker}</div>
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            {kicker}
+          </div>
         ) : null}
         <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
       </div>
       <div className="space-y-4">{children}</div>
     </section>
-  )
+  );
 }
 
 export default function BrowserExtensionTroubleshootingPage() {
   const toc: TocItem[] = [
-    { id: "quick-diagnostics", title: "Quick Diagnostics", icon: <ListChecks className="h-4 w-4" /> },
-    { id: "installation-issues", title: "Installation Issues", icon: <Puzzle className="h-4 w-4" /> },
-    { id: "detection-issues", title: "Detection Issues", icon: <Info className="h-4 w-4" /> },
-    { id: "recording-issues", title: "Recording Issues", icon: <Play className="h-4 w-4" /> },
-    { id: "execution-issues", title: "Execution Issues", icon: <Code2 className="h-4 w-4" /> },
-    { id: "export-issues", title: "Export Issues", icon: <Code2 className="h-4 w-4" /> },
-    { id: "database-issues", title: "Database Issues", icon: <Database className="h-4 w-4" /> },
-    { id: "performance-issues", title: "Performance Issues", icon: <Gauge className="h-4 w-4" /> },
-    { id: "browser-specific", title: "Browser-Specific Issues", icon: <Globe className="h-4 w-4" /> },
-    { id: "advanced-debugging", title: "Advanced Debugging", icon: <Wrench className="h-4 w-4" /> },
-    { id: "known-limitations", title: "Known Limitations", icon: <AlertTriangle className="h-4 w-4" /> },
-    { id: "reset", title: "Complete Reset", icon: <Wrench className="h-4 w-4" /> },
-    { id: "support", title: "Getting Help", icon: <HelpCircle className="h-4 w-4" /> },
-  ]
+    {
+      id: "quick-diagnostics",
+      title: "Quick Diagnostics",
+      icon: <ListChecks className="h-4 w-4" />,
+    },
+    {
+      id: "installation-issues",
+      title: "Installation Issues",
+      icon: <Puzzle className="h-4 w-4" />,
+    },
+    {
+      id: "detection-issues",
+      title: "Detection Issues",
+      icon: <Info className="h-4 w-4" />,
+    },
+    {
+      id: "recording-issues",
+      title: "Recording Issues",
+      icon: <Play className="h-4 w-4" />,
+    },
+    {
+      id: "execution-issues",
+      title: "Execution Issues",
+      icon: <Code2 className="h-4 w-4" />,
+    },
+    {
+      id: "export-issues",
+      title: "Export Issues",
+      icon: <Code2 className="h-4 w-4" />,
+    },
+    {
+      id: "database-issues",
+      title: "Database Issues",
+      icon: <Database className="h-4 w-4" />,
+    },
+    {
+      id: "performance-issues",
+      title: "Performance Issues",
+      icon: <Gauge className="h-4 w-4" />,
+    },
+    {
+      id: "browser-specific",
+      title: "Browser-Specific Issues",
+      icon: <Globe className="h-4 w-4" />,
+    },
+    {
+      id: "advanced-debugging",
+      title: "Advanced Debugging",
+      icon: <Wrench className="h-4 w-4" />,
+    },
+    {
+      id: "known-limitations",
+      title: "Known Limitations",
+      icon: <AlertTriangle className="h-4 w-4" />,
+    },
+    {
+      id: "reset",
+      title: "Complete Reset",
+      icon: <Wrench className="h-4 w-4" />,
+    },
+    {
+      id: "support",
+      title: "Getting Help",
+      icon: <HelpCircle className="h-4 w-4" />,
+    },
+  ];
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-10">
@@ -110,13 +180,15 @@ export default function BrowserExtensionTroubleshootingPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="space-y-2">
           <Logo size="xl" />
-          <h1 className="text-3xl font-semibold tracking-tight">Browser Extension Troubleshooting Guide</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Browser Extension Troubleshooting Guide
+          </h1>
           <p className="max-w-2xl text-muted-foreground">
-            Diagnose installation, detection, recording, execution, export, and data issues for the QA Test Recorder
-            extension. Start with quick diagnostics, then follow the relevant section.
+            Diagnose installation, detection, recording, execution, export, and
+            data issues for the QA Test Recorder extension. Start with quick
+            diagnostics, then follow the relevant section.
           </p>
           <Badge variant="secondary">Troubleshooting</Badge>
-
         </div>
 
         <div className="flex gap-2">
@@ -124,7 +196,7 @@ export default function BrowserExtensionTroubleshootingPage() {
             <Link href="#quick-diagnostics">Run Quick Checks</Link>
           </Button>
           <Button asChild>
-            <Link href="/pages/docs/extension-guide">Back to Installation Guide</Link>
+            <Link href="/docs/extension-guide">Back to Installation Guide</Link>
           </Button>
         </div>
       </div>
@@ -156,24 +228,33 @@ export default function BrowserExtensionTroubleshootingPage() {
         {/* Content */}
         <main className="space-y-10">
           {/* QUICK DIAGNOSTICS */}
-          <Section id="quick-diagnostics" title="Quick Diagnostics" kicker="Start here">
+          <Section
+            id="quick-diagnostics"
+            title="Quick Diagnostics"
+            kicker="Start here"
+          >
             <Alert>
               <Info className="h-4 w-4" />
               <AlertTitle>Fast path</AlertTitle>
               <AlertDescription>
-                If any quick check fails, jump to the matching section below. Most issues are caused by site access,
-                developer mode, or stale tabs after reloading the extension.
+                If any quick check fails, jump to the matching section below.
+                Most issues are caused by site access, developer mode, or stale
+                tabs after reloading the extension.
               </AlertDescription>
             </Alert>
 
             <Card>
               <CardHeader>
                 <CardTitle>Basic health check</CardTitle>
-                <CardDescription>Run these three checks before deeper investigation.</CardDescription>
+                <CardDescription>
+                  Run these three checks before deeper investigation.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-sm text-muted-foreground">
                 <div className="space-y-2">
-                  <div className="font-medium text-foreground">1) Extension installed?</div>
+                  <div className="font-medium text-foreground">
+                    1) Extension installed?
+                  </div>
                   <CodeBlock
                     label="Chrome extensions page"
                     code={`Go to: chrome://extensions/
@@ -183,7 +264,9 @@ Status: Enabled (toggle ON)`}
                 </div>
 
                 <div className="space-y-2">
-                  <div className="font-medium text-foreground">2) Extension detected on the page?</div>
+                  <div className="font-medium text-foreground">
+                    2) Extension detected on the page?
+                  </div>
                   <CodeBlock
                     label="Console check"
                     code={`// Open DevTools (F12), then run:
@@ -193,7 +276,9 @@ window.__QA_EXTENSION_INSTALLED
                 </div>
 
                 <div className="space-y-2">
-                  <div className="font-medium text-foreground">3) Content script running?</div>
+                  <div className="font-medium text-foreground">
+                    3) Content script running?
+                  </div>
                   <CodeBlock
                     label="Expected logs"
                     code={`🎯 QA Test Recorder content script loaded
@@ -205,8 +290,8 @@ window.__QA_EXTENSION_INSTALLED
                   <AlertTriangle className="h-4 w-4" />
                   <AlertTitle>If these fail</AlertTitle>
                   <AlertDescription>
-                    Continue to the relevant section below. If you recently reloaded the extension, close affected tabs
-                    and reopen them.
+                    Continue to the relevant section below. If you recently
+                    reloaded the extension, close affected tabs and reopen them.
                   </AlertDescription>
                 </Alert>
               </CardContent>
@@ -214,10 +299,16 @@ window.__QA_EXTENSION_INSTALLED
           </Section>
 
           {/* INSTALLATION ISSUES */}
-          <Section id="installation-issues" title="Installation Issues" kicker="Setup problems">
+          <Section
+            id="installation-issues"
+            title="Installation Issues"
+            kicker="Setup problems"
+          >
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="load-unpacked-disabled">
-                <AccordionTrigger>“Load unpacked” button is disabled</AccordionTrigger>
+                <AccordionTrigger>
+                  “Load unpacked” button is disabled
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <div>
                     <div className="font-medium text-foreground">Symptoms</div>
@@ -235,16 +326,30 @@ window.__QA_EXTENSION_INSTALLED
                   <div>
                     <div className="font-medium text-foreground">Solution</div>
                     <ol className="list-decimal pl-5 space-y-1">
-                      <li>Go to <span className="font-medium">chrome://extensions/</span></li>
-                      <li>Enable <span className="font-medium">Developer mode</span> (top-right)</li>
-                      <li>Retry <span className="font-medium">Load unpacked</span></li>
+                      <li>
+                        Go to{" "}
+                        <span className="font-medium">
+                          chrome://extensions/
+                        </span>
+                      </li>
+                      <li>
+                        Enable{" "}
+                        <span className="font-medium">Developer mode</span>{" "}
+                        (top-right)
+                      </li>
+                      <li>
+                        Retry <span className="font-medium">Load unpacked</span>
+                      </li>
                     </ol>
                   </div>
                 </AccordionContent>
               </AccordionItem>
 
               <AccordionItem value="cannot-load-extension">
-                <AccordionTrigger>“Cannot load extension” / “Manifest file is missing or unreadable”</AccordionTrigger>
+                <AccordionTrigger>
+                  “Cannot load extension” / “Manifest file is missing or
+                  unreadable”
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <div>
                     <div className="font-medium text-foreground">Cause</div>
@@ -255,7 +360,10 @@ window.__QA_EXTENSION_INSTALLED
                     <div className="font-medium text-foreground">Solution</div>
                     <ol className="list-decimal pl-5 space-y-1">
                       <li>Re-extract the ZIP completely</li>
-                      <li>Select the folder containing <span className="font-medium">manifest.json</span></li>
+                      <li>
+                        Select the folder containing{" "}
+                        <span className="font-medium">manifest.json</span>
+                      </li>
                       <li>Verify the folder contains the expected files</li>
                     </ol>
                   </div>
@@ -282,11 +390,20 @@ icons/`}
               </AccordionItem>
 
               <AccordionItem value="installs-but-errors">
-                <AccordionTrigger>Extension installs but shows errors (warning icon / “Errors” button)</AccordionTrigger>
+                <AccordionTrigger>
+                  Extension installs but shows errors (warning icon / “Errors”
+                  button)
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <ol className="list-decimal pl-5 space-y-1">
-                    <li>Click <span className="font-medium">Errors</span> on the extension card</li>
-                    <li>Use the message to identify the likely missing file/manifest issue</li>
+                    <li>
+                      Click <span className="font-medium">Errors</span> on the
+                      extension card
+                    </li>
+                    <li>
+                      Use the message to identify the likely missing
+                      file/manifest issue
+                    </li>
                   </ol>
 
                   <div className="space-y-2">
@@ -294,7 +411,8 @@ icons/`}
                       <AlertTriangle className="h-4 w-4" />
                       <AlertTitle>icons.16 missing</AlertTitle>
                       <AlertDescription>
-                        Icons folder missing or empty. Re-download and extract the extension ZIP again.
+                        Icons folder missing or empty. Re-download and extract
+                        the extension ZIP again.
                       </AlertDescription>
                     </Alert>
 
@@ -302,7 +420,8 @@ icons/`}
                       <AlertTriangle className="h-4 w-4" />
                       <AlertTitle>Permission “storage” is invalid</AlertTitle>
                       <AlertDescription>
-                        Manifest may be corrupted. Re-download the extension ZIP and reinstall.
+                        Manifest may be corrupted. Re-download the extension ZIP
+                        and reinstall.
                       </AlertDescription>
                     </Alert>
 
@@ -310,7 +429,8 @@ icons/`}
                       <AlertTriangle className="h-4 w-4" />
                       <AlertTitle>Could not load background script</AlertTitle>
                       <AlertDescription>
-                        background.js missing or not extracted. Re-extract ZIP and load the correct folder.
+                        background.js missing or not extracted. Re-extract ZIP
+                        and load the correct folder.
                       </AlertDescription>
                     </Alert>
                   </div>
@@ -320,16 +440,27 @@ icons/`}
           </Section>
 
           {/* DETECTION ISSUES */}
-          <Section id="detection-issues" title="Detection Issues" kicker="Dashboard cannot see extension">
+          <Section
+            id="detection-issues"
+            title="Detection Issues"
+            kicker="Dashboard cannot see extension"
+          >
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="not-detected-dashboard">
-                <AccordionTrigger>Extension not detected on dashboard</AccordionTrigger>
+                <AccordionTrigger>
+                  Extension not detected on dashboard
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <div>
                     <div className="font-medium text-foreground">Symptoms</div>
                     <ul className="list-disc pl-5 space-y-1">
                       <li>Dashboard shows “Extension Not Detected”</li>
-                      <li><span className="font-medium">window.__QA_EXTENSION_INSTALLED</span> is undefined</li>
+                      <li>
+                        <span className="font-medium">
+                          window.__QA_EXTENSION_INSTALLED
+                        </span>{" "}
+                        is undefined
+                      </li>
                     </ul>
                   </div>
 
@@ -344,17 +475,32 @@ icons/`}
 
                   <div className="space-y-4">
                     <div>
-                      <div className="font-medium text-foreground">Solution 1: Site access permissions</div>
+                      <div className="font-medium text-foreground">
+                        Solution 1: Site access permissions
+                      </div>
                       <ol className="list-decimal pl-5 space-y-1">
-                        <li>Go to <span className="font-medium">chrome://extensions/</span></li>
-                        <li>Open <span className="font-medium">Details</span> for QA Test Recorder</li>
-                        <li>Set <span className="font-medium">Site access</span> to <span className="font-medium">On all sites</span></li>
+                        <li>
+                          Go to{" "}
+                          <span className="font-medium">
+                            chrome://extensions/
+                          </span>
+                        </li>
+                        <li>
+                          Open <span className="font-medium">Details</span> for
+                          QA Test Recorder
+                        </li>
+                        <li>
+                          Set <span className="font-medium">Site access</span>{" "}
+                          to <span className="font-medium">On all sites</span>
+                        </li>
                         <li>Refresh your dashboard</li>
                       </ol>
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 2: Hard refresh</div>
+                      <div className="font-medium text-foreground">
+                        Solution 2: Hard refresh
+                      </div>
                       <CodeBlock
                         label="Hard refresh shortcuts"
                         code={`Windows/Linux: Ctrl + Shift + R
@@ -363,10 +509,21 @@ Mac: Cmd + Shift + R`}
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 3: Content scripts not registered</div>
+                      <div className="font-medium text-foreground">
+                        Solution 3: Content scripts not registered
+                      </div>
                       <ol className="list-decimal pl-5 space-y-1">
-                        <li>Open <span className="font-medium">chrome://extensions/</span></li>
-                        <li>Click the <span className="font-medium">service worker</span> link</li>
+                        <li>
+                          Open{" "}
+                          <span className="font-medium">
+                            chrome://extensions/
+                          </span>
+                        </li>
+                        <li>
+                          Click the{" "}
+                          <span className="font-medium">service worker</span>{" "}
+                          link
+                        </li>
                         <li>Run the snippet below</li>
                       </ol>
                       <CodeBlock
@@ -376,14 +533,18 @@ Mac: Cmd + Shift + R`}
 })`}
                       />
                       <div className="text-xs">
-                        If the list is empty, remove and reinstall the extension.
+                        If the list is empty, remove and reinstall the
+                        extension.
                       </div>
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 4: Extension context invalidated</div>
+                      <div className="font-medium text-foreground">
+                        Solution 4: Extension context invalidated
+                      </div>
                       <div className="text-sm text-muted-foreground">
-                        If you reloaded the extension while the dashboard tab was open:
+                        If you reloaded the extension while the dashboard tab
+                        was open:
                       </div>
                       <ol className="list-decimal pl-5 space-y-1">
                         <li>Close the affected tabs</li>
@@ -396,7 +557,9 @@ Mac: Cmd + Shift + R`}
               </AccordionItem>
 
               <AccordionItem value="icon-not-in-toolbar">
-                <AccordionTrigger>Extension icon does not appear in the toolbar</AccordionTrigger>
+                <AccordionTrigger>
+                  Extension icon does not appear in the toolbar
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <div>
                     <div className="font-medium text-foreground">Cause</div>
@@ -416,10 +579,16 @@ Mac: Cmd + Shift + R`}
           </Section>
 
           {/* RECORDING ISSUES */}
-          <Section id="recording-issues" title="Recording Issues" kicker="Capture problems">
+          <Section
+            id="recording-issues"
+            title="Recording Issues"
+            kicker="Capture problems"
+          >
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="start-recording-ui-missing">
-                <AccordionTrigger>“Start Recording” UI does not appear</AccordionTrigger>
+                <AccordionTrigger>
+                  “Start Recording” UI does not appear
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <div className="font-medium text-foreground">Diagnosis</div>
                   <CodeBlock
@@ -429,11 +598,18 @@ Mac: Cmd + Shift + R`}
 // true => UI/rendering issue`}
                   />
                   <div className="space-y-2">
-                    <div className="font-medium text-foreground">If extension not loaded</div>
-                    <div>Follow the “Extension not detected on dashboard” section above.</div>
+                    <div className="font-medium text-foreground">
+                      If extension not loaded
+                    </div>
+                    <div>
+                      Follow the “Extension not detected on dashboard” section
+                      above.
+                    </div>
                   </div>
                   <div className="space-y-2">
-                    <div className="font-medium text-foreground">If extension is loaded</div>
+                    <div className="font-medium text-foreground">
+                      If extension is loaded
+                    </div>
                     <ol className="list-decimal pl-5 space-y-1">
                       <li>Hard refresh (Ctrl/Cmd + Shift + R)</li>
                       <li>Clear cache</li>
@@ -444,9 +620,13 @@ Mac: Cmd + Shift + R`}
               </AccordionItem>
 
               <AccordionItem value="new-tab-opens-no-recording">
-                <AccordionTrigger>New tab opens, but recording does not start</AccordionTrigger>
+                <AccordionTrigger>
+                  New tab opens, but recording does not start
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <div className="font-medium text-foreground">Diagnosis (in the new tab)</div>
+                  <div className="font-medium text-foreground">
+                    Diagnosis (in the new tab)
+                  </div>
                   <CodeBlock
                     label="Expected console checks"
                     code={`window.__QA_EXTENSION_INSTALLED
@@ -458,28 +638,53 @@ Mac: Cmd + Shift + R`}
 
                   <div className="space-y-3">
                     <div>
-                      <div className="font-medium text-foreground">Solution 1: Storage not set</div>
+                      <div className="font-medium text-foreground">
+                        Solution 1: Storage not set
+                      </div>
                       <ol className="list-decimal pl-5 space-y-1">
                         <li>Return to the dashboard tab</li>
-                        <li>Open console and look for: <span className="font-medium">✅ Saved to chrome.storage: activeRecording</span></li>
-                        <li>If missing, hard refresh dashboard and try again</li>
+                        <li>
+                          Open console and look for:{" "}
+                          <span className="font-medium">
+                            ✅ Saved to chrome.storage: activeRecording
+                          </span>
+                        </li>
+                        <li>
+                          If missing, hard refresh dashboard and try again
+                        </li>
                       </ol>
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 2: Content script not loaded in new tab</div>
+                      <div className="font-medium text-foreground">
+                        Solution 2: Content script not loaded in new tab
+                      </div>
                       <ol className="list-decimal pl-5 space-y-1">
-                        <li>Confirm the new tab logs <span className="font-medium">🎯 QA Test Recorder content script loaded</span></li>
-                        <li>If missing, ensure Site access is “On all sites”</li>
+                        <li>
+                          Confirm the new tab logs{" "}
+                          <span className="font-medium">
+                            🎯 QA Test Recorder content script loaded
+                          </span>
+                        </li>
+                        <li>
+                          If missing, ensure Site access is “On all sites”
+                        </li>
                         <li>Try a different URL (site may restrict scripts)</li>
                       </ol>
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 3: Extension context invalidated</div>
+                      <div className="font-medium text-foreground">
+                        Solution 3: Extension context invalidated
+                      </div>
                       <ol className="list-decimal pl-5 space-y-1">
                         <li>Close all tabs</li>
-                        <li>Go to <span className="font-medium">chrome://extensions/</span></li>
+                        <li>
+                          Go to{" "}
+                          <span className="font-medium">
+                            chrome://extensions/
+                          </span>
+                        </li>
                         <li>Reload the extension</li>
                         <li>Open fresh tabs and retry</li>
                       </ol>
@@ -489,7 +694,9 @@ Mac: Cmd + Shift + R`}
               </AccordionItem>
 
               <AccordionItem value="actions-not-captured">
-                <AccordionTrigger>Actions are not being captured (counter stays at 0)</AccordionTrigger>
+                <AccordionTrigger>
+                  Actions are not being captured (counter stays at 0)
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <div className="font-medium text-foreground">Diagnosis</div>
                   <CodeBlock
@@ -500,7 +707,9 @@ Mac: Cmd + Shift + R`}
 
                   <div className="space-y-3">
                     <div>
-                      <div className="font-medium text-foreground">Solution 1: Check recording state</div>
+                      <div className="font-medium text-foreground">
+                        Solution 1: Check recording state
+                      </div>
                       <CodeBlock
                         label="Recording state"
                         code={`window.__QA_RECORDER?.isRecording?.()
@@ -509,16 +718,22 @@ Mac: Cmd + Shift + R`}
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 2: Element constraints</div>
+                      <div className="font-medium text-foreground">
+                        Solution 2: Element constraints
+                      </div>
                       <ul className="list-disc pl-5 space-y-1">
                         <li>Iframes may block capture</li>
                         <li>Some Shadow DOM elements may not be recordable</li>
-                        <li>Try different elements to validate capture pipeline</li>
+                        <li>
+                          Try different elements to validate capture pipeline
+                        </li>
                       </ul>
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 3: Slow down actions</div>
+                      <div className="font-medium text-foreground">
+                        Solution 3: Slow down actions
+                      </div>
                       <ul className="list-disc pl-5 space-y-1">
                         <li>Wait 500ms–1s between actions</li>
                         <li>Allow pages to fully load before clicking</li>
@@ -526,7 +741,9 @@ Mac: Cmd + Shift + R`}
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 4: Re-record</div>
+                      <div className="font-medium text-foreground">
+                        Solution 4: Re-record
+                      </div>
                       <ol className="list-decimal pl-5 space-y-1">
                         <li>Stop recording</li>
                         <li>Close the recording tab</li>
@@ -538,15 +755,22 @@ Mac: Cmd + Shift + R`}
               </AccordionItem>
 
               <AccordionItem value="counter-not-updating">
-                <AccordionTrigger>Actions captured, but dashboard counter does not update</AccordionTrigger>
+                <AccordionTrigger>
+                  Actions captured, but dashboard counter does not update
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <div className="font-medium text-foreground">Cause</div>
                   <div>Cross-tab communication or polling issue.</div>
 
                   <div className="space-y-3">
                     <div>
-                      <div className="font-medium text-foreground">Solution 1: Polling not working</div>
-                      <div>Check the dashboard console for errors and expected update logs.</div>
+                      <div className="font-medium text-foreground">
+                        Solution 1: Polling not working
+                      </div>
+                      <div>
+                        Check the dashboard console for errors and expected
+                        update logs.
+                      </div>
                       <CodeBlock
                         label="Expected dashboard log"
                         code={`📊 Action count update: X`}
@@ -554,7 +778,9 @@ Mac: Cmd + Shift + R`}
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 2: Verify storage data</div>
+                      <div className="font-medium text-foreground">
+                        Solution 2: Verify storage data
+                      </div>
                       <CodeBlock
                         label="Read activeRecording"
                         code={`chrome.storage.local.get('activeRecording', (result) => {
@@ -564,7 +790,9 @@ Mac: Cmd + Shift + R`}
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 3: Refresh dashboard</div>
+                      <div className="font-medium text-foreground">
+                        Solution 3: Refresh dashboard
+                      </div>
                       <ul className="list-disc pl-5 space-y-1">
                         <li>Keep the recording tab open</li>
                         <li>Hard refresh the dashboard tab</li>
@@ -576,7 +804,9 @@ Mac: Cmd + Shift + R`}
               </AccordionItem>
 
               <AccordionItem value="processing-stuck">
-                <AccordionTrigger>Recording stuck in “Processing”</AccordionTrigger>
+                <AccordionTrigger>
+                  Recording stuck in “Processing”
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <div className="font-medium text-foreground">Diagnosis</div>
                   <CodeBlock
@@ -587,7 +817,9 @@ Mac: Cmd + Shift + R`}
 
                   <div className="space-y-3">
                     <div>
-                      <div className="font-medium text-foreground">Solution 1: Check completedRecording</div>
+                      <div className="font-medium text-foreground">
+                        Solution 1: Check completedRecording
+                      </div>
                       <CodeBlock
                         label="Read completedRecording"
                         code={`chrome.storage.local.get('completedRecording', (result) => {
@@ -597,7 +829,9 @@ Mac: Cmd + Shift + R`}
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 2: Database/network issue</div>
+                      <div className="font-medium text-foreground">
+                        Solution 2: Database/network issue
+                      </div>
                       <ul className="list-disc pl-5 space-y-1">
                         <li>Check for Supabase errors in console</li>
                         <li>Open Network tab and look for 400/401/403/500</li>
@@ -606,7 +840,9 @@ Mac: Cmd + Shift + R`}
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 3: Force stop</div>
+                      <div className="font-medium text-foreground">
+                        Solution 3: Force stop
+                      </div>
                       <ol className="list-decimal pl-5 space-y-1">
                         <li>Refresh the dashboard</li>
                         <li>Check “View Recordings” — it may have saved</li>
@@ -619,12 +855,20 @@ Mac: Cmd + Shift + R`}
           </Section>
 
           {/* EXECUTION ISSUES */}
-          <Section id="execution-issues" title="Execution Issues" kicker="Playback problems">
+          <Section
+            id="execution-issues"
+            title="Execution Issues"
+            kicker="Playback problems"
+          >
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="run-opens-tab-nothing">
-                <AccordionTrigger>“Run Test” opens a tab but nothing happens</AccordionTrigger>
+                <AccordionTrigger>
+                  “Run Test” opens a tab but nothing happens
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <div className="font-medium text-foreground">Diagnosis (in execution tab console)</div>
+                  <div className="font-medium text-foreground">
+                    Diagnosis (in execution tab console)
+                  </div>
                   <CodeBlock
                     label="Expected logs"
                     code={`▶️ Executing test with X actions
@@ -633,21 +877,32 @@ Mac: Cmd + Shift + R`}
 
                   <div className="space-y-3">
                     <div>
-                      <div className="font-medium text-foreground">Solution 1: Extension not loaded</div>
+                      <div className="font-medium text-foreground">
+                        Solution 1: Extension not loaded
+                      </div>
                       <CodeBlock
                         label="Check extension flag"
                         code={`window.__QA_EXTENSION_INSTALLED`}
                       />
-                      <div className="text-xs">If undefined/false, hard refresh the execution tab.</div>
+                      <div className="text-xs">
+                        If undefined/false, hard refresh the execution tab.
+                      </div>
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 2: Execute command not sent</div>
-                      <div>Check the dashboard console for “Sending execute command…” or related errors.</div>
+                      <div className="font-medium text-foreground">
+                        Solution 2: Execute command not sent
+                      </div>
+                      <div>
+                        Check the dashboard console for “Sending execute
+                        command…” or related errors.
+                      </div>
                     </div>
 
                     <div>
-                      <div className="font-medium text-foreground">Solution 3: Selector drift</div>
+                      <div className="font-medium text-foreground">
+                        Solution 3: Selector drift
+                      </div>
                       <ul className="list-disc pl-5 space-y-1">
                         <li>Look for “Element not found” errors</li>
                         <li>Re-record if the UI changed significantly</li>
@@ -658,16 +913,21 @@ Mac: Cmd + Shift + R`}
               </AccordionItem>
 
               <AccordionItem value="fails-at-step">
-                <AccordionTrigger>Test fails at a specific step</AccordionTrigger>
+                <AccordionTrigger>
+                  Test fails at a specific step
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <div className="font-medium text-foreground">Common errors</div>
+                  <div className="font-medium text-foreground">
+                    Common errors
+                  </div>
 
                   <Alert>
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Element not found: [selector]</AlertTitle>
                     <AlertDescription>
-                      Element changed or no longer exists. Confirm it exists and re-record if needed. Ensure the page
-                      fully loaded before the step executes.
+                      Element changed or no longer exists. Confirm it exists and
+                      re-record if needed. Ensure the page fully loaded before
+                      the step executes.
                     </AlertDescription>
                   </Alert>
 
@@ -675,8 +935,9 @@ Mac: Cmd + Shift + R`}
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Timeout waiting for element</AlertTitle>
                     <AlertDescription>
-                      Page may be slow. Increase step delay (if supported), verify network stability, and validate the
-                      target page is not failing to load.
+                      Page may be slow. Increase step delay (if supported),
+                      verify network stability, and validate the target page is
+                      not failing to load.
                     </AlertDescription>
                   </Alert>
 
@@ -684,8 +945,9 @@ Mac: Cmd + Shift + R`}
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Element not visible</AlertTitle>
                     <AlertDescription>
-                      Element may be off-screen, hidden, or blocked by a modal. Scrolling/visibility state may need to
-                      be addressed in the flow.
+                      Element may be off-screen, hidden, or blocked by a modal.
+                      Scrolling/visibility state may need to be addressed in the
+                      flow.
                     </AlertDescription>
                   </Alert>
 
@@ -693,8 +955,9 @@ Mac: Cmd + Shift + R`}
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Navigation failed</AlertTitle>
                     <AlertDescription>
-                      URL changed or auth is required. Validate the URL, confirm the page loads normally, and ensure the
-                      session is authenticated.
+                      URL changed or auth is required. Validate the URL, confirm
+                      the page loads normally, and ensure the session is
+                      authenticated.
                     </AlertDescription>
                   </Alert>
                 </AccordionContent>
@@ -703,10 +966,16 @@ Mac: Cmd + Shift + R`}
           </Section>
 
           {/* EXPORT ISSUES */}
-          <Section id="export-issues" title="Export Issues" kicker="Playwright output">
+          <Section
+            id="export-issues"
+            title="Export Issues"
+            kicker="Playwright output"
+          >
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="empty-export">
-                <AccordionTrigger>Playwright export downloads an empty file</AccordionTrigger>
+                <AccordionTrigger>
+                  Playwright export downloads an empty file
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <ol className="list-decimal pl-5 space-y-1">
                     <li>Confirm the recording contains actions</li>
@@ -722,10 +991,14 @@ recording.actions.length > 0`}
               </AccordionItem>
 
               <AccordionItem value="export-doesnt-run">
-                <AccordionTrigger>Exported Playwright code does not work</AccordionTrigger>
+                <AccordionTrigger>
+                  Exported Playwright code does not work
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <div className="space-y-2">
-                    <div className="font-medium text-foreground">Common fixes</div>
+                    <div className="font-medium text-foreground">
+                      Common fixes
+                    </div>
                     <CodeBlock
                       label="Install Playwright"
                       code={`npm install -D @playwright/test`}
@@ -735,8 +1008,13 @@ recording.actions.length > 0`}
                       code={`await page.waitForLoadState('networkidle')`}
                     />
                     <ul className="list-disc pl-5 space-y-1">
-                      <li>If auth is required, add login steps or use storage state</li>
-                      <li>Selectors may need adjustment if the UI differs in CI</li>
+                      <li>
+                        If auth is required, add login steps or use storage
+                        state
+                      </li>
+                      <li>
+                        Selectors may need adjustment if the UI differs in CI
+                      </li>
                     </ul>
                   </div>
                 </AccordionContent>
@@ -745,27 +1023,48 @@ recording.actions.length > 0`}
           </Section>
 
           {/* DATABASE ISSUES */}
-          <Section id="database-issues" title="Database Issues" kicker="Saving & permissions">
+          <Section
+            id="database-issues"
+            title="Database Issues"
+            kicker="Saving & permissions"
+          >
             <Card>
               <CardHeader>
                 <CardTitle>“Failed to save recording”</CardTitle>
-                <CardDescription>Most often authentication or RLS policy issues.</CardDescription>
+                <CardDescription>
+                  Most often authentication or RLS policy issues.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
-                <div className="font-medium text-foreground">Common HTTP errors</div>
+                <div className="font-medium text-foreground">
+                  Common HTTP errors
+                </div>
                 <ul className="list-disc pl-5 space-y-1">
-                  <li><span className="font-medium">400</span>: validation / payload shape issue</li>
-                  <li><span className="font-medium">401</span>: not authenticated / session expired</li>
-                  <li><span className="font-medium">403</span>: RLS or permission denied</li>
-                  <li><span className="font-medium">500</span>: server/database error</li>
+                  <li>
+                    <span className="font-medium">400</span>: validation /
+                    payload shape issue
+                  </li>
+                  <li>
+                    <span className="font-medium">401</span>: not authenticated
+                    / session expired
+                  </li>
+                  <li>
+                    <span className="font-medium">403</span>: RLS or permission
+                    denied
+                  </li>
+                  <li>
+                    <span className="font-medium">500</span>: server/database
+                    error
+                  </li>
                 </ul>
 
                 <Alert>
                   <Database className="h-4 w-4" />
                   <AlertTitle>Action</AlertTitle>
                   <AlertDescription>
-                    Check DevTools Network tab for the failing request and inspect the response body. Use that to decide
-                    whether this is payload validation, auth, RLS, or backend availability.
+                    Check DevTools Network tab for the failing request and
+                    inspect the response body. Use that to decide whether this
+                    is payload validation, auth, RLS, or backend availability.
                   </AlertDescription>
                 </Alert>
               </CardContent>
@@ -773,10 +1072,16 @@ recording.actions.length > 0`}
           </Section>
 
           {/* PERFORMANCE ISSUES */}
-          <Section id="performance-issues" title="Performance Issues" kicker="Speed & timing">
+          <Section
+            id="performance-issues"
+            title="Performance Issues"
+            kicker="Speed & timing"
+          >
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="recording-laggy">
-                <AccordionTrigger>Recording feels slow or laggy</AccordionTrigger>
+                <AccordionTrigger>
+                  Recording feels slow or laggy
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <ol className="list-decimal pl-5 space-y-1">
                     <li>Close other tabs and heavy apps</li>
@@ -788,9 +1093,13 @@ recording.actions.length > 0`}
               </AccordionItem>
 
               <AccordionItem value="execution-too-fast">
-                <AccordionTrigger>Execution runs too fast (timing failures)</AccordionTrigger>
+                <AccordionTrigger>
+                  Execution runs too fast (timing failures)
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <div>Increase step delay (if your execution options support it):</div>
+                  <div>
+                    Increase step delay (if your execution options support it):
+                  </div>
                   <CodeBlock
                     label="Example execution option"
                     code={`{
@@ -803,21 +1112,33 @@ recording.actions.length > 0`}
           </Section>
 
           {/* BROWSER SPECIFIC */}
-          <Section id="browser-specific" title="Browser-Specific Issues" kicker="Chrome vs Edge">
+          <Section
+            id="browser-specific"
+            title="Browser-Specific Issues"
+            kicker="Chrome vs Edge"
+          >
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="edge-not-working">
-                <AccordionTrigger>Works in Chrome but not Edge</AccordionTrigger>
+                <AccordionTrigger>
+                  Works in Chrome but not Edge
+                </AccordionTrigger>
                 <AccordionContent className="space-y-2 text-sm text-muted-foreground">
                   <ul className="list-disc pl-5 space-y-1">
                     <li>Verify Edge version 88+</li>
-                    <li>Use <span className="font-medium">edge://extensions/</span> for installation</li>
+                    <li>
+                      Use{" "}
+                      <span className="font-medium">edge://extensions/</span>{" "}
+                      for installation
+                    </li>
                     <li>Ensure Site access permissions are set correctly</li>
                   </ul>
                 </AccordionContent>
               </AccordionItem>
 
               <AccordionItem value="breaks-after-update">
-                <AccordionTrigger>Extension breaks after a browser update</AccordionTrigger>
+                <AccordionTrigger>
+                  Extension breaks after a browser update
+                </AccordionTrigger>
                 <AccordionContent className="space-y-2 text-sm text-muted-foreground">
                   <ol className="list-decimal pl-5 space-y-1">
                     <li>Re-download the latest extension build</li>
@@ -831,7 +1152,11 @@ recording.actions.length > 0`}
           </Section>
 
           {/* ADVANCED DEBUGGING */}
-          <Section id="advanced-debugging" title="Advanced Debugging" kicker="Deep dives">
+          <Section
+            id="advanced-debugging"
+            title="Advanced Debugging"
+            kicker="Deep dives"
+          >
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="verbose-logging">
                 <AccordionTrigger>Enable verbose logging</AccordionTrigger>
@@ -845,7 +1170,9 @@ recording.actions.length > 0`}
               </AccordionItem>
 
               <AccordionItem value="service-worker">
-                <AccordionTrigger>Check the extension service worker</AccordionTrigger>
+                <AccordionTrigger>
+                  Check the extension service worker
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <CodeBlock
                     label="Steps"
@@ -884,7 +1211,9 @@ recording.actions.length > 0`}
               </AccordionItem>
 
               <AccordionItem value="network-debugging">
-                <AccordionTrigger>Network debugging (Supabase calls)</AccordionTrigger>
+                <AccordionTrigger>
+                  Network debugging (Supabase calls)
+                </AccordionTrigger>
                 <AccordionContent className="space-y-2 text-sm text-muted-foreground">
                   <ol className="list-decimal pl-5 space-y-1">
                     <li>Open DevTools → Network</li>
@@ -898,19 +1227,30 @@ recording.actions.length > 0`}
           </Section>
 
           {/* KNOWN LIMITATIONS */}
-          <Section id="known-limitations" title="Known Limitations" kicker="Current constraints">
+          <Section
+            id="known-limitations"
+            title="Known Limitations"
+            kicker="Current constraints"
+          >
             <Card>
               <CardHeader>
                 <CardTitle>Current limitations</CardTitle>
-                <CardDescription>These are expected in the current release.</CardDescription>
+                <CardDescription>
+                  These are expected in the current release.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2 text-sm text-muted-foreground">
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>No iframe support (content inside iframes may not record)</li>
+                  <li>
+                    No iframe support (content inside iframes may not record)
+                  </li>
                   <li>No file upload capture</li>
                   <li>Shadow DOM support is limited</li>
                   <li>No drag-and-drop capture</li>
-                  <li>Multi-tab flows are limited (single tab recording behavior may apply)</li>
+                  <li>
+                    Multi-tab flows are limited (single tab recording behavior
+                    may apply)
+                  </li>
                 </ul>
 
                 <Separator className="my-3" />
@@ -928,12 +1268,17 @@ recording.actions.length > 0`}
           </Section>
 
           {/* COMPLETE RESET */}
-          <Section id="reset" title="Complete Reset" kicker="Emergency procedure">
+          <Section
+            id="reset"
+            title="Complete Reset"
+            kicker="Emergency procedure"
+          >
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Use as last resort</AlertTitle>
               <AlertDescription>
-                If you have multiple unknown failures across detection, recording, and execution, perform a clean reset.
+                If you have multiple unknown failures across detection,
+                recording, and execution, perform a clean reset.
               </AlertDescription>
             </Alert>
 
@@ -964,16 +1309,24 @@ recording.actions.length > 0`}
           </Section>
 
           {/* SUPPORT */}
-          <Section id="support" title="Getting Additional Help" kicker="Support">
+          <Section
+            id="support"
+            title="Getting Additional Help"
+            kicker="Support"
+          >
             <Card>
               <CardHeader>
                 <CardTitle>Before contacting support</CardTitle>
-                <CardDescription>Collect the data below so issues can be diagnosed quickly.</CardDescription>
+                <CardDescription>
+                  Collect the data below so issues can be diagnosed quickly.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-sm text-muted-foreground">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <div className="font-medium text-foreground">Browser information</div>
+                    <div className="font-medium text-foreground">
+                      Browser information
+                    </div>
                     <CodeBlock
                       label="Where to find versions"
                       code={`Chrome version: chrome://version/
@@ -982,7 +1335,9 @@ OS: Windows / Mac / Linux`}
                     />
                   </div>
                   <div className="space-y-2">
-                    <div className="font-medium text-foreground">Error details</div>
+                    <div className="font-medium text-foreground">
+                      Error details
+                    </div>
                     <ul className="list-disc pl-5 space-y-1">
                       <li>Console errors (F12)</li>
                       <li>Service worker console errors</li>
@@ -995,10 +1350,12 @@ OS: Windows / Mac / Linux`}
                 <Separator />
 
                 <div className="space-y-2">
-                  <div className="font-medium text-foreground">Bug report template</div>
+                  <div className="font-medium text-foreground">
+                    Bug report template
+                  </div>
                   <div className="rounded-xl border bg-muted/40 p-3 text-sm">
                     <pre className="whitespace-pre-wrap">
-{`Bug Description:
+                      {`Bug Description:
 [Clear description]
 
 Steps to Reproduce:
@@ -1031,8 +1388,10 @@ Screenshots:
                   <Bug className="h-4 w-4" />
                   <AlertTitle>Contact support</AlertTitle>
                   <AlertDescription>
-                    Email <span className="font-medium">support@synthqa.app</span> with the template above. Include
-                    console logs (text preferred, screenshots acceptable) or click 'Contact'.
+                    Email{" "}
+                    <span className="font-medium">support@synthqa.app</span>{" "}
+                    with the template above. Include console logs (text
+                    preferred, screenshots acceptable) or click 'Contact'.
                   </AlertDescription>
                 </Alert>
 
@@ -1044,7 +1403,7 @@ Screenshots:
           </Section>
         </main>
       </div>
-      <Footer />      
+      <Footer />
     </div>
-  )
+  );
 }

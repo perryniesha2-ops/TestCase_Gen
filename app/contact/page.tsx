@@ -1,4 +1,4 @@
-// app/pages/contact/page.tsx (or wherever your route lives)
+// app/contact/page.tsx (or wherever your route lives)
 "use client";
 
 import * as React from "react";
@@ -9,11 +9,25 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardFooter,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { Mail, MessageSquare, LifeBuoy, Clock, Shield, ArrowRight } from "lucide-react";
+import {
+  Mail,
+  MessageSquare,
+  LifeBuoy,
+  Clock,
+  Shield,
+  ArrowRight,
+} from "lucide-react";
 
 export default function ContactUs() {
   const [loading, setLoading] = React.useState(false);
@@ -23,9 +37,15 @@ export default function ContactUs() {
     const form = e.currentTarget;
     const data = {
       name: (form.elements.namedItem("name") as HTMLInputElement).value.trim(),
-      email: (form.elements.namedItem("email") as HTMLInputElement).value.trim(),
-      subject: (form.elements.namedItem("subject") as HTMLInputElement).value.trim(),
-      message: (form.elements.namedItem("message") as HTMLTextAreaElement).value.trim(),
+      email: (
+        form.elements.namedItem("email") as HTMLInputElement
+      ).value.trim(),
+      subject: (
+        form.elements.namedItem("subject") as HTMLInputElement
+      ).value.trim(),
+      message: (
+        form.elements.namedItem("message") as HTMLTextAreaElement
+      ).value.trim(),
       hp: "", // honeypot (not shown on this form)
     };
 
@@ -46,7 +66,8 @@ export default function ContactUs() {
         body: JSON.stringify(data),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || "We couldn’t send your message.");
+      if (!res.ok)
+        throw new Error(json?.error || "We couldn’t send your message.");
 
       toast.success("Thanks! Your message has been sent.");
       form.reset();
@@ -61,18 +82,19 @@ export default function ContactUs() {
     <div className="grid min-h-screen w-full md:grid-cols-[240px_1fr]">
       <AppSidebar className="hidden md:block" />
       <div className="flex min-h-screen flex-col">
-
         {/* Page hero */}
         <section className="relative">
           <div className="absolute inset-0 -z-10 bg-gradient-to-b from-primary/5 via-transparent to-transparent" />
           <div className="px-4 md:px-8 pt-6">
             <div className="max-w-5xl">
-              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Contact Us</h1>
+              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+                Contact Us
+              </h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                Have a question about SynthQA or ran into an issue? We’re here to help.
+                Have a question about SynthQA or ran into an issue? We’re here
+                to help.
               </p>
-              <p className="mt-4 text-sm text-muted-foreground">
-              </p>
+              <p className="mt-4 text-sm text-muted-foreground"></p>
             </div>
           </div>
         </section>
@@ -83,11 +105,13 @@ export default function ContactUs() {
             <Card className="md:col-span-2">
               <CardHeader>
                 <CardTitle>Get help fast</CardTitle>
-                <CardDescription>Common links and support channels.</CardDescription>
+                <CardDescription>
+                  Common links and support channels.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <Link
-                  href="/pages/help/test-cases"
+                  href="/help/test-cases"
                   className="group flex items-start gap-3 rounded-md border p-3 hover:bg-accent transition"
                 >
                   <LifeBuoy className="mt-0.5 h-4 w-4 text-primary" />
@@ -96,13 +120,12 @@ export default function ContactUs() {
                     <p className="text-sm text-muted-foreground">
                       Guides for generating, managing, and exporting test cases.
                     </p>
-                    
                   </div>
                   <ArrowRight className="h-4 w-4 opacity-0 transition group-hover:opacity-100" />
                 </Link>
 
                 <Link
-                  href="/pages/privacy"
+                  href="/privacy"
                   className="group flex items-start gap-3 rounded-md border p-3 hover:bg-accent transition"
                 >
                   <Shield className="mt-0.5 h-4 w-4 text-primary" />
@@ -115,8 +138,8 @@ export default function ContactUs() {
                   <ArrowRight className="h-4 w-4 opacity-0 transition group-hover:opacity-100" />
                 </Link>
 
-                 <Link
-                  href="/pages/terms"
+                <Link
+                  href="/terms"
                   className="group flex items-start gap-3 rounded-md border p-3 hover:bg-accent transition"
                 >
                   <Shield className="mt-0.5 h-4 w-4 text-primary" />
@@ -134,7 +157,8 @@ export default function ContactUs() {
                   <div>
                     <div className="font-medium">Response time</div>
                     <p className="text-sm text-muted-foreground">
-                      Mon–Fri, 9am–6pm ET. We usually reply within 1 business day.
+                      Mon–Fri, 9am–6pm ET. We usually reply within 1 business
+                      day.
                     </p>
                   </div>
                 </div>
@@ -155,7 +179,8 @@ export default function ContactUs() {
                 <div className="flex items-center gap-3 text-sm">
                   <MessageSquare className="h-4 w-4 text-primary" />
                   <span>
-                    Need to report a bug? Include steps to reproduce and screenshots if possible.
+                    Need to report a bug? Include steps to reproduce and
+                    screenshots if possible.
                   </span>
                 </div>
               </CardContent>
@@ -165,24 +190,42 @@ export default function ContactUs() {
             <Card className="md:col-span-3">
               <CardHeader>
                 <CardTitle>Send us a message</CardTitle>
-                <CardDescription>We’ll email you back as soon as we can.</CardDescription>
+                <CardDescription>
+                  We’ll email you back as soon as we can.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={onSubmit} className="grid gap-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="grid gap-2">
                       <Label htmlFor="name">Your name</Label>
-                      <Input id="name" name="name" placeholder="Ada Lovelace" required />
+                      <Input
+                        id="name"
+                        name="name"
+                        placeholder="Ada Lovelace"
+                        required
+                      />
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="email">Email</Label>
-                      <Input id="email" name="email" type="email" placeholder="you@example.com" required />
+                      <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        placeholder="you@example.com"
+                        required
+                      />
                     </div>
                   </div>
 
                   <div className="grid gap-2">
                     <Label htmlFor="subject">Subject</Label>
-                    <Input id="subject" name="subject" placeholder="Issue summary" required />
+                    <Input
+                      id="subject"
+                      name="subject"
+                      placeholder="Issue summary"
+                      required
+                    />
                   </div>
 
                   <div className="grid gap-2">
@@ -195,12 +238,19 @@ export default function ContactUs() {
                       required
                     />
                     <p className="text-xs text-muted-foreground">
-                      Include steps to reproduce, relevant URLs, and your browser/device.
+                      Include steps to reproduce, relevant URLs, and your
+                      browser/device.
                     </p>
                   </div>
 
                   {/* honeypot (hidden) */}
-                  <input type="text" name="company" className="hidden" tabIndex={-1} aria-hidden="true" />
+                  <input
+                    type="text"
+                    name="company"
+                    className="hidden"
+                    tabIndex={-1}
+                    aria-hidden="true"
+                  />
                   <input type="hidden" name="hp" value="" />
                   <CardFooter className="px-0">
                     <Button type="submit" disabled={loading}>
@@ -208,8 +258,14 @@ export default function ContactUs() {
                     </Button>
                     <span className="ml-3 text-xs text-muted-foreground">
                       By sending, you agree to our{" "}
-                      <Link href="/pages/terms" className="underline">Terms</Link> and{" "}
-                      <Link href="/pages/privacy" className="underline">Privacy Policy</Link>.
+                      <Link href="/terms" className="underline">
+                        Terms
+                      </Link>{" "}
+                      and{" "}
+                      <Link href="/privacy" className="underline">
+                        Privacy Policy
+                      </Link>
+                      .
                     </span>
                   </CardFooter>
                 </form>

@@ -1,11 +1,17 @@
-"use client"
+"use client";
 
-import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   BarChart3,
   Target,
@@ -17,36 +23,42 @@ import {
   ArrowUpRight,
   Activity,
   Users,
-} from "lucide-react"
+} from "lucide-react";
 
 interface DashboardMetrics {
   test_cases: {
-    total: number
-    passed: number
-    failed: number
-    blocked: number
-    skipped: number
-    not_run: number
-    pass_rate: number
-  }
+    total: number;
+    passed: number;
+    failed: number;
+    blocked: number;
+    skipped: number;
+    not_run: number;
+    pass_rate: number;
+  };
   requirements: {
-    total: number
-    tested: number
-    coverage_percentage: number
-    by_priority: Record<string, number>
-  }
+    total: number;
+    tested: number;
+    coverage_percentage: number;
+    by_priority: Record<string, number>;
+  };
   recent_activity: Array<{
-    id: string
-    type: "execution" | "suite_started" | "requirement_linked"
-    description: string
-    timestamp: string
-    status?: string
-  }>
+    id: string;
+    type: "execution" | "suite_started" | "requirement_linked";
+    description: string;
+    timestamp: string;
+    status?: string;
+  }>;
 }
 
-type ExecutionStatus = "passed" | "failed" | "blocked" | "skipped" | "not_run" | "in_progress"
+type ExecutionStatus =
+  | "passed"
+  | "failed"
+  | "blocked"
+  | "skipped"
+  | "not_run"
+  | "in_progress";
 
-const PRIORITY_ORDER = ["critical", "high", "medium", "low"] as const
+const PRIORITY_ORDER = ["critical", "high", "medium", "low"] as const;
 
 export function TestManagementDashboard() {
   const [metrics, setMetrics] = useState<DashboardMetrics>({
@@ -66,66 +78,79 @@ export function TestManagementDashboard() {
       by_priority: {},
     },
     recent_activity: [],
-  })
+  });
 
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(true);
 
   // Team switcher placeholder (wire this to your team/org model later)
-  const [selectedTeamId, setSelectedTeamId] = useState<string>("personal")
-  const selectedTeamLabel = selectedTeamId === "personal" ? "Personal" : "Team (Coming Soon)"
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("personal");
+  const selectedTeamLabel =
+    selectedTeamId === "personal" ? "Personal" : "Team (Coming Soon)";
 
   useEffect(() => {
-    fetchDashboardData()
+    fetchDashboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []);
 
   async function fetchDashboardData() {
     try {
-      setLoading(true)
-      await Promise.all([fetchTestCaseMetrics(), fetchRequirementsMetrics(), fetchRecentActivity()])
+      setLoading(true);
+      await Promise.all([
+        fetchTestCaseMetrics(),
+        fetchRequirementsMetrics(),
+        fetchRecentActivity(),
+      ]);
     } catch (error) {
-      console.error("Error fetching dashboard data:", error)
+      console.error("Error fetching dashboard data:", error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function fetchTestCaseMetrics() {
-    const supabase = createClient()
+    const supabase = createClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) return
+    } = await supabase.auth.getUser();
+    if (!user) return;
 
     const { data: testCases, error: tcErr } = await supabase
       .from("test_cases")
       .select("id")
       .eq("user_id", user.id)
-      .neq("status", "archived")
+      .neq("status", "archived");
 
-    if (tcErr) throw tcErr
+    if (tcErr) throw tcErr;
 
     if (!testCases || testCases.length === 0) {
       setMetrics((prev) => ({
         ...prev,
-        test_cases: { total: 0, passed: 0, failed: 0, blocked: 0, skipped: 0, not_run: 0, pass_rate: 0 },
-      }))
-      return
+        test_cases: {
+          total: 0,
+          passed: 0,
+          failed: 0,
+          blocked: 0,
+          skipped: 0,
+          not_run: 0,
+          pass_rate: 0,
+        },
+      }));
+      return;
     }
 
-    const testCaseIds = testCases.map((tc) => tc.id)
+    const testCaseIds = testCases.map((tc) => tc.id);
 
     const { data: latestRows, error: leErr } = await supabase
       .from("v_test_case_latest_execution")
       .select("test_case_id, execution_status")
-      .in("test_case_id", testCaseIds)
+      .in("test_case_id", testCaseIds);
 
-    if (leErr) throw leErr
+    if (leErr) throw leErr;
 
     const latestMap = (latestRows || []).reduce((acc, row) => {
-      acc[row.test_case_id] = row.execution_status as ExecutionStatus
-      return acc
-    }, {} as Record<string, ExecutionStatus>)
+      acc[row.test_case_id] = row.execution_status as ExecutionStatus;
+      return acc;
+    }, {} as Record<string, ExecutionStatus>);
 
     const counts = {
       passed: 0,
@@ -133,19 +158,19 @@ export function TestManagementDashboard() {
       blocked: 0,
       skipped: 0,
       not_run: 0,
-    }
+    };
 
     for (const id of testCaseIds) {
-      const status = latestMap[id] ?? "not_run"
-      if (status === "passed") counts.passed++
-      else if (status === "failed") counts.failed++
-      else if (status === "blocked") counts.blocked++
-      else if (status === "skipped") counts.skipped++
-      else counts.not_run++ // includes not_run + in_progress for dashboard “health”
+      const status = latestMap[id] ?? "not_run";
+      if (status === "passed") counts.passed++;
+      else if (status === "failed") counts.failed++;
+      else if (status === "blocked") counts.blocked++;
+      else if (status === "skipped") counts.skipped++;
+      else counts.not_run++; // includes not_run + in_progress for dashboard “health”
     }
 
-    const total = testCaseIds.length
-    const pass_rate = total > 0 ? Math.round((counts.passed / total) * 100) : 0
+    const total = testCaseIds.length;
+    const pass_rate = total > 0 ? Math.round((counts.passed / total) * 100) : 0;
 
     setMetrics((prev) => ({
       ...prev,
@@ -158,23 +183,23 @@ export function TestManagementDashboard() {
         not_run: counts.not_run,
         pass_rate,
       },
-    }))
+    }));
   }
 
   async function fetchRequirementsMetrics() {
-    const supabase = createClient()
+    const supabase = createClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) return
+    } = await supabase.auth.getUser();
+    if (!user) return;
 
     const { data: requirements, error: reqErr } = await supabase
       .from("requirements")
       .select("id, priority")
-      .eq("user_id", user.id)
+      .eq("user_id", user.id);
 
-    if (reqErr) throw reqErr
-    if (!requirements) return
+    if (reqErr) throw reqErr;
+    if (!requirements) return;
 
     const { data: linkedRequirements, error: linkErr } = await supabase
       .from("requirement_test_cases")
@@ -182,35 +207,40 @@ export function TestManagementDashboard() {
       .in(
         "requirement_id",
         requirements.map((r) => r.id)
-      )
+      );
 
-    if (linkErr) throw linkErr
+    if (linkErr) throw linkErr;
 
-    const testedRequirements = new Set(linkedRequirements?.map((lr) => lr.requirement_id) || [])
+    const testedRequirements = new Set(
+      linkedRequirements?.map((lr) => lr.requirement_id) || []
+    );
 
     const byPriority = requirements.reduce((acc, req) => {
-      const key = (req.priority || "medium") as string
-      acc[key] = (acc[key] || 0) + 1
-      return acc
-    }, {} as Record<string, number>)
+      const key = (req.priority || "medium") as string;
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
 
     setMetrics((prev) => ({
       ...prev,
       requirements: {
         total: requirements.length,
         tested: testedRequirements.size,
-        coverage_percentage: requirements.length > 0 ? Math.round((testedRequirements.size / requirements.length) * 100) : 0,
+        coverage_percentage:
+          requirements.length > 0
+            ? Math.round((testedRequirements.size / requirements.length) * 100)
+            : 0,
         by_priority: byPriority,
       },
-    }))
+    }));
   }
 
   async function fetchRecentActivity() {
-    const supabase = createClient()
+    const supabase = createClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) return
+    } = await supabase.auth.getUser();
+    if (!user) return;
 
     const { data, error } = await supabase
       .from("test_executions")
@@ -225,72 +255,77 @@ export function TestManagementDashboard() {
       )
       .eq("executed_by", user.id)
       .order("created_at", { ascending: false })
-      .limit(5)
+      .limit(5);
 
-    if (error) throw error
+    if (error) throw error;
 
     const activity = (data || []).map((exec) => ({
       id: exec.id,
       type: "execution" as const,
-      description: `Test "${(exec as unknown as { test_cases?: { title?: string } }).test_cases?.title || "Unknown Test"}" ${
-        exec.execution_status
-      }`,
+      description: `Test "${
+        (exec as unknown as { test_cases?: { title?: string } }).test_cases
+          ?.title || "Unknown Test"
+      }" ${exec.execution_status}`,
       timestamp: exec.created_at,
       status: exec.execution_status,
-    }))
+    }));
 
-    setMetrics((prev) => ({ ...prev, recent_activity: activity }))
+    setMetrics((prev) => ({ ...prev, recent_activity: activity }));
   }
 
   function getStatusIcon(status: string) {
     switch (status) {
       case "passed":
-        return <CheckCircle className="h-4 w-4 text-green-600" />
+        return <CheckCircle className="h-4 w-4 text-green-600" />;
       case "failed":
-        return <XCircle className="h-4 w-4 text-red-600" />
+        return <XCircle className="h-4 w-4 text-red-600" />;
       case "blocked":
-        return <AlertTriangle className="h-4 w-4 text-orange-600" />
+        return <AlertTriangle className="h-4 w-4 text-orange-600" />;
       case "skipped":
-        return <Clock className="h-4 w-4 text-gray-600" />
+        return <Clock className="h-4 w-4 text-gray-600" />;
       default:
-        return <XCircle className="h-4 w-4 text-gray-400" />
+        return <XCircle className="h-4 w-4 text-gray-400" />;
     }
   }
 
   function getPassRateColor(rate: number) {
-    if (rate >= 80) return "text-green-600"
-    if (rate >= 60) return "text-yellow-600"
-    return "text-red-600"
+    if (rate >= 80) return "text-green-600";
+    if (rate >= 60) return "text-yellow-600";
+    return "text-red-600";
   }
 
   function getRelativeTime(dateString: string) {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMins / 60)
-    const diffDays = Math.floor(diffHours / 24)
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
 
-    if (diffMins < 60) return `${diffMins}m ago`
-    if (diffHours < 24) return `${diffHours}h ago`
-    if (diffDays < 7) return `${diffDays}d ago`
-    return date.toLocaleDateString()
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
   }
 
   const priorityRows = useMemo(() => {
-    const entries = Object.entries(metrics.requirements.by_priority || {})
+    const entries = Object.entries(metrics.requirements.by_priority || {});
     // Sort into a stable, user-friendly order
     entries.sort((a, b) => {
-      const aKey = a[0].toLowerCase()
-      const bKey = b[0].toLowerCase()
-      const aIdx = PRIORITY_ORDER.indexOf(aKey as (typeof PRIORITY_ORDER)[number])
-      const bIdx = PRIORITY_ORDER.indexOf(bKey as (typeof PRIORITY_ORDER)[number])
-      const safeA = aIdx === -1 ? 999 : aIdx
-      const safeB = bIdx === -1 ? 999 : bIdx
-      return safeA - safeB
-    })
-    return entries
-  }, [metrics.requirements.by_priority])
+      const aKey = a[0].toLowerCase();
+      const bKey = b[0].toLowerCase();
+      const aIdx = PRIORITY_ORDER.indexOf(
+        aKey as (typeof PRIORITY_ORDER)[number]
+      );
+      const bIdx = PRIORITY_ORDER.indexOf(
+        bKey as (typeof PRIORITY_ORDER)[number]
+      );
+      const safeA = aIdx === -1 ? 999 : aIdx;
+      const safeB = bIdx === -1 ? 999 : bIdx;
+      return safeA - safeB;
+    });
+    return entries;
+  }, [metrics.requirements.by_priority]);
 
   if (loading) {
     return (
@@ -300,16 +335,14 @@ export function TestManagementDashboard() {
           <p className="text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
     <div className="space-y-10 px-1 md:px-2">
       {/* Header + Team Switcher Space */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-         
-        </div>
+        <div className="space-y-1"></div>
 
         {/* Team switcher placeholder */}
         <div className="flex items-center gap-2">
@@ -317,7 +350,9 @@ export function TestManagementDashboard() {
             type="button"
             variant="outline"
             className="gap-2"
-            onClick={() => setSelectedTeamId((v) => (v === "personal" ? "team" : "personal"))}
+            onClick={() =>
+              setSelectedTeamId((v) => (v === "personal" ? "team" : "personal"))
+            }
             title="Team switcher placeholder"
           >
             <Users className="h-4 w-4" />
@@ -330,12 +365,18 @@ export function TestManagementDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <CardTitle className="text-sm font-medium">Total Test Cases</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Total Test Cases
+            </CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="space-y-1">
-            <div className="text-2xl font-semibold">{metrics.test_cases.total}</div>
-            <p className="text-xs text-muted-foreground">{metrics.test_cases.not_run} not executed</p>
+            <div className="text-2xl font-semibold">
+              {metrics.test_cases.total}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {metrics.test_cases.not_run} not executed
+            </p>
           </CardContent>
         </Card>
 
@@ -345,7 +386,11 @@ export function TestManagementDashboard() {
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="space-y-1">
-            <div className={`text-2xl font-semibold ${getPassRateColor(metrics.test_cases.pass_rate)}`}>
+            <div
+              className={`text-2xl font-semibold ${getPassRateColor(
+                metrics.test_cases.pass_rate
+              )}`}
+            >
               {metrics.test_cases.pass_rate}%
             </div>
             <p className="text-xs text-muted-foreground">
@@ -356,13 +401,18 @@ export function TestManagementDashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <CardTitle className="text-sm font-medium">Requirements Coverage</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Requirements Coverage
+            </CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="space-y-1">
-            <div className="text-2xl font-semibold">{metrics.requirements.coverage_percentage}%</div>
+            <div className="text-2xl font-semibold">
+              {metrics.requirements.coverage_percentage}%
+            </div>
             <p className="text-xs text-muted-foreground">
-              {metrics.requirements.tested} of {metrics.requirements.total} requirements
+              {metrics.requirements.tested} of {metrics.requirements.total}{" "}
+              requirements
             </p>
           </CardContent>
         </Card>
@@ -375,13 +425,15 @@ export function TestManagementDashboard() {
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center justify-between gap-4">
               <span>Test Execution Status</span>
-              <Link href="/pages/test-cases">
+              <Link href="/test-cases">
                 <Button variant="outline" size="sm">
                   View All <ArrowUpRight className="h-4 w-4 ml-1" />
                 </Button>
               </Link>
             </CardTitle>
-            <CardDescription>Current status of all test cases (latest execution).</CardDescription>
+            <CardDescription>
+              Current status of all test cases (latest execution).
+            </CardDescription>
           </CardHeader>
 
           <CardContent className="pt-2">
@@ -412,20 +464,27 @@ export function TestManagementDashboard() {
                   barClass: "bg-gray-500",
                 },
               ].map((row) => (
-                <div key={row.label} className="flex items-center justify-between gap-4">
+                <div
+                  key={row.label}
+                  className="flex items-center justify-between gap-4"
+                >
                   <div className="flex items-center gap-2 min-w-[120px]">
                     {row.icon}
                     <span className="text-sm">{row.label}</span>
                   </div>
 
                   <div className="flex items-center gap-3 min-w-[170px] justify-end">
-                    <span className="text-sm font-medium tabular-nums">{row.value}</span>
+                    <span className="text-sm font-medium tabular-nums">
+                      {row.value}
+                    </span>
                     <div className="w-28 bg-muted rounded-full h-3 overflow-hidden">
                       <div
                         className={`${row.barClass} h-3 rounded-full transition-all duration-300`}
                         style={{
                           width: `${
-                            metrics.test_cases.total > 0 ? (row.value / metrics.test_cases.total) * 100 : 0
+                            metrics.test_cases.total > 0
+                              ? (row.value / metrics.test_cases.total) * 100
+                              : 0
                           }%`,
                         }}
                       />
@@ -446,8 +505,10 @@ export function TestManagementDashboard() {
           <CardContent className="space-y-4">
             {priorityRows.length === 0 ? (
               <div className="text-center py-8 space-y-2">
-                <p className="text-sm text-muted-foreground">No requirements found.</p>
-                <Link href="/pages/requirements">
+                <p className="text-sm text-muted-foreground">
+                  No requirements found.
+                </p>
+                <Link href="/requirements">
                   <Button variant="outline" size="sm">
                     Add Requirement
                   </Button>
@@ -456,7 +517,10 @@ export function TestManagementDashboard() {
             ) : (
               <div className="space-y-3">
                 {priorityRows.map(([priority, count]) => (
-                  <div key={priority} className="flex items-center justify-between py-1">
+                  <div
+                    key={priority}
+                    className="flex items-center justify-between py-1"
+                  >
                     <Badge
                       variant="outline"
                       className={`capitalize ${
@@ -471,7 +535,9 @@ export function TestManagementDashboard() {
                     >
                       {priority}
                     </Badge>
-                    <span className="text-sm font-medium tabular-nums">{count}</span>
+                    <span className="text-sm font-medium tabular-nums">
+                      {count}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -488,13 +554,17 @@ export function TestManagementDashboard() {
               <Activity className="h-5 w-5" />
               Recent Activity
             </CardTitle>
-            <CardDescription>Latest test executions and updates.</CardDescription>
+            <CardDescription>
+              Latest test executions and updates.
+            </CardDescription>
           </CardHeader>
           <CardContent className="pt-2">
             {metrics.recent_activity.length === 0 ? (
               <div className="text-center py-10 space-y-2">
                 <Activity className="h-8 w-8 mx-auto text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No recent activity</p>
+                <p className="text-sm text-muted-foreground">
+                  No recent activity
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -505,8 +575,12 @@ export function TestManagementDashboard() {
                   >
                     {activity.status && getStatusIcon(activity.status)}
                     <div className="flex-1 space-y-1">
-                      <p className="text-sm leading-relaxed">{activity.description}</p>
-                      <p className="text-xs text-muted-foreground">{getRelativeTime(activity.timestamp)}</p>
+                      <p className="text-sm leading-relaxed">
+                        {activity.description}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {getRelativeTime(activity.timestamp)}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -516,5 +590,5 @@ export function TestManagementDashboard() {
         </Card>
       </div>
     </div>
-  )
+  );
 }

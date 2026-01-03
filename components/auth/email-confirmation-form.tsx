@@ -1,102 +1,105 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
-import { toast } from 'sonner'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Loader2, CheckCircle, AlertCircle, Mail } from 'lucide-react'
-import { confirmEmail, resendConfirmationEmail } from '@/app/auth/actions/auth'
+import { useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { toast } from "sonner";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, CheckCircle, AlertCircle, Mail } from "lucide-react";
+import { confirmEmail, resendConfirmationEmail } from "@/app/auth/actions/auth";
 
 export default function EmailConfirmationForm() {
-  const [loading, setLoading] = useState(true)
-  const [confirmed, setConfirmed] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [resendLoading, setResendLoading] = useState(false)
-  const [showResendForm, setShowResendForm] = useState(false)
-  const [resendEmail, setResendEmail] = useState('')
-  const searchParams = useSearchParams()
-  const router = useRouter()
+  const [loading, setLoading] = useState(true);
+  const [confirmed, setConfirmed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [showResendForm, setShowResendForm] = useState(false);
+  const [resendEmail, setResendEmail] = useState("");
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   useEffect(() => {
     const handleConfirmation = async () => {
       try {
-        const token = searchParams.get('token')
-        
-        
+        const token = searchParams.get("token");
+
         if (!token) {
-          setError('Invalid confirmation link - no token found')
-          setLoading(false)
-          return
+          setError("Invalid confirmation link - no token found");
+          setLoading(false);
+          return;
         }
 
-        
-        const formData = new FormData()
-        formData.append('token', token)
-        
-        const result = await confirmEmail(formData)
-        
+        const formData = new FormData();
+        formData.append("token", token);
+
+        const result = await confirmEmail(formData);
+
         if (result.success) {
-          setConfirmed(true)
-          toast.success(result.message || 'Email confirmed successfully!')
+          setConfirmed(true);
+          toast.success(result.message || "Email confirmed successfully!");
         } else {
-          console.error('❌ Confirmation failed:', result.error)
-          setError(result.error || 'Email confirmation failed')
+          console.error("❌ Confirmation failed:", result.error);
+          setError(result.error || "Email confirmation failed");
         }
-
       } catch (err) {
-        console.error('❌ Confirmation error:', err)
-        setError('An unexpected error occurred during email confirmation')
+        console.error("❌ Confirmation error:", err);
+        setError("An unexpected error occurred during email confirmation");
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
     // Only run confirmation if we have URL parameters
     if (searchParams.toString()) {
-      handleConfirmation()
+      handleConfirmation();
     } else {
-      setLoading(false)
-      setError('No confirmation token found in URL')
+      setLoading(false);
+      setError("No confirmation token found in URL");
     }
-  }, [searchParams])
+  }, [searchParams]);
 
   const handleResendConfirmation = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
+    e.preventDefault();
+
     if (!resendEmail.trim()) {
-      toast.error('Please enter your email address')
-      return
+      toast.error("Please enter your email address");
+      return;
     }
 
     try {
-      setResendLoading(true)
-      
-      const formData = new FormData()
-      formData.append('email', resendEmail.trim())
-      
-      const result = await resendConfirmationEmail(formData)
-      
+      setResendLoading(true);
+
+      const formData = new FormData();
+      formData.append("email", resendEmail.trim());
+
+      const result = await resendConfirmationEmail(formData);
+
       if (result.success) {
-        toast.success(result.message || 'Confirmation email sent!')
-        setShowResendForm(false)
-        setError(null)
+        toast.success(result.message || "Confirmation email sent!");
+        setShowResendForm(false);
+        setError(null);
       } else {
-        toast.error(result.error || 'Failed to resend confirmation email')
+        toast.error(result.error || "Failed to resend confirmation email");
       }
     } catch (err) {
-      console.error('❌ Resend error:', err)
-      toast.error('Failed to resend confirmation email')
+      console.error("❌ Resend error:", err);
+      toast.error("Failed to resend confirmation email");
     } finally {
-      setResendLoading(false)
+      setResendLoading(false);
     }
-  }
+  };
 
   const handleContinue = () => {
-    router.push('/pages/login')
-  }
+    router.push("/login");
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -110,10 +113,10 @@ export default function EmailConfirmationForm() {
             Email Confirmation
           </CardTitle>
           <CardDescription>
-            {loading && 'Confirming your email address...'}
-            {confirmed && 'Your email has been successfully confirmed!'}
-            {error && 'There was an issue confirming your email'}
-            {!loading && !confirmed && !error && 'Confirm your email address'}
+            {loading && "Confirming your email address..."}
+            {confirmed && "Your email has been successfully confirmed!"}
+            {error && "There was an issue confirming your email"}
+            {!loading && !confirmed && !error && "Confirm your email address"}
           </CardDescription>
         </CardHeader>
 
@@ -131,7 +134,8 @@ export default function EmailConfirmationForm() {
             <div className="text-center py-4">
               <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-4" />
               <p className="text-sm text-muted-foreground mb-6">
-                Your email has been confirmed and your account is now active. You can now sign in to access SynthQA.
+                Your email has been confirmed and your account is now active.
+                You can now sign in to access SynthQA.
               </p>
               <Button onClick={handleContinue} className="w-full">
                 Continue to Sign In
@@ -145,20 +149,22 @@ export default function EmailConfirmationForm() {
               <p className="text-sm text-red-600 mb-2 font-medium">
                 Email Confirmation Failed
               </p>
-              <p className="text-sm text-muted-foreground mb-6">
-                {error}
-              </p>
-              
+              <p className="text-sm text-muted-foreground mb-6">{error}</p>
+
               {!showResendForm ? (
                 <div className="space-y-2">
-                  <Button 
-                    onClick={() => setShowResendForm(true)} 
-                    variant="outline" 
+                  <Button
+                    onClick={() => setShowResendForm(true)}
+                    variant="outline"
                     className="w-full"
                   >
                     Request New Confirmation Email
                   </Button>
-                  <Button onClick={() => router.push('/pages/login')} variant="ghost" className="w-full">
+                  <Button
+                    onClick={() => router.push("/login")}
+                    variant="ghost"
+                    className="w-full"
+                  >
                     Back to Sign In
                   </Button>
                 </div>
@@ -177,8 +183,8 @@ export default function EmailConfirmationForm() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Button 
-                      type="submit" 
+                    <Button
+                      type="submit"
                       className="w-full"
                       disabled={resendLoading}
                     >
@@ -188,13 +194,13 @@ export default function EmailConfirmationForm() {
                           Sending...
                         </>
                       ) : (
-                        'Send Confirmation Email'
+                        "Send Confirmation Email"
                       )}
                     </Button>
-                    <Button 
+                    <Button
                       type="button"
-                      onClick={() => setShowResendForm(false)} 
-                      variant="ghost" 
+                      onClick={() => setShowResendForm(false)}
+                      variant="ghost"
                       className="w-full"
                       disabled={resendLoading}
                     >
@@ -210,9 +216,14 @@ export default function EmailConfirmationForm() {
             <div className="text-center py-4">
               <Mail className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-sm text-muted-foreground mb-6">
-                Click the confirmation link in your email to activate your account.
+                Click the confirmation link in your email to activate your
+                account.
               </p>
-              <Button onClick={() => setShowResendForm(true)} variant="outline" className="w-full">
+              <Button
+                onClick={() => setShowResendForm(true)}
+                variant="outline"
+                className="w-full"
+              >
                 Resend Confirmation Email
               </Button>
             </div>
@@ -220,5 +231,5 @@ export default function EmailConfirmationForm() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

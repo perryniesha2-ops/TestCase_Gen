@@ -1,4 +1,4 @@
-// app/pages/test-cases/page.tsx (Server Component)
+// app/test-cases/page.tsx (Server Component)
 import { Suspense } from "react";
 import { TabbedTestCaseTable } from "@/components/testcase-management/test-cases/test-case-table";
 import { Button } from "@/components/ui/button";
@@ -13,18 +13,24 @@ export default function TestCasesPage() {
       <AppSidebar className="hidden md:block" />
 
       <div className="flex min-h-screen flex-col px-4 md:px-6">
-        <SiteHeader title="Test Cases"
-        subtitle="Manage and organize your test cases across all projects"/>
-       
+        <SiteHeader
+          title="Test Cases"
+          subtitle="Manage and organize your test cases across all projects"
+        />
+
         <section className="max-w-6xl mx-auto mt-6 space-y-4 w-full">
-          <div className="flex items-center justify-end">
-            
-          </div>
+          <div className="flex items-center justify-end"></div>
         </section>
 
         <main className="max-w-6xl mx-auto mt-6 w-full">
-          <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading test cases…</div>}>
-            <TabbedTestCaseTable/>
+          <Suspense
+            fallback={
+              <div className="p-6 text-sm text-muted-foreground">
+                Loading test cases…
+              </div>
+            }
+          >
+            <TabbedTestCaseTable />
           </Suspense>
         </main>
       </div>
@@ -32,6 +38,6 @@ export default function TestCasesPage() {
   );
 }
 export const metadata = {
-  title: 'Test Cases - SynthQA',
-  description: 'Manage and organize your test cases across all projects.',
-}
+  title: "Test Cases - SynthQA",
+  description: "Manage and organize your test cases across all projects.",
+};

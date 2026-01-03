@@ -1,7 +1,6 @@
 "use client";
 
-
-import Image from "next/image"
+import Image from "next/image";
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -17,7 +16,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Home,
   FlaskConical,
@@ -41,7 +46,6 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 
-
 interface UserProfile {
   id: string;
   email: string;
@@ -56,28 +60,29 @@ interface SidebarProps {
 }
 
 const navigation = [
-  { name: "Dashboard", href: "/pages/dashboard", icon: Home },
-  { name: "Requirements", href: "/pages/requirements", icon: BarChart3 },
-  { name: "Generate Tests", href: "/pages/generate", icon: FlaskConical },
-  { name: "Test Cases", href: "/pages/test-cases", icon: FileText },
-  { name: "Test Suites", href: "/pages/test-library", icon: Library },
-  { name: "Templates", href: "/pages/template-manager", icon: Layout },
-  { name: "Projects", href: "/pages/project-manager", icon: Newspaper },
-
-
+  { name: "Dashboard", href: "/dashboard", icon: Home },
+  { name: "Requirements", href: "/requirements", icon: BarChart3 },
+  { name: "Generate Tests", href: "/generate", icon: FlaskConical },
+  { name: "Test Cases", href: "/test-cases", icon: FileText },
+  { name: "Test Suites", href: "/test-library", icon: Library },
+  { name: "Templates", href: "/template-manager", icon: Layout },
+  { name: "Projects", href: "/project-manager", icon: Newspaper },
 ];
 
 const secondaryNavigation = [
-  { name: "Settings", href: "/pages/settings", icon: Settings },
-  { name: "Billing", href: "/pages/billing", icon: CircleDollarSign },
-  { name: "Help & Support", href: "/pages/contact", icon: HelpCircle },
+  { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Billing", href: "/billing", icon: CircleDollarSign },
+  { name: "Help & Support", href: "/contact", icon: HelpCircle },
 ];
 
-export function AppSidebar({ className, initialCollapsed = false }: SidebarProps) {
+export function AppSidebar({
+  className,
+  initialCollapsed = false,
+}: SidebarProps) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(initialCollapsed); 
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const router = useRouter();
   const pathname = usePathname();
   const supabase = createClient();
@@ -85,7 +90,9 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
   useEffect(() => {
     (async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (user) {
           setUser({
             id: user.id,
@@ -104,7 +111,7 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      router.push("/pages/login");
+      router.push("/login");
       toast.success("Signed out successfully");
     } catch (error) {
       console.error("Error signing out:", error);
@@ -124,7 +131,8 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
   };
 
   const isActive = (href: string) => {
-    if (href === "/pages/dashboard") return pathname === "/pages/dashboard" || pathname === "/";
+    if (href === "/dashboard")
+      return pathname === "/dashboard" || pathname === "/";
     return pathname.startsWith(href);
   };
 
@@ -159,45 +167,63 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
   const SidebarContent = () => (
     <div className="flex h-full flex-col">
       {/* Brand / Collapse toggle */}
-      <div className={cn("flex h-20 items-center border-b", collapsed ? "px-2" : "px-4")}>
-        <div className={cn("flex items-center gap-2", collapsed && "w-full justify-center")}>
-              <Link href="/pages/dashboard" className="flex items-center gap-10 md:gap-10 font-semibold">
-    {/* Dark-mode logo */}
-    <Image
-      src="/logo-sq-dark.svg"
-      alt="SynthQA Logo"
-      width={5000      }
-      height={2000}
-      className="hidden dark:inline-block h-20 w-auto sm:h-20"
-      loading="eager"
-      priority
-    />
-    {/* Light-mode logo */}
-    <Image
-      src="/logo-sq-light.svg"
-      alt="SynthQA Logo"
-      width={1000}
-      height={100}
-      className="inline-block dark:hidden h-20 w-auto sm:h-20"
-      loading="eager"
-      priority
-    />
-  </Link>
-
+      <div
+        className={cn(
+          "flex h-20 items-center border-b",
+          collapsed ? "px-2" : "px-4"
+        )}
+      >
+        <div
+          className={cn(
+            "flex items-center gap-2",
+            collapsed && "w-full justify-center"
+          )}
+        >
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-10 md:gap-10 font-semibold"
+          >
+            {/* Dark-mode logo */}
+            <Image
+              src="/logo-sq-dark.svg"
+              alt="SynthQA Logo"
+              width={5000}
+              height={2000}
+              className="hidden dark:inline-block h-20 w-auto sm:h-20"
+              loading="eager"
+              priority
+            />
+            {/* Light-mode logo */}
+            <Image
+              src="/logo-sq-light.svg"
+              alt="SynthQA Logo"
+              width={1000}
+              height={100}
+              className="inline-block dark:hidden h-20 w-auto sm:h-20"
+              loading="eager"
+              priority
+            />
+          </Link>
         </div>
         {/* collapse/expand button (desktop only) */}
-        
+
         <Button
           type="button"
           size="icon"
           variant="ghost"
-          className={cn("ml-auto hidden lg:inline-flex", collapsed && "mx-auto")}
+          className={cn(
+            "ml-auto hidden lg:inline-flex",
+            collapsed && "mx-auto"
+          )}
           onClick={() => setCollapsed((c) => !c)}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <ChevronLeft className="h-4 w-4" />
+          )}
         </Button>
-        
       </div>
 
       {/* Primary nav */}
@@ -205,15 +231,25 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
         <nav className={cn("space-y-2")}>
           <div className="space-y-1">
             {navigation.map((item) => (
-              <NavButton key={item.name} name={item.name} href={item.href} Icon={item.icon} />
+              <NavButton
+                key={item.name}
+                name={item.name}
+                href={item.href}
+                Icon={item.icon}
+              />
             ))}
           </div>
 
-        {/* Secondary */}
+          {/* Secondary */}
           <div className={cn("pt-4 mt-4 border-t", collapsed ? "mx-1" : "")} />
           <div className="space-y-1">
             {secondaryNavigation.map((item) => (
-              <NavButton key={item.name} name={item.name} href={item.href} Icon={item.icon} />
+              <NavButton
+                key={item.name}
+                name={item.name}
+                href={item.href}
+                Icon={item.icon}
+              />
             ))}
           </div>
         </nav>
@@ -222,7 +258,12 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
       {/* User block */}
       <div className={cn("border-t p-2", collapsed && "px-1")}>
         {loading ? (
-          <div className={cn("flex items-center gap-3", collapsed ? "justify-center py-2" : "px-2 py-2")}>
+          <div
+            className={cn(
+              "flex items-center gap-3",
+              collapsed ? "justify-center py-2" : "px-2 py-2"
+            )}
+          >
             <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
             {!collapsed && (
               <div className="flex-1 space-y-1">
@@ -240,10 +281,17 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
                   "w-full h-auto hover:bg-muted",
                   collapsed ? "justify-center p-2" : "justify-start gap-3 p-2"
                 )}
-                title={collapsed ? `${user.full_name || "User"} — Account` : undefined}
+                title={
+                  collapsed
+                    ? `${user.full_name || "User"} — Account`
+                    : undefined
+                }
               >
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={user.avatar_url} alt={user.full_name || user.email} />
+                  <AvatarImage
+                    src={user.avatar_url}
+                    alt={user.full_name || user.email}
+                  />
                   <AvatarFallback className="text-sm">
                     {getUserInitials(user.full_name || "", user.email)}
                   </AvatarFallback>
@@ -251,8 +299,12 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
                 {!collapsed && (
                   <>
                     <div className="flex-1 text-left">
-                      <p className="text-sm font-medium truncate">{user.full_name || "User"}</p>
-                      <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                      <p className="text-sm font-medium truncate">
+                        {user.full_name || "User"}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {user.email}
+                      </p>
                     </div>
                   </>
                 )}
@@ -261,32 +313,46 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
             <DropdownMenuContent align="start" className="w-56">
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">{user.full_name || "User"}</p>
-                  <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+                  <p className="text-sm font-medium leading-none">
+                    {user.full_name || "User"}
+                  </p>
+                  <p className="text-xs leading-none text-muted-foreground">
+                    {user.email}
+                  </p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/pages/settings")}>
+              <DropdownMenuItem onClick={() => router.push("/settings")}>
                 <User className="mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/pages/billing")}>
+              <DropdownMenuItem onClick={() => router.push("/billing")}>
                 <CreditCard className="mr-2 h-4 w-4" />
                 Billing
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/pages/settings?tab=notifications")}>
+              <DropdownMenuItem
+                onClick={() => router.push("/settings?tab=notifications")}
+              >
                 <Bell className="mr-2 h-4 w-4" />
                 Notifications
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
+              <DropdownMenuItem
+                onClick={handleSignOut}
+                className="text-red-600"
+              >
                 <LogOut className="mr-2 h-4 w-4" />
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
-          <Button variant="outline" className={cn("w-full", collapsed && "w-10 px-0")} onClick={() => router.push("/pages/sign-in")} title={collapsed ? "Sign in" : undefined}>
+          <Button
+            variant="outline"
+            className={cn("w-full", collapsed && "w-10 px-0")}
+            onClick={() => router.push("/sign-in")}
+            title={collapsed ? "Sign in" : undefined}
+          >
             {collapsed ? <User className="h-4 w-4" /> : "Sign In"}
           </Button>
         )}
@@ -297,31 +363,41 @@ export function AppSidebar({ className, initialCollapsed = false }: SidebarProps
   return (
     <>
       {/* Desktop Sidebar (collapsible width) */}
-      <aside className={cn( 
-        "hidden md:block border-r bg-background transition-[width] duration-200 ease-in-out", 
-        collapsed ? "w-[56px]" : "w-64", 
-        className )} > 
-        <SidebarContent /> </aside>
+      <aside
+        className={cn(
+          "hidden md:block border-r bg-background transition-[width] duration-200 ease-in-out",
+          collapsed ? "w-[56px]" : "w-64",
+          className
+        )}
+      >
+        <SidebarContent />{" "}
+      </aside>
       {/* Mobile Sidebar (Sheet) */}
-     <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}> 
-      <SheetTrigger asChild> 
-        <Button variant="outline" size="icon" className="md:hidden fixed top-4 left-4 z-50"> 
-          <Menu className="h-4 w-4" /> 
-          </Button> 
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-64"> 
-            <SheetHeader className="sr-only"> 
-              <SheetTitle>Navigation Menu</SheetTitle> 
-              </SheetHeader> 
-              <div className="flex h-full flex-col"> 
-                <div className="flex-1"> 
-                  <AppSidebarInnerExpandedForMobile user={user} loading={loading} handleSignOut={handleSignOut} /> 
-                  </div> 
-                  </div> 
-                  </SheetContent> 
-                  </Sheet> 
-
-
+      <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
+        <SheetTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon"
+            className="md:hidden fixed top-4 left-4 z-50"
+          >
+            <Menu className="h-4 w-4" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="p-0 w-64">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Navigation Menu</SheetTitle>
+          </SheetHeader>
+          <div className="flex h-full flex-col">
+            <div className="flex-1">
+              <AppSidebarInnerExpandedForMobile
+                user={user}
+                loading={loading}
+                handleSignOut={handleSignOut}
+              />
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </>
   );
 }
@@ -336,10 +412,12 @@ function AppSidebarInnerExpandedForMobile({
   loading: boolean;
   handleSignOut: () => Promise<void>;
 }) {
-
   const router = useRouter();
   const pathname = usePathname();
-  const isActive = (href: string) => (href === "/pages/dashboard" ? pathname === "/pages/dashboard" || pathname === "/" : pathname.startsWith(href));
+  const isActive = (href: string) =>
+    href === "/dashboard"
+      ? pathname === "/dashboard" || pathname === "/"
+      : pathname.startsWith(href);
 
   return (
     <div className="flex h-full flex-col">
@@ -357,7 +435,10 @@ function AppSidebarInnerExpandedForMobile({
               <Button
                 key={item.name}
                 variant={isActive(item.href) ? "secondary" : "ghost"}
-                className={cn("w-full justify-start gap-3 h-10", isActive(item.href) && "bg-secondary font-medium")}
+                className={cn(
+                  "w-full justify-start gap-3 h-10",
+                  isActive(item.href) && "bg-secondary font-medium"
+                )}
                 onClick={() => router.push(item.href)}
               >
                 <Icon className="h-4 w-4" />
@@ -377,12 +458,20 @@ function AppSidebarInnerExpandedForMobile({
             </div>
           </div>
         ) : user ? (
-          <Button variant="outline" className="w-full justify-start gap-3" onClick={handleSignOut}>
+          <Button
+            variant="outline"
+            className="w-full justify-start gap-3"
+            onClick={handleSignOut}
+          >
             <LogOut className="h-4 w-4" />
             Sign out
           </Button>
         ) : (
-          <Button variant="outline" className="w-full" onClick={() => router.push("/pages/login")}>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => router.push("/login")}
+          >
             Sign In
           </Button>
         )}

@@ -1,12 +1,12 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
-  })
+  });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,116 +14,119 @@ export async function middleware(request: NextRequest) {
     {
       cookies: {
         get(name: string) {
-          return request.cookies.get(name)?.value
+          return request.cookies.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
           request.cookies.set({
             name,
             value,
             ...options,
-          })
+          });
           response = NextResponse.next({
             request: {
               headers: request.headers,
             },
-          })
+          });
           response.cookies.set({
             name,
             value,
             ...options,
-          })
+          });
         },
         remove(name: string, options: CookieOptions) {
           request.cookies.set({
             name,
-            value: '',
+            value: "",
             ...options,
-          })
+          });
           response = NextResponse.next({
             request: {
               headers: request.headers,
             },
-          })
+          });
           response.cookies.set({
             name,
-            value: '',
+            value: "",
             ...options,
-          })
+          });
         },
       },
     }
-  )
+  );
+
+  const pathname = request.nextUrl.pathname;
+
+  // Public routes (accessible without auth)
+  const publicRoutes = [
+    "/",
+    "/login",
+    "/beta-login",
+    "/billing",
+    "/forgot-password",
+    "/reset-password",
+    "/confirm-email",
+    "/pricing",
+    "/privacy",
+    "/terms",
+    "/contact",
+  ];
+
+  // Auth callback routes (don't redirect these)
+  const isAuthCallback = pathname.startsWith("/auth/callback");
+
+  // Check if current route is public
+  const isPublicRoute = publicRoutes.includes(pathname) || isAuthCallback;
+
+  // Redirect /signup to /beta-login
+  if (pathname === "/signup") {
+    return NextResponse.redirect(new URL("/beta-login", request.url));
+  }
 
   // Get user and handle potential errors
   const {
     data: { user },
-    error
-  } = await supabase.auth.getUser()
-
-  // Protected routes
-  const isProtectedRoute = request.nextUrl.pathname.startsWith('/pages/dashboard') ||
-                          request.nextUrl.pathname.startsWith('/pages/test-cases') ||
-                          request.nextUrl.pathname.startsWith('/pages/generate')    ||
-                          request.nextUrl.pathname.startsWith('/pages/dashboard')    ||
-                          request.nextUrl.pathname.startsWith('/pages/requirements')    ||
-                          request.nextUrl.pathname.startsWith('/pages/settings')    ||
-                          request.nextUrl.pathname.startsWith('/pages/contact')    ||
-                          request.nextUrl.pathname.startsWith('/pages/privacy')    ||
-                          request.nextUrl.pathname.startsWith('/pages/terms')    ||
-                          request.nextUrl.pathname.startsWith('/dashboard') ||
-                          request.nextUrl.pathname.startsWith('/pages/test-library') ||
-                          request.nextUrl.pathname.startsWith('/pages/generate')  
-
-                       
-                         
-
-
-
-
-
-
-  // Auth routes
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/pages/login') 
-  
-
-  // Auth callback routes (don't redirect these)
-  const isAuthCallback = request.nextUrl.pathname.startsWith('/auth/callback')
+    error,
+  } = await supabase.auth.getUser();
 
   // If there's an auth error and user is trying to access protected route, clear session and redirect
-  if (error && isProtectedRoute) {
-    const loginUrl = new URL('/pages/beta-login', request.url)
-    loginUrl.searchParams.set('message', 'Session expired. Please log in again.')
-    
-    const clearedResponse = NextResponse.redirect(loginUrl)
-    
+  if (error && !isPublicRoute) {
+    const loginUrl = new URL("/beta-login", request.url);
+    loginUrl.searchParams.set(
+      "message",
+      "Session expired. Please log in again."
+    );
+
+    const clearedResponse = NextResponse.redirect(loginUrl);
+
     // Clear auth-related cookies
     const authCookieNames = [
-      'sb-access-token',
-      'sb-refresh-token', 
-      'supabase-auth-token',
-      'supabase.auth.token'
-    ]
-    
-    authCookieNames.forEach(name => {
-      clearedResponse.cookies.delete(name)
-    })
-    
-    return clearedResponse
+      "sb-access-token",
+      "sb-refresh-token",
+      "supabase-auth-token",
+      "supabase.auth.token",
+    ];
+
+    authCookieNames.forEach((name) => {
+      clearedResponse.cookies.delete(name);
+    });
+
+    return clearedResponse;
   }
 
   // If user is not logged in and trying to access protected route
-  if (!user && isProtectedRoute) {
-    const loginUrl = new URL('/pages/beta-login', request.url)
-    loginUrl.searchParams.set('redirect', request.nextUrl.pathname)
-    return NextResponse.redirect(loginUrl)
+  if (!user && !isPublicRoute) {
+    const loginUrl = new URL("/beta-login", request.url);
+    loginUrl.searchParams.set("redirect", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
-  // If user is logged in and trying to access auth routes (but not callback)
-  if (user && isAuthRoute && !isAuthCallback) {
-    return NextResponse.redirect(new URL('/pages/dashboard', request.url))
+  // If user is logged in and trying to access login/signup pages
+  const authPages = ["/login", "/beta-login", "/signup"];
+  if (user && authPages.includes(pathname)) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  return response
+  return response;
 }
 
 export const config = {
@@ -133,8 +136,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * Feel free to modify this pattern to include more paths.
+     * - api routes
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    "/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
-}
+};

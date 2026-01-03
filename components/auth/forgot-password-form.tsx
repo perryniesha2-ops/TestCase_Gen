@@ -1,72 +1,68 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
-import Link from "next/link"
-import { toast } from "sonner"
-import { customResetPassword } from "@/app/auth/actions/auth"
-import { cn } from "@/lib/utils"
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { toast } from "sonner";
+import { customResetPassword } from "@/app/auth/actions/auth";
+import { cn } from "@/lib/utils";
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Field,
   FieldDescription,
   FieldGroup,
   FieldLabel,
   FieldSeparator,
-} from "@/components/ui/field"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+} from "@/components/ui/field";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-import { ArrowLeft, AlertTriangle, Mail } from "lucide-react"
+import { ArrowLeft, AlertTriangle, Mail } from "lucide-react";
 
 export function ForgotPasswordForm() {
-  const [loading, setLoading] = useState(false)
-  const [sent, setSent] = useState(false)
-  const [email, setEmail] = useState("")
-  const searchParams = useSearchParams()
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
 
-  const error = searchParams.get("error")
+  const error = searchParams.get("error");
 
   useEffect(() => {
     if (error === "expired") {
       toast.error("Reset link expired", {
-        description: "The password reset link has expired. Please request a new one.",
+        description:
+          "The password reset link has expired. Please request a new one.",
         duration: 5000,
-      })
+      });
     }
-  }, [error])
+  }, [error]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setLoading(true)
+    e.preventDefault();
+    setLoading(true);
 
-    const formData = new FormData(e.currentTarget)
+    const formData = new FormData(e.currentTarget);
 
     try {
-      const result = await customResetPassword(formData)
+      const result = await customResetPassword(formData);
 
       if (result?.error) {
-        toast.error("Reset failed", { description: result.error })
+        toast.error("Reset failed", { description: result.error });
       } else if (result?.success) {
-        const enteredEmail = String(formData.get("email") || "")
-        setEmail(enteredEmail)
-        setSent(true)
-        toast.success("Reset email sent!", { description: result.message })
+        const enteredEmail = String(formData.get("email") || "");
+        setEmail(enteredEmail);
+        setSent(true);
+        toast.success("Reset email sent!", { description: result.message });
       } else {
-        toast.error("Reset failed", { description: "Please try again." })
+        toast.error("Reset failed", { description: "Please try again." });
       }
     } catch (err) {
-      console.error(err)
-      toast.error("An unexpected error occurred")
+      console.error(err);
+      toast.error("An unexpected error occurred");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -82,14 +78,16 @@ export function ForgotPasswordForm() {
           <CardContent>
             <FieldGroup>
               <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
-                We&apos;ve sent a reset link to <span className="font-medium">{email}</span>
+                We&apos;ve sent a reset link to{" "}
+                <span className="font-medium">{email}</span>
               </FieldSeparator>
 
               <Field>
                 <Alert>
                   <Mail className="h-4 w-4" />
                   <AlertDescription>
-                    Click the link in the email to reset your password. The link expires in 1 hour.
+                    Click the link in the email to reset your password. The link
+                    expires in 1 hour.
                   </AlertDescription>
                 </Alert>
               </Field>
@@ -99,7 +97,8 @@ export function ForgotPasswordForm() {
                   <Alert variant="destructive">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertDescription>
-                      Your previous reset link expired. This new link will also expire in 1 hour.
+                      Your previous reset link expired. This new link will also
+                      expire in 1 hour.
                     </AlertDescription>
                   </Alert>
                 </Field>
@@ -111,8 +110,8 @@ export function ForgotPasswordForm() {
                   className="w-full"
                   variant="outline"
                   onClick={() => {
-                    setSent(false)
-                    setEmail("")
+                    setSent(false);
+                    setEmail("");
                   }}
                   disabled={loading}
                 >
@@ -120,13 +119,14 @@ export function ForgotPasswordForm() {
                 </Button>
 
                 <FieldDescription className="text-center">
-                  Didn&apos;t receive the email? Check spam/junk, or try another address.
+                  Didn&apos;t receive the email? Check spam/junk, or try another
+                  address.
                 </FieldDescription>
               </Field>
 
               <Field>
                 <Button asChild variant="ghost" className="w-full">
-                  <Link href="/pages/login">
+                  <Link href="/login">
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Back to login
                   </Link>
@@ -136,7 +136,7 @@ export function ForgotPasswordForm() {
           </CardContent>
         </Card>
       </div>
-    )
+    );
   }
 
   // --- DEFAULT STATE (styled like LoginForm) ---
@@ -183,13 +183,16 @@ export function ForgotPasswordForm() {
                 </Button>
 
                 <FieldDescription className="text-center">
-                  Remembered your password? <Link className="hover:underline" href="/pages/login">Back to login</Link>
+                  Remembered your password?{" "}
+                  <Link className="hover:underline" href="/login">
+                    Back to login
+                  </Link>
                 </FieldDescription>
               </Field>
 
               <Field>
                 <Button asChild variant="ghost" className="w-full">
-                  <Link href="/pages/login">
+                  <Link href="/login">
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Back to login
                   </Link>
@@ -200,5 +203,5 @@ export function ForgotPasswordForm() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import Image from "next/image"
-import Link from "next/link"
-import { ArrowRight } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   motion,
   useReducedMotion,
@@ -12,46 +12,46 @@ import {
   useTransform,
   useMotionValueEvent,
   useMotionValue,
-} from "framer-motion"
-import { useEffect, useState } from "react"
+} from "framer-motion";
+import { useEffect, useState } from "react";
 
 export function SiteNav() {
-  const reduce = useReducedMotion()
-  const { scrollY } = useScroll()
+  const reduce = useReducedMotion();
+  const { scrollY } = useScroll();
 
   // visual tightening on scroll
-  const scale = useTransform(scrollY, [0, 80], [1, 0.985])
-  const backdrop = useTransform(scrollY, [0, 80], [0, 1])
+  const scale = useTransform(scrollY, [0, 80], [1, 0.985]);
+  const backdrop = useTransform(scrollY, [0, 80], [0, 1]);
 
   // hide on down, show on up
-  const [hidden, setHidden] = useState(false)
-  const lastY = useMotionValue(0)
+  const [hidden, setHidden] = useState(false);
+  const lastY = useMotionValue(0);
 
   useMotionValueEvent(scrollY, "change", (latest) => {
-    const prev = lastY.get()
-    lastY.set(latest)
+    const prev = lastY.get();
+    lastY.set(latest);
 
     // Ignore tiny scroll jitter
-    const delta = latest - prev
-    if (Math.abs(delta) < 6) return
+    const delta = latest - prev;
+    if (Math.abs(delta) < 6) return;
 
     // Always show at top
     if (latest < 24) {
-      setHidden(false)
-      return
+      setHidden(false);
+      return;
     }
 
     // Down hides, up shows
-    if (delta > 0) setHidden(true)
-    else setHidden(false)
-  })
+    if (delta > 0) setHidden(true);
+    else setHidden(false);
+  });
 
   // If the user prefers reduced motion, don't do hide/show animation
   const navAnimate = reduce
     ? undefined
     : hidden
-      ? { y: -92, opacity: 0 } // ~header height
-      : { y: 0, opacity: 1 }
+    ? { y: -92, opacity: 0 } // ~header height
+    : { y: 0, opacity: 1 };
 
   return (
     <motion.header
@@ -61,7 +61,10 @@ export function SiteNav() {
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
     >
       {/* Background layer that activates on scroll */}
-      <motion.div className="absolute inset-0 -z-10" style={{ opacity: backdrop }}>
+      <motion.div
+        className="absolute inset-0 -z-10"
+        style={{ opacity: backdrop }}
+      >
         <div className="h-full w-full border-b bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/55 shadow-sm" />
       </motion.div>
 
@@ -81,7 +84,10 @@ export function SiteNav() {
           style={reduce ? undefined : { scale }}
         >
           {/* Brand */}
-          <Link href="/" className="flex items-center gap-2 md:gap-3 font-semibold">
+          <Link
+            href="/"
+            className="flex items-center gap-2 md:gap-3 font-semibold"
+          >
             <Image
               src="/logo-sq-dark.svg"
               alt="SynthQA Logo"
@@ -102,8 +108,6 @@ export function SiteNav() {
             />
           </Link>
 
-       
-
           {/* CTAs */}
           <div className="flex items-center gap-2">
             <motion.div
@@ -111,7 +115,7 @@ export function SiteNav() {
               transition={{ type: "spring", stiffness: 420, damping: 26 }}
             >
               <Button variant="ghost" asChild size="sm">
-                <Link href="/pages/login">Log in</Link>
+                <Link href="/login">Log in</Link>
               </Button>
             </motion.div>
 
@@ -120,7 +124,7 @@ export function SiteNav() {
               transition={{ type: "spring", stiffness: 420, damping: 26 }}
             >
               <Button asChild size="sm" className="gap-1">
-                <Link href="/pages/signup">
+                <Link href="/signup">
                   Start free
                   <motion.span
                     className="inline-flex"
@@ -136,11 +140,17 @@ export function SiteNav() {
         </motion.div>
       </motion.div>
     </motion.header>
-  )
+  );
 }
 
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  const reduce = useReducedMotion()
+function NavLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  const reduce = useReducedMotion();
 
   return (
     <motion.div
@@ -148,7 +158,10 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
       whileHover={reduce ? undefined : { y: -1 }}
       transition={{ type: "spring", stiffness: 420, damping: 26 }}
     >
-      <Link href={href} className={cn("relative transition-colors hover:text-foreground")}>
+      <Link
+        href={href}
+        className={cn("relative transition-colors hover:text-foreground")}
+      >
         {children}
         <motion.span
           className="pointer-events-none absolute -bottom-1 left-0 h-px w-full origin-left bg-foreground/60"
@@ -158,5 +171,5 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
         />
       </Link>
     </motion.div>
-  )
+  );
 }

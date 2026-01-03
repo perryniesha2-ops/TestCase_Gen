@@ -10,13 +10,13 @@ export default function GeneratePage() {
 
       {/* Main content */}
       <div className="flex min-h-screen flex-col px-4 md:px-6">
-        <SiteHeader  title="Generate"
-        subtitle="Use AI to automatically create comprehensive test cases from your requirements."/>
+        <SiteHeader
+          title="Generate"
+          subtitle="Use AI to automatically create comprehensive test cases from your requirements."
+        />
         {/* Centered form */}
         <main className="mt-6 flex-1">
           <div className="mx-auto w-full max-w-3xl">
-            {/* For *vertical* centering as well, replace the <main> above with:
-                <main className="mt-6 flex-1 grid place-items-center"> */}
             <GeneratorForm />
           </div>
         </main>
@@ -25,6 +25,7 @@ export default function GeneratePage() {
   );
 }
 export const metadata = {
-  title: 'Generate - SynthQA',
-  description: 'Use AI to automatically create comprehensive test cases from your requirements.',
-}
+  title: "Generate - SynthQA",
+  description:
+    "Use AI to automatically create comprehensive test cases from your requirements.",
+};
