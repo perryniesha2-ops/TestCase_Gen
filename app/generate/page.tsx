@@ -1,5 +1,6 @@
 import { GeneratorForm } from "@/components/generator/generatorform";
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
 
 export default function GeneratePage() {
@@ -20,6 +21,8 @@ export default function GeneratePage() {
             <GeneratorForm />
           </div>
         </main>
+
+        <SiteFooter />
       </div>
     </div>
   );

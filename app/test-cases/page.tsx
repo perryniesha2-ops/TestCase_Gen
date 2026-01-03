@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 export default function TestCasesPage() {
   return (
@@ -33,6 +34,7 @@ export default function TestCasesPage() {
             <TabbedTestCaseTable />
           </Suspense>
         </main>
+        <SiteFooter />
       </div>
     </div>
   );

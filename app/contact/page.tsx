@@ -28,6 +28,7 @@ import {
   Shield,
   ArrowRight,
 } from "lucide-react";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 export default function ContactUs() {
   const [loading, setLoading] = React.useState(false);
@@ -273,6 +274,7 @@ export default function ContactUs() {
             </Card>
           </div>
         </main>
+        <SiteFooter />
       </div>
     </div>
   );

@@ -568,20 +568,22 @@ export function TestSuitesPage() {
         </TabsList>
 
         {/* Summary Cards */}
-
-        {/* Test Suites Tab */}
-        <TestSuiteTable
-          suites={filteredSuites}
-          searchTerm={searchTerm}
-          filterType={filterType}
-          onCreateSuite={() => setShowCreateDialog(true)}
-          onOpenDetails={(suite) => openSuiteDrawer(suite)}
-          getStatusIcon={getStatusIcon}
-          getStatusBadge={getStatusBadge}
-          getSuiteTypeColor={getSuiteTypeColor}
-          getDisplaySuiteType={getDisplaySuiteType}
-          getProjectColor={getProjectColor}
-        />
+        <TabsContent value="suites">
+          {/* Test Suites Tab */}
+          <TestSuiteTable
+            suites={filteredSuites}
+            searchTerm={searchTerm}
+            filterType={filterType}
+            onCreateSuite={() => setShowCreateDialog(true)}
+            onOpenDetails={(suite) => openSuiteDrawer(suite)}
+            getStatusIcon={getStatusIcon}
+            getStatusBadge={getStatusBadge}
+            getSuiteTypeColor={getSuiteTypeColor}
+            getDisplaySuiteType={getDisplaySuiteType}
+            getProjectColor={getProjectColor}
+          />
+          <div className="h-2" />
+        </TabsContent>
 
         {/* Reports Tab */}
         <TabsContent value="reports">

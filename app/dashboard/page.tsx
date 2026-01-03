@@ -1,6 +1,7 @@
-import { TestManagementDashboard  } from "@/components/dashboard/dashboard";
+import { TestManagementDashboard } from "@/components/dashboard/dashboard";
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 export default function Dashboard() {
   return (
@@ -10,24 +11,24 @@ export default function Dashboard() {
 
       {/* Main content */}
       <div className="flex min-h-screen flex-col px-4 md:px-6">
-        <SiteHeader  title="Dashboard"
-        subtitle="Overview of your testing activities and quality metrics."/>
-
-       
+        <SiteHeader
+          title="Dashboard"
+          subtitle="Overview of your testing activities and quality metrics."
+        />
 
         {/* Centered form */}
         <main className="mt-6 flex-1">
           <div className="mx-auto w-full max-w-3xl">
-          
             <TestManagementDashboard />
           </div>
         </main>
+        <SiteFooter />
       </div>
     </div>
   );
 }
 
 export const metadata = {
-  title: 'Dashboard - SynthQA',
-  description: 'Overview of your testing activities and quality metrics.',
-}
+  title: "Dashboard - SynthQA",
+  description: "Overview of your testing activities and quality metrics.",
+};
