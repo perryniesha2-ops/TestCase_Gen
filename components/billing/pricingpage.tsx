@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import Link from "next/link"
+import * as React from "react";
+import Link from "next/link";
 import {
   Check,
   X,
@@ -10,16 +10,22 @@ import {
   Building2,
   Zap,
   BadgePercent,
-} from "lucide-react"
-import { motion, useReducedMotion, type Variants } from "framer-motion"
+} from "lucide-react";
+import { motion, useReducedMotion, type Variants } from "framer-motion";
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Switch } from "@/components/ui/switch"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 
 // ---- Motion helpers ----
-const easeOut: [number, number, number, number] = [0.16, 1, 0.3, 1]
+const easeOut: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 const sectionVariants: Variants = {
   hidden: { opacity: 0, y: 10 },
@@ -28,26 +34,26 @@ const sectionVariants: Variants = {
     y: 0,
     transition: { duration: 0.45, ease: easeOut },
   },
-}
+};
 
 const headerStagger: Variants = {
   hidden: {},
   show: {
     transition: { staggerChildren: 0.08, delayChildren: 0.05 },
   },
-}
+};
 
 const itemUp: Variants = {
   hidden: { opacity: 0, y: 10 },
   show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: easeOut } },
-}
+};
 
 const gridStagger: Variants = {
   hidden: {},
   show: {
     transition: { staggerChildren: 0.08, delayChildren: 0.06 },
   },
-}
+};
 
 const cardIn: Variants = {
   hidden: { opacity: 0, y: 14, scale: 0.98 },
@@ -57,24 +63,24 @@ const cardIn: Variants = {
     scale: 1,
     transition: { duration: 0.45, ease: easeOut },
   },
-}
+};
 
 const listStagger: Variants = {
   hidden: {},
   show: { transition: { staggerChildren: 0.03, delayChildren: 0.06 } },
-}
+};
 
 const listItem: Variants = {
   hidden: { opacity: 0, x: -6 },
   show: { opacity: 1, x: 0, transition: { duration: 0.25, ease: easeOut } },
-}
+};
 
 // ---- Page ----
 export default function PricingPage() {
-  const [yearly, setYearly] = React.useState(false)
-  const reduceMotion = useReducedMotion()
+  const [yearly, setYearly] = React.useState(false);
+  const reduceMotion = useReducedMotion();
 
-  const viewportOnce = { once: true, amount: 0.25 as const }
+  const viewportOnce = { once: true, amount: 0.25 as const };
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -100,7 +106,8 @@ export default function PricingPage() {
         </motion.h1>
 
         <motion.p variants={itemUp} className="mt-2 text-muted-foreground">
-          All plans include the core generator. Upgrade for higher limits, collaboration, and integrations.
+          All plans include the core generator. Upgrade for higher limits,
+          collaboration, and integrations.
         </motion.p>
 
         {/* Billing toggle */}
@@ -108,10 +115,17 @@ export default function PricingPage() {
           variants={itemUp}
           className="mt-5 inline-flex items-center gap-3 rounded-full border px-4 py-2"
         >
-          <span className={!yearly ? "font-medium" : "text-muted-foreground"}>Monthly</span>
+          <span className={!yearly ? "font-medium" : "text-muted-foreground"}>
+            Monthly
+          </span>
           <Switch checked={yearly} onCheckedChange={setYearly} />
-          <span className={yearly ? "font-medium" : "text-muted-foreground"}>Yearly</span>
-          <Badge variant="outline" className="ml-1 inline-flex items-center gap-1">
+          <span className={yearly ? "font-medium" : "text-muted-foreground"}>
+            Yearly
+          </span>
+          <Badge
+            variant="outline"
+            className="ml-1 inline-flex items-center gap-1"
+          >
             <BadgePercent className="h-3 w-3" /> Save 20%
           </Badge>
         </motion.div>
@@ -134,7 +148,7 @@ export default function PricingPage() {
           yearly={yearly}
           description="Perfect for getting started"
           ctaText="Get started"
-          onClick={() => window.location.assign("/pages/signup")}
+          onClick={() => window.location.assign("/signup")}
           features={[
             { text: "20 AI-generated test cases/month", on: true },
             { text: "🎉 Limited time: 2x free test cases!", on: true },
@@ -238,10 +252,26 @@ export default function PricingPage() {
         whileInView={reduceMotion ? undefined : "show"}
         viewport={{ once: true, amount: 0.2 }}
       >
-        <MotionFaqItem variants={cardIn} q="Is there a free trial?" a="Yes. Pro and Team plans include a 14-day free trial. No credit card required to start." />
-        <MotionFaqItem variants={cardIn} q="What counts as an AI-generated test case?" a="Any test case produced by the generator counts toward your monthly limit. Manual test cases you add are unlimited." />
-        <MotionFaqItem variants={cardIn} q="Can I upgrade/downgrade anytime?" a="Absolutely. Changes take effect immediately and are prorated based on billing provider settings." />
-        <MotionFaqItem variants={cardIn} q="Do you offer discounts?" a="We offer 50% off for qualified nonprofits, education, and open-source projects. Contact support to apply." />
+        <MotionFaqItem
+          variants={cardIn}
+          q="Is there a free trial?"
+          a="Yes. Pro and Team plans include a 14-day free trial. No credit card required to start."
+        />
+        <MotionFaqItem
+          variants={cardIn}
+          q="What counts as an AI-generated test case?"
+          a="Any test case produced by the generator counts toward your monthly limit. Manual test cases you add are unlimited."
+        />
+        <MotionFaqItem
+          variants={cardIn}
+          q="Can I upgrade/downgrade anytime?"
+          a="Absolutely. Changes take effect immediately and are prorated based on billing provider settings."
+        />
+        <MotionFaqItem
+          variants={cardIn}
+          q="Do you offer discounts?"
+          a="We offer 50% off for qualified nonprofits, education, and open-source projects. Contact support to apply."
+        />
       </motion.div>
 
       {/* Bottom CTA */}
@@ -254,13 +284,16 @@ export default function PricingPage() {
       >
         <Card className="border-primary/20 bg-gradient-to-r from-primary/10 to-primary/5 text-center">
           <CardContent className="py-10">
-            <h3 className="text-2xl font-semibold">Ready to generate your first test suite?</h3>
+            <h3 className="text-2xl font-semibold">
+              Ready to generate your first test suite?
+            </h3>
             <p className="mt-2 text-muted-foreground">
-              Create an account and generate up to 50 test cases on the free trial.
+              Create an account and generate up to 50 test cases on the free
+              trial.
             </p>
             <div className="mt-6 flex justify-center gap-3">
               <Button asChild size="lg">
-                <Link href="/pages/signup">Create account</Link>
+                <Link href="/signup">Create account</Link>
               </Button>
             </div>
           </CardContent>
@@ -278,26 +311,28 @@ export default function PricingPage() {
         Powered by OpenAI • Anthropic • Supabase
       </motion.p>
     </div>
-  )
+  );
 }
 
 // ---- Components ----
 
-type Feature = { text: string; on: boolean }
+type Feature = { text: string; on: boolean };
 
-function MotionPlanCard(props: React.ComponentProps<typeof motion.div> & {
-  title: string
-  description: string
-  icon: React.ReactNode
-  priceMo?: number | null
-  priceYr?: number | null
-  yearly: boolean
-  custom?: boolean
-  features: Feature[]
-  ctaText: string
-  popular?: boolean
-  onClick?: () => void
-}) {
+function MotionPlanCard(
+  props: React.ComponentProps<typeof motion.div> & {
+    title: string;
+    description: string;
+    icon: React.ReactNode;
+    priceMo?: number | null;
+    priceYr?: number | null;
+    yearly: boolean;
+    custom?: boolean;
+    features: Feature[];
+    ctaText: string;
+    popular?: boolean;
+    onClick?: () => void;
+  }
+) {
   const {
     title,
     description,
@@ -311,17 +346,17 @@ function MotionPlanCard(props: React.ComponentProps<typeof motion.div> & {
     popular,
     onClick,
     ...motionProps
-  } = props
+  } = props;
 
-  const reduceMotion = useReducedMotion()
-  const price = yearly ? priceYr : priceMo
+  const reduceMotion = useReducedMotion();
+  const price = yearly ? priceYr : priceMo;
   const showSavings =
     !custom &&
     typeof priceMo === "number" &&
     typeof priceYr === "number" &&
     yearly &&
-    priceMo !== priceYr
-  const savings = showSavings ? (priceMo! - priceYr!) * 12 : 0
+    priceMo !== priceYr;
+  const savings = showSavings ? (priceMo! - priceYr!) * 12 : 0;
 
   return (
     <motion.div
@@ -330,15 +365,23 @@ function MotionPlanCard(props: React.ComponentProps<typeof motion.div> & {
       transition={{ type: "spring", stiffness: 260, damping: 22 }}
       className="h-full"
     >
-      <Card className={`relative flex h-full flex-col ${popular ? "ring-2 ring-primary" : ""}`}>
+      <Card
+        className={`relative flex h-full flex-col ${
+          popular ? "ring-2 ring-primary" : ""
+        }`}
+      >
         {popular && (
-          <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Most Popular</Badge>
+          <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
+            Most Popular
+          </Badge>
         )}
 
         <CardHeader className="text-center pb-2">
           <div
             className={`mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full ${
-              popular ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+              popular
+                ? "bg-primary/10 text-primary"
+                : "bg-muted text-muted-foreground"
             }`}
           >
             {icon}
@@ -355,7 +398,9 @@ function MotionPlanCard(props: React.ComponentProps<typeof motion.div> & {
                 <span className="text-4xl font-bold">${price}</span>
                 <span className="text-muted-foreground">/mo</span>
                 {showSavings && (
-                  <div className="text-sm text-green-600">Save ${savings}/yr</div>
+                  <div className="text-sm text-green-600">
+                    Save ${savings}/yr
+                  </div>
                 )}
               </div>
             )}
@@ -379,28 +424,34 @@ function MotionPlanCard(props: React.ComponentProps<typeof motion.div> & {
             viewport={{ once: true, amount: 0.35 }}
           >
             {features.map((f) => (
-              <motion.li key={f.text} variants={listItem} className="flex items-start gap-3">
+              <motion.li
+                key={f.text}
+                variants={listItem}
+                className="flex items-start gap-3"
+              >
                 {f.on ? (
                   <Check className="mt-0.5 h-4 w-4 text-green-600" />
                 ) : (
                   <X className="mt-0.5 h-4 w-4 text-muted-foreground" />
                 )}
-                <span className={f.on ? "" : "text-muted-foreground"}>{f.text}</span>
+                <span className={f.on ? "" : "text-muted-foreground"}>
+                  {f.text}
+                </span>
               </motion.li>
             ))}
           </motion.ul>
         </CardContent>
       </Card>
     </motion.div>
-  )
+  );
 }
 
 function MotionFaqItem(
   props: React.ComponentProps<typeof motion.div> & { q: string; a: string }
 ) {
-  const { q, a, ...motionProps } = props
-  const [open, setOpen] = React.useState(false)
-  const reduceMotion = useReducedMotion()
+  const { q, a, ...motionProps } = props;
+  const [open, setOpen] = React.useState(false);
+  const reduceMotion = useReducedMotion();
 
   return (
     <motion.div {...motionProps}>
@@ -410,7 +461,13 @@ function MotionFaqItem(
           onClick={() => setOpen((o) => !o)}
         >
           <span className="font-medium">{q}</span>
-          <span className={`text-xl transition-transform ${open ? "rotate-45" : ""}`}>+</span>
+          <span
+            className={`text-xl transition-transform ${
+              open ? "rotate-45" : ""
+            }`}
+          >
+            +
+          </span>
         </button>
 
         {/* Animate open/close */}
@@ -420,17 +477,19 @@ function MotionFaqItem(
             open && !reduceMotion
               ? { height: "auto", opacity: 1, marginTop: 8 }
               : open
-                ? { height: "auto", opacity: 1, marginTop: 8 }
-                : { height: 0, opacity: 0, marginTop: 0 }
+              ? { height: "auto", opacity: 1, marginTop: 8 }
+              : { height: 0, opacity: 0, marginTop: 0 }
           }
-          transition={reduceMotion ? { duration: 0 } : { duration: 0.22, ease: easeOut }}
+          transition={
+            reduceMotion ? { duration: 0 } : { duration: 0.22, ease: easeOut }
+          }
           style={{ overflow: "hidden" }}
         >
           <p className="text-sm text-muted-foreground">{a}</p>
         </motion.div>
       </div>
     </motion.div>
-  )
+  );
 }
 
 async function handleSubscribe(planId: string, yearly: boolean) {
@@ -439,11 +498,11 @@ async function handleSubscribe(planId: string, yearly: boolean) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ planId, yearly }),
-    })
-    if (!res.ok) throw new Error("Subscription failed")
-    const { checkoutUrl } = await res.json()
-    window.location.href = checkoutUrl
+    });
+    if (!res.ok) throw new Error("Subscription failed");
+    const { checkoutUrl } = await res.json();
+    window.location.href = checkoutUrl;
   } catch (e) {
-    console.error(e)
+    console.error(e);
   }
 }

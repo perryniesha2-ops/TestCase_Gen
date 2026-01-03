@@ -1,9 +1,10 @@
 // components/test-management/TestSuiteDetailsDialog.tsx
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
+
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -31,6 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+
 import {
   Plus,
   Trash2,
@@ -42,10 +44,9 @@ import {
   AlertTriangle,
   FolderOpen,
   Loader2,
-  Code2, // ✅ ADDED
 } from "lucide-react"
+
 import type { Project } from "@/types/test-cases"
-import { ScriptGenerator } from '@/components/automation//scriptGenerator'
 
 interface TestSuite {
   id: string
@@ -57,7 +58,6 @@ interface TestSuite {
   project_id?: string | null
   projects?: Project
 }
-
 
 interface TestCase {
   id: string
@@ -104,50 +104,34 @@ export function TestSuiteDetailsDialog({
   const [suiteTestCases, setSuiteTestCases] = useState<SuiteTestCase[]>([])
   const [availableTestCases, setAvailableTestCases] = useState<TestCase[]>([])
   const [loading, setLoading] = useState(false)
-  const [searchTerm, setSearchTerm] = useState("")
   const [initialLoading, setInitialLoading] = useState(false)
+
+  const [searchTerm, setSearchTerm] = useState("")
   const [selectedProject, setSelectedProject] = useState<string>(suite.project_id || "")
   const [projects, setProjects] = useState<Project[]>([])
   const [updatingProject, setUpdatingProject] = useState(false)
 
-  // ✅ Automation scripts state
-  const [showScriptGenerator, setShowScriptGenerator] = useState(false)
-  const [automatingTestCase, setAutomatingTestCase] = useState<TestCase | null>(null)
-  const [checkingScripts, setCheckingScripts] = useState<Set<string>>(new Set())
-  const [testCaseScripts, setTestCaseScripts] = useState<Record<string, boolean>>({})
-
   // Fetch projects on mount
   useEffect(() => {
-    fetchProjects()
+    void fetchProjects()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ✅ FIXED: Fetch assigned + available when dialog opens
+  // Fetch assigned + available when dialog opens
   useEffect(() => {
     if (!open) return
 
     setInitialLoading(true)
     setSelectedProject(suite.project_id || "")
-    
+
     Promise.all([fetchSuiteTestCases(), fetchAvailableTestCases()])
       .catch((err) => {
         console.error("[TestSuiteDetailsDialog] initial load error", err)
         toast.error("Failed to load test suite details")
       })
       .finally(() => setInitialLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, suite.id, suite.project_id])
-
-  // ✅ FIXED: Separate useEffect to check automation scripts after test cases load
-  useEffect(() => {
-    if (suiteTestCases.length === 0) return
-    
-    const testCaseIds = suiteTestCases
-      .map(stc => stc.test_case_id)
-      .filter(Boolean)
-    
-    if (testCaseIds.length > 0) {
-      checkForAutomationScripts(testCaseIds)
-    }
-  }, [suiteTestCases])
 
   async function fetchProjects() {
     try {
@@ -200,16 +184,13 @@ export function TestSuiteDetailsDialog({
       if (error) throw error
 
       const rows = (data ?? []) as SuiteTestCaseRow[]
-
       const transformed: SuiteTestCase[] = rows.map((item) => ({
         id: item.id,
         test_case_id: item.test_case_id,
         sequence_order: item.sequence_order,
         priority: item.priority,
         estimated_duration_minutes: item.estimated_duration_minutes,
-        test_cases: Array.isArray(item.test_cases)
-          ? item.test_cases[0] ?? null
-          : item.test_cases ?? null,
+        test_cases: Array.isArray(item.test_cases) ? item.test_cases[0] ?? null : item.test_cases ?? null,
       }))
 
       setSuiteTestCases(transformed)
@@ -223,7 +204,6 @@ export function TestSuiteDetailsDialog({
   async function fetchAvailableTestCases() {
     try {
       const supabase = createClient()
-
       const {
         data: { user },
       } = await supabase.auth.getUser()
@@ -241,7 +221,6 @@ export function TestSuiteDetailsDialog({
         .order("title", { ascending: true })
 
       if (error) throw error
-
       setAvailableTestCases(data || [])
     } catch (error) {
       console.error("Error fetching available test cases:", error)
@@ -282,9 +261,7 @@ export function TestSuiteDetailsDialog({
       const supabase = createClient()
 
       const maxOrder =
-        suiteTestCases.length > 0
-          ? Math.max(...suiteTestCases.map((stc) => stc.sequence_order))
-          : 0
+        suiteTestCases.length > 0 ? Math.max(...suiteTestCases.map((stc) => stc.sequence_order)) : 0
 
       const { error } = await supabase.from("test_suite_cases").insert({
         suite_id: suite.id,
@@ -297,8 +274,7 @@ export function TestSuiteDetailsDialog({
       if (error) throw error
 
       toast.success("Test case added to suite")
-      await fetchSuiteTestCases()
-      await fetchAvailableTestCases()
+      await Promise.all([fetchSuiteTestCases(), fetchAvailableTestCases()])
       onSuiteUpdated()
     } catch (error) {
       console.error("Error adding test case to suite:", error)
@@ -313,16 +289,11 @@ export function TestSuiteDetailsDialog({
     try {
       const supabase = createClient()
 
-      const { error } = await supabase
-        .from("test_suite_cases")
-        .delete()
-        .eq("id", suiteTestCaseId)
-
+      const { error } = await supabase.from("test_suite_cases").delete().eq("id", suiteTestCaseId)
       if (error) throw error
 
       toast.success("Test case removed from suite")
-      await fetchSuiteTestCases()
-      await fetchAvailableTestCases()
+      await Promise.all([fetchSuiteTestCases(), fetchAvailableTestCases()])
       onSuiteUpdated()
     } catch (error) {
       console.error("Error removing test case from suite:", error)
@@ -342,55 +313,10 @@ export function TestSuiteDetailsDialog({
         .eq("id", suiteTestCaseId)
 
       if (error) throw error
-
       await fetchSuiteTestCases()
     } catch (error) {
       console.error("Error updating test case priority:", error)
       toast.error("Failed to update priority")
-    }
-  }
-
- async function openAutomationDialog(testCaseId: string) {
-  const supabase = createClient()
-
-  const { data: testCase, error } = await supabase
-    .from("test_cases")
-    .select("id, title, description, test_type, priority, status, execution_status, test_steps")
-    .eq("id", testCaseId)
-    .single()
-
-  if (error || !testCase) {
-    toast.error("Failed to load test case details")
-    return
-  }
-
-  setAutomatingTestCase(testCase) 
-  setShowScriptGenerator(true)
-}
-
-  // ✅ Check if test cases have scripts
-  async function checkForAutomationScripts(testCaseIds: string[]) {
-    setCheckingScripts(new Set(testCaseIds))
-    
-    try {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from('automation_scripts')
-        .select('test_case_id')
-        .in('test_case_id', testCaseIds)
-      
-      if (error) throw error
-      
-      const scriptsMap: Record<string, boolean> = {}
-      testCaseIds.forEach(id => {
-        scriptsMap[id] = data?.some(s => s.test_case_id === id) || false
-      })
-      
-      setTestCaseScripts(scriptsMap)
-    } catch (error) {
-      console.error('Error checking scripts:', error)
-    } finally {
-      setCheckingScripts(new Set())
     }
   }
 
@@ -404,7 +330,6 @@ export function TestSuiteDetailsDialog({
         return <AlertTriangle className="h-4 w-4 text-orange-600" />
       case "skipped":
       case "not_run":
-        return <Clock className="h-4 w-4 text-gray-400" />
       default:
         return <Clock className="h-4 w-4 text-gray-400" />
     }
@@ -440,309 +365,263 @@ export function TestSuiteDetailsDialog({
     return colors[color] || "text-gray-500"
   }
 
-  const assignedTestCaseIds = new Set(suiteTestCases.map((stc) => stc.test_case_id))
-  const filteredAvailableTestCases = availableTestCases.filter(
-    (tc) =>
-      !assignedTestCaseIds.has(tc.id) &&
-      (searchTerm === "" || tc.title.toLowerCase().includes(searchTerm.toLowerCase()))
+  const assignedTestCaseIds = useMemo(
+    () => new Set(suiteTestCases.map((stc) => stc.test_case_id)),
+    [suiteTestCases]
   )
 
+  const filteredAvailableTestCases = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase()
+    return availableTestCases.filter((tc) => {
+      if (assignedTestCaseIds.has(tc.id)) return false
+      if (!q) return true
+      return tc.title.toLowerCase().includes(q)
+    })
+  }, [availableTestCases, assignedTestCaseIds, searchTerm])
+
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent
-          className="w-full max-w-5xl md:max-w-6xl h-[80vh] max-h-[90vh] overflow-hidden flex flex-col p-0"
-          onInteractOutside={(e) => e.preventDefault()}
-        >
-          <DialogHeader className="px-6 pt-6 pb-4 border-b">
-            <DialogTitle>Manage Test Suite: {suite.name}</DialogTitle>
-            <DialogDescription>
-              Add, remove, and organize test cases within this suite
-            </DialogDescription>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="w-full max-w-5xl md:max-w-6xl h-[80vh] max-h-[90vh] overflow-hidden flex flex-col p-0"
+        onInteractOutside={(e) => e.preventDefault()}
+      >
+        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+          <DialogTitle>Manage Test Suite: {suite.name}</DialogTitle>
+          <DialogDescription>
+            Add, remove, and organize test cases within this suite
+          </DialogDescription>
 
-            {/* Project Selector */}
-            <div className="pt-4">
-              <Label htmlFor="suite-project" className="text-sm font-medium">
-                Suite Project (Optional)
-              </Label>
-              <Select
-                value={selectedProject || "none"}
-                onValueChange={(value) => updateSuiteProject(value === "none" ? "" : value)}
-                disabled={updatingProject}
-              >
-                <SelectTrigger id="suite-project" className="mt-2">
-                  {updatingProject && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  <SelectValue placeholder="Select a project" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">
-                    <span className="text-muted-foreground">No Project</span>
+          {/* Project Selector */}
+          <div className="pt-4">
+            <Label htmlFor="suite-project" className="text-sm font-medium">
+              Suite Project (Optional)
+            </Label>
+            <Select
+              value={selectedProject || "none"}
+              onValueChange={(value) => void updateSuiteProject(value === "none" ? "" : value)}
+              disabled={updatingProject}
+            >
+              <SelectTrigger id="suite-project" className="mt-2">
+                {updatingProject && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                <SelectValue placeholder="Select a project" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">
+                  <span className="text-muted-foreground">No Project</span>
+                </SelectItem>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    <div className="flex items-center gap-2">
+                      <FolderOpen className={`h-4 w-4 ${getProjectColor(project.color)}`} />
+                      {project.name}
+                    </div>
                   </SelectItem>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      <div className="flex items-center gap-2">
-                        <FolderOpen className={`h-4 w-4 ${getProjectColor(project.color)}`} />
-                        {project.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-hidden px-6 pb-6">
-            <Tabs defaultValue="assigned" className="h-full flex flex-col">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="assigned">
-                  Assigned Tests ({suiteTestCases.length})
-                </TabsTrigger>
-                <TabsTrigger value="available">
-                  Available Tests ({filteredAvailableTestCases.length})
-                </TabsTrigger>
-              </TabsList>
-
-              {/* ASSIGNED TESTS */}
-              <TabsContent value="assigned" className="flex-1 overflow-hidden flex flex-col mt-4">
-                <div className="text-sm text-muted-foreground mb-4">
-                  Test cases currently assigned to this suite.
-                </div>
-
-                <div className="flex-1 overflow-auto">
-                  {initialLoading ? (
-                    <div className="text-center py-12">
-                      <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-                      <p>Loading assigned tests...</p>
-                    </div>
-                  ) : suiteTestCases.length === 0 ? (
-                    <div className="text-center py-12 border-2 border-dashed border-muted rounded-lg">
-                      <Plus className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-muted-foreground">No test cases assigned yet</p>
-                      <p className="text-sm text-muted-foreground">
-                        Switch to &quot;Available Tests&quot; to add test cases
-                      </p>
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[50px]">Order</TableHead>
-                          <TableHead>Test Case</TableHead>
-                          <TableHead className="w-[100px]">Type</TableHead>
-                          <TableHead className="w-[100px]">Priority</TableHead>
-                          <TableHead className="w-[100px]">Status</TableHead>
-                          <TableHead className="w-[120px]">Est. Duration</TableHead>
-                          <TableHead className="w-[120px]">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {suiteTestCases.map((suiteTestCase) => (
-                          <TableRow key={suiteTestCase.id}>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <GripVertical className="h-4 w-4 text-muted-foreground cursor-move" />
-                                <span className="font-mono text-sm">
-                                  {suiteTestCase.sequence_order}
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {suiteTestCase.test_cases ? (
-                                <div>
-                                  <div className="font-medium">{suiteTestCase.test_cases.title}</div>
-                                  <div className="text-sm text-muted-foreground line-clamp-1">
-                                    {suiteTestCase.test_cases.description}
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="text-sm text-red-500">
-                                  Linked test case not found
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {suiteTestCase.test_cases && (
-                                <Badge variant="outline">{suiteTestCase.test_cases.test_type}</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Select
-                                value={suiteTestCase.priority}
-                                onValueChange={(value) =>
-                                  updateTestCasePriority(suiteTestCase.id, value)
-                                }
-                              >
-                                <SelectTrigger className="w-24 h-8">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="low">Low</SelectItem>
-                                  <SelectItem value="medium">Medium</SelectItem>
-                                  <SelectItem value="high">High</SelectItem>
-                                  <SelectItem value="critical">Critical</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                            <TableCell>
-                              {suiteTestCase.test_cases && (
-                                <div className="flex items-center gap-2">
-                                  {getStatusIcon(suiteTestCase.test_cases.execution_status)}
-                                  <span className="text-sm capitalize">
-                                    {suiteTestCase.test_cases.execution_status.replace("_", " ")}
-                                  </span>
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <span className="text-sm">
-                                {suiteTestCase.estimated_duration_minutes}m
-                              </span>
-                            </TableCell>
-                            
-                            {/* ✅ FIXED: Actions column with automation button */}
-                            <TableCell>
-                              <div className="flex items-center gap-1">
-                                {/* Automation Button */}
-                                {suiteTestCase.test_cases && (
-                                  <Button
-                                    variant={testCaseScripts[suiteTestCase.test_case_id] ? "secondary" : "ghost"}
-                                    size="sm"
-                                    onClick={() => openAutomationDialog(suiteTestCase.test_case_id)}
-                                    title={testCaseScripts[suiteTestCase.test_case_id] 
-                                      ? "View/Edit Script" 
-                                      : "Generate Script"
-                                    }
-                                  >
-                                    <Code2 className="h-4 w-4" />
-                                    {testCaseScripts[suiteTestCase.test_case_id] && (
-                                      <span className="ml-1 text-xs">✓</span>
-                                    )}
-                                  </Button>
-                                )}
-                                
-                                {/* Remove Button */}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => removeTestCaseFromSuite(suiteTestCase.id)}
-                                  disabled={loading}
-                                >
-                                  <Trash2 className="h-4 w-4 text-red-600" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </div>
-              </TabsContent>
-
-              {/* AVAILABLE TESTS - unchanged */}
-              <TabsContent value="available" className="flex-1 overflow-hidden flex flex-col mt-4">
-                <div className="space-y-4 mb-4">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search available test cases..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-auto">
-                  {filteredAvailableTestCases.length === 0 ? (
-                    <div className="text-center py-12 border-2 border-dashed border-muted rounded-lg">
-                      <Search className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-muted-foreground">No available test cases found</p>
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Test Case</TableHead>
-                          <TableHead className="w-[100px]">Type</TableHead>
-                          <TableHead className="w-[100px]">Priority</TableHead>
-                          <TableHead className="w-[100px]">Status</TableHead>
-                          <TableHead className="w-[80px]">Add</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredAvailableTestCases.map((testCase) => (
-                          <TableRow key={testCase.id}>
-                            <TableCell>
-                              <div>
-                                <div className="font-medium">{testCase.title}</div>
-                                <div className="text-sm text-muted-foreground line-clamp-1">
-                                  {testCase.description}
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{testCase.test_type}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge className={getPriorityColor(testCase.priority)}>
-                                {testCase.priority}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {getStatusIcon(testCase.execution_status)}
-                                <span className="text-sm capitalize">
-                                  {testCase.execution_status.replace("_", " ")}
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                size="sm"
-                                onClick={() => addTestCaseToSuite(testCase.id)}
-                                disabled={loading}
-                              >
-                                <Plus className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </DialogContent>
-      </Dialog>
+        </DialogHeader>
 
-      {/* ✅ Script Generator Dialog */}
-      {automatingTestCase && (
-        <ScriptGenerator
-          testCase={{
-            id: automatingTestCase.id,
-            title: automatingTestCase.title,
-            description: automatingTestCase.description,
-            test_steps: automatingTestCase.test_steps || []
-          }}
-          open={showScriptGenerator}
-          onOpenChange={setShowScriptGenerator}
-          onScriptGenerated={(scriptId) => {
-            toast.success("Automation script generated!")
-            
-            // Update the scripts map
-            setTestCaseScripts(prev => ({
-              ...prev,
-              [automatingTestCase.id]: true
-            }))
-            
-            setShowScriptGenerator(false)
-            setAutomatingTestCase(null)
-          }}
-        />
-      )}
-    </>
+        <div className="flex-1 overflow-hidden px-6 pb-6">
+          <Tabs defaultValue="assigned" className="h-full flex flex-col">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="assigned">Assigned Tests ({suiteTestCases.length})</TabsTrigger>
+              <TabsTrigger value="available">
+                Available Tests ({filteredAvailableTestCases.length})
+              </TabsTrigger>
+            </TabsList>
+
+            {/* ASSIGNED */}
+            <TabsContent value="assigned" className="flex-1 overflow-hidden flex flex-col mt-4">
+              <div className="text-sm text-muted-foreground mb-4">
+                Test cases currently assigned to this suite.
+              </div>
+
+              <div className="flex-1 overflow-auto">
+                {initialLoading ? (
+                  <div className="text-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+                    <p>Loading assigned tests...</p>
+                  </div>
+                ) : suiteTestCases.length === 0 ? (
+                  <div className="text-center py-12 border-2 border-dashed border-muted rounded-lg">
+                    <Plus className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-muted-foreground">No test cases assigned yet</p>
+                    <p className="text-sm text-muted-foreground">
+                      Switch to &quot;Available Tests&quot; to add test cases
+                    </p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[70px]">Order</TableHead>
+                        <TableHead>Test Case</TableHead>
+                        <TableHead className="w-[110px]">Type</TableHead>
+                        <TableHead className="w-[130px]">Priority</TableHead>
+                        <TableHead className="w-[140px]">Exec Status</TableHead>
+                        <TableHead className="w-[120px]">Est. Duration</TableHead>
+                        <TableHead className="w-[90px] text-right">Remove</TableHead>
+                      </TableRow>
+                    </TableHeader>
+
+                    <TableBody>
+                      {suiteTestCases.map((suiteTestCase) => (
+                        <TableRow key={suiteTestCase.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <GripVertical className="h-4 w-4 text-muted-foreground cursor-move" />
+                              <span className="font-mono text-sm">{suiteTestCase.sequence_order}</span>
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            {suiteTestCase.test_cases ? (
+                              <div className="min-w-0">
+                                <div className="font-medium truncate">{suiteTestCase.test_cases.title}</div>
+                                <div className="text-sm text-muted-foreground line-clamp-1">
+                                  {suiteTestCase.test_cases.description}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-red-500">Linked test case not found</span>
+                            )}
+                          </TableCell>
+
+                          <TableCell>
+                            {suiteTestCase.test_cases && (
+                              <Badge variant="outline">{suiteTestCase.test_cases.test_type}</Badge>
+                            )}
+                          </TableCell>
+
+                          <TableCell>
+                            <Select
+                              value={suiteTestCase.priority}
+                              onValueChange={(value) => void updateTestCasePriority(suiteTestCase.id, value)}
+                            >
+                              <SelectTrigger className="w-[120px] h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="low">Low</SelectItem>
+                                <SelectItem value="medium">Medium</SelectItem>
+                                <SelectItem value="high">High</SelectItem>
+                                <SelectItem value="critical">Critical</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+
+                          <TableCell>
+                            {suiteTestCase.test_cases && (
+                              <div className="flex items-center gap-2">
+                                {getStatusIcon(suiteTestCase.test_cases.execution_status)}
+                                <span className="text-sm capitalize">
+                                  {suiteTestCase.test_cases.execution_status.replace("_", " ")}
+                                </span>
+                              </div>
+                            )}
+                          </TableCell>
+
+                          <TableCell>
+                            <span className="text-sm">{suiteTestCase.estimated_duration_minutes}m</span>
+                          </TableCell>
+
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                              onClick={() => void removeTestCaseFromSuite(suiteTestCase.id)}
+                              disabled={loading}
+                              aria-label="Remove test case from suite"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* AVAILABLE */}
+            <TabsContent value="available" className="flex-1 overflow-hidden flex flex-col mt-4">
+              <div className="space-y-4 mb-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search available test cases..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-auto">
+                {filteredAvailableTestCases.length === 0 ? (
+                  <div className="text-center py-12 border-2 border-dashed border-muted rounded-lg">
+                    <Search className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-muted-foreground">No available test cases found</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Test Case</TableHead>
+                        <TableHead className="w-[110px]">Type</TableHead>
+                        <TableHead className="w-[110px]">Priority</TableHead>
+                        <TableHead className="w-[140px]">Exec Status</TableHead>
+                        <TableHead className="w-[90px] text-right">Add</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredAvailableTestCases.map((testCase) => (
+                        <TableRow key={testCase.id}>
+                          <TableCell>
+                            <div className="min-w-0">
+                              <div className="font-medium truncate">{testCase.title}</div>
+                              <div className="text-sm text-muted-foreground line-clamp-1">
+                                {testCase.description}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{testCase.test_type}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={getPriorityColor(testCase.priority)}>{testCase.priority}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {getStatusIcon(testCase.execution_status)}
+                              <span className="text-sm capitalize">
+                                {testCase.execution_status.replace("_", " ")}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              onClick={() => void addTestCaseToSuite(testCase.id)}
+                              disabled={loading}
+                              className="h-8"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

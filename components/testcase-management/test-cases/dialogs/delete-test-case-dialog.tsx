@@ -1,10 +1,10 @@
-// app/pages/test-cases/components/delete-test-case-dialog.tsx
+// app/test-cases/components/delete-test-case-dialog.tsx
 
-"use client"
+"use client";
 
-import { useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { toast } from "sonner"
+import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,15 +14,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Loader2, Trash2 } from "lucide-react"
-import type { TestCase } from "@/types/test-cases"
+} from "@/components/ui/alert-dialog";
+import { Loader2, Trash2 } from "lucide-react";
+import type { TestCase } from "@/types/test-cases";
 
 interface DeleteTestCaseDialogProps {
-  testCase: TestCase | null
-  open: boolean
-  onClose: () => void
-  onSuccess: () => void
+  testCase: TestCase | null;
+  open: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
 }
 
 export function DeleteTestCaseDialog({
@@ -31,43 +31,46 @@ export function DeleteTestCaseDialog({
   onClose,
   onSuccess,
 }: DeleteTestCaseDialogProps) {
-  const [deleting, setDeleting] = useState(false)
+  const [deleting, setDeleting] = useState(false);
 
   async function handleDelete() {
-    if (!testCase) return
+    if (!testCase) return;
 
-    setDeleting(true)
+    setDeleting(true);
     try {
-      const supabase = createClient()
+      const supabase = createClient();
       const {
         data: { user },
-      } = await supabase.auth.getUser()
+      } = await supabase.auth.getUser();
 
       if (!user) {
-        toast.error("You must be logged in to delete test cases")
-        return
+        toast.error("You must be logged in to delete test cases");
+        return;
       }
 
       // STEP 1: Delete test_executions first (foreign key constraint)
       const { error: executionsError } = await supabase
         .from("test_executions")
         .delete()
-        .eq("test_case_id", testCase.id)
+        .eq("test_case_id", testCase.id);
 
       if (executionsError) {
-        console.error("Error deleting test executions:", executionsError)
-        throw new Error("Failed to delete test executions")
+        console.error("Error deleting test executions:", executionsError);
+        throw new Error("Failed to delete test executions");
       }
 
       // STEP 2: Delete test_suite_cases associations
       const { error: suiteRelationsError } = await supabase
         .from("test_suite_cases")
         .delete()
-        .eq("test_case_id", testCase.id)
+        .eq("test_case_id", testCase.id);
 
       if (suiteRelationsError) {
-        console.error("Error deleting suite associations:", suiteRelationsError)
-        throw new Error("Failed to delete suite associations")
+        console.error(
+          "Error deleting suite associations:",
+          suiteRelationsError
+        );
+        throw new Error("Failed to delete suite associations");
       }
 
       // STEP 3: Now delete the test case itself
@@ -75,21 +78,21 @@ export function DeleteTestCaseDialog({
         .from("test_cases")
         .delete()
         .eq("id", testCase.id)
-        .eq("user_id", user.id) // Security: Ensure user owns this test case
+        .eq("user_id", user.id); // Security: Ensure user owns this test case
 
       if (error) {
-        console.error("Error deleting test case:", error)
-        throw error
+        console.error("Error deleting test case:", error);
+        throw error;
       }
 
-      toast.success("Test case deleted successfully")
-      onSuccess()
-      onClose()
+      toast.success("Test case deleted successfully");
+      onSuccess();
+      onClose();
     } catch (error) {
-      console.error("Error deleting test case:", error)
-      toast.error("Failed to delete test case")
+      console.error("Error deleting test case:", error);
+      toast.error("Failed to delete test case");
     } finally {
-      setDeleting(false)
+      setDeleting(false);
     }
   }
 
@@ -99,8 +102,8 @@ export function DeleteTestCaseDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete Test Case</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete &quot;{testCase?.title}&quot;? This action cannot be
-            undone.
+            Are you sure you want to delete &quot;{testCase?.title}&quot;? This
+            action cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -125,5 +128,5 @@ export function DeleteTestCaseDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  )
+  );
 }

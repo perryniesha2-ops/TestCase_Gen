@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/client"
+import { createClient } from "@/lib/supabase/client";
 
 /**
  * Comprehensive session cleanup utility
@@ -6,27 +6,28 @@ import { createClient } from "@/lib/supabase/client"
 export class SessionManager {
   static async logout(): Promise<{ success: boolean; error?: string }> {
     try {
-      const supabase = createClient()
+      const supabase = createClient();
 
       // 1. Sign out from Supabase
-      const { error } = await supabase.auth.signOut()
+      const { error } = await supabase.auth.signOut();
       if (error) {
-        throw new Error(error.message)
+        throw new Error(error.message);
       }
 
       // 2. Clear client-side storage
-      await this.clearClientStorage()
+      await this.clearClientStorage();
 
       // 3. Clear any cached API data
-      await this.clearApiCache()
+      await this.clearApiCache();
 
-      return { success: true }
+      return { success: true };
     } catch (error) {
-      console.error('Session cleanup error:', error)
+      console.error("Session cleanup error:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
-      }
+        error:
+          error instanceof Error ? error.message : "Unknown error occurred",
+      };
     }
   }
 
@@ -34,65 +35,60 @@ export class SessionManager {
    * Clear all client-side storage related to the app
    */
   static async clearClientStorage(): Promise<void> {
-    if (typeof window === 'undefined') return
+    if (typeof window === "undefined") return;
 
     try {
       // Clear localStorage items
-      const localStorageKeysToRemove: string[] = []
+      const localStorageKeysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)
+        const key = localStorage.key(i);
         if (key && this.shouldClearKey(key)) {
-          localStorageKeysToRemove.push(key)
+          localStorageKeysToRemove.push(key);
         }
       }
 
-      localStorageKeysToRemove.forEach(key => {
+      localStorageKeysToRemove.forEach((key) => {
         try {
-          localStorage.removeItem(key)
-        } catch (e) {
-        }
-      })
+          localStorage.removeItem(key);
+        } catch (e) {}
+      });
 
       // Clear sessionStorage completely
       try {
-        sessionStorage.clear()
+        sessionStorage.clear();
       } catch (e) {
-        console.warn('Failed to clear sessionStorage', e)
+        console.warn("Failed to clear sessionStorage", e);
       }
 
       // Clear any IndexedDB data if we use it in the future
-      if ('indexedDB' in window) {
+      if ("indexedDB" in window) {
         try {
           // We can add IndexedDB cleanup here if needed
-        } catch (e) {
-        }
+        } catch (e) {}
       }
-
-    } catch (error) {
-    }
+    } catch (error) {}
   }
 
   /**
    * Clear API caches and any cached network requests
    */
   static async clearApiCache(): Promise<void> {
-    if (typeof window === 'undefined') return
+    if (typeof window === "undefined") return;
 
     try {
       // Clear fetch cache if supported
-      if ('caches' in window) {
-        const cacheNames = await caches.keys()
+      if ("caches" in window) {
+        const cacheNames = await caches.keys();
         await Promise.all(
-          cacheNames.map(cacheName => caches.delete(cacheName))
-        )
+          cacheNames.map((cacheName) => caches.delete(cacheName))
+        );
       }
 
       // Clear any SWR or React Query cache if we add them later
       // SWR: mutate(() => true, undefined, { revalidate: false })
       // React Query: queryClient.clear()
-
     } catch (error) {
-      console.warn('API cache cleanup failed:', error)
+      console.warn("API cache cleanup failed:", error);
     }
   }
 
@@ -101,24 +97,24 @@ export class SessionManager {
    */
   private static shouldClearKey(key: string): boolean {
     const appPrefixes = [
-      'synthqa-',
-      'test-case-',
-      'requirement-',
-      'generator-',
-      'supabase.',
-      'sb-',
-      'auth-'
-    ]
+      "synthqa-",
+      "test-case-",
+      "requirement-",
+      "generator-",
+      "supabase.",
+      "sb-",
+      "auth-",
+    ];
 
-    return appPrefixes.some(prefix => key.startsWith(prefix))
+    return appPrefixes.some((prefix) => key.startsWith(prefix));
   }
 
   /**
    * Force a complete app reload to ensure clean state
    */
   static forceReload(): void {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/pages/login'
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
     }
   }
 
@@ -127,11 +123,14 @@ export class SessionManager {
    */
   static async isSessionValid(): Promise<boolean> {
     try {
-      const supabase = createClient()
-      const { data: { user }, error } = await supabase.auth.getUser()
-      return !error && !!user
+      const supabase = createClient();
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+      return !error && !!user;
     } catch {
-      return false
+      return false;
     }
   }
 
@@ -140,19 +139,20 @@ export class SessionManager {
    */
   static async refreshSession(): Promise<{ success: boolean; error?: string }> {
     try {
-      const supabase = createClient()
-      const { data, error } = await supabase.auth.refreshSession()
-      
+      const supabase = createClient();
+      const { data, error } = await supabase.auth.refreshSession();
+
       if (error) {
-        throw new Error(error.message)
+        throw new Error(error.message);
       }
 
-      return { success: true }
+      return { success: true };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Session refresh failed'
-      }
+        error:
+          error instanceof Error ? error.message : "Session refresh failed",
+      };
     }
   }
 
@@ -160,36 +160,37 @@ export class SessionManager {
    * Setup automatic session monitoring
    */
   static setupSessionMonitoring(): void {
-    if (typeof window === 'undefined') return
+    if (typeof window === "undefined") return;
 
-    const supabase = createClient()
+    const supabase = createClient();
 
     // Listen for auth state changes
     supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT' || !session) {
+      if (event === "SIGNED_OUT" || !session) {
         // User signed out or session invalid
-        await this.clearClientStorage()
-        
+        await this.clearClientStorage();
+
         // Only redirect if we're not already on auth pages
-        const currentPath = window.location.pathname
-        const isAuthPage = currentPath.startsWith('/pages/login') || 
-                          currentPath.startsWith('/pages/signup') ||
-                          currentPath.startsWith('/pages/auth')
-        
+        const currentPath = window.location.pathname;
+        const isAuthPage =
+          currentPath.startsWith("/login") ||
+          currentPath.startsWith("/signup") ||
+          currentPath.startsWith("/auth");
+
         if (!isAuthPage) {
-          window.location.href = '/pages/login'
+          window.location.href = "/login";
         }
       }
-    })
+    });
 
     // Optional: Check session validity periodically
     setInterval(async () => {
-      const isValid = await this.isSessionValid()
-      if (!isValid && !window.location.pathname.startsWith('/pages/login')) {
-        await this.logout()
-        this.forceReload()
+      const isValid = await this.isSessionValid();
+      if (!isValid && !window.location.pathname.startsWith("/login")) {
+        await this.logout();
+        this.forceReload();
       }
-    }, 5 * 60 * 1000) // Check every 5 minutes
+    }, 5 * 60 * 1000); // Check every 5 minutes
   }
 }
 
@@ -198,26 +199,26 @@ export class SessionManager {
  */
 export function useSessionManager() {
   const logout = async () => {
-    const result = await SessionManager.logout()
+    const result = await SessionManager.logout();
     if (result.success) {
-      SessionManager.forceReload()
+      SessionManager.forceReload();
     }
-    return result
-  }
+    return result;
+  };
 
   const checkSession = async () => {
-    return await SessionManager.isSessionValid()
-  }
+    return await SessionManager.isSessionValid();
+  };
 
   const refreshSession = async () => {
-    return await SessionManager.refreshSession()
-  }
+    return await SessionManager.refreshSession();
+  };
 
   return {
     logout,
     checkSession,
     refreshSession,
     isSessionValid: SessionManager.isSessionValid,
-    clearStorage: SessionManager.clearClientStorage
-  }
+    clearStorage: SessionManager.clearClientStorage,
+  };
 }
