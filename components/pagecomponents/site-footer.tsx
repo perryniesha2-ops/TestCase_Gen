@@ -9,6 +9,13 @@ export function SiteFooter() {
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-center text-xs text-muted-foreground">
           {/* Links */}
           <Link
+            href="/docs/guides"
+            className="hover:text-foreground transition-colors"
+          >
+            Docs
+          </Link>
+          <span className="text-muted-foreground/40">·</span>
+          <Link
             href="/terms"
             className="hover:text-foreground transition-colors"
           >
@@ -25,8 +32,6 @@ export function SiteFooter() {
 
           {/* Copyright */}
           <p>© {new Date().getFullYear()} SynthQA, LLC. All rights reserved.</p>
-
-          <span className="text-muted-foreground/40">·</span>
         </div>
       </div>
     </footer>

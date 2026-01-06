@@ -112,7 +112,7 @@ export default function ContactUs() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <Link
-                  href="/help/test-cases"
+                  href="/docs/guides"
                   className="group flex items-start gap-3 rounded-md border p-3 hover:bg-accent transition"
                 >
                   <LifeBuoy className="mt-0.5 h-4 w-4 text-primary" />

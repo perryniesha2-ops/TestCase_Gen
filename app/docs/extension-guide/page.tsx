@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/pagecomponents/brandlogo";
 import { Footer } from "@/components/landingpage/footer";
+import { GuideMenu } from "@/components/pagecomponents/guide-menu";
 
 type TocItem = { id: string; title: string; icon?: React.ReactNode };
 
@@ -168,6 +169,7 @@ export default function BrowserExtensionGuidePage() {
           </p>
           <Badge variant="secondary">Guide</Badge>
         </div>
+        <GuideMenu />
       </div>
 
       <Separator className="my-8" />
