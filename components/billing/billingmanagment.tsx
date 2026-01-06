@@ -30,6 +30,7 @@ import {
   Loader2,
   Sparkles,
   Users,
+  Mail,
 } from "lucide-react";
 import {
   Accordion,
@@ -69,6 +70,7 @@ type Plan = {
   features: PlanFeature[];
   cta: string;
   popular: boolean;
+  contactSales?: boolean; // NEW: Flag for contact sales plans
 };
 
 // ------------------------- Data -------------------------
@@ -82,8 +84,8 @@ const plans: Plan[] = [
     description: "Perfect for getting started",
     icon: Sparkles,
     features: [
-      { name: "20 AI-generated test cases/month", included: true }, // Updated from 10
-      { name: "🎉 Limited time: 2x free test cases!", included: true }, // Promotional callout
+      { name: "20 AI-generated test cases/month", included: true },
+      { name: "🎉 Limited time: 2x free test cases!", included: true },
       { name: "Unlimited manual test cases", included: true },
       { name: "Basic test execution tracking", included: true },
       { name: "3 requirement templates", included: true },
@@ -100,8 +102,8 @@ const plans: Plan[] = [
   {
     id: "pro",
     name: "Pro",
-    price: 29,
-    yearlyPrice: 25, // monthly equivalent when billed yearly
+    price: 15, // UPDATED: Reduced from $29 to $15
+    yearlyPrice: 12, // UPDATED: 20% discount ($15 * 0.8 = $12)
     description: "For serious testers and small teams",
     icon: FlaskConical,
     features: [
@@ -123,8 +125,8 @@ const plans: Plan[] = [
   {
     id: "team",
     name: "Team",
-    price: 79,
-    yearlyPrice: 69, // monthly equivalent when billed yearly
+    price: null, // UPDATED: Now custom pricing
+    yearlyPrice: null, // UPDATED: Now custom pricing
     description: "For growing teams and organizations",
     icon: Users,
     features: [
@@ -140,8 +142,9 @@ const plans: Plan[] = [
       { name: "Priority support + Slack channel", included: true },
       { name: "Custom onboarding", included: true },
     ],
-    cta: "Start Team Trial",
+    cta: "Contact Sales", // UPDATED: Contact sales instead of trial
     popular: false,
+    contactSales: true, // UPDATED: Flag this as contact sales
   },
   {
     id: "enterprise",
@@ -165,6 +168,7 @@ const plans: Plan[] = [
     ],
     cta: "Contact Sales",
     popular: false,
+    contactSales: true, // UPDATED: Flag this as contact sales
   },
 ];
 
@@ -179,11 +183,11 @@ const faqs = [
   },
   {
     q: "What happens if I exceed my limit?",
-    a: "We’ll notify you as you approach your limit. If you exceed it, you can upgrade or wait until next month. Your existing test cases remain accessible.",
+    a: "We'll notify you as you approach your limit. If you exceed it, you can upgrade or wait until next month. Your existing test cases remain accessible.",
   },
   {
     q: "Is there a free trial?",
-    a: "Yes. Pro and Team include a 14-day free trial. Enterprise includes a 30-day pilot with full features.",
+    a: "Yes. Pro plan includes a 14-day free trial. For Team and Enterprise plans, contact our sales team for a personalized demo and trial.",
   },
   {
     q: "Do you offer discounts for nonprofits or education?",
@@ -306,19 +310,30 @@ export default function BillingPage() {
     if (!user) return;
     setBillingLoading(true);
     try {
-      if (planId === "enterprise") {
+      // UPDATED: Handle Team and Enterprise as contact sales
+      if (planId === "team" || planId === "enterprise") {
+        const subject =
+          planId === "team" ? "Team Plan Inquiry" : "Enterprise Plan Inquiry";
         window.open(
-          "mailto:sales@synthqa.com?subject=Enterprise Plan Inquiry",
+          `mailto:sales@synthqa.com?subject=${encodeURIComponent(
+            subject
+          )}&body=${encodeURIComponent(
+            `Hi, I'm interested in the ${
+              planId === "team" ? "Team" : "Enterprise"
+            } plan.\n\nName: \nCompany: \nCurrent team size: \n\nPlease contact me to discuss pricing and features.`
+          )}`,
           "_blank"
         );
-        return;
-      }
-      if (planId === "free") {
-        toast.success("You’re already on the free plan!");
+        toast.success("Opening email client. We'll get back to you soon!");
         return;
       }
 
-      // Example call to your API that creates a Checkout session
+      if (planId === "free") {
+        toast.success("You're already on the free plan!");
+        return;
+      }
+
+      // Only Pro plan goes through Stripe checkout
       const res = await fetch("/api/billing/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -489,20 +504,24 @@ export default function BillingPage() {
           </CardContent>
         </Card>
 
-        {/* Enterprise CTA */}
+        {/* UPDATED: Team & Enterprise CTA */}
         <Card className="border-primary/30 bg-gradient-to-r from-primary/10 to-primary/5">
           <CardContent className="py-10 text-center">
-            <Building className="mx-auto mb-4 h-12 w-12 text-primary" />
+            <div className="flex justify-center gap-4 mb-4">
+              <Users className="h-12 w-12 text-primary" />
+              <Building className="h-12 w-12 text-primary" />
+            </div>
             <h2 className="text-2xl font-semibold tracking-tight">
-              Need something custom?
+              Need Team or Enterprise features?
             </h2>
             <p className="mx-auto mt-2 max-w-2xl text-muted-foreground">
-              Enterprise plans include custom integrations, on-prem deployment,
-              dedicated support, and unlimited usage.
+              Get custom pricing, advanced integrations, dedicated support, and
+              features tailored to your organization's needs.
             </p>
-            <div className="mt-6">
-              <Button size="lg" onClick={() => handleSubscribe("enterprise")}>
-                Contact sales team
+            <div className="mt-6 flex justify-center gap-3">
+              <Button size="lg" onClick={() => handleSubscribe("team")}>
+                <Mail className="mr-2 h-4 w-4" />
+                Contact Sales
               </Button>
             </div>
           </CardContent>
@@ -590,7 +609,14 @@ function PlanCard({
               )}
             </div>
           ) : (
-            <span className="text-4xl font-bold">Custom</span>
+            <div>
+              <span className="text-4xl font-bold">Custom</span>
+              {plan.contactSales && (
+                <div className="text-sm text-muted-foreground mt-1">
+                  Contact us for pricing
+                </div>
+              )}
+            </div>
           )}
         </div>
       </CardHeader>
@@ -604,6 +630,8 @@ function PlanCard({
         >
           {billingLoading ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : plan.contactSales ? (
+            <Mail className="mr-2 h-4 w-4" />
           ) : null}
           {isCurrent ? "Current Plan" : plan.cta}
         </Button>
@@ -637,13 +665,14 @@ function PromotionalBanner() {
               🎉 Limited Time
             </Badge>
             <span className="text-lg font-semibold text-green-800">
-              2x Free Test Cases!
+              Pro Plan Now $15/month!
             </span>
           </div>
         </div>
         <p className="text-center text-green-700 mt-2">
-          Get <strong>20 free AI-generated test cases</strong> per month instead
-          of 10. No credit card required. Limited to first 50 users!
+          Get professional features at an incredible price. Plus{" "}
+          <strong>20 free AI-generated test cases</strong> on the Free plan. No
+          credit card required!
         </p>
       </CardContent>
     </Card>

@@ -1,7 +1,7 @@
 console.log("[SynthQA Extension] service worker started");
 
-const ARMED_KEY = "armedByTabId"; // { [tabId]: { url, executionId, testCaseId, stepNumber, synthqaTabId, updatedAt } }
-const recordingMeta = new Map();  // tabId -> { synthqaTabId, ctx }
+const ARMED_KEY = "armedByTabId";
+const recordingMeta = new Map();
 
 function normalizeUrl(url) {
   const s = String(url || "").trim();
@@ -29,7 +29,10 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 });
 
 async function getActiveTab() {
-  const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [active] = await chrome.tabs.query({
+    active: true,
+    currentWindow: true,
+  });
   return active || null;
 }
 
@@ -40,32 +43,31 @@ async function ensureOffscreen() {
   await chrome.offscreen.createDocument({
     url: "offscreen.html",
     reasons: ["USER_MEDIA"],
-    justification: "Tab recording for SynthQA evidence capture"
+    justification: "Tab recording for SynthQA evidence capture",
   });
 }
 
 async function sendToSynthQA(synthqaTabId, message) {
-  // Send to SynthQA tab's content script; that script forwards to the page via window.postMessage
   await chrome.tabs.sendMessage(synthqaTabId, message);
 }
 
-function waitForTabComplete(tabId, timeoutMs = 12000) {
-  return new Promise((resolve) => {
-    const start = Date.now();
+async function waitForTabComplete(tabId, timeoutMs = 12000) {
+  const start = Date.now();
 
-    const done = () => {
-      chrome.tabs.onUpdated.removeListener(onUpdated);
-      resolve(true);
-    };
+  const current = await chrome.tabs.get(tabId).catch(() => null);
+  if (current?.status === "complete") return true;
 
+  return await new Promise((resolve) => {
     const onUpdated = (updatedTabId, info) => {
       if (updatedTabId !== tabId) return;
-      if (info.status === "complete") done();
+      if (info.status === "complete") {
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve(true);
+      }
     };
 
     chrome.tabs.onUpdated.addListener(onUpdated);
 
-    // fail-safe timeout
     const tick = () => {
       if (Date.now() - start > timeoutMs) {
         chrome.tabs.onUpdated.removeListener(onUpdated);
@@ -78,30 +80,84 @@ function waitForTabComplete(tabId, timeoutMs = 12000) {
   });
 }
 
+function firstRecordingTabId() {
+  for (const [tabId] of recordingMeta.entries()) return tabId;
+  return null;
+}
+
+if (message?.command === "GET_RECORDING_STATUS") {
+  const recTabId = firstRecordingTabId();
+  return sendResponse({
+    ok: true,
+    data: { isRecording: !!recTabId, tabId: recTabId },
+  });
+}
+
+if (message?.command === "STOP_RECORDING_CURRENT") {
+  const recTabId = firstRecordingTabId();
+  if (!recTabId)
+    return sendResponse({ ok: false, error: "No active recording" });
+
+  await ensureOffscreen();
+  await chrome.runtime.sendMessage({
+    command: "OFFSCREEN_STOP_RECORDING",
+    payload: { tabId: recTabId },
+  });
+
+  return sendResponse({ ok: true, data: { tabId: recTabId } });
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
       if (message?.command === "PING") {
-  return sendResponse({ ok: true, data: { installed: true, version: "0.1.0" } });
-}
+        return sendResponse({
+          ok: true,
+          data: { installed: true, version: "0.1.0" },
+        });
+      }
       // ---- Called from SynthQA web app ----
       if (message?.command === "OPEN_TARGET") {
         const url = normalizeUrl(message?.payload?.url);
         if (!url) return sendResponse({ ok: false, error: "Missing URL" });
 
         const synthqaTabId = sender?.tab?.id;
-        if (!synthqaTabId) return sendResponse({ ok: false, error: "Could not identify SynthQA tab" });
+        if (!synthqaTabId)
+          return sendResponse({
+            ok: false,
+            error: "Could not identify SynthQA tab",
+          });
 
         // Try to find an existing tab with the same URL (optional; simple exact match)
-        const existing = (await chrome.tabs.query({ url })).find(t => t.id);
+        const existing = (await chrome.tabs.query({ url })).find((t) => t.id);
         let targetTab = existing;
 
         if (!targetTab) {
           targetTab = await chrome.tabs.create({ url, active: true });
         } else {
           await chrome.tabs.update(targetTab.id, { active: true });
-          if (targetTab.windowId != null) await chrome.windows.update(targetTab.windowId, { focused: true });
+          if (targetTab.windowId != null)
+            await chrome.windows.update(targetTab.windowId, { focused: true });
+        }
+        if (message?.command === "STOP_RECORDING_CURRENT") {
+          const recTabId = firstRecordingTabId();
+          if (!recTabId)
+            return sendResponse({ ok: false, error: "No active recording" });
+
+          await ensureOffscreen();
+          await chrome.runtime.sendMessage({
+            command: "OFFSCREEN_STOP_RECORDING",
+            payload: { tabId: recTabId },
+          });
+
+          return sendResponse({ ok: true, data: { tabId: recTabId } });
+        }
+        if (message?.command === "GET_RECORDING_STATUS") {
+          const recTabId = firstRecordingTabId();
+          return sendResponse({
+            ok: true,
+            data: { isRecording: !!recTabId, tabId: recTabId },
+          });
         }
 
         const map = await getArmedMap();
@@ -111,15 +167,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           testCaseId: message?.payload?.testCaseId ?? null,
           stepNumber: message?.payload?.stepNumber ?? null,
           synthqaTabId,
-          updatedAt: Date.now()
+          updatedAt: Date.now(),
         };
         await setArmedMap(map);
 
-        return sendResponse({ ok: true, data: { targetTabId: targetTab.id, url } });
+        return sendResponse({
+          ok: true,
+          data: { targetTabId: targetTab.id, url },
+        });
       }
-
-
-
 
       // ---- Called from popup ----
       if (message?.command === "GET_ACTIVE_TAB_CONTEXT") {
@@ -129,68 +185,86 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const map = await getArmedMap();
         return sendResponse({ ok: true, data: map[String(tab.id)] || null });
       }
-// ---- Called from SynthQA web app ----
-// Capture based on a provided targetUrl. Opens/focuses target, captures visible tab,
-// returns dataUrl to the web app (so your upload code works).
-if (message?.command === "CAPTURE_SCREENSHOT") {
-  const targetUrl = normalizeUrl(
-    message?.payload?.targetUrl || message?.payload?.url
-  );
-  if (!targetUrl) return sendResponse({ ok: false, error: "Missing targetUrl" });
 
-  const synthqaTabId = sender?.tab?.id;
-  if (!synthqaTabId) return sendResponse({ ok: false, error: "Could not identify SynthQA tab" });
+      if (message?.command === "CAPTURE_SCREENSHOT") {
+        const targetUrl = normalizeUrl(
+          message?.payload?.targetUrl || message?.payload?.url
+        );
+        if (!targetUrl)
+          return sendResponse({ ok: false, error: "Missing targetUrl" });
 
-  // open/focus target tab (reuse your OPEN_TARGET logic inline)
-  const existing = (await chrome.tabs.query({ url: targetUrl })).find(t => t.id);
-  let targetTab = existing;
+        const synthqaTabId = sender?.tab?.id;
+        if (!synthqaTabId)
+          return sendResponse({
+            ok: false,
+            error: "Could not identify SynthQA tab",
+          });
 
-  if (!targetTab) {
-    targetTab = await chrome.tabs.create({ url: targetUrl, active: true });
-  } else {
-    await chrome.tabs.update(targetTab.id, { active: true });
-    if (targetTab.windowId != null) await chrome.windows.update(targetTab.windowId, { focused: true });
-  }
+        // open/focus target tab (reuse your OPEN_TARGET logic inline)
+        const existing = (await chrome.tabs.query({ url: targetUrl })).find(
+          (t) => t.id
+        );
+        let targetTab = existing;
 
-  // arm the tab (optional but keeps your context model consistent)
-  const map = await getArmedMap();
-  map[String(targetTab.id)] = {
-    url: targetUrl,
-    executionId: message?.payload?.executionId ?? null,
-    testCaseId: message?.payload?.testCaseId ?? null,
-    stepNumber: message?.payload?.stepNumber ?? null,
-    synthqaTabId,
-    updatedAt: Date.now()
-  };
-  await setArmedMap(map);
+        if (!targetTab) {
+          targetTab = await chrome.tabs.create({
+            url: targetUrl,
+            active: true,
+          });
+        } else {
+          await chrome.tabs.update(targetTab.id, { active: true });
+          if (targetTab.windowId != null)
+            await chrome.windows.update(targetTab.windowId, { focused: true });
+        }
 
-  // wait best-effort for load (helps first-run)
-  await waitForTabComplete(targetTab.id);
+        // arm the tab (optional but keeps your context model consistent)
+        const map = await getArmedMap();
+        map[String(targetTab.id)] = {
+          url: targetUrl,
+          executionId: message?.payload?.executionId ?? null,
+          testCaseId: message?.payload?.testCaseId ?? null,
+          stepNumber: message?.payload?.stepNumber ?? null,
+          synthqaTabId,
+          updatedAt: Date.now(),
+        };
+        await setArmedMap(map);
 
-  // capture the visible tab in that window
-  const dataUrl = await chrome.tabs.captureVisibleTab(targetTab.windowId ?? null, { format: "png" });
+        // wait best-effort for load (helps first-run)
+        await waitForTabComplete(targetTab.id);
 
-  // return data back to the web app (this is what your React uploader expects)
-  return sendResponse({
-    ok: true,
-    data: {
-      dataUrl,
-      mimeType: "image/png",
-      fileName: `screenshot-${Date.now()}.png`,
-      capturedTabId: targetTab.id,
-      url: targetUrl,
-    }
-  });
-}
+        // capture the visible tab in that window
+        const dataUrl = await chrome.tabs.captureVisibleTab(
+          targetTab.windowId,
+          { format: "png" }
+        );
+        // return data back to the web app (this is what your React uploader expects)
+        return sendResponse({
+          ok: true,
+          data: {
+            dataUrl,
+            mimeType: "image/png",
+            fileName: `screenshot-${Date.now()}.png`,
+            capturedTabId: targetTab.id,
+            url: targetUrl,
+          },
+        });
+      }
       if (message?.command === "CAPTURE_SCREENSHOT_ACTIVE_TAB") {
         const tab = await getActiveTab();
-        if (!tab?.id) return sendResponse({ ok: false, error: "No active tab" });
+        if (!tab?.id)
+          return sendResponse({ ok: false, error: "No active tab" });
 
         const map = await getArmedMap();
         const ctx = map[String(tab.id)];
-        if (!ctx?.synthqaTabId) return sendResponse({ ok: false, error: "Active tab is not armed. Open target from SynthQA first." });
+        if (!ctx?.synthqaTabId)
+          return sendResponse({
+            ok: false,
+            error: "Active tab is not armed. Open target from SynthQA first.",
+          });
 
-        const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: "png" });
+        const dataUrl = await chrome.tabs.captureVisibleTab(null, {
+          format: "png",
+        });
 
         await sendToSynthQA(ctx.synthqaTabId, {
           channel: "synthqa-evidence-extension",
@@ -204,46 +278,66 @@ if (message?.command === "CAPTURE_SCREENSHOT") {
               testCaseId: ctx.testCaseId,
               stepNumber: ctx.stepNumber,
               url: ctx.url,
-              capturedTabId: tab.id
-            }
-          }
+              capturedTabId: tab.id,
+            },
+          },
         });
 
-        return sendResponse({ ok: true,
+        return sendResponse({
+          ok: true,
           data: {
-             dataUrl,
-              mimeType: "image/png",
-              fileName: `screenshot-${Date.now()}.png`,
-          }
-             
-         });
+            dataUrl,
+            mimeType: "image/png",
+            fileName: `screenshot-${Date.now()}.png`,
+          },
+        });
       }
 
       if (message?.command === "START_RECORDING_ACTIVE_TAB") {
         const tab = await getActiveTab();
-        if (!tab?.id) return sendResponse({ ok: false, error: "No active tab" });
+        if (!tab?.id)
+          return sendResponse({ ok: false, error: "No active tab" });
 
         const map = await getArmedMap();
         const ctx = map[String(tab.id)];
-        if (!ctx?.synthqaTabId) return sendResponse({ ok: false, error: "Active tab is not armed. Open target from SynthQA first." });
+        if (!ctx?.synthqaTabId) {
+          return sendResponse({
+            ok: false,
+            error: "Active tab is not armed. Open target from SynthQA first.",
+          });
+        }
 
         // ensure tab is focused (tabCapture behaves best)
         await chrome.tabs.update(tab.id, { active: true });
-        if (tab.windowId != null) await chrome.windows.update(tab.windowId, { focused: true });
+        if (tab.windowId != null)
+          await chrome.windows.update(tab.windowId, { focused: true });
 
         await ensureOffscreen();
         recordingMeta.set(tab.id, { synthqaTabId: ctx.synthqaTabId, ctx });
 
-        await chrome.runtime.sendMessage({ command: "OFFSCREEN_START_RECORDING", payload: { tabId: tab.id } });
+        // MV3 pattern: get a MediaStreamId in SW, use it in offscreen getUserMedia
+        const streamId = await chrome.tabCapture.getMediaStreamId({
+          targetTabId: tab.id,
+        });
+
+        await chrome.runtime.sendMessage({
+          command: "OFFSCREEN_START_RECORDING",
+          payload: { tabId: tab.id, streamId },
+        });
+
         return sendResponse({ ok: true });
       }
 
       if (message?.command === "STOP_RECORDING_ACTIVE_TAB") {
         const tab = await getActiveTab();
-        if (!tab?.id) return sendResponse({ ok: false, error: "No active tab" });
+        if (!tab?.id)
+          return sendResponse({ ok: false, error: "No active tab" });
 
         await ensureOffscreen();
-        await chrome.runtime.sendMessage({ command: "OFFSCREEN_STOP_RECORDING", payload: { tabId: tab.id } });
+        await chrome.runtime.sendMessage({
+          command: "OFFSCREEN_STOP_RECORDING",
+          payload: { tabId: tab.id },
+        });
 
         return sendResponse({ ok: true });
       }
@@ -251,10 +345,18 @@ if (message?.command === "CAPTURE_SCREENSHOT") {
       // ---- From offscreen -> SW when recording is done ----
       if (message?.command === "OFFSCREEN_RECORDING_DONE") {
         const { tabId, dataUrl, mimeType, fileName } = message?.payload || {};
-        if (!tabId || !dataUrl) return sendResponse({ ok: false, error: "Missing recording payload" });
+        if (!tabId || !dataUrl)
+          return sendResponse({
+            ok: false,
+            error: "Missing recording payload",
+          });
 
         const meta = recordingMeta.get(tabId);
-        if (!meta?.synthqaTabId) return sendResponse({ ok: false, error: "No SynthQA destination for recording" });
+        if (!meta?.synthqaTabId)
+          return sendResponse({
+            ok: false,
+            error: "No SynthQA destination for recording",
+          });
 
         const ctx = meta.ctx;
 
@@ -270,9 +372,9 @@ if (message?.command === "CAPTURE_SCREENSHOT") {
               testCaseId: ctx.testCaseId,
               stepNumber: ctx.stepNumber,
               url: ctx.url,
-              capturedTabId: tabId
-            }
-          }
+              capturedTabId: tabId,
+            },
+          },
         });
 
         recordingMeta.delete(tabId);
@@ -282,7 +384,10 @@ if (message?.command === "CAPTURE_SCREENSHOT") {
       return sendResponse({ ok: false, error: "Unknown command" });
     } catch (e) {
       console.error("[SynthQA Extension] SW error:", e);
-      return sendResponse({ ok: false, error: e?.message || "Extension error" });
+      return sendResponse({
+        ok: false,
+        error: e?.message || "Extension error",
+      });
     }
   })();
 
