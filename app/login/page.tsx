@@ -15,6 +15,7 @@ import { ContactSheet } from "@/components/legal/contactSheet";
 import { Logo } from "@/components/pagecomponents/brandlogo";
 import Image from "next/image";
 import { Footer } from "@/components/landingpage/footer";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 export default function LoginPage() {
   return (
@@ -30,6 +31,7 @@ export default function LoginPage() {
       </FieldDescription>
       <div className="flex-1" />
       <div className="flex h-4 items-center space-x-4 text-sm"></div>
+      <SiteFooter />
     </div>
   );
 }

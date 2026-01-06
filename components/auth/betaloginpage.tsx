@@ -1,73 +1,98 @@
+// app/(auth)/beta-login/page.tsx
 "use client";
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Lock } from "lucide-react";
 
 export default function BetaLoginPage() {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get("redirect") || "/";
+  const redirect = searchParams.get("redirect") || "/signup";
 
-  async function handleSubmit(e: React.FormEvent) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
     setLoading(true);
+    setError("");
 
     try {
-      const res = await fetch("/api/beta-login", {
+      // Call your existing API route
+      const response = await fetch("/api/beta-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Invalid password");
-        return;
-      }
+      const data = await response.json();
 
-      router.push(redirect);
-      router.refresh();
-    } catch {
-      setError("Something went wrong. Please try again.");
+      // Check for data.ok instead of data.success (to match your API)
+      if (response.ok && data.ok) {
+        // Password correct - cookie is set by API, redirect
+        router.push(redirect);
+        router.refresh(); // Refresh to pick up the cookie
+      } else {
+        setError(data.error || "Invalid password. Please try again.");
+      }
+    } catch (err) {
+      setError("An error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold">
-           This site is in beta testing phase. Enter access password
-          </CardTitle>
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1 text-center">
+          <div className="flex justify-center mb-4">
+            <div className="p-3 rounded-full bg-primary/10">
+              <Lock className="h-6 w-6 text-primary" />
+            </div>
+          </div>
+          <CardTitle className="text-2xl">Beta Access Required</CardTitle>
+          <CardDescription>
+            Enter the beta password to access signup
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Password</label>
+              <Label htmlFor="password">Beta Password</Label>
               <Input
+                id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter beta password"
+                required
+                disabled={loading}
                 autoFocus
               />
             </div>
+
             {error && (
-              <p className="text-sm text-destructive">
-                {error}
-              </p>
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
+
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Checking..." : "Unlock"}
+              {loading ? "Verifying..." : "Continue to Signup"}
             </Button>
           </form>
         </CardContent>

@@ -45,6 +45,7 @@ import {
 import { Logo } from "@/components/pagecomponents/brandlogo";
 import { Footer } from "@/components/landingpage/footer";
 import { GuideMenu } from "@/components/pagecomponents/guide-menu";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 type TocItem = { id: string; title: string; icon?: React.ReactNode };
 
@@ -1631,7 +1632,7 @@ across web and mobile platforms, including:
         </main>
         <div className="h-2" />
       </div>
-      <Footer />
+      <SiteFooter />
     </div>
   );
 }

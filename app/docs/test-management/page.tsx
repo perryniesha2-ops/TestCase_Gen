@@ -48,6 +48,7 @@ import {
 import { Logo } from "@/components/pagecomponents/brandlogo";
 import { Footer } from "@/components/landingpage/footer";
 import { GuideMenu } from "@/components/pagecomponents/guide-menu";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 type TocItem = { id: string; title: string; icon?: React.ReactNode };
 
@@ -1649,7 +1650,7 @@ export default function TestManagementGuidePage() {
           </Section>
         </main>
       </div>
-      <Footer />
+      <SiteFooter />
     </div>
   );
 }

@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/pagecomponents/brandlogo";
 import { Footer } from "@/components/landingpage/footer";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 type TocItem = { id: string; title: string; icon?: React.ReactNode };
 
@@ -1403,7 +1404,7 @@ Screenshots:
           </Section>
         </main>
       </div>
-      <Footer />
+      <SiteFooter />
     </div>
   );
 }

@@ -36,10 +36,12 @@ import {
   HelpCircle,
   MonitorSmartphone,
   Play,
+  Divide,
 } from "lucide-react";
 import { Logo } from "@/components/pagecomponents/brandlogo";
 import { Footer } from "@/components/landingpage/footer";
 import { GuideMenu } from "@/components/pagecomponents/guide-menu";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 type TocItem = { id: string; title: string; icon?: React.ReactNode };
 
@@ -729,18 +731,17 @@ export default function BrowserExtensionGuidePage() {
                     <li>Screenshots / screen recordings</li>
                   </ul>
                 </div>
-
+                <Separator />
                 <div className="text-xs text-muted-foreground">
-                  Last updated: January 2026 · Extension: SynthQA Evidence
-                  Capture
+                  Last updated: January 2026 · Guide version: 1.0
                 </div>
               </CardContent>
             </Card>
           </Section>
         </main>
+        <div className="pt-10"></div>
       </div>
-
-      <Footer />
+      <SiteFooter />
     </div>
   );
 }

@@ -20,11 +20,19 @@ import {
   FolderOpen,
   Settings,
   Chrome,
+  CheckCircle2,
 } from "lucide-react";
 import { Footer } from "react-day-picker";
 
 export default function GuidesIndexPage() {
   const guides = [
+    {
+      title: "Best Practices",
+      description: "Optimize your test case management with proven strategies",
+      href: "/docs/best-practices",
+      icon: CheckCircle2,
+      color: "text-teal-500",
+    },
     {
       title: "AI Test Case Generator",
       description:
@@ -100,7 +108,9 @@ export default function GuidesIndexPage() {
               );
             })}
           </div>
-          <SiteFooter />
+          <div className="pt-10">
+            <SiteFooter />
+          </div>
         </div>
       </div>
     </>

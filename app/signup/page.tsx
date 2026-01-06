@@ -29,6 +29,9 @@ export default function SignupPage() {
       <FieldDescription className="px-6 text-center">
         By clicking continue, you agree to our Terms of and Privacy Policy.
       </FieldDescription>
+      <div className="flex h-4 items-center space-x-4 text-sm">
+        <SiteFooter />
+      </div>
     </div>
   );
 }

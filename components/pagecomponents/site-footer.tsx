@@ -16,14 +16,14 @@ export function SiteFooter() {
           </Link>
           <span className="text-muted-foreground/40">·</span>
           <Link
-            href="/terms"
+            href="/docs/terms"
             className="hover:text-foreground transition-colors"
           >
             Terms of Service
           </Link>
           <span className="text-muted-foreground/40">·</span>
           <Link
-            href="/privacy"
+            href="/docs/privacy"
             className="hover:text-foreground transition-colors"
           >
             Privacy Policy

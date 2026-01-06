@@ -47,6 +47,7 @@ import {
 import { Logo } from "@/components/pagecomponents/brandlogo";
 import { Footer } from "@/components/landingpage/footer";
 import { GuideMenu } from "@/components/pagecomponents/guide-menu";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 type TocItem = { id: string; title: string; icon?: React.ReactNode };
 
@@ -1707,21 +1708,21 @@ export default function TemplatesGuidePage() {
                   </div>
                   <div className="space-y-1">
                     <Link
-                      href="/guides/ai-generator"
+                      href="/docs/generator"
                       className="flex items-center gap-2 text-primary hover:underline"
                     >
                       <Sparkles className="h-4 w-4" />
                       AI Test Case Generator Guide
                     </Link>
                     <Link
-                      href="/guides/requirements"
+                      href="/docs/requirements"
                       className="flex items-center gap-2 text-primary hover:underline"
                     >
                       <FileText className="h-4 w-4" />
                       Requirements Management Guide
                     </Link>
                     <Link
-                      href="/guides/best-practices"
+                      href="/docs/best-practices"
                       className="flex items-center gap-2 text-primary hover:underline"
                     >
                       <CheckCircle2 className="h-4 w-4" />
@@ -1739,7 +1740,7 @@ export default function TemplatesGuidePage() {
         </main>
         <div className="h-2" />
       </div>
-      <Footer />
+      <SiteFooter />
     </div>
   );
 }
