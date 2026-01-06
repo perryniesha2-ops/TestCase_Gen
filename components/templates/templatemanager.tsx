@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -16,14 +16,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   Card,
   CardContent,
@@ -31,20 +31,15 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
+} from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
+} from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FileText,
   Plus,
@@ -64,47 +59,57 @@ import {
   GitBranch,
   Eye,
   Loader2,
-} from "lucide-react"
+} from "lucide-react";
 
 // Types
-type TemplateCategory = 'functional' | 'security' | 'performance' | 'integration' | 'regression' | 'accessibility' | 'other'
+type TemplateCategory =
+  | "functional"
+  | "security"
+  | "performance"
+  | "integration"
+  | "regression"
+  | "accessibility"
+  | "other";
 
 interface TemplateContent {
-  model: string
-  testCaseCount: number
-  coverage: 'standard' | 'comprehensive' | 'exhaustive'
-  includeEdgeCases?: boolean
-  includeNegativeTests?: boolean
-  defaultSections?: string[]
+  model: string;
+  testCaseCount: number;
+  coverage: "standard" | "comprehensive" | "exhaustive";
+  includeEdgeCases?: boolean;
+  includeNegativeTests?: boolean;
+  defaultSections?: string[];
 }
 
 interface Template {
-  id: string
-  user_id: string
-  name: string
-  description?: string | null
-  category: TemplateCategory
-  template_content: TemplateContent
-  is_public: boolean
-  is_favorite: boolean
-  usage_count: number
-  last_used_at?: string | null
-  created_at: string
-  updated_at: string
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string | null;
+  category: TemplateCategory;
+  template_content: TemplateContent;
+  is_public: boolean;
+  is_favorite: boolean;
+  usage_count: number;
+  last_used_at?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface TemplateFormData {
-  name: string
-  description: string
-  category: TemplateCategory
-  model: string
-  testCaseCount: number
-  coverage: 'standard' | 'comprehensive' | 'exhaustive'
-  includeEdgeCases: boolean
-  includeNegativeTests: boolean
+  name: string;
+  description: string;
+  category: TemplateCategory;
+  model: string;
+  testCaseCount: number;
+  coverage: "standard" | "comprehensive" | "exhaustive";
+  includeEdgeCases: boolean;
+  includeNegativeTests: boolean;
 }
 
-const categoryIcons: Record<TemplateCategory, React.ComponentType<{ className?: string }>> = {
+const categoryIcons: Record<
+  TemplateCategory,
+  React.ComponentType<{ className?: string }>
+> = {
   functional: Sparkles,
   security: Shield,
   performance: Zap,
@@ -112,17 +117,17 @@ const categoryIcons: Record<TemplateCategory, React.ComponentType<{ className?: 
   regression: GitBranch,
   accessibility: Eye,
   other: FileText,
-}
+};
 
 const categoryColors: Record<TemplateCategory, string> = {
-  functional: 'bg-blue-500',
-  security: 'bg-red-500',
-  performance: 'bg-orange-500',
-  integration: 'bg-purple-500',
-  regression: 'bg-green-500',
-  accessibility: 'bg-indigo-500',
-  other: 'bg-gray-500',
-}
+  functional: "bg-blue-500",
+  security: "bg-red-500",
+  performance: "bg-orange-500",
+  integration: "bg-purple-500",
+  regression: "bg-green-500",
+  accessibility: "bg-indigo-500",
+  other: "bg-gray-500",
+};
 
 /**
  * Get display name for AI model
@@ -130,130 +135,143 @@ const categoryColors: Record<TemplateCategory, string> = {
  */
 function getModelDisplayName(modelKey: string): string {
   // Latest models (Dec 2024)
-  if (modelKey === "claude-sonnet-4-5") return "Claude Sonnet 4.5"
-  if (modelKey === "claude-haiku-4-5") return "Claude Haiku 4.5"
-  if (modelKey === "claude-opus-4-5") return "Claude Opus 4.5"
-  if (modelKey === "gpt-5-mini") return "GPT-5 Mini"
-  if (modelKey === "gpt-5.2") return "GPT-5.2"
-  if (modelKey === "gpt-4o") return "GPT-4o"
-  if (modelKey === "gpt-4o-mini") return "GPT-4o Mini"
-  
+  if (modelKey === "claude-sonnet-4-5") return "Claude Sonnet 4.5";
+  if (modelKey === "claude-haiku-4-5") return "Claude Haiku 4.5";
+  if (modelKey === "claude-opus-4-5") return "Claude Opus 4.5";
+  if (modelKey === "gpt-5-mini") return "GPT-5 Mini";
+  if (modelKey === "gpt-5.2") return "GPT-5.2";
+  if (modelKey === "gpt-4o") return "GPT-4o";
+  if (modelKey === "gpt-4o-mini") return "GPT-4o Mini";
+
   // Legacy models (backwards compatibility)
-  if (modelKey.includes("claude-3-5-sonnet")) return "Claude 3.5 Sonnet"
-  if (modelKey.includes("claude-3-5-haiku")) return "Claude 3.5 Haiku"
-  if (modelKey.includes("claude-sonnet-4")) return "Claude Sonnet 4"
-  if (modelKey.includes("claude-opus-4")) return "Claude Opus 4"
-  if (modelKey.includes("gpt-4-turbo")) return "GPT-4 Turbo"
-  if (modelKey.includes("gpt-3.5")) return "GPT-3.5 Turbo"
-  
+  if (modelKey.includes("claude-3-5-sonnet")) return "Claude 3.5 Sonnet";
+  if (modelKey.includes("claude-3-5-haiku")) return "Claude 3.5 Haiku";
+  if (modelKey.includes("claude-sonnet-4")) return "Claude Sonnet 4";
+  if (modelKey.includes("claude-opus-4")) return "Claude Opus 4";
+  if (modelKey.includes("gpt-4-turbo")) return "GPT-4 Turbo";
+  if (modelKey.includes("gpt-3.5")) return "GPT-3.5 Turbo";
+
   // Fallback - extract readable name
-  if (modelKey.includes("claude")) return "Claude"
-  if (modelKey.includes("gpt")) return "GPT"
-  
-  return modelKey
+  if (modelKey.includes("claude")) return "Claude";
+  if (modelKey.includes("gpt")) return "GPT";
+
+  return modelKey;
 }
 
 export function TemplateManager() {
-  const [templates, setTemplates] = useState<Template[]>([])
-  const [filteredTemplates, setFilteredTemplates] = useState<Template[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showDialog, setShowDialog] = useState(false)
-  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState<TemplateCategory | "all">("all")
-  const [activeTab, setActiveTab] = useState<"my-templates" | "public">("my-templates")
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [filteredTemplates, setFilteredTemplates] = useState<Template[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showDialog, setShowDialog] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<
+    TemplateCategory | "all"
+  >("all");
+  const [activeTab, setActiveTab] = useState<"my-templates" | "public">(
+    "my-templates"
+  );
 
   const [formData, setFormData] = useState<TemplateFormData>({
     name: "",
     description: "",
     category: "functional",
-    model: "claude-sonnet-4-5", 
+    model: "claude-sonnet-4-5",
     testCaseCount: 10,
     coverage: "comprehensive",
     includeEdgeCases: true,
     includeNegativeTests: true,
-  })
+  });
 
   useEffect(() => {
-    fetchTemplates()
-  }, [])
+    fetchTemplates();
+  }, []);
 
   useEffect(() => {
-    filterTemplates()
-  }, [templates, searchQuery, categoryFilter, activeTab])
+    filterTemplates();
+  }, [templates, searchQuery, categoryFilter, activeTab]);
 
   async function fetchTemplates() {
-    setLoading(true)
+    setLoading(true);
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       if (!user) {
-        toast.error("Please sign in to view templates")
-        return
+        toast.error("Please sign in to view templates");
+        return;
       }
 
       const { data, error } = await supabase
         .from("test_case_templates")
         .select("*")
-        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: false });
 
-      if (error) throw error
-      setTemplates(data || [])
+      if (error) throw error;
+      setTemplates(data || []);
     } catch (error) {
-      console.error("Error fetching templates:", error)
-      toast.error("Failed to load templates")
+      console.error("Error fetching templates:", error);
+      toast.error("Failed to load templates");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   function filterTemplates() {
-    let filtered = templates
+    let filtered = templates;
 
     // Filter by tab (my templates vs public)
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        filtered = activeTab === "my-templates"
-          ? filtered.filter(t => t.user_id === user.id)
-          : filtered.filter(t => t.is_public && t.user_id !== user.id)
-      }
+    const supabase = createClient();
+    supabase.auth
+      .getUser()
+      .then(({ data: { user } }) => {
+        if (user) {
+          filtered =
+            activeTab === "my-templates"
+              ? filtered.filter((t) => t.user_id === user.id)
+              : filtered.filter((t) => t.is_public && t.user_id !== user.id);
+        }
 
-      // Filter by category
-      if (categoryFilter !== "all") {
-        filtered = filtered.filter(t => t.category === categoryFilter)
-      }
+        // Filter by category
+        if (categoryFilter !== "all") {
+          filtered = filtered.filter((t) => t.category === categoryFilter);
+        }
 
-      // Filter by search query
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase()
-        filtered = filtered.filter(t =>
-          t.name.toLowerCase().includes(query) ||
-          t.description?.toLowerCase().includes(query)
-        )
-      }
+        // Filter by search query
+        if (searchQuery.trim()) {
+          const query = searchQuery.toLowerCase();
+          filtered = filtered.filter(
+            (t) =>
+              t.name.toLowerCase().includes(query) ||
+              t.description?.toLowerCase().includes(query)
+          );
+        }
 
-      setFilteredTemplates(filtered)
-    }).catch(err => {
-      console.error('Error filtering templates:', err)
-    })
+        setFilteredTemplates(filtered);
+      })
+      .catch((err) => {
+        console.error("Error filtering templates:", err);
+      });
   }
 
   async function saveTemplate() {
     if (!formData.name.trim()) {
-      toast.error("Please enter a template name")
-      return
+      toast.error("Please enter a template name");
+      return;
     }
 
-    setLoading(true)
+    setLoading(true);
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       if (!user) {
-        toast.error("Please sign in to save templates")
-        return
+        toast.error("Please sign in to save templates");
+        return;
       }
 
       const templateContent: TemplateContent = {
@@ -262,7 +280,7 @@ export function TemplateManager() {
         coverage: formData.coverage,
         includeEdgeCases: formData.includeEdgeCases,
         includeNegativeTests: formData.includeNegativeTests,
-      }
+      };
 
       const templateData = {
         user_id: user.id,
@@ -272,100 +290,100 @@ export function TemplateManager() {
         template_content: templateContent,
         is_public: false,
         is_favorite: false,
-      }
+      };
 
       if (editingTemplate) {
         const { error } = await supabase
           .from("test_case_templates")
           .update(templateData)
-          .eq("id", editingTemplate.id)
+          .eq("id", editingTemplate.id);
 
-        if (error) throw error
-        toast.success("Template updated successfully")
+        if (error) throw error;
+        toast.success("Template updated successfully");
       } else {
         const { error } = await supabase
           .from("test_case_templates")
-          .insert(templateData)
+          .insert(templateData);
 
-        if (error) throw error
-        toast.success("Template created successfully")
+        if (error) throw error;
+        toast.success("Template created successfully");
       }
 
-      setShowDialog(false)
-      setEditingTemplate(null)
-      resetForm()
-      await fetchTemplates()
+      setShowDialog(false);
+      setEditingTemplate(null);
+      resetForm();
+      await fetchTemplates();
     } catch (error) {
-      console.error("Error saving template:", error)
-      toast.error("Failed to save template")
+      console.error("Error saving template:", error);
+      toast.error("Failed to save template");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function deleteTemplate(id: string) {
-    if (!confirm("Delete this template? This action cannot be undone.")) return
+    if (!confirm("Delete this template? This action cannot be undone.")) return;
 
     try {
-      const supabase = createClient()
+      const supabase = createClient();
       const { error } = await supabase
         .from("test_case_templates")
         .delete()
-        .eq("id", id)
+        .eq("id", id);
 
-      if (error) throw error
-      toast.success("Template deleted")
-      await fetchTemplates()
+      if (error) throw error;
+      toast.success("Template deleted");
+      await fetchTemplates();
     } catch (error) {
-      console.error("Error deleting template:", error)
-      toast.error("Failed to delete template")
+      console.error("Error deleting template:", error);
+      toast.error("Failed to delete template");
     }
   }
 
   async function duplicateTemplate(template: Template) {
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       if (!user) {
-        toast.error("Please sign in to duplicate templates")
-        return
+        toast.error("Please sign in to duplicate templates");
+        return;
       }
 
-      const { error } = await supabase
-        .from("test_case_templates")
-        .insert({
-          user_id: user.id,
-          name: `${template.name} (Copy)`,
-          description: template.description,
-          category: template.category,
-          template_content: template.template_content,
-          is_public: false,
-          is_favorite: false,
-        })
+      const { error } = await supabase.from("test_case_templates").insert({
+        user_id: user.id,
+        name: `${template.name} (Copy)`,
+        description: template.description,
+        category: template.category,
+        template_content: template.template_content,
+        is_public: false,
+        is_favorite: false,
+      });
 
-      if (error) throw error
-      toast.success("Template duplicated")
-      await fetchTemplates()
+      if (error) throw error;
+      toast.success("Template duplicated");
+      await fetchTemplates();
     } catch (error) {
-      console.error("Error duplicating template:", error)
-      toast.error("Failed to duplicate template")
+      console.error("Error duplicating template:", error);
+      toast.error("Failed to duplicate template");
     }
   }
 
   async function toggleFavorite(template: Template) {
     try {
-      const supabase = createClient()
+      const supabase = createClient();
       const { error } = await supabase
         .from("test_case_templates")
         .update({ is_favorite: !template.is_favorite })
-        .eq("id", template.id)
+        .eq("id", template.id);
 
-      if (error) throw error
-      await fetchTemplates()
+      if (error) throw error;
+      await fetchTemplates();
     } catch (error) {
-      console.error("Error toggling favorite:", error)
-      toast.error("Failed to update favorite status")
+      console.error("Error toggling favorite:", error);
+      toast.error("Failed to update favorite status");
     }
   }
 
@@ -379,11 +397,11 @@ export function TemplateManager() {
       coverage: "comprehensive",
       includeEdgeCases: true,
       includeNegativeTests: true,
-    })
+    });
   }
 
   function openEditDialog(template: Template) {
-    setEditingTemplate(template)
+    setEditingTemplate(template);
     setFormData({
       name: template.name,
       description: template.description || "",
@@ -392,27 +410,28 @@ export function TemplateManager() {
       testCaseCount: template.template_content.testCaseCount,
       coverage: template.template_content.coverage,
       includeEdgeCases: template.template_content.includeEdgeCases ?? true,
-      includeNegativeTests: template.template_content.includeNegativeTests ?? true,
-    })
-    setShowDialog(true)
+      includeNegativeTests:
+        template.template_content.includeNegativeTests ?? true,
+    });
+    setShowDialog(true);
   }
 
   function openNewDialog() {
-    setEditingTemplate(null)
-    resetForm()
-    setShowDialog(true)
+    setEditingTemplate(null);
+    resetForm();
+    setShowDialog(true);
   }
 
-  const favoriteTemplates = filteredTemplates.filter(t => t.is_favorite)
-  const mostUsedTemplate = [...templates].sort((a, b) => b.usage_count - a.usage_count)[0]
+  const favoriteTemplates = filteredTemplates.filter((t) => t.is_favorite);
+  const mostUsedTemplate = [...templates].sort(
+    (a, b) => b.usage_count - a.usage_count
+  )[0];
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          
-        </div>
+        <div></div>
         <Button onClick={openNewDialog} size="lg">
           <Plus className="h-5 w-5 mr-2" />
           New Template
@@ -423,7 +442,9 @@ export function TemplateManager() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Templates</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Total Templates
+            </CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -451,18 +472,24 @@ export function TemplateManager() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Recent Activity
+            </CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {templates.filter(t => {
-                const weekAgo = new Date()
-                weekAgo.setDate(weekAgo.getDate() - 7)
-                return new Date(t.created_at) > weekAgo
-              }).length}
+              {
+                templates.filter((t) => {
+                  const weekAgo = new Date();
+                  weekAgo.setDate(weekAgo.getDate() - 7);
+                  return new Date(t.created_at) > weekAgo;
+                }).length
+              }
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Created this week</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Created this week
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -480,7 +507,12 @@ export function TemplateManager() {
             />
           </div>
         </div>
-        <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as TemplateCategory | "all")}>
+        <Select
+          value={categoryFilter}
+          onValueChange={(value) =>
+            setCategoryFilter(value as TemplateCategory | "all")
+          }
+        >
           <SelectTrigger className="w-full sm:w-[200px]">
             <Filter className="h-4 w-4 mr-2" />
             <SelectValue placeholder="Filter by category" />
@@ -499,7 +531,12 @@ export function TemplateManager() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "my-templates" | "public")}>
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) =>
+          setActiveTab(value as "my-templates" | "public")
+        }
+      >
         <TabsList>
           <TabsTrigger value="my-templates">My Templates</TabsTrigger>
           <TabsTrigger value="public">Public Templates</TabsTrigger>
@@ -514,7 +551,9 @@ export function TemplateManager() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No templates found</h3>
+                <h3 className="text-lg font-semibold mb-2">
+                  No templates found
+                </h3>
                 <p className="text-sm text-muted-foreground mb-4">
                   {searchQuery || categoryFilter !== "all"
                     ? "Try adjusting your filters"
@@ -531,20 +570,27 @@ export function TemplateManager() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredTemplates.map((template) => {
-                const CategoryIcon = categoryIcons[template.category]
-                const categoryColor = categoryColors[template.category]
+                const CategoryIcon = categoryIcons[template.category];
+                const categoryColor = categoryColors[template.category];
 
                 return (
-                  <Card key={template.id} className="relative group hover:shadow-lg transition-shadow">
+                  <Card
+                    key={template.id}
+                    className="relative group hover:shadow-lg transition-shadow"
+                  >
                     {/* Category indicator */}
-                    <div className={`absolute top-0 left-0 w-full h-1 ${categoryColor} rounded-t-lg`} />
+                    <div
+                      className={`absolute top-0 left-0 w-full h-1 ${categoryColor} rounded-t-lg`}
+                    />
 
                     <CardHeader className="pt-6">
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-2 flex-1">
                           <CategoryIcon className="h-5 w-5 text-muted-foreground" />
                           <div className="flex-1 min-w-0">
-                            <CardTitle className="text-lg truncate">{template.name}</CardTitle>
+                            <CardTitle className="text-lg truncate">
+                              {template.name}
+                            </CardTitle>
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -564,16 +610,24 @@ export function TemplateManager() {
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                              >
                                 <MoreVertical className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openEditDialog(template)}>
+                              <DropdownMenuItem
+                                onClick={() => openEditDialog(template)}
+                              >
                                 <Edit className="h-4 w-4 mr-2" />
                                 Edit
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => duplicateTemplate(template)}>
+                              <DropdownMenuItem
+                                onClick={() => duplicateTemplate(template)}
+                              >
                                 <Copy className="h-4 w-4 mr-2" />
                                 Duplicate
                               </DropdownMenuItem>
@@ -610,12 +664,16 @@ export function TemplateManager() {
                         <div className="flex justify-between">
                           <span>Model:</span>
                           <span className="font-medium">
-                            {getModelDisplayName(template.template_content.model)}
+                            {getModelDisplayName(
+                              template.template_content.model
+                            )}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span>Coverage:</span>
-                          <span className="capitalize">{template.template_content.coverage}</span>
+                          <span className="capitalize">
+                            {template.template_content.coverage}
+                          </span>
                         </div>
                         <div className="flex justify-between">
                           <span>Used:</span>
@@ -631,14 +689,16 @@ export function TemplateManager() {
                         className="w-full"
                         onClick={() => {
                           // This will be used when integrating with the generator
-                          toast.success("Template selected (integrate with generator)")
+                          toast.success(
+                            "Template selected (integrate with generator)"
+                          );
                         }}
                       >
                         Use Template
                       </Button>
                     </CardFooter>
                   </Card>
-                )
+                );
               })}
             </div>
           )}
@@ -653,7 +713,9 @@ export function TemplateManager() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <Globe className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No public templates available</h3>
+                <h3 className="text-lg font-semibold mb-2">
+                  No public templates available
+                </h3>
                 <p className="text-sm text-muted-foreground">
                   Check back later for community templates
                 </p>
@@ -662,18 +724,25 @@ export function TemplateManager() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredTemplates.map((template) => {
-                const CategoryIcon = categoryIcons[template.category]
-                const categoryColor = categoryColors[template.category]
+                const CategoryIcon = categoryIcons[template.category];
+                const categoryColor = categoryColors[template.category];
 
                 return (
-                  <Card key={template.id} className="relative hover:shadow-lg transition-shadow">
-                    <div className={`absolute top-0 left-0 w-full h-1 ${categoryColor} rounded-t-lg`} />
+                  <Card
+                    key={template.id}
+                    className="relative hover:shadow-lg transition-shadow"
+                  >
+                    <div
+                      className={`absolute top-0 left-0 w-full h-1 ${categoryColor} rounded-t-lg`}
+                    />
 
                     <CardHeader className="pt-6">
                       <div className="flex items-start gap-2">
                         <CategoryIcon className="h-5 w-5 text-muted-foreground mt-0.5" />
                         <div className="flex-1 min-w-0">
-                          <CardTitle className="text-lg truncate">{template.name}</CardTitle>
+                          <CardTitle className="text-lg truncate">
+                            {template.name}
+                          </CardTitle>
                           {template.description && (
                             <CardDescription className="line-clamp-2 mt-1">
                               {template.description}
@@ -712,35 +781,36 @@ export function TemplateManager() {
                         size="sm"
                         className="flex-1"
                         onClick={() => {
-                          toast.success("Template selected (integrate with generator)")
+                          toast.success(
+                            "Template selected (integrate with generator)"
+                          );
                         }}
                       >
                         Use Template
                       </Button>
                     </CardFooter>
                   </Card>
-                )
+                );
               })}
             </div>
           )}
         </TabsContent>
       </Tabs>
+      <div className="h-2" />
 
       {/* Create/Edit Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-       <DialogContent
-  className="max-h-[90vh] overflow-y-auto w-[95vw] sm:max-w-3xl lg:max-w-4xl"
->
-  <DialogHeader>
-    <DialogTitle>
-      {editingTemplate ? "Edit Template" : "Create New Template"}
-    </DialogTitle>
-    <DialogDescription>
-      {editingTemplate
-        ? "Update your template settings"
-        : "Save your test generation preferences as a reusable template"}
-    </DialogDescription>
-  </DialogHeader>
+        <DialogContent className="max-h-[90vh] overflow-y-auto w-[95vw] sm:max-w-3xl lg:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editingTemplate ? "Edit Template" : "Create New Template"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingTemplate
+                ? "Update your template settings"
+                : "Save your test generation preferences as a reusable template"}
+            </DialogDescription>
+          </DialogHeader>
 
           <div className="space-y-6 py-4">
             {/* Basic Information */}
@@ -750,7 +820,9 @@ export function TemplateManager() {
                 <Input
                   id="name"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                   placeholder="e.g., API Security Tests"
                   maxLength={100}
                 />
@@ -761,7 +833,9 @@ export function TemplateManager() {
                 <Textarea
                   id="description"
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
                   placeholder="Describe when to use this template..."
                   rows={3}
                   maxLength={500}
@@ -772,7 +846,12 @@ export function TemplateManager() {
                 <Label htmlFor="category">Category *</Label>
                 <Select
                   value={formData.category}
-                  onValueChange={(value) => setFormData({ ...formData, category: value as TemplateCategory })}
+                  onValueChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      category: value as TemplateCategory,
+                    })
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -834,7 +913,9 @@ export function TemplateManager() {
                   <Label htmlFor="model">AI Model</Label>
                   <Select
                     value={formData.model}
-                    onValueChange={(value) => setFormData({ ...formData, model: value })}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, model: value })
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -852,12 +933,8 @@ export function TemplateManager() {
                       <SelectItem value="gpt-5-mini">
                         GPT-5 Mini (Balanced)
                       </SelectItem>
-                      <SelectItem value="gpt-5.2">
-                        GPT-5.2 (Premium)
-                      </SelectItem>
-                      <SelectItem value="gpt-4o">
-                        GPT-4o
-                      </SelectItem>
+                      <SelectItem value="gpt-5.2">GPT-5.2 (Premium)</SelectItem>
+                      <SelectItem value="gpt-4o">GPT-4o</SelectItem>
                       <SelectItem value="gpt-4o-mini">
                         GPT-4o Mini (Economical)
                       </SelectItem>
@@ -870,7 +947,10 @@ export function TemplateManager() {
                   <Select
                     value={formData.testCaseCount.toString()}
                     onValueChange={(value) =>
-                      setFormData({ ...formData, testCaseCount: parseInt(value) })
+                      setFormData({
+                        ...formData,
+                        testCaseCount: parseInt(value),
+                      })
                     }
                   >
                     <SelectTrigger>
@@ -893,18 +973,28 @@ export function TemplateManager() {
                 <Select
                   value={formData.coverage}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, coverage: value as 'standard' | 'comprehensive' | 'exhaustive' })
+                    setFormData({
+                      ...formData,
+                      coverage: value as
+                        | "standard"
+                        | "comprehensive"
+                        | "exhaustive",
+                    })
                   }
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="standard">Standard - Main functionality</SelectItem>
+                    <SelectItem value="standard">
+                      Standard - Main functionality
+                    </SelectItem>
                     <SelectItem value="comprehensive">
                       Comprehensive - Includes edge cases
                     </SelectItem>
-                    <SelectItem value="exhaustive">Exhaustive - All scenarios</SelectItem>
+                    <SelectItem value="exhaustive">
+                      Exhaustive - All scenarios
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -935,7 +1025,10 @@ export function TemplateManager() {
                   <Switch
                     checked={formData.includeNegativeTests}
                     onCheckedChange={(checked) =>
-                      setFormData({ ...formData, includeNegativeTests: checked })
+                      setFormData({
+                        ...formData,
+                        includeNegativeTests: checked,
+                      })
                     }
                   />
                 </div>
@@ -943,33 +1036,35 @@ export function TemplateManager() {
             </div>
           </div>
 
-         <DialogFooter>
-    <Button
-      variant="outline"
-      onClick={() => {
-        setShowDialog(false)
-        setEditingTemplate(null)
-        resetForm()
-      }}
-    >
-      Cancel
-    </Button>
-    <Button onClick={saveTemplate} disabled={loading || !formData.name.trim()}>
-      {loading ? (
-        <>
-          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          Saving...
-        </>
-      ) : editingTemplate ? (
-        "Update Template"
-      ) : (
-        "Create Template"
-      )}
-    </Button>
-  </DialogFooter>
-</DialogContent>
-       
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDialog(false);
+                setEditingTemplate(null);
+                resetForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={saveTemplate}
+              disabled={loading || !formData.name.trim()}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : editingTemplate ? (
+                "Update Template"
+              ) : (
+                "Create Template"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

@@ -1,13 +1,17 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { motion, useReducedMotion, type Variants, type Easing  } from "framer-motion"
-import { TermsSheet } from "../legal/TermsSheet"
-import { PrivacySheet } from "../legal/PrivacySheet"
-import { ContactSheet } from "../legal/contactSheet"
+import Link from "next/link";
+import {
+  motion,
+  useReducedMotion,
+  type Variants,
+  type Easing,
+} from "framer-motion";
+import { TermsSheet } from "../legal/TermsSheet";
+import { PrivacySheet } from "../legal/PrivacySheet";
+import { ContactSheet } from "../legal/contactSheet";
 
-const easeOut: Easing = [0.16, 1, 0.3, 1]
-
+const easeOut: Easing = [0.16, 1, 0.3, 1];
 
 const container = {
   hidden: {},
@@ -16,7 +20,7 @@ const container = {
       staggerChildren: 0.08,
     },
   },
-}
+};
 
 const item: Variants = {
   hidden: { opacity: 0, y: 8 },
@@ -28,11 +32,10 @@ const item: Variants = {
       ease: easeOut,
     },
   },
-}
-
+};
 
 export function Footer() {
-  const reduce = useReducedMotion()
+  const reduce = useReducedMotion();
 
   return (
     <motion.footer
@@ -45,10 +48,7 @@ export function Footer() {
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         {/* Left block */}
         <motion.div variants={item} className="flex flex-col gap-1">
-          <p>© {new Date().getFullYear()} SynthQA. All rights reserved.</p>
-          <p className="text-[11px]">
-            Powered by OpenAI · Anthropic · Supabase
-          </p>
+          <p>© {new Date().getFullYear()} SynthQA, LLC. All rights reserved.</p>
         </motion.div>
 
         {/* Nav */}
@@ -56,7 +56,6 @@ export function Footer() {
           variants={container}
           className="flex flex-wrap items-center gap-3"
         >
-       
           <motion.div variants={item}>
             <TermsSheet />
           </motion.div>
@@ -69,17 +68,17 @@ export function Footer() {
         </motion.nav>
       </div>
     </motion.footer>
-  )
+  );
 }
 
 function FooterLink({
   href,
   children,
 }: {
-  href: string
-  children: React.ReactNode
+  href: string;
+  children: React.ReactNode;
 }) {
-  const reduce = useReducedMotion()
+  const reduce = useReducedMotion();
 
   return (
     <motion.div
@@ -91,5 +90,5 @@ function FooterLink({
         {children}
       </Link>
     </motion.div>
-  )
+  );
 }

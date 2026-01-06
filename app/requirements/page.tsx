@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 export default function RequirementsPage() {
   return (
@@ -14,16 +15,20 @@ export default function RequirementsPage() {
 
       {/* Main content */}
       <div className="flex min-h-screen flex-col px-4 md:px-6">
-         <SiteHeader  title="Requirements"
-        subtitle="Manage and organize your project requirements to generate targeted test cases"/>
+        <SiteHeader
+          title="Requirements"
+          subtitle="Manage and organize your project requirements to generate targeted test cases"
+        />
         <main className="max-w-5xl mx-auto w-full mt-6">
           <RequirementsList />
         </main>
+        <SiteFooter />
       </div>
     </div>
   );
 }
 export const metadata = {
-  title: 'Requirements - SynthQA',
-  description: 'Manage and organize your project requirements to generate targeted test cases.',
-}
+  title: "Requirements - SynthQA",
+  description:
+    "Manage and organize your project requirements to generate targeted test cases.",
+};

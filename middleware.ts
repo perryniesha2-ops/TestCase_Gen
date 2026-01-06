@@ -56,12 +56,15 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Public routes (accessible without auth)
+  // Check if user has beta access (passed the beta gate)
+  // Changed from "beta-access" to "beta_auth" to match your API route
+  const hasBetaAccess = request.cookies.get("beta_auth")?.value === "true";
+
+  // Public routes (accessible without any auth)
   const publicRoutes = [
     "/",
     "/login",
     "/beta-login",
-    "/billing",
     "/forgot-password",
     "/reset-password",
     "/confirm-email",
@@ -69,17 +72,41 @@ export async function middleware(request: NextRequest) {
     "/privacy",
     "/terms",
     "/contact",
+    "/billing",
   ];
+
+  // Doc/guide pages (accessible without auth)
+  const isDocPage =
+    pathname.startsWith("/docs") ||
+    pathname === "/privacy" ||
+    pathname === "/terms";
 
   // Auth callback routes (don't redirect these)
   const isAuthCallback = pathname.startsWith("/auth/callback");
 
   // Check if current route is public
-  const isPublicRoute = publicRoutes.includes(pathname) || isAuthCallback;
+  const isPublicRoute =
+    publicRoutes.includes(pathname) || isAuthCallback || isDocPage;
 
-  // Redirect /signup to /beta-login
+  // Special handling for /signup - requires beta access
   if (pathname === "/signup") {
-    return NextResponse.redirect(new URL("/beta-login", request.url));
+    if (!hasBetaAccess) {
+      // No beta access - redirect to beta login
+      const betaLoginUrl = new URL("/beta-login", request.url);
+      betaLoginUrl.searchParams.set("redirect", "/signup");
+      return NextResponse.redirect(betaLoginUrl);
+    }
+    // Has beta access - continue to signup page
+    // Check if user is already logged in
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      // Already logged in, redirect to dashboard
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+    // Not logged in but has beta access - allow access to signup
+    return response;
   }
 
   // Get user and handle potential errors
@@ -90,7 +117,7 @@ export async function middleware(request: NextRequest) {
 
   // If there's an auth error and user is trying to access protected route, clear session and redirect
   if (error && !isPublicRoute) {
-    const loginUrl = new URL("/beta-login", request.url);
+    const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set(
       "message",
       "Session expired. Please log in again."
@@ -115,13 +142,13 @@ export async function middleware(request: NextRequest) {
 
   // If user is not logged in and trying to access protected route
   if (!user && !isPublicRoute) {
-    const loginUrl = new URL("/beta-login", request.url);
+    const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // If user is logged in and trying to access login/signup pages
-  const authPages = ["/login", "/beta-login", "/signup"];
+  // If user is logged in and trying to access login pages
+  const authPages = ["/login", "/beta-login"];
   if (user && authPages.includes(pathname)) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }

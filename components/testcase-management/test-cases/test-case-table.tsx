@@ -1,13 +1,12 @@
-"use client"
+"use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react"
-import { useSearchParams } from "next/navigation"
-import { toast } from "sonner"
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { createClient } from "@/lib/supabase/client"
-
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { createClient } from "@/lib/supabase/client";
 
 import {
   CheckCircle2,
@@ -22,27 +21,27 @@ import {
   FlaskConical,
   Layers,
   Clock,
-} from "lucide-react"
+} from "lucide-react";
 
 import type {
   TestCase,
   CrossPlatformTestCase,
   ExecutionStatus,
   ExecutionDetails,
-} from "@/types/test-cases"
+} from "@/types/test-cases";
 
-import { TestCaseToolbar } from "./toolbars/TestCaseToolbar"
-import { RegularTestCaseSection } from "./RegularTestCaseSection"
-import { CrossPlatformTestCaseSection } from "./CrossPlatformTestCaseSection"
+import { TestCaseToolbar } from "./toolbars/TestCaseToolbar";
+import { RegularTestCaseSection } from "./RegularTestCaseSection";
+import { CrossPlatformTestCaseSection } from "./CrossPlatformTestCaseSection";
 
-import { TestCaseFormDialog } from "./dialogs/test-case-form-dialog"
-import { DeleteTestCaseDialog } from "./dialogs/delete-test-case-dialog"
-import { TestCaseActionSheet } from "./test-case-action-sheet"
-import { TestRunnerDialog } from "./dialogs/test-runner-dialog"
+import { TestCaseFormDialog } from "./dialogs/test-case-form-dialog";
+import { DeleteTestCaseDialog } from "./dialogs/delete-test-case-dialog";
+import { TestCaseActionSheet } from "./test-case-action-sheet";
+import { TestRunnerDialog } from "./dialogs/test-runner-dialog";
 
-import { useBulkActions } from "@/hooks/useBulkActions"
-import { useTestCaseData } from "@/hooks/useTestCaseData"
-import { useExecutions } from "@/hooks/useExecutions"
+import { useBulkActions } from "@/hooks/useBulkActions";
+import { useTestCaseData } from "@/hooks/useTestCaseData";
+import { useExecutions } from "@/hooks/useExecutions";
 
 const platformIcons = {
   web: Monitor,
@@ -50,46 +49,55 @@ const platformIcons = {
   api: Globe,
   accessibility: Eye,
   performance: Zap,
-}
+};
 
-type CaseType = "regular" | "cross-platform"
+type CaseType = "regular" | "cross-platform";
 
 export function TabbedTestCaseTable() {
-  const searchParams = useSearchParams()
-  const generationId = searchParams.get("generation")
-  const sessionId = searchParams.get("session")
+  const searchParams = useSearchParams();
+  const generationId = searchParams.get("generation");
+  const sessionId = searchParams.get("session");
 
   // UI filters/pagination
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedProject, setSelectedProject] = useState("")
-  const [currentPage, setCurrentPage] = useState(1)
-  const [crossPlatformCurrentPage, setCrossPlatformCurrentPage] = useState(1)
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedProject, setSelectedProject] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [crossPlatformCurrentPage, setCrossPlatformCurrentPage] = useState(1);
 
   // CRUD dialogs
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [showEditDialog, setShowEditDialog] = useState(false)
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [editingTestCase, setEditingTestCase] = useState<TestCase | null>(null)
-  const [deletingTestCase, setDeletingTestCase] = useState<TestCase | null>(null)
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [editingTestCase, setEditingTestCase] = useState<TestCase | null>(null);
+  const [deletingTestCase, setDeletingTestCase] = useState<TestCase | null>(
+    null
+  );
 
   // Action sheet
-  const [showActionSheet, setShowActionSheet] = useState(false)
-  const [actionSheetCase, setActionSheetCase] = useState<TestCase | null>(null)
+  const [showActionSheet, setShowActionSheet] = useState(false);
+  const [actionSheetCase, setActionSheetCase] = useState<TestCase | null>(null);
 
   // Runner
-  const [showRunnerDialog, setShowRunnerDialog] = useState(false)
-  const [runnerCase, setRunnerCase] = useState<TestCase | CrossPlatformTestCase | null>(null)
-  const [runnerCaseType, setRunnerCaseType] = useState<CaseType>("regular")
-  const [updating, setUpdating] = useState<string | null>(null)
-
+  const [showRunnerDialog, setShowRunnerDialog] = useState(false);
+  const [runnerCase, setRunnerCase] = useState<
+    TestCase | CrossPlatformTestCase | null
+  >(null);
+  const [runnerCaseType, setRunnerCaseType] = useState<CaseType>("regular");
+  const [updating, setUpdating] = useState<string | null>(null);
 
   // Data
-  const { loading, testCases, crossPlatformCases, projects, currentSession, refresh } =
-    useTestCaseData({
-      generationId,
-      sessionId,
-      selectedProject,
-    })
+  const {
+    loading,
+    testCases,
+    crossPlatformCases,
+    projects,
+    currentSession,
+    refresh,
+  } = useTestCaseData({
+    generationId,
+    sessionId,
+    selectedProject,
+  });
 
   // Executions (ALL execution writes should live here)
   const {
@@ -99,13 +107,17 @@ export function TabbedTestCaseTable() {
     toggleStep,
     // Rename these based on your hook API.
     saveProgress, // <— incremental progress meta/steps/status
-    saveResult,   // <— finalize passed/failed/blocked/skipped
-    reset,        // <— reset to not_run
-  } = useExecutions({ sessionId })
+    saveResult, // <— finalize passed/failed/blocked/skipped
+    reset, // <— reset to not_run
+  } = useExecutions({ sessionId });
 
   // Bulk actions
-  const crossPlatformBulkActions = useBulkActions(crossPlatformCases, refresh, "cross-platform")
-  const regularBulkActions = useBulkActions(testCases, refresh)
+  const crossPlatformBulkActions = useBulkActions(
+    crossPlatformCases,
+    refresh,
+    "cross-platform"
+  );
+  const regularBulkActions = useBulkActions(testCases, refresh);
 
   const {
     selectedIds,
@@ -116,81 +128,85 @@ export function TabbedTestCaseTable() {
     bulkDelete,
     bulkAddToSuite,
     bulkExport,
-  } = regularBulkActions
-
+  } = regularBulkActions;
 
   const getRelativeTime = useCallback((dateString: string) => {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMins / 60)
-  const diffDays = Math.floor(diffHours / 24)
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
 
-  if (diffMins < 60) return `${diffMins} mins ago`
-  if (diffHours < 24) return `${diffHours} hours ago`
-  if (diffDays === 1) return "Yesterday"
-  if (diffDays < 7) return `${diffDays} days ago`
-  return date.toLocaleDateString()
-}, [])
-
+    if (diffMins < 60) return `${diffMins} mins ago`;
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString();
+  }, []);
 
   // hydrate executions when lists change
   useEffect(() => {
-    if (loading) return
+    if (loading) return;
     void hydrateExecutions({
       testCaseIds: testCases.map((t) => t.id),
       crossPlatformIds: crossPlatformCases.map((c) => c.id),
-    }).catch((e) => console.error("hydrateExecutions error:", e))
-  }, [loading, testCases, crossPlatformCases, hydrateExecutions])
+    }).catch((e) => console.error("hydrateExecutions error:", e));
+  }, [loading, testCases, crossPlatformCases, hydrateExecutions]);
 
-  const itemsPerPage = 10
+  const itemsPerPage = 10;
 
   const filteredTestCases = useMemo(() => {
-    const term = searchTerm.toLowerCase()
+    const term = searchTerm.toLowerCase();
     return testCases.filter(
-      (tc) => tc.title.toLowerCase().includes(term) || tc.description.toLowerCase().includes(term)
-    )
-  }, [testCases, searchTerm])
+      (tc) =>
+        tc.title.toLowerCase().includes(term) ||
+        tc.description.toLowerCase().includes(term)
+    );
+  }, [testCases, searchTerm]);
 
   const filteredCrossPlatformCases = useMemo(() => {
-    const term = searchTerm.toLowerCase()
+    const term = searchTerm.toLowerCase();
     return crossPlatformCases.filter(
-      (tc) => tc.title.toLowerCase().includes(term) || tc.description.toLowerCase().includes(term)
-    )
-  }, [crossPlatformCases, searchTerm])
+      (tc) =>
+        tc.title.toLowerCase().includes(term) ||
+        tc.description.toLowerCase().includes(term)
+    );
+  }, [crossPlatformCases, searchTerm]);
 
-  const totalPages = Math.ceil(filteredTestCases.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const paginatedTestCases = filteredTestCases.slice(startIndex, endIndex)
+  const totalPages = Math.ceil(filteredTestCases.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedTestCases = filteredTestCases.slice(startIndex, endIndex);
 
-  const crossPlatformTotalPages = Math.ceil(filteredCrossPlatformCases.length / itemsPerPage)
-  const crossPlatformStartIndex = (crossPlatformCurrentPage - 1) * itemsPerPage
-  const crossPlatformEndIndex = crossPlatformStartIndex + itemsPerPage
+  const crossPlatformTotalPages = Math.ceil(
+    filteredCrossPlatformCases.length / itemsPerPage
+  );
+  const crossPlatformStartIndex = (crossPlatformCurrentPage - 1) * itemsPerPage;
+  const crossPlatformEndIndex = crossPlatformStartIndex + itemsPerPage;
   const paginatedCrossPlatformCases = filteredCrossPlatformCases.slice(
     crossPlatformStartIndex,
     crossPlatformEndIndex
-  )
+  );
 
   const selectedProjectName = selectedProject
     ? projects.find((p) => p.id === selectedProject)?.name ?? null
-    : null
+    : null;
 
   const getPriorityColor = useCallback((priority: string) => {
     switch (priority) {
       case "critical":
-        return "bg-red-500 text-white"
+        return "bg-red-500 text-white";
       case "high":
-        return "bg-orange-500 text-white"
+        return "bg-orange-500 text-white";
       case "medium":
-        return "bg-yellow-500 text-black"
+        return "bg-yellow-500 text-black";
       case "low":
-        return "bg-blue-500 text-white"
+        return "bg-blue-500 text-white";
       default:
-        return "bg-gray-500 text-white"
+        return "bg-gray-500 text-white";
     }
-  }, [])
+  }, []);
 
   const getProjectColor = useCallback((color: string): string => {
     const colors: Record<string, string> = {
@@ -203,12 +219,12 @@ export function TabbedTestCaseTable() {
       indigo: "text-indigo-500",
       yellow: "text-yellow-500",
       gray: "text-gray-500",
-    }
-    return colors[color] || "text-gray-500"
-  }, [])
+    };
+    return colors[color] || "text-gray-500";
+  }, []);
 
   const getApprovalStatusBadge = useCallback((approvalStatus?: string) => {
-    const status = approvalStatus || "pending"
+    const status = approvalStatus || "pending";
     switch (status) {
       case "pending":
         return (
@@ -216,99 +232,104 @@ export function TabbedTestCaseTable() {
             <Clock className="h-3 w-3 mr-1" />
             Pending
           </Badge>
-        )
+        );
       case "approved":
         return (
           <Badge className="bg-green-100 text-green-800">
             <CheckCircle2 className="h-3 w-3 mr-1" />
             Approved
           </Badge>
-        )
+        );
       case "rejected":
         return (
           <Badge className="bg-red-100 text-red-800">
             <XCircle className="h-3 w-3 mr-1" />
             Rejected
           </Badge>
-        )
+        );
       default:
         return (
           <Badge className="bg-amber-100 text-amber-800">
             <Clock className="h-3 w-3 mr-1" />
             Pending
           </Badge>
-        )
+        );
     }
-  }, [])
-
+  }, []);
 
   // CRUD handlers
   const openCreate = useCallback(() => {
-    setEditingTestCase(null)
-    setShowCreateDialog(true)
-  }, [])
+    setEditingTestCase(null);
+    setShowCreateDialog(true);
+  }, []);
 
   const openEdit = useCallback((tc: TestCase) => {
-    setEditingTestCase(tc)
-    setShowEditDialog(true)
-  }, [])
+    setEditingTestCase(tc);
+    setShowEditDialog(true);
+  }, []);
 
   const openDelete = useCallback((tc: TestCase) => {
-    setDeletingTestCase(tc)
-    setShowDeleteDialog(true)
-  }, [])
+    setDeletingTestCase(tc);
+    setShowDeleteDialog(true);
+  }, []);
 
   const openActionSheet = useCallback((tc: TestCase) => {
-    setActionSheetCase(tc)
-    setShowActionSheet(true)
-  }, [])
+    setActionSheetCase(tc);
+    setShowActionSheet(true);
+  }, []);
 
   const handleProjectChange = useCallback((projectId: string) => {
-    setSelectedProject(projectId)
-    setCurrentPage(1)
-    setCrossPlatformCurrentPage(1)
-  }, [])
-  
- const updateTestCaseStatus = useCallback(
-  async (testCaseId: string, newStatus: "draft" | "active" | "archived") => {
-    setUpdating(testCaseId)
-    try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("test_cases")
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq("id", testCaseId)
+    setSelectedProject(projectId);
+    setCurrentPage(1);
+    setCrossPlatformCurrentPage(1);
+  }, []);
 
-      if (error) throw error
-      toast.success("Status updated")
-      await refresh()
-    } catch (e) {
-      console.error("updateTestCaseStatus error:", e)
-      toast.error("Failed to update status")
-    } finally {
-      setUpdating(null)
-    }
-  },
-  [refresh]
-)
+  const updateTestCaseStatus = useCallback(
+    async (testCaseId: string, newStatus: "draft" | "active" | "archived") => {
+      setUpdating(testCaseId);
+      try {
+        const supabase = createClient();
+        const { error } = await supabase
+          .from("test_cases")
+          .update({ status: newStatus, updated_at: new Date().toISOString() })
+          .eq("id", testCaseId);
 
-const openRunner = useCallback((tc: TestCase | CrossPlatformTestCase, type: CaseType) => {
-  setRunnerCase(tc)
-  setRunnerCaseType(type)
-  setShowRunnerDialog(true)
-}, [])
+        if (error) throw error;
+        toast.success("Status updated");
+        await refresh();
+      } catch (e) {
+        console.error("updateTestCaseStatus error:", e);
+        toast.error("Failed to update status");
+      } finally {
+        setUpdating(null);
+      }
+    },
+    [refresh]
+  );
 
-const runTestFromSheet = useCallback((tc: TestCase) => {
-  openRunner(tc, "regular")
-}, [openRunner])
+  const openRunner = useCallback(
+    (tc: TestCase | CrossPlatformTestCase, type: CaseType) => {
+      setRunnerCase(tc);
+      setRunnerCaseType(type);
+      setShowRunnerDialog(true);
+    },
+    []
+  );
 
-if (loading) {
-  return (
-    <div className="flex items-center justify-center py-12">
-      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-    </div>
-  )
-}
+  const runTestFromSheet = useCallback(
+    (tc: TestCase) => {
+      openRunner(tc, "regular");
+    },
+    [openRunner]
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       {/* Session Info */}
@@ -316,13 +337,23 @@ if (loading) {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-semibold text-blue-900">{currentSession.name}</h3>
+              <h3 className="font-semibold text-blue-900">
+                {currentSession.name}
+              </h3>
               <p className="text-blue-700 text-sm">
                 Test Session • Environment: {currentSession.environment}
               </p>
             </div>
-            <Badge variant={currentSession.status === "in_progress" ? "default" : "secondary"}>
-              {currentSession.status === "in_progress" && <Clock className="h-3 w-3 mr-1" />}
+            <Badge
+              variant={
+                currentSession.status === "in_progress"
+                  ? "default"
+                  : "secondary"
+              }
+            >
+              {currentSession.status === "in_progress" && (
+                <Clock className="h-3 w-3 mr-1" />
+              )}
               {currentSession.status}
             </Badge>
           </div>
@@ -332,9 +363,9 @@ if (loading) {
       <TestCaseToolbar
         searchTerm={searchTerm}
         onSearchTermChange={(v) => {
-          setSearchTerm(v)
-          setCurrentPage(1)
-          setCrossPlatformCurrentPage(1)
+          setSearchTerm(v);
+          setCurrentPage(1);
+          setCrossPlatformCurrentPage(1);
         }}
         projects={projects}
         selectedProject={selectedProject}
@@ -351,79 +382,84 @@ if (loading) {
             <FlaskConical className="h-4 w-4" />
             Regular Tests ({filteredTestCases.length})
           </TabsTrigger>
-          <TabsTrigger value="cross-platform" className="flex items-center gap-2">
+          <TabsTrigger
+            value="cross-platform"
+            className="flex items-center gap-2"
+          >
             <Layers className="h-4 w-4" />
             Cross-Platform ({filteredCrossPlatformCases.length})
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="regular" className="space-y-6">
-
-         <RegularTestCaseSection
-  testCases={testCases}
-  paginated={paginatedTestCases}
-  filteredCount={filteredTestCases.length}
-  execution={execution}
-
-  updating={updating}                                
-onOpenDetails={(tc) => openRunner(tc, "regular")}
-  onUpdateStatus={updateTestCaseStatus}             
-
-  selectedIds={selectedIds}
-  selectAll={selectAll}
-  deselectAll={deselectAll}
-  toggleSelection={toggleSelection}
-  onBulkUpdate={bulkUpdate}
-  onBulkDelete={bulkDelete}
-  onBulkAddToSuite={bulkAddToSuite}
-  onBulkExport={bulkExport}
-  currentPage={currentPage}
-  totalPages={totalPages}
-  startIndex={startIndex}
-  endIndex={endIndex}
-  onPrevPage={() => setCurrentPage((p) => Math.max(1, p - 1))}
-  onNextPage={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-  getPriorityColor={getPriorityColor}
-  getProjectColor={getProjectColor}
-  onOpenCreate={openCreate}
-  onOpenActionSheet={openActionSheet}
-
-  onRun={(tc) => openRunner(tc, "regular")} // optional, only if Props includes it
-/>
-
+          <RegularTestCaseSection
+            testCases={testCases}
+            paginated={paginatedTestCases}
+            filteredCount={filteredTestCases.length}
+            execution={execution}
+            updating={updating}
+            onOpenDetails={(tc) => openRunner(tc, "regular")}
+            onUpdateStatus={updateTestCaseStatus}
+            selectedIds={selectedIds}
+            selectAll={selectAll}
+            deselectAll={deselectAll}
+            toggleSelection={toggleSelection}
+            onBulkUpdate={bulkUpdate}
+            onBulkDelete={bulkDelete}
+            onBulkAddToSuite={bulkAddToSuite}
+            onBulkExport={bulkExport}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPrevPage={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            onNextPage={() =>
+              setCurrentPage((p) => Math.min(totalPages, p + 1))
+            }
+            getPriorityColor={getPriorityColor}
+            getProjectColor={getProjectColor}
+            onOpenCreate={openCreate}
+            onOpenActionSheet={openActionSheet}
+            onRun={(tc) => openRunner(tc, "regular")} // optional, only if Props includes it
+          />
         </TabsContent>
+        <div className="h-2" />
 
         <TabsContent value="cross-platform" className="space-y-6">
           <CrossPlatformTestCaseSection
-  cases={crossPlatformCases}
-  paginated={paginatedCrossPlatformCases}
-  filteredCount={filteredCrossPlatformCases.length}
-  execution={execution}
-  platformIcons={platformIcons}
-  selectedIds={crossPlatformBulkActions.selectedIds}
-  selectAll={crossPlatformBulkActions.selectAll}
-  deselectAll={crossPlatformBulkActions.deselectAll}
-  toggleSelection={crossPlatformBulkActions.toggleSelection}
-  onBulkApprove={crossPlatformBulkActions.bulkApproveCrossPlatform}
-  onBulkReject={crossPlatformBulkActions.bulkRejectCrossPlatform}
-  onBulkUpdate={crossPlatformBulkActions.bulkUpdateCrossPlatform}
-  onBulkDelete={crossPlatformBulkActions.bulkDeleteCrossPlatform}
-  currentPage={crossPlatformCurrentPage}
-  totalPages={crossPlatformTotalPages}
-  startIndex={crossPlatformStartIndex}
-  endIndex={crossPlatformEndIndex}
-  onPrevPage={() => setCrossPlatformCurrentPage((p) => Math.max(1, p - 1))}
-  onNextPage={() => setCrossPlatformCurrentPage((p) => Math.min(crossPlatformTotalPages, p + 1))}
-  getPriorityColor={getPriorityColor}
-  getApprovalStatusBadge={getApprovalStatusBadge}
-
-  getRelativeTime={getRelativeTime}                        
-onOpenDetails={(tc) => openRunner(tc, "cross-platform")}
-
-  onRun={(tc) => openRunner(tc, "cross-platform")} 
-/>
-
+            cases={crossPlatformCases}
+            paginated={paginatedCrossPlatformCases}
+            filteredCount={filteredCrossPlatformCases.length}
+            execution={execution}
+            platformIcons={platformIcons}
+            selectedIds={crossPlatformBulkActions.selectedIds}
+            selectAll={crossPlatformBulkActions.selectAll}
+            deselectAll={crossPlatformBulkActions.deselectAll}
+            toggleSelection={crossPlatformBulkActions.toggleSelection}
+            onBulkApprove={crossPlatformBulkActions.bulkApproveCrossPlatform}
+            onBulkReject={crossPlatformBulkActions.bulkRejectCrossPlatform}
+            onBulkUpdate={crossPlatformBulkActions.bulkUpdateCrossPlatform}
+            onBulkDelete={crossPlatformBulkActions.bulkDeleteCrossPlatform}
+            currentPage={crossPlatformCurrentPage}
+            totalPages={crossPlatformTotalPages}
+            startIndex={crossPlatformStartIndex}
+            endIndex={crossPlatformEndIndex}
+            onPrevPage={() =>
+              setCrossPlatformCurrentPage((p) => Math.max(1, p - 1))
+            }
+            onNextPage={() =>
+              setCrossPlatformCurrentPage((p) =>
+                Math.min(crossPlatformTotalPages, p + 1)
+              )
+            }
+            getPriorityColor={getPriorityColor}
+            getApprovalStatusBadge={getApprovalStatusBadge}
+            getRelativeTime={getRelativeTime}
+            onOpenDetails={(tc) => openRunner(tc, "cross-platform")}
+            onRun={(tc) => openRunner(tc, "cross-platform")}
+          />
         </TabsContent>
+        <div className="h-2" />
       </Tabs>
 
       {/* Create/Edit */}
@@ -433,64 +469,64 @@ onOpenDetails={(tc) => openRunner(tc, "cross-platform")}
         testCase={editingTestCase}
         generationId={generationId}
         onClose={() => {
-          setShowCreateDialog(false)
-          setShowEditDialog(false)
-          setEditingTestCase(null)
+          setShowCreateDialog(false);
+          setShowEditDialog(false);
+          setEditingTestCase(null);
         }}
         onSuccess={refresh}
       />
 
       {/* Runner */}
-{runnerCase && (
-  <TestRunnerDialog
-    open={showRunnerDialog}
-    onOpenChange={(open) => {
-      setShowRunnerDialog(open)
-      if (!open) setRunnerCase(null)
-    }}
-    testCase={runnerCase}
-    caseType={runnerCaseType}
-    executionRow={execution[runnerCase.id]}
-    onSaveProgress={saveProgress}
-    onFinalize={saveResult}
-    onReset={reset}
-    onToggleStep={toggleStep}
-  />
-)}
-
+      {runnerCase && (
+        <TestRunnerDialog
+          open={showRunnerDialog}
+          onOpenChange={(open) => {
+            setShowRunnerDialog(open);
+            if (!open) setRunnerCase(null);
+          }}
+          testCase={runnerCase}
+          caseType={runnerCaseType}
+          executionRow={execution[runnerCase.id]}
+          onSaveProgress={saveProgress}
+          onFinalize={saveResult}
+          onReset={reset}
+          onToggleStep={toggleStep}
+        />
+      )}
 
       {/* Delete */}
       <DeleteTestCaseDialog
         testCase={deletingTestCase}
         open={showDeleteDialog}
         onClose={() => {
-          setShowDeleteDialog(false)
-          setDeletingTestCase(null)
+          setShowDeleteDialog(false);
+          setDeletingTestCase(null);
         }}
         onSuccess={() => {
-          void refresh()
+          void refresh();
           if (deletingTestCase) {
             setExecution((prev) => {
-              const next = { ...prev }
-              delete next[deletingTestCase.id]
-              return next
-            })
+              const next = { ...prev };
+              delete next[deletingTestCase.id];
+              return next;
+            });
           }
         }}
       />
 
       {/* Action Sheet */}
-    <TestCaseActionSheet
-  testCase={actionSheetCase}
-  open={showActionSheet}
-  onOpenChange={setShowActionSheet}
-  onEdit={openEdit}
-  onDelete={openDelete}
-  onViewDetails={(tc) => {/* optional */}}
-  onRunTest={runTestFromSheet}   // ✅ opens runner only
-  isAutomated={false}
-/>
-
+      <TestCaseActionSheet
+        testCase={actionSheetCase}
+        open={showActionSheet}
+        onOpenChange={setShowActionSheet}
+        onEdit={openEdit}
+        onDelete={openDelete}
+        onViewDetails={(tc) => {
+          /* optional */
+        }}
+        onRunTest={runTestFromSheet} // ✅ opens runner only
+        isAutomated={false}
+      />
     </div>
-  )
+  );
 }

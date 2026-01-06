@@ -13,10 +13,7 @@ export async function POST(req: Request) {
   }
 
   if (!password || password !== expected) {
-    return NextResponse.json(
-      { error: "Invalid password" },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "Invalid password" }, { status: 401 });
   }
 
   const res = NextResponse.json({ ok: true });

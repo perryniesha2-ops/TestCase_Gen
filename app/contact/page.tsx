@@ -28,6 +28,7 @@ import {
   Shield,
   ArrowRight,
 } from "lucide-react";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 export default function ContactUs() {
   const [loading, setLoading] = React.useState(false);
@@ -111,7 +112,7 @@ export default function ContactUs() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <Link
-                  href="/help/test-cases"
+                  href="/docs/guides"
                   className="group flex items-start gap-3 rounded-md border p-3 hover:bg-accent transition"
                 >
                   <LifeBuoy className="mt-0.5 h-4 w-4 text-primary" />
@@ -125,7 +126,7 @@ export default function ContactUs() {
                 </Link>
 
                 <Link
-                  href="/privacy"
+                  href="/docs/privacy"
                   className="group flex items-start gap-3 rounded-md border p-3 hover:bg-accent transition"
                 >
                   <Shield className="mt-0.5 h-4 w-4 text-primary" />
@@ -139,7 +140,7 @@ export default function ContactUs() {
                 </Link>
 
                 <Link
-                  href="/terms"
+                  href="/docs/terms"
                   className="group flex items-start gap-3 rounded-md border p-3 hover:bg-accent transition"
                 >
                   <Shield className="mt-0.5 h-4 w-4 text-primary" />
@@ -273,6 +274,7 @@ export default function ContactUs() {
             </Card>
           </div>
         </main>
+        <SiteFooter />
       </div>
     </div>
   );
