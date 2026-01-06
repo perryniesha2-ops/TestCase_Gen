@@ -264,6 +264,14 @@ export default function BrowserExtensionGuidePage() {
                       Extract it to a folder you will keep (do not delete it
                       after install)
                     </li>
+                    <Button asChild>
+                      <a
+                        href="/downloads/SynthQA-Evidence-Capture-v0.1.0.zip"
+                        download
+                      >
+                        Download Extension (.zip)
+                      </a>
+                    </Button>
                   </ol>
                 </AccordionContent>
               </AccordionItem>
