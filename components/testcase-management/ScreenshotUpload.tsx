@@ -1,12 +1,12 @@
-"use client"
+"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -14,100 +14,122 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
-import { toast } from "sonner"
-import { Upload, Camera, X, Loader2, Download, Eye } from "lucide-react"
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { Upload, Camera, X, Loader2, Download, Eye } from "lucide-react";
+import { extensionRequest } from "@/lib/extensions/extensionRequest";
 
 interface TestAttachment {
-  id: string
-  file_name: string
-  file_path: string
-  file_type: string
-  file_size: number | null
-  description?: string | null
-  step_number?: number | null
-  created_at: string
+  id: string;
+  file_name: string;
+  file_path: string;
+  file_type: string;
+  file_size: number | null;
+  description?: string | null;
+  step_number?: number | null;
+  created_at: string;
 }
 
 interface ScreenshotUploadProps {
-  executionId: string
-  testCaseId: string
-  stepNumber?: number
-  onUploadComplete?: (attachment: TestAttachment) => void
-  attachments?: TestAttachment[]
-  onDeleteAttachment?: (attachmentId: string) => void
+  executionId: string;
+  testCaseId: string;
+  stepNumber?: number;
+  onUploadComplete?: (attachment: TestAttachment) => void;
+  attachments?: TestAttachment[];
+  onDeleteAttachment?: (attachmentId: string) => void;
+  targetUrl?: string;
 }
 
-const BUCKET = "test-attachments"
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
-const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"]
+const BUCKET = "test-attachments";
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/gif",
+  "image/webp",
+];
 
 /**
  * Creates a signed URL for a storage object path.
  * Works with PRIVATE buckets.
  */
 async function createSignedUrl(filePath: string, expiresInSeconds: number) {
-  const supabase = createClient()
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(filePath, expiresInSeconds)
-  if (error) throw error
-  return data.signedUrl
+  const supabase = createClient();
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(filePath, expiresInSeconds);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 export function ScreenshotUpload({
   executionId,
   testCaseId,
   stepNumber,
+  targetUrl,
   onUploadComplete,
   attachments = [],
   onDeleteAttachment,
 }: ScreenshotUploadProps) {
-  const [uploading, setUploading] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
-  const [previewFile, setPreviewFile] = useState<TestAttachment | null>(null)
-  const [description, setDescription] = useState("")
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewFile, setPreviewFile] = useState<TestAttachment | null>(null);
+  const [description, setDescription] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [extensionInstalled, setExtensionInstalled] = useState<boolean | null>(
+    null
+  );
 
-  const handleFileSelect = useCallback(async (files: FileList | null) => {
-    if (!files || files.length === 0) return
-    const file = files[0]
+  const handleFileSelect = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      const file = files[0];
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      toast.error("Invalid file type. Please upload an image (PNG, JPEG, GIF, or WebP).")
-      return
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error("File too large. Maximum size is 10MB.")
-      return
-    }
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        toast.error(
+          "Invalid file type. Please upload an image (PNG, JPEG, GIF, or WebP)."
+        );
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error("File too large. Maximum size is 10MB.");
+        return;
+      }
 
-    await uploadFile(file)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [executionId, testCaseId, stepNumber, description])
+      await uploadFile(file);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [executionId, testCaseId, stepNumber, description]
+  );
 
   async function uploadFile(file: File) {
-    setUploading(true)
+    setUploading(true);
     try {
-      const supabase = createClient()
-      const { data: { user }, error: userErr } = await supabase.auth.getUser()
-      if (userErr) throw userErr
+      const supabase = createClient();
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
+      if (userErr) throw userErr;
       if (!user) {
-        toast.error("Please log in to upload files.")
-        return
+        toast.error("Please log in to upload files.");
+        return;
       }
 
       // Create storage path (user-owned folder)
-      const timestamp = Date.now()
-      const fileExt = file.name.split(".").pop() || "png"
-      const storageName = `screenshot-${timestamp}.${fileExt}`
-      const filePath = `${user.id}/executions/${executionId}/${storageName}`
+      const timestamp = Date.now();
+      const fileExt = file.name.split(".").pop() || "png";
+      const storageName = `screenshot-${timestamp}.${fileExt}`;
+      const filePath = `${user.id}/executions/${executionId}/${storageName}`;
 
       // Upload to Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from(BUCKET)
-        .upload(filePath, file, { cacheControl: "3600", upsert: false })
+        .upload(filePath, file, { cacheControl: "3600", upsert: false });
 
-      if (uploadError) throw uploadError
+      if (uploadError) throw uploadError;
 
       // Insert metadata into DB
       const { data: attachment, error: dbError } = await supabase
@@ -116,82 +138,150 @@ export function ScreenshotUpload({
           execution_id: executionId,
           test_case_id: testCaseId,
           step_number: stepNumber ?? null,
-          file_name: file.name,           // original filename
-          file_path: uploadData.path,      // storage object path
+          file_name: file.name, // original filename
+          file_path: uploadData.path, // storage object path
           file_type: file.type,
           file_size: file.size,
           description: description.trim() ? description.trim() : null,
           uploaded_by: user.id,
         })
         .select()
-        .single()
+        .single();
 
       if (dbError) {
         // best effort cleanup of storage object
-        await supabase.storage.from(BUCKET).remove([uploadData.path])
-        throw dbError
+        await supabase.storage.from(BUCKET).remove([uploadData.path]);
+        throw dbError;
       }
 
-      toast.success("Screenshot uploaded successfully.")
-      setDescription("")
-      if (fileInputRef.current) fileInputRef.current.value = ""
+      toast.success("Screenshot uploaded successfully.");
+      setDescription("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
 
-      onUploadComplete?.(attachment as TestAttachment)
+      onUploadComplete?.(attachment as TestAttachment);
     } catch (err: any) {
-      console.error(err)
-      toast.error(err?.message ? `Upload failed: ${err.message}` : "Failed to upload screenshot.")
+      console.error(err);
+      toast.error(
+        err?.message
+          ? `Upload failed: ${err.message}`
+          : "Failed to upload screenshot."
+      );
     } finally {
-      setUploading(false)
+      setUploading(false);
     }
   }
 
+  async function checkExtensionInstalled() {
+    try {
+      await extensionRequest("PING");
+      setExtensionInstalled(true);
+    } catch {
+      setExtensionInstalled(false);
+    }
+  }
+
+  useEffect(() => {
+    void checkExtensionInstalled();
+  }, []);
+
   async function handleDelete(attachmentId: string, filePath: string) {
-    const confirmed = window.confirm("Delete this screenshot?")
-    if (!confirmed) return
+    const confirmed = window.confirm("Delete this screenshot?");
+    if (!confirmed) return;
 
     try {
-      const supabase = createClient()
+      const supabase = createClient();
 
       // Delete from storage (best effort)
-      const { error: storageError } = await supabase.storage.from(BUCKET).remove([filePath])
-      if (storageError) console.error("Storage delete error:", storageError)
+      const { error: storageError } = await supabase.storage
+        .from(BUCKET)
+        .remove([filePath]);
+      if (storageError) console.error("Storage delete error:", storageError);
 
       // Delete from DB
-      const { error: dbError } = await supabase.from("test_attachments").delete().eq("id", attachmentId)
-      if (dbError) throw dbError
+      const { error: dbError } = await supabase
+        .from("test_attachments")
+        .delete()
+        .eq("id", attachmentId);
+      if (dbError) throw dbError;
 
-      toast.success("Screenshot deleted.")
-      onDeleteAttachment?.(attachmentId)
+      toast.success("Screenshot deleted.");
+      onDeleteAttachment?.(attachmentId);
     } catch (err: any) {
-      console.error(err)
-      toast.error(err?.message ? `Delete failed: ${err.message}` : "Failed to delete screenshot.")
+      console.error(err);
+      toast.error(
+        err?.message
+          ? `Delete failed: ${err.message}`
+          : "Failed to delete screenshot."
+      );
     }
   }
 
   const handlePreview = useCallback((attachment: TestAttachment) => {
-    setPreviewFile(attachment)
-    setShowPreview(true)
-  }, [])
+    setPreviewFile(attachment);
+    setShowPreview(true);
+  }, []);
 
   // Drag and drop handlers
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-  }, [])
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    void handleFileSelect(e.dataTransfer.files)
-  }, [handleFileSelect])
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void handleFileSelect(e.dataTransfer.files);
+    },
+    [handleFileSelect]
+  );
+
+  async function captureScreenshotFromExtension() {
+    if (!extensionInstalled) {
+      toast.error(
+        "Please install the SynthQA browser extension to capture screenshots."
+      );
+      return;
+    }
+    setUploading(true);
+    try {
+      const resp = await extensionRequest<{
+        dataUrl: string;
+        mimeType?: string;
+        fileName?: string;
+      }>("CAPTURE_SCREENSHOT", {
+        executionId,
+        testCaseId,
+        stepNumber,
+        targetUrl,
+      });
+
+      const blob = await (await fetch(resp.dataUrl)).blob();
+      const file = new File(
+        [blob],
+        resp.fileName || `screenshot-${Date.now()}.png`,
+        {
+          type: resp.mimeType || blob.type || "image/png",
+        }
+      );
+
+      await uploadFile(file);
+    } catch (e: any) {
+      toast.error(
+        e?.message ? `Capture failed: ${e.message}` : "Capture failed"
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
       {/* Upload Area */}
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 pb-4">
           <div
-            className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 hover:border-muted-foreground/50 transition-colors"
+            className="border border-dashed border-muted-foreground/30 rounded-md px-4 py-3 hover:border-muted-foreground/50 transition-colors"
             onDragOver={handleDragOver}
             onDrop={handleDrop}
           >
@@ -202,7 +292,9 @@ export function ScreenshotUpload({
 
               <div className="text-center">
                 <p className="text-sm font-medium">Upload Screenshot</p>
-                <p className="text-xs text-muted-foreground mt-1">Drag & drop or click to browse</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Drag & drop or click to browse
+                </p>
               </div>
 
               <Input
@@ -235,7 +327,42 @@ export function ScreenshotUpload({
                     </>
                   )}
                 </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void captureScreenshotFromExtension()}
+                    disabled={
+                      uploading ||
+                      extensionInstalled === false ||
+                      !targetUrl?.trim()
+                    }
+                    title={
+                      extensionInstalled === false
+                        ? "Install the SynthQA browser extension to use Capture"
+                        : !targetUrl?.trim()
+                        ? "Enter a target URL to capture screenshots"
+                        : undefined
+                    }
+                  >
+                    <Camera className="h-4 w-4 mr-2" />
+                    Capture
+                  </Button>
+                </div>
               </div>
+              {extensionInstalled === false && (
+                <p className="text-xs text-amber-600 mt-2">
+                  Browser extension required for Capture.
+                  <a
+                    href="/docs/extension-guide"
+                    target="_blank"
+                    className="underline ml-1"
+                  >
+                    Install instructions
+                  </a>
+                </p>
+              )}
 
               {/* Optional Description */}
               <div className="w-full space-y-2">
@@ -253,7 +380,9 @@ export function ScreenshotUpload({
                 />
               </div>
 
-              <p className="text-xs text-muted-foreground">PNG, JPEG, GIF, WebP • Max 10MB</p>
+              <p className="text-xs text-muted-foreground">
+                PNG, JPEG, GIF, WebP • Max 10MB
+              </p>
             </div>
           </div>
         </CardContent>
@@ -263,18 +392,22 @@ export function ScreenshotUpload({
       {attachments.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium">Screenshots ({attachments.length})</Label>
+            <Label className="text-sm font-medium">
+              Screenshots ({attachments.length})
+            </Label>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {attachments.map((attachment) => (
-              <AttachmentCard
-                key={attachment.id}
-                attachment={attachment}
-                onPreview={handlePreview}
-                onDelete={handleDelete}
-              />
-            ))}
+          <div className="max-h-[260px] overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {attachments.map((attachment) => (
+                <AttachmentCard
+                  key={attachment.id}
+                  attachment={attachment}
+                  onPreview={handlePreview}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -288,7 +421,7 @@ export function ScreenshotUpload({
         />
       )}
     </div>
-  )
+  );
 }
 
 /** Card preview uses a short-lived signed URL */
@@ -297,30 +430,30 @@ function AttachmentCard({
   onPreview,
   onDelete,
 }: {
-  attachment: TestAttachment
-  onPreview: (attachment: TestAttachment) => void
-  onDelete: (id: string, path: string) => void
+  attachment: TestAttachment;
+  onPreview: (attachment: TestAttachment) => void;
+  onDelete: (id: string, path: string) => void;
 }) {
-  const [imageUrl, setImageUrl] = useState<string>("")
-  const [loading, setLoading] = useState<boolean>(true)
+  const [imageUrl, setImageUrl] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
+    let cancelled = false;
+    (async () => {
       try {
-        setLoading(true)
-        const signed = await createSignedUrl(attachment.file_path, 60 * 10) // 10 min
-        if (!cancelled) setImageUrl(signed)
+        setLoading(true);
+        const signed = await createSignedUrl(attachment.file_path, 60 * 10); // 10 min
+        if (!cancelled) setImageUrl(signed);
       } catch (e) {
-        if (!cancelled) setImageUrl("")
+        if (!cancelled) setImageUrl("");
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) setLoading(false);
       }
-    })()
+    })();
     return () => {
-      cancelled = true
-    }
-  }, [attachment.file_path])
+      cancelled = true;
+    };
+  }, [attachment.file_path]);
 
   return (
     <Card className="group relative overflow-hidden hover:shadow-md transition-shadow">
@@ -331,7 +464,11 @@ function AttachmentCard({
               Loading…
             </div>
           ) : imageUrl ? (
-            <img src={imageUrl} alt={attachment.file_name} className="w-full h-full object-cover" />
+            <img
+              src={imageUrl}
+              alt={attachment.file_name}
+              className="w-full h-full object-cover"
+            />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
               Preview unavailable
@@ -339,7 +476,11 @@ function AttachmentCard({
           )}
 
           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-            <Button size="sm" variant="secondary" onClick={() => onPreview(attachment)}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => onPreview(attachment)}
+            >
               <Eye className="h-4 w-4" />
             </Button>
             <Button
@@ -362,7 +503,7 @@ function AttachmentCard({
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 /** Dialog uses a longer-lived signed URL + refresh-before-download */
@@ -371,38 +512,38 @@ function PreviewDialog({
   onOpenChange,
   attachment,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  attachment: TestAttachment
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  attachment: TestAttachment;
 }) {
-  const [imageUrl, setImageUrl] = useState<string>("")
-  const [loading, setLoading] = useState<boolean>(true)
+  const [imageUrl, setImageUrl] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
 
   const refresh = useCallback(async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const signed = await createSignedUrl(attachment.file_path, 60 * 30) // 30 min
-      setImageUrl(signed)
+      const signed = await createSignedUrl(attachment.file_path, 60 * 30); // 30 min
+      setImageUrl(signed);
     } catch (e) {
-      setImageUrl("")
+      setImageUrl("");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [attachment.file_path])
+  }, [attachment.file_path]);
 
   useEffect(() => {
-    if (!open) return
-    void refresh()
-  }, [open, refresh])
+    if (!open) return;
+    void refresh();
+  }, [open, refresh]);
 
   async function handleDownload() {
     // refresh to avoid expiry edge cases
-    await refresh()
-    if (!imageUrl) return
-    const a = document.createElement("a")
-    a.href = imageUrl
-    a.download = attachment.file_name
-    a.click()
+    await refresh();
+    if (!imageUrl) return;
+    const a = document.createElement("a");
+    a.href = imageUrl;
+    a.download = attachment.file_name;
+    a.click();
   }
 
   return (
@@ -412,15 +553,23 @@ function PreviewDialog({
           <DialogTitle>{attachment.file_name}</DialogTitle>
           <DialogDescription>
             {attachment.description || "No description"}
-            {attachment.step_number != null ? ` • Step ${attachment.step_number}` : ""}
+            {attachment.step_number != null
+              ? ` • Step ${attachment.step_number}`
+              : ""}
           </DialogDescription>
         </DialogHeader>
 
         <div className="max-h-[60vh] overflow-auto">
           {loading ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              Loading…
+            </div>
           ) : imageUrl ? (
-            <img src={imageUrl} alt={attachment.file_name} className="w-full h-auto rounded-lg" />
+            <img
+              src={imageUrl}
+              alt={attachment.file_name}
+              className="w-full h-auto rounded-lg"
+            />
           ) : (
             <div className="py-8 text-center text-sm text-muted-foreground">
               Preview unavailable (check storage policies).
@@ -429,7 +578,11 @@ function PreviewDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleDownload} disabled={!imageUrl}>
+          <Button
+            variant="outline"
+            onClick={handleDownload}
+            disabled={!imageUrl}
+          >
             <Download className="h-4 w-4 mr-2" />
             Download
           </Button>
@@ -437,5 +590,5 @@ function PreviewDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

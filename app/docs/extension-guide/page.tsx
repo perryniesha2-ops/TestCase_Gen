@@ -31,10 +31,11 @@ import {
   BookOpen,
   Puzzle,
   Shield,
-  Play,
-  Code2,
+  Camera,
   Wrench,
   HelpCircle,
+  MonitorSmartphone,
+  Play,
 } from "lucide-react";
 import { Logo } from "@/components/pagecomponents/brandlogo";
 import { Footer } from "@/components/landingpage/footer";
@@ -50,7 +51,7 @@ function CodeBlock({ code, label }: { code: string; label?: string }) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
     } catch {
-      // ignore clipboard errors (some browsers / permissions)
+      // ignore clipboard errors
     }
   }
 
@@ -114,24 +115,19 @@ export default function BrowserExtensionGuidePage() {
       icon: <Puzzle className="h-4 w-4" />,
     },
     {
+      id: "using-capture",
+      title: "Capture screenshots",
+      icon: <Camera className="h-4 w-4" />,
+    },
+    {
+      id: "in-synthqa",
+      title: "Attach evidence in SynthQA",
+      icon: <MonitorSmartphone className="h-4 w-4" />,
+    },
+    {
       id: "recording",
-      title: "Record Your First Test",
+      title: "Video/tab recording (beta)",
       icon: <Play className="h-4 w-4" />,
-    },
-    {
-      id: "manage",
-      title: "View & Manage Recordings",
-      icon: <Wrench className="h-4 w-4" />,
-    },
-    {
-      id: "running",
-      title: "Run Tests & Export",
-      icon: <Code2 className="h-4 w-4" />,
-    },
-    {
-      id: "advanced",
-      title: "Advanced Features",
-      icon: <Info className="h-4 w-4" />,
     },
     {
       id: "best-practices",
@@ -163,22 +159,14 @@ export default function BrowserExtensionGuidePage() {
         <div className="space-y-2">
           <Logo size="xl" />
           <h1 className="text-3xl font-semibold tracking-tight">
-            Browser Extension Guide
+            Evidence Capture Extension Guide
           </h1>
           <p className="max-w-2xl text-muted-foreground">
-            Install the QA Test Recorder extension, record browser tests without
-            code, run them live, or export to Playwright for CI.
+            Install the SynthQA Evidence Capture browser extension to capture
+            screenshots and tab recordings on any website and attach them to
+            your SynthQA test executions.
           </p>
           <Badge variant="secondary">Guide</Badge>
-        </div>
-
-        <div className="flex gap-2">
-          <Button asChild variant="secondary">
-            <Link href="/browserextensions">Go to Install</Link>
-          </Button>
-          <Button asChild>
-            <Link href="#recording">Start Recording</Link>
-          </Button>
         </div>
       </div>
 
@@ -213,27 +201,31 @@ export default function BrowserExtensionGuidePage() {
               <CardHeader>
                 <CardTitle>What the extension does</CardTitle>
                 <CardDescription>
-                  Record clicks, typing, and navigation in your browser and save
-                  as a replayable recording tied to a test case.
+                  Capture evidence on any website and attach it to a SynthQA
+                  execution.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>Record browser interactions without writing code</li>
-                  <li>Replay tests live in the browser</li>
-                  <li>Export recordings to Playwright test code</li>
-                  <li>Manage recordings per test case in SynthQA</li>
+                  <li>Capture screenshots from the active tab (any URL)</li>
+                  <li>
+                    Upload and attach screenshots to a test execution in SynthQA
+                  </li>
+                  <li>View evidence in the execution “Test Evidence” area</li>
+                  <li>Video/tab recording is being added next (beta)</li>
                 </ul>
               </CardContent>
             </Card>
 
             <Alert>
               <Info className="h-4 w-4" />
-              <AlertTitle>Tip</AlertTitle>
+              <AlertTitle>Important</AlertTitle>
               <AlertDescription>
-                If you want the best selector stability, add{" "}
-                <span className="font-medium">data-testid</span> attributes to
-                key UI elements in your app under test.
+                Screenshots are captured from the{" "}
+                <span className="font-medium">extension popup</span> on the site
+                you are testing. If you click “Capture” inside SynthQA while
+                focused on the SynthQA tab, you will capture SynthQA—not your
+                app-under-test.
               </AlertDescription>
             </Alert>
           </Section>
@@ -254,7 +246,7 @@ export default function BrowserExtensionGuidePage() {
                 <ul className="list-disc pl-5 space-y-1">
                   <li>Google Chrome 88+ or Microsoft Edge 88+</li>
                   <li>Active SynthQA account</li>
-                  <li>Developer Mode enabled in Chrome/Edge</li>
+                  <li>Developer Mode enabled (until store publishing)</li>
                 </ul>
               </CardContent>
             </Card>
@@ -264,53 +256,18 @@ export default function BrowserExtensionGuidePage() {
                 <AccordionTrigger>1) Download the extension</AccordionTrigger>
                 <AccordionContent className="space-y-2 text-sm text-muted-foreground">
                   <ol className="list-decimal pl-5 space-y-1">
+                    <li>Go to the Extension download page in SynthQA</li>
+                    <li>Download the ZIP</li>
                     <li>
-                      Navigate to the Extension page in your SynthQA dashboard
+                      Extract it to a folder you will keep (do not delete it
+                      after install)
                     </li>
-                    <li>
-                      Click{" "}
-                      <span className="font-medium">Download for Chrome</span>
-                    </li>
-                    <li>Save the ZIP file to your Downloads folder</li>
                   </ol>
                 </AccordionContent>
               </AccordionItem>
 
-              <AccordionItem value="extract">
-                <AccordionTrigger>2) Extract the ZIP file</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <Tabs defaultValue="windows" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="windows">Windows</TabsTrigger>
-                      <TabsTrigger value="mac">Mac</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="windows" className="mt-3">
-                      <ol className="list-decimal pl-5 space-y-1">
-                        <li>Right-click the downloaded ZIP file</li>
-                        <li>
-                          Select{" "}
-                          <span className="font-medium">Extract All…</span>
-                        </li>
-                        <li>Choose a destination folder</li>
-                        <li>
-                          Click <span className="font-medium">Extract</span>
-                        </li>
-                      </ol>
-                    </TabsContent>
-                    <TabsContent value="mac" className="mt-3">
-                      <ol className="list-decimal pl-5 space-y-1">
-                        <li>Double-click the ZIP file</li>
-                        <li>Files extract automatically into a new folder</li>
-                      </ol>
-                    </TabsContent>
-                  </Tabs>
-                </AccordionContent>
-              </AccordionItem>
-
               <AccordionItem value="install">
-                <AccordionTrigger>
-                  3) Install in Chrome / Edge (Load unpacked)
-                </AccordionTrigger>
+                <AccordionTrigger>2) Install (Load unpacked)</AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <ol className="list-decimal pl-5 space-y-1">
                     <li>
@@ -335,11 +292,11 @@ export default function BrowserExtensionGuidePage() {
                     <CheckCircle2 className="h-4 w-4" />
                     <AlertTitle>Expected result</AlertTitle>
                     <AlertDescription>
-                      The extension card appears with name{" "}
+                      You should see{" "}
                       <span className="font-medium">
-                        QA Test Recorder v1.0.0
+                        SynthQA Evidence Capture
                       </span>{" "}
-                      and status enabled.
+                      listed and enabled.
                     </AlertDescription>
                   </Alert>
                 </AccordionContent>
@@ -347,7 +304,7 @@ export default function BrowserExtensionGuidePage() {
 
               <AccordionItem value="permissions">
                 <AccordionTrigger>
-                  4) Configure permissions (Site access)
+                  3) Configure permissions (Site access)
                 </AccordionTrigger>
                 <AccordionContent className="space-y-2 text-sm text-muted-foreground">
                   <ol className="list-decimal pl-5 space-y-1">
@@ -356,367 +313,212 @@ export default function BrowserExtensionGuidePage() {
                       extension card
                     </li>
                     <li>
-                      Scroll to <span className="font-medium">Site access</span>
+                      Find <span className="font-medium">Site access</span>
                     </li>
                     <li>
                       Select <span className="font-medium">On all sites</span>
                     </li>
                   </ol>
+                  <div className="text-xs text-muted-foreground">
+                    This allows the extension to capture screenshots on the
+                    websites you test.
+                  </div>
                 </AccordionContent>
               </AccordionItem>
 
               <AccordionItem value="pin">
                 <AccordionTrigger>
-                  5) Pin the extension (recommended)
+                  4) Pin the extension (recommended)
                 </AccordionTrigger>
                 <AccordionContent className="space-y-2 text-sm text-muted-foreground">
                   <ol className="list-decimal pl-5 space-y-1">
-                    <li>Click the puzzle icon (🧩) in the toolbar</li>
+                    <li>Click the puzzle icon in the toolbar</li>
                     <li>
-                      Find <span className="font-medium">QA Test Recorder</span>
+                      Find{" "}
+                      <span className="font-medium">
+                        SynthQA Evidence Capture
+                      </span>
                     </li>
                     <li>Click the pin icon</li>
                   </ol>
                 </AccordionContent>
               </AccordionItem>
-
-              <AccordionItem value="verify">
-                <AccordionTrigger>Verify installation</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <ol className="list-decimal pl-5 space-y-1">
-                    <li>Refresh your SynthQA dashboard</li>
-                    <li>
-                      Confirm the status indicates the extension is installed
-                    </li>
-                    <li>
-                      Open DevTools (F12) and confirm the console shows
-                      readiness
-                    </li>
-                  </ol>
-
-                  <div className="space-y-2">
-                    <CodeBlock
-                      label="Expected console log"
-                      code={`✅ QA Test Recorder ready`}
-                    />
-                    <CodeBlock
-                      label="Verify flag"
-                      code={`window.__QA_EXTENSION_INSTALLED`}
-                    />
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
             </Accordion>
+
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Troubleshooting install</AlertTitle>
+              <AlertDescription>
+                If Capture is disabled in SynthQA, refresh the page and re-check
+                that the extension is enabled. You can also reinstall by loading
+                the unpacked folder again.
+              </AlertDescription>
+            </Alert>
           </Section>
 
           <Section
-            id="recording"
-            title="Record Your First Test"
-            kicker="No-code recording"
+            id="using-capture"
+            title="Capture screenshots"
+            kicker="On any website"
           >
             <Card>
               <CardHeader>
-                <CardTitle>Recording workflow</CardTitle>
+                <CardTitle>Recommended workflow</CardTitle>
                 <CardDescription>
-                  Recording captures your interactions and stores them as a
-                  recording tied to the selected test case.
+                  Capture screenshots from the website you are testing using the
+                  extension popup.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-sm text-muted-foreground">
                 <ol className="list-decimal pl-5 space-y-2">
+                  <li>Start your test session in SynthQA (Runner)</li>
                   <li>
-                    Go to <span className="font-medium">Test Cases</span> and
-                    open a test case
+                    Open your app-under-test in a new tab (your target URL)
                   </li>
                   <li>
-                    Open the{" "}
-                    <span className="font-medium">Browser Extension</span> tab
-                  </li>
-                  <li>
-                    Choose <span className="font-medium">Record New Test</span>
-                  </li>
-                  <li>
-                    Enter a starting URL, then click{" "}
+                    Click the{" "}
                     <span className="font-medium">
-                      Open URL & Start Recording
-                    </span>
+                      SynthQA Evidence Capture
+                    </span>{" "}
+                    extension icon
+                  </li>
+                  <li>
+                    Click{" "}
+                    <span className="font-medium">Capture Screenshot</span>
+                  </li>
+                  <li>
+                    Return to SynthQA to see the screenshot in{" "}
+                    <span className="font-medium">Test Evidence</span>
                   </li>
                 </ol>
 
                 <CodeBlock
-                  label="Example starting URL"
+                  label="Example target URL"
                   code={`https://app.example.com/login`}
                 />
 
                 <Alert>
                   <Info className="h-4 w-4" />
-                  <AlertTitle>What gets captured</AlertTitle>
+                  <AlertTitle>Where does the screenshot go?</AlertTitle>
                   <AlertDescription>
-                    Clicks, text input, navigation, and related metadata.
-                    Screenshot capture is planned for a future release.
+                    The extension uploads the screenshot and SynthQA shows it
+                    under the current execution’s evidence list.
                   </AlertDescription>
                 </Alert>
-
-                <Alert>
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Recording best practices</AlertTitle>
-                  <AlertDescription>
-                    Perform actions slowly, wait for page loads, keep flows
-                    focused (5–15 steps), and avoid switching tabs during
-                    recording.
-                  </AlertDescription>
-                </Alert>
-
-                <div className="text-sm">
-                  <div className="font-medium text-foreground mb-1">
-                    Stopping a recording
-                  </div>
-                  <ol className="list-decimal pl-5 space-y-1">
-                    <li>Return to the SynthQA dashboard tab</li>
-                    <li>
-                      Click <span className="font-medium">Stop Recording</span>
-                    </li>
-                    <li>
-                      Confirm the success message indicates the number of
-                      actions captured
-                    </li>
-                  </ol>
-                </div>
               </CardContent>
             </Card>
           </Section>
 
           <Section
-            id="manage"
-            title="View & Manage Recordings"
-            kicker="Recordings"
+            id="in-synthqa"
+            title="Attach evidence in SynthQA"
+            kicker="Runner"
           >
             <Card>
               <CardHeader>
-                <CardTitle>Manage recordings for a test case</CardTitle>
+                <CardTitle>Using the Evidence area</CardTitle>
                 <CardDescription>
-                  View details, validate steps, or delete recordings you no
-                  longer need.
+                  Evidence is stored per execution and can be associated to
+                  steps.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
-                <ol className="list-decimal pl-5 space-y-1">
-                  <li>Open test case details</li>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Open a test run session and select a test</li>
                   <li>
-                    Go to{" "}
-                    <span className="font-medium">
-                      Browser Extension → View Recordings
-                    </span>
+                    Use <span className="font-medium">Choose File</span> for
+                    manual uploads
                   </li>
-                  <li>Select a recording to view the step-by-step breakdown</li>
-                </ol>
-
-                <div>
-                  <div className="font-medium text-foreground mb-1">
-                    What you’ll see
-                  </div>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>Action count and duration</li>
-                    <li>Timestamp and starting URL</li>
-                    <li>Action breakdown (clicks, typing, navigation)</li>
-                    <li>Viewport and browser metadata</li>
-                  </ul>
-                </div>
+                  <li>
+                    Use <span className="font-medium">Capture</span> when the
+                    extension is installed (or capture via popup)
+                  </li>
+                  <li>
+                    Preview / delete evidence directly in the Evidence section
+                  </li>
+                </ul>
 
                 <Alert>
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Deleting is permanent</AlertTitle>
+                  <AlertTitle>Capture disabled?</AlertTitle>
                   <AlertDescription>
-                    Deleting a recording removes it permanently. Use this after
-                    major UI changes or when a flow becomes obsolete.
+                    If the extension is not detected, SynthQA will disable
+                    Capture and show install instructions.
                   </AlertDescription>
                 </Alert>
               </CardContent>
             </Card>
           </Section>
 
-          <Section id="running" title="Run Tests & Export" kicker="Execution">
-            <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="run">
-                <AccordionTrigger>Run a test in the browser</AccordionTrigger>
-                <AccordionContent className="space-y-2 text-sm text-muted-foreground">
-                  <ol className="list-decimal pl-5 space-y-1">
-                    <li>Select a recording</li>
-                    <li>
-                      Click{" "}
-                      <span className="font-medium">Run This Recording</span>
-                    </li>
-                    <li>
-                      Click <span className="font-medium">Run Test</span>
-                    </li>
-                  </ol>
-                  <div className="mt-2">
-                    <div className="font-medium text-foreground mb-1">
-                      What you’ll see
-                    </div>
-                    <ul className="list-disc pl-5 space-y-1">
-                      <li>Live execution progress</li>
-                      <li>Step-by-step logs and pass/fail states</li>
-                      <li>Error message on failure</li>
-                    </ul>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="export">
-                <AccordionTrigger>Export to Playwright</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <ol className="list-decimal pl-5 space-y-1">
-                    <li>Select a recording</li>
-                    <li>
-                      Click{" "}
-                      <span className="font-medium">Export to Playwright</span>
-                    </li>
-                    <li>
-                      Download <span className="font-medium">test.spec.ts</span>
-                    </li>
-                  </ol>
-
-                  <CodeBlock
-                    label="Generated code example"
-                    code={`import { test, expect } from '@playwright/test'
-
-test('Recorded test', async ({ page }) => {
-  await page.goto('https://app.example.com/login')
-  await page.click('#login-btn')
-  await page.fill('[name="email"]', 'user@example.com')
-  await page.click('.submit-btn')
-  await expect(page).toHaveURL(/.+/)
-})`}
-                  />
-
-                  <div>
-                    <div className="font-medium text-foreground mb-1">
-                      Common use cases
-                    </div>
-                    <ul className="list-disc pl-5 space-y-1">
-                      <li>CI/CD execution</li>
-                      <li>Adding assertions and custom logic</li>
-                      <li>Version control and review</li>
-                      <li>Integration into existing suites</li>
-                    </ul>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </Section>
-
           <Section
-            id="advanced"
-            title="Advanced Features"
-            kicker="Under the hood"
+            id="recording"
+            title="Video/tab recording (beta)"
+            kicker="Coming next"
           >
             <Card>
               <CardHeader>
-                <CardTitle>Smart selectors</CardTitle>
+                <CardTitle>Recording support</CardTitle>
                 <CardDescription>
-                  Multiple fallback strategies reduce brittleness when UIs
-                  change.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm text-muted-foreground">
-                <div className="font-medium text-foreground">
-                  Selector priority
-                </div>
-                <ol className="list-decimal pl-5 space-y-1">
-                  <li>
-                    <span className="font-medium">data-testid</span> (most
-                    reliable)
-                  </li>
-                  <li>
-                    Element <span className="font-medium">id</span>
-                  </li>
-                  <li>
-                    <span className="font-medium">name</span> attribute
-                  </li>
-                  <li>Unique CSS selector</li>
-                  <li>XPath</li>
-                </ol>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Cross-tab recording</CardTitle>
-                <CardDescription>
-                  Recording state syncs across tabs so you can launch a new tab
-                  and keep recording.
+                  Tab recording is in progress and will be released as a beta
+                  feature.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2 text-sm text-muted-foreground">
                 <ul className="list-disc pl-5 space-y-1">
+                  <li>Record the active browser tab as video evidence</li>
                   <li>
-                    Recording state stored via{" "}
-                    <span className="font-medium">chrome.storage.local</span>
+                    Upload and attach to the execution similar to screenshots
                   </li>
-                  <li>Action counter syncs regularly</li>
-                  <li>Works across windows and survives refreshes</li>
+                  <li>Recommended for reproducing intermittent UI bugs</li>
                 </ul>
+
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Note</AlertTitle>
+                  <AlertDescription>
+                    Until recording is released, use screenshots plus execution
+                    notes for failure evidence.
+                  </AlertDescription>
+                </Alert>
               </CardContent>
             </Card>
-
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertTitle>Coming soon</AlertTitle>
-              <AlertDescription>
-                Screenshot capture, element highlighting, assertions, and
-                additional execution telemetry are planned for the next
-                versions.
-              </AlertDescription>
-            </Alert>
           </Section>
 
           <Section id="best-practices" title="Best Practices" kicker="Quality">
             <Card>
               <CardHeader>
-                <CardTitle>Creating reliable tests</CardTitle>
+                <CardTitle>Creating useful evidence</CardTitle>
                 <CardDescription>
-                  Keep recordings stable, short, and deterministic.
+                  Evidence should make failures fast to understand and
+                  reproduce.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-6 md:grid-cols-2 text-sm text-muted-foreground">
                 <div>
                   <div className="font-medium text-foreground mb-2">Do</div>
                   <ul className="list-disc pl-5 space-y-1">
-                    <li>Start from a clean state</li>
-                    <li>Use stable test data</li>
-                    <li>Record complete user flows</li>
-                    <li>Keep tests focused (one feature per recording)</li>
-                    <li>Prefer pages with stable content</li>
+                    <li>
+                      Capture the full page state (include headers/URL when
+                      possible)
+                    </li>
+                    <li>
+                      Capture after key transitions (submit, save, navigation)
+                    </li>
+                    <li>
+                      Add a short note (“why this matters”) in the description
+                    </li>
+                    <li>Capture error toasts, validation messages, and logs</li>
                   </ul>
                 </div>
                 <div>
                   <div className="font-medium text-foreground mb-2">Avoid</div>
                   <ul className="list-disc pl-5 space-y-1">
-                    <li>Time-sensitive pages</li>
-                    <li>Personal or sensitive data</li>
-                    <li>Overly long flows (&gt; 30 steps)</li>
-                    <li>Rapid clicking or typing</li>
-                    <li>Switching tabs mid-recording</li>
+                    <li>Screenshots with no context</li>
+                    <li>Capturing sensitive data (PII, secrets)</li>
+                    <li>Excessive duplicate screenshots</li>
+                    <li>Blurry captures (zoom / scaling issues)</li>
                   </ul>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance tips</CardTitle>
-                <CardDescription>
-                  Reduce noise and improve recording fidelity.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Close unnecessary tabs and apps</li>
-                  <li>Disable other extensions during recording</li>
-                  <li>Use incognito for isolated testing (if enabled)</li>
-                  <li>Clear cache before critical recordings</li>
-                </ul>
               </CardContent>
             </Card>
           </Section>
@@ -724,9 +526,10 @@ test('Recorded test', async ({ page }) => {
           <Section id="security" title="Security & Privacy" kicker="Trust">
             <Card>
               <CardHeader>
-                <CardTitle>What gets recorded (and what does not)</CardTitle>
+                <CardTitle>What is captured</CardTitle>
                 <CardDescription>
-                  Designed to avoid capturing secrets.
+                  Designed for evidence capture—minimize sensitive data
+                  exposure.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-6 md:grid-cols-2 text-sm text-muted-foreground">
@@ -735,11 +538,9 @@ test('Recorded test', async ({ page }) => {
                     Captured
                   </div>
                   <ul className="list-disc pl-5 space-y-1">
-                    <li>Selectors (CSS/XPath)</li>
-                    <li>Click actions and targets</li>
-                    <li>Text typed into forms</li>
-                    <li>URLs visited</li>
-                    <li>Viewport dimensions</li>
+                    <li>Screenshot image of the visible tab</li>
+                    <li>Timestamp</li>
+                    <li>Optional note/description</li>
                   </ul>
                 </div>
                 <div>
@@ -747,11 +548,12 @@ test('Recorded test', async ({ page }) => {
                     Not captured
                   </div>
                   <ul className="list-disc pl-5 space-y-1">
-                    <li>Passwords (masked)</li>
-                    <li>Credit card numbers</li>
-                    <li>Session tokens</li>
-                    <li>Cookies</li>
-                    <li>Local storage data</li>
+                    <li>Browsing history (outside capture events)</li>
+                    <li>Cookies/session tokens</li>
+                    <li>Local storage contents</li>
+                    <li>
+                      Keystrokes (unless you choose to type them into a note)
+                    </li>
                   </ul>
                 </div>
               </CardContent>
@@ -761,19 +563,21 @@ test('Recorded test', async ({ page }) => {
               <CardHeader>
                 <CardTitle>Permissions</CardTitle>
                 <CardDescription>
-                  Required for recording and playback.
+                  Required for capture and upload.
                 </CardDescription>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>Active Tab</li>
+                  <li>Active Tab / Tabs</li>
                   <li>Storage</li>
-                  <li>Scripting</li>
-                  <li>Host permissions (all sites)</li>
+                  <li>
+                    Host permissions (all sites) for capture on your
+                    app-under-test
+                  </li>
                 </ul>
                 <div className="mt-3 rounded-lg border bg-muted/40 p-3 text-xs">
-                  We do not collect browsing history, track behavior outside
-                  recording, or sell/share user data.
+                  SynthQA does not track your browsing. The extension only acts
+                  when you click Capture/Record.
                 </div>
               </CardContent>
             </Card>
@@ -789,26 +593,17 @@ test('Recorded test', async ({ page }) => {
                 <AccordionTrigger>Updating the extension</AccordionTrigger>
                 <AccordionContent className="space-y-2 text-sm text-muted-foreground">
                   <ol className="list-decimal pl-5 space-y-1">
-                    <li>Download the latest ZIP from the dashboard</li>
-                    <li>Extract the ZIP</li>
+                    <li>Download the latest ZIP from SynthQA</li>
+                    <li>Extract it</li>
                     <li>
-                      Go to{" "}
+                      Open{" "}
                       <span className="font-medium">chrome://extensions/</span>
                     </li>
-                    <li>Remove the old version</li>
-                    <li>Load unpacked for the new version</li>
+                    <li>
+                      Remove the old version (recommended for unpacked installs)
+                    </li>
+                    <li>Load unpacked for the new folder</li>
                   </ol>
-                  <div className="mt-2 text-xs">
-                    <span className="font-medium text-foreground">
-                      Current:
-                    </span>{" "}
-                    v1.0.0 — Initial release (record, run, export)
-                    <br />
-                    <span className="font-medium text-foreground">
-                      Planned:
-                    </span>{" "}
-                    v1.1.0 — screenshots, highlighting, assertions, metrics
-                  </div>
                 </AccordionContent>
               </AccordionItem>
 
@@ -822,7 +617,10 @@ test('Recorded test', async ({ page }) => {
                       <span className="font-medium">chrome://extensions/</span>
                     </li>
                     <li>
-                      Find <span className="font-medium">QA Test Recorder</span>
+                      Find{" "}
+                      <span className="font-medium">
+                        SynthQA Evidence Capture
+                      </span>
                     </li>
                     <li>
                       Click <span className="font-medium">Remove</span> and
@@ -834,24 +632,10 @@ test('Recorded test', async ({ page }) => {
                     <Info className="h-4 w-4" />
                     <AlertTitle>Note</AlertTitle>
                     <AlertDescription>
-                      Removing the extension does not delete your recordings
-                      from SynthQA.
+                      Removing the extension does not delete evidence already
+                      uploaded to SynthQA.
                     </AlertDescription>
                   </Alert>
-
-                  <div className="font-medium text-foreground mt-3">
-                    Disable
-                  </div>
-                  <ol className="list-decimal pl-5 space-y-1">
-                    <li>
-                      Go to{" "}
-                      <span className="font-medium">chrome://extensions/</span>
-                    </li>
-                    <li>
-                      Toggle the extension{" "}
-                      <span className="font-medium">Off</span>
-                    </li>
-                  </ol>
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
@@ -859,58 +643,43 @@ test('Recorded test', async ({ page }) => {
 
           <Section id="faq" title="Frequently Asked Questions" kicker="FAQ">
             <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="edit">
+              <AccordionItem value="anysite">
                 <AccordionTrigger>
-                  Can I edit recordings after they’re saved?
+                  Can I capture on any website?
                 </AccordionTrigger>
                 <AccordionContent className="text-sm text-muted-foreground">
-                  Not currently. Editing support is planned.
+                  Yes—set the extension Site access to “On all sites” and
+                  capture from the extension popup on your app-under-test tab.
                 </AccordionContent>
               </AccordionItem>
-              <AccordionItem value="limit">
+
+              <AccordionItem value="why-disabled">
                 <AccordionTrigger>
-                  How many recordings can I save?
+                  Why is Capture disabled in SynthQA?
                 </AccordionTrigger>
                 <AccordionContent className="text-sm text-muted-foreground">
-                  Unlimited recordings per test case.
+                  SynthQA disables Capture if it cannot detect the extension.
+                  Install/enable the extension, refresh the page, and re-check
+                  permissions.
                 </AccordionContent>
               </AccordionItem>
-              <AccordionItem value="team">
-                <AccordionTrigger>
-                  Can I share recordings with my team?
-                </AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground">
-                  Yes. Team members can access recordings for shared test cases.
-                </AccordionContent>
-              </AccordionItem>
+
               <AccordionItem value="incognito">
                 <AccordionTrigger>
                   Does it work in incognito mode?
                 </AccordionTrigger>
                 <AccordionContent className="text-sm text-muted-foreground">
-                  Yes, if you enable “Allow in Incognito” in extension settings.
+                  Yes, if you enable “Allow in Incognito” in the extension
+                  settings.
                 </AccordionContent>
               </AccordionItem>
-              <AccordionItem value="iframes">
-                <AccordionTrigger>Can I record iframes?</AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground">
-                  Some iframe content may not be captured due to browser
-                  security restrictions.
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="fail">
-                <AccordionTrigger>What if my test fails?</AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground">
-                  Check the execution log for the failing step. Common issues
-                  include selector changes and timing.
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="batch">
+
+              <AccordionItem value="privacy">
                 <AccordionTrigger>
-                  Can I run multiple tests at once?
+                  Does the extension track my browsing?
                 </AccordionTrigger>
                 <AccordionContent className="text-sm text-muted-foreground">
-                  Not currently. Batch execution is planned.
+                  No. It only captures when you explicitly click Capture/Record.
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
@@ -947,18 +716,20 @@ test('Recorded test', async ({ page }) => {
                     <li>Extension version</li>
                     <li>Steps to reproduce</li>
                     <li>Console errors (F12)</li>
-                    <li>Screenshots (if applicable)</li>
+                    <li>Screenshots / screen recordings</li>
                   </ul>
                 </div>
 
                 <div className="text-xs text-muted-foreground">
-                  Last updated: December 2025 · Extension version: 1.0.0
+                  Last updated: January 2026 · Extension: SynthQA Evidence
+                  Capture
                 </div>
               </CardContent>
             </Card>
           </Section>
         </main>
       </div>
+
       <Footer />
     </div>
   );

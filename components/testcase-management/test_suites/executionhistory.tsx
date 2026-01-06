@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import React, { useEffect, useMemo, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -20,8 +20,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { Checkbox } from "@/components/ui/checkbox"
+} from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -29,23 +29,18 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog"
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { 
-  Loader2, 
-  Image as ImageIcon, 
-  Eye, 
+} from "@/components/ui/dropdown-menu";
+import {
+  Loader2,
+  Image as ImageIcon,
+  Eye,
   Download,
   Clock,
   Calendar,
@@ -55,165 +50,504 @@ import {
   XCircle,
   ChevronDown,
   ChevronUp,
-  BarChart3, AlertTriangle, MinusCircle,
-} from "lucide-react"
-import { toast } from "sonner"
+  BarChart3,
+  AlertTriangle,
+  MinusCircle,
+  ClipboardCheck,
+  ListChecks,
+} from "lucide-react";
+import { toast } from "sonner";
 
-type ExecutionStatus = "not_run" | "in_progress" | "passed" | "failed" | "skipped" | "blocked"
-type AllowedStatus = "passed" | "failed" | "skipped" | "blocked"
-type StatusFilter = "all" | AllowedStatus
+import {
+  RunReviewDialog,
+  type ExecutionHistoryRow as ReviewExecutionRow,
+  type RunWithStats as ReviewRunWithStats,
+} from "./dialogs/run-review-dialog";
 
-type ExecutionHistoryRow = {
-  execution_id: string
-  suite_id: string
-  suite_name: string
-  session_id: string | null
-  test_case_id: string
-  test_title: string
-  test_description: string | null
-  execution_status: AllowedStatus
-  execution_notes: string | null
-  failure_reason: string | null
-  created_at: string
-  started_at: string | null
-  completed_at: string | null
-  duration_ms: number | null
-  evidence_count: number
-}
+type ExecutionStatus =
+  | "not_run"
+  | "in_progress"
+  | "passed"
+  | "failed"
+  | "skipped"
+  | "blocked";
+type AllowedStatus = "passed" | "failed" | "skipped" | "blocked";
+type StatusFilter = "all" | AllowedStatus;
 
-type SupabaseExecutionRow = {
-  id: string
-  suite_id: string
-  session_id: string | null
-  test_case_id: string
-  execution_status: ExecutionStatus
-  execution_notes: string | null
-  failure_reason: string | null
-  created_at: string
-  started_at: string | null
-  completed_at: string | null
-  test_suites: { id: string; name: string } | null
-  test_cases: { id: string; title: string; description: string | null } | null
-}
+type RunStatus = "planned" | "in_progress" | "paused" | "completed" | "aborted";
 
 type AttachmentRow = {
-  id: string
-  execution_id: string
-  file_path: string
-  file_name: string
-  file_type: string | null
-  file_size: number | null
-  created_at: string
-  step_number: number | null
-  description: string | null
-}
+  id: string;
+  execution_id: string;
+  file_path: string;
+  file_name: string;
+  file_type: string | null;
+  file_size: number | null;
+  created_at: string;
+  step_number: number | null;
+  description: string | null;
+};
+
+type SupabaseExecutionRow = {
+  id: string;
+  suite_id: string;
+  session_id: string | null;
+  test_case_id: string;
+  execution_status: ExecutionStatus;
+  execution_notes: string | null;
+  failure_reason: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  review_needs_update?: boolean | null;
+  review_create_issue?: boolean | null;
+  review_note?: string | null;
+  reviewed_at?: string | null;
+  test_suites: { id: string; name: string } | null;
+  test_cases: { id: string; title: string; description: string | null } | null;
+};
+
+type ExecutionHistoryRow = {
+  execution_id: string;
+  suite_id: string;
+  suite_name: string;
+  session_id: string | null;
+  test_case_id: string;
+  test_title: string;
+  test_description: string | null;
+  execution_status: AllowedStatus;
+  execution_notes: string | null;
+  failure_reason: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_ms: number | null;
+  evidence_count: number;
+
+  // review fields (persisted on test_executions)
+  review_needs_update: boolean;
+  review_create_issue: boolean;
+  review_note: string | null;
+  reviewed_at: string | null;
+};
+
+type RunRow = {
+  id: string;
+  user_id: string;
+  suite_id: string | null;
+  suite_name: string;
+  name: string;
+  description: string | null;
+  status: RunStatus;
+  planned_start: string | null;
+  actual_start: string | null;
+  actual_end: string | null;
+  environment: string | null;
+  test_cases_total: number;
+  test_cases_completed: number;
+  progress_percentage: number;
+  passed_cases: number;
+  failed_cases: number;
+  skipped_cases: number;
+  blocked_cases: number;
+  created_at: string;
+  updated_at: string;
+  paused_at: string | null;
+  auto_advance: boolean;
+};
+
+type RunWithStats = RunRow & {
+  evidence_total: number;
+  review_done: boolean;
+};
 
 function useDebouncedValue<T>(value: T, delayMs = 300) {
-  const [debounced, setDebounced] = useState(value)
+  const [debounced, setDebounced] = useState(value);
   useEffect(() => {
-    const id = window.setTimeout(() => setDebounced(value), delayMs)
-    return () => window.clearTimeout(id)
-  }, [value, delayMs])
-  return debounced
+    const id = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(id);
+  }, [value, delayMs]);
+  return debounced;
+}
+
+function formatDuration(ms: number | null) {
+  if (!ms) return "-";
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+  return `${seconds}s`;
+}
+
+function statusBadge(s: AllowedStatus) {
+  switch (s) {
+    case "passed":
+      return (
+        <Badge className="bg-green-600 gap-1">
+          <CheckCircle2 className="h-3 w-3" />
+          Passed
+        </Badge>
+      );
+    case "failed":
+      return (
+        <Badge variant="destructive" className="gap-1">
+          <XCircle className="h-3 w-3" />
+          Failed
+        </Badge>
+      );
+    case "blocked":
+      return (
+        <Badge className="bg-orange-600 gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          Blocked
+        </Badge>
+      );
+    case "skipped":
+      return (
+        <Badge className="bg-slate-600 gap-1">
+          <MinusCircle className="h-3 w-3" />
+          Skipped
+        </Badge>
+      );
+  }
+}
+
+function runStatusBadge(s: RunStatus) {
+  const base = "gap-1";
+  if (s === "completed")
+    return <Badge className={`bg-green-600 ${base}`}>Completed</Badge>;
+  if (s === "paused")
+    return <Badge className={`bg-orange-600 ${base}`}>Paused</Badge>;
+  if (s === "in_progress")
+    return <Badge className={`bg-blue-600 ${base}`}>In progress</Badge>;
+  if (s === "planned")
+    return (
+      <Badge variant="secondary" className={base}>
+        Planned
+      </Badge>
+    );
+  if (s === "aborted")
+    return (
+      <Badge variant="destructive" className={base}>
+        Aborted
+      </Badge>
+    );
+  return (
+    <Badge variant="secondary" className={base}>
+      {s}
+    </Badge>
+  );
 }
 
 export function ExecutionHistory() {
-  const supabase = useMemo(() => createClient(), [])
+  const supabase = useMemo(() => createClient(), []);
 
-  const [rows, setRows] = useState<ExecutionHistoryRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  // shared filters
+  const [availableSuites, setAvailableSuites] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [suiteId, setSuiteId] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<string>("all"); // all, today, week, month, year
 
-  const [status, setStatus] = useState<StatusFilter>("all")
-  const [hasEvidence, setHasEvidence] = useState(false)
-  const [search, setSearch] = useState("")
-  const debouncedSearch = useDebouncedValue(search, 300)
-  const [suiteId, setSuiteId] = useState<string>("all")
-  const [dateFilter, setDateFilter] = useState<string>("all") // all, today, week, month, year
+  // runs tab
+  const [runs, setRuns] = useState<RunWithStats[]>([]);
+  const [runsLoading, setRunsLoading] = useState(true);
+  const [runsSearch, setRunsSearch] = useState("");
+  const debouncedRunsSearch = useDebouncedValue(runsSearch, 300);
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState<number>(20)
-  const [totalCount, setTotalCount] = useState(0)
+  // executions tab (existing)
+  const [rows, setRows] = useState<ExecutionHistoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [hasEvidence, setHasEvidence] = useState(false);
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
 
-  const [availableSuites, setAvailableSuites] = useState<Array<{ id: string; name: string }>>([])
+  // Pagination for executions (keep your existing behavior)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(20);
+  const [totalCount, setTotalCount] = useState(0);
 
-  // View dialog
-  const [openView, setOpenView] = useState(false)
-  const [activeExecution, setActiveExecution] = useState<ExecutionHistoryRow | null>(null)
-  const [evidenceLoading, setEvidenceLoading] = useState(false)
-  const [evidence, setEvidence] = useState<AttachmentRow[]>([])
-  const [previewImage, setPreviewImage] = useState<string | null>(null)
-  const INCLUDED_STATUSES: AllowedStatus[] = ["passed", "failed", "blocked", "skipped"]
+  // View evidence dialog (existing)
+  const [openView, setOpenView] = useState(false);
+  const [activeExecution, setActiveExecution] =
+    useState<ExecutionHistoryRow | null>(null);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
+  const [evidence, setEvidence] = useState<AttachmentRow[]>([]);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+  // Run review dialog (new)
+  const [isRunReviewOpen, setIsRunReviewOpen] = useState(false);
+  const [activeRun, setActiveRun] = useState<RunWithStats | null>(null);
+  const [runRows, setRunRows] = useState<ExecutionHistoryRow[]>([]);
+  const [runRowsLoading, setRunRowsLoading] = useState(false);
+  const [runSaveBusy, setRunSaveBusy] = useState(false);
+
+  const INCLUDED_STATUSES: AllowedStatus[] = [
+    "passed",
+    "failed",
+    "blocked",
+    "skipped",
+  ];
 
   useEffect(() => {
-    void fetchSuites()
-  }, [])
+    void fetchSuites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // Runs fetch
   useEffect(() => {
-    void fetchHistory()
-  }, [status, hasEvidence, debouncedSearch, suiteId, dateFilter, currentPage, pageSize])
+    void fetchRuns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suiteId, dateFilter, debouncedRunsSearch]);
 
-  // Reset to page 1 when filters change
+  // Executions fetch
   useEffect(() => {
-    setCurrentPage(1)
-  }, [status, hasEvidence, debouncedSearch, suiteId, dateFilter, pageSize])
+    void fetchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    status,
+    hasEvidence,
+    debouncedSearch,
+    suiteId,
+    dateFilter,
+    currentPage,
+    pageSize,
+  ]);
+
+  // Reset to page 1 when execution filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [status, hasEvidence, debouncedSearch, suiteId, dateFilter, pageSize]);
 
   async function fetchSuites() {
     try {
-      const { data: auth } = await supabase.auth.getUser()
-      if (!auth.user) return
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) return;
 
       const { data, error } = await supabase
         .from("test_suites")
         .select("id, name")
         .eq("user_id", auth.user.id)
-        .order("name")
+        .order("name");
 
-      if (error) throw error
-      setAvailableSuites(data ?? [])
+      if (error) throw error;
+      setAvailableSuites(data ?? []);
     } catch (err) {
-      console.error(err)
-      setAvailableSuites([])
+      console.error(err);
+      setAvailableSuites([]);
+    }
+  }
+
+  function computeStartDate(dateFilterValue: string) {
+    let startDate: string | null = null;
+    const now = new Date();
+
+    if (dateFilterValue === "today") {
+      startDate = new Date(now.setHours(0, 0, 0, 0)).toISOString();
+    } else if (dateFilterValue === "week") {
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      startDate = weekAgo.toISOString();
+    } else if (dateFilterValue === "month") {
+      const monthAgo = new Date();
+      monthAgo.setMonth(monthAgo.getMonth() - 1);
+      startDate = monthAgo.toISOString();
+    } else if (dateFilterValue === "year") {
+      const yearAgo = new Date();
+      yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+      startDate = yearAgo.toISOString();
+    }
+
+    return startDate;
+  }
+
+  async function fetchRuns() {
+    setRunsLoading(true);
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) {
+        setRuns([]);
+        return;
+      }
+
+      const startDate = computeStartDate(dateFilter);
+
+      let q = supabase
+        .from("test_run_sessions")
+        .select(
+          `
+        id,
+        user_id,
+        suite_id,
+        name,
+        description,
+        status,
+        planned_start,
+        actual_start,
+        actual_end,
+        environment,
+        test_cases_total,
+        test_cases_completed,
+        progress_percentage,
+        passed_cases,
+        failed_cases,
+        skipped_cases,
+        blocked_cases,
+        created_at,
+        updated_at,
+        paused_at,
+        auto_advance,
+        test_suites:suite_id ( id, name )
+      `
+        )
+        .eq("user_id", auth.user.id)
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      if (suiteId !== "all") q = q.eq("suite_id", suiteId);
+      if (startDate) q = q.gte("created_at", startDate);
+
+      const { data: sessionsRaw, error } = await q;
+      if (error) throw error;
+
+      const sessions = (sessionsRaw ?? []) as Array<any>;
+
+      // Client-side search (name, suite, description, environment, id)
+      const s = debouncedRunsSearch.trim().toLowerCase();
+      const filtered = s
+        ? sessions.filter((r) => {
+            const suiteName = String(r?.test_suites?.name ?? "").toLowerCase();
+            const runName = String(r?.name ?? "").toLowerCase();
+            const desc = String(r?.description ?? "").toLowerCase();
+            const env = String(r?.environment ?? "").toLowerCase();
+            return (
+              suiteName.includes(s) ||
+              runName.includes(s) ||
+              desc.includes(s) ||
+              env.includes(s) ||
+              String(r.id).includes(s)
+            );
+          })
+        : sessions;
+
+      if (filtered.length === 0) {
+        setRuns([]);
+        return;
+      }
+
+      const sessionIds = filtered.map((x) => x.id);
+
+      // Pull executions just to compute review_done and evidence_total
+      const { data: execRaw, error: execErr } = await supabase
+        .from("test_executions")
+        .select("id, session_id, reviewed_at")
+        .in("session_id", sessionIds);
+
+      if (execErr) throw execErr;
+
+      const execs = (execRaw ?? []) as Array<{
+        id: string;
+        session_id: string | null;
+        reviewed_at: string | null;
+      }>;
+
+      const execIds = execs.map((e) => e.id);
+      const evidenceCountByExecution = new Map<string, number>();
+
+      if (execIds.length > 0) {
+        const { data: attsRaw, error: attErr } = await supabase
+          .from("test_attachments")
+          .select("execution_id")
+          .in("execution_id", execIds);
+
+        if (attErr) throw attErr;
+
+        for (const a of (attsRaw ?? []) as Array<{ execution_id: string }>) {
+          evidenceCountByExecution.set(
+            a.execution_id,
+            (evidenceCountByExecution.get(a.execution_id) ?? 0) + 1
+          );
+        }
+      }
+
+      const evidenceBySession = new Map<string, number>();
+      const reviewedBySession = new Map<string, boolean>();
+
+      for (const e of execs) {
+        if (!e.session_id) continue;
+        if (e.reviewed_at) reviewedBySession.set(e.session_id, true);
+
+        const ev = evidenceCountByExecution.get(e.id) ?? 0;
+        evidenceBySession.set(
+          e.session_id,
+          (evidenceBySession.get(e.session_id) ?? 0) + ev
+        );
+      }
+
+      const mapped: RunWithStats[] = filtered.map((r) => {
+        const suiteName = r?.test_suites?.name ?? "Unknown Suite";
+        return {
+          id: r.id,
+          user_id: r.user_id,
+          suite_id: r.suite_id ?? null,
+          suite_name: suiteName,
+
+          name: r.name,
+          description: r.description ?? null,
+          status: (r.status ?? "planned") as RunStatus,
+
+          planned_start: r.planned_start ?? null,
+          actual_start: r.actual_start ?? null,
+          actual_end: r.actual_end ?? null,
+
+          environment: r.environment ?? null,
+
+          test_cases_total: Number(r.test_cases_total ?? 0),
+          test_cases_completed: Number(r.test_cases_completed ?? 0),
+          progress_percentage: Number(r.progress_percentage ?? 0),
+
+          passed_cases: Number(r.passed_cases ?? 0),
+          failed_cases: Number(r.failed_cases ?? 0),
+          skipped_cases: Number(r.skipped_cases ?? 0),
+          blocked_cases: Number(r.blocked_cases ?? 0),
+
+          created_at: r.created_at,
+          updated_at: r.updated_at,
+          paused_at: r.paused_at ?? null,
+          auto_advance: Boolean(r.auto_advance ?? true),
+
+          evidence_total: evidenceBySession.get(r.id) ?? 0,
+          review_done: Boolean(reviewedBySession.get(r.id) ?? false),
+        };
+      });
+
+      setRuns(mapped);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load run history");
+      setRuns([]);
+    } finally {
+      setRunsLoading(false);
     }
   }
 
   async function fetchHistory() {
-    setLoading(true)
+    setLoading(true);
     try {
-      const { data: auth } = await supabase.auth.getUser()
+      const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) {
-        setRows([])
-        return
+        setRows([]);
+        return;
       }
 
-      // Calculate date range
-      let startDate: string | null = null
-      const now = new Date()
-      
-      if (dateFilter === "today") {
-        startDate = new Date(now.setHours(0, 0, 0, 0)).toISOString()
-      } else if (dateFilter === "week") {
-        const weekAgo = new Date(now)
-        weekAgo.setDate(weekAgo.getDate() - 7)
-        startDate = weekAgo.toISOString()
-      } else if (dateFilter === "month") {
-        const monthAgo = new Date(now)
-        monthAgo.setMonth(monthAgo.getMonth() - 1)
-        startDate = monthAgo.toISOString()
-      } else if (dateFilter === "year") {
-        const yearAgo = new Date(now)
-        yearAgo.setFullYear(yearAgo.getFullYear() - 1)
-        startDate = yearAgo.toISOString()
-      }
+      const startDate = computeStartDate(dateFilter);
 
-      // Build base query
       let countQuery = supabase
         .from("test_executions")
         .select("id", { count: "exact", head: true })
         .eq("executed_by", auth.user.id)
-        .in("execution_status", INCLUDED_STATUSES)
+        .in("execution_status", INCLUDED_STATUSES);
 
       let dataQuery = supabase
         .from("test_executions")
@@ -229,50 +563,50 @@ export function ExecutionHistory() {
           created_at,
           started_at,
           completed_at,
+          review_needs_update,
+          review_create_issue,
+          review_note,
+          reviewed_at,
           test_suites:suite_id ( id, name ),
           test_cases:test_case_id ( id, title, description )
         `
         )
         .eq("executed_by", auth.user.id)
         .in("execution_status", INCLUDED_STATUSES)
-        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: false });
 
-      // Apply filters to both queries
       if (suiteId !== "all") {
-        countQuery = countQuery.eq("suite_id", suiteId)
-        dataQuery = dataQuery.eq("suite_id", suiteId)
+        countQuery = countQuery.eq("suite_id", suiteId);
+        dataQuery = dataQuery.eq("suite_id", suiteId);
       }
       if (status !== "all") {
-        countQuery = countQuery.eq("execution_status", status)
-        dataQuery = dataQuery.eq("execution_status", status)
+        countQuery = countQuery.eq("execution_status", status);
+        dataQuery = dataQuery.eq("execution_status", status);
       }
       if (startDate) {
-        countQuery = countQuery.gte("created_at", startDate)
-        dataQuery = dataQuery.gte("created_at", startDate)
+        countQuery = countQuery.gte("created_at", startDate);
+        dataQuery = dataQuery.gte("created_at", startDate);
       }
 
-      // Get total count first
-      const { count, error: countError } = await countQuery
-      if (countError) throw countError
-      setTotalCount(count ?? 0)
+      const { count, error: countError } = await countQuery;
+      if (countError) throw countError;
+      setTotalCount(count ?? 0);
 
-      // Apply pagination to data query
-      const from = (currentPage - 1) * pageSize
-      const to = from + pageSize - 1
-      dataQuery = dataQuery.range(from, to)
+      const from = (currentPage - 1) * pageSize;
+      const to = from + pageSize - 1;
+      dataQuery = dataQuery.range(from, to);
 
-      const { data: execsRaw, error } = await dataQuery
-      if (error) throw error
+      const { data: execsRaw, error } = await dataQuery;
+      if (error) throw error;
 
-      const execs = (execsRaw ?? []) as unknown as SupabaseExecutionRow[]
+      const execs = (execsRaw ?? []) as unknown as SupabaseExecutionRow[];
 
-      // Calculate duration
       const base: ExecutionHistoryRow[] = execs.map((e) => {
-        let duration = null
+        let duration: number | null = null;
         if (e.started_at && e.completed_at) {
-          const start = new Date(e.started_at).getTime()
-          const end = new Date(e.completed_at).getTime()
-          duration = end - start
+          duration =
+            new Date(e.completed_at).getTime() -
+            new Date(e.started_at).getTime();
         }
 
         return {
@@ -291,11 +625,15 @@ export function ExecutionHistory() {
           completed_at: e.completed_at ?? null,
           duration_ms: duration,
           evidence_count: 0,
-        }
-      })
 
-      // Client-side search
-      const s = debouncedSearch.trim().toLowerCase()
+          review_needs_update: Boolean(e.review_needs_update ?? false),
+          review_create_issue: Boolean(e.review_create_issue ?? false),
+          review_note: (e.review_note ?? null) as string | null,
+          reviewed_at: (e.reviewed_at ?? null) as string | null,
+        };
+      });
+
+      const s = debouncedSearch.trim().toLowerCase();
       const searched = s
         ? base.filter((r) => {
             return (
@@ -303,136 +641,124 @@ export function ExecutionHistory() {
               r.suite_name.toLowerCase().includes(s) ||
               (r.failure_reason ?? "").toLowerCase().includes(s) ||
               (r.test_description ?? "").toLowerCase().includes(s)
-            )
+            );
           })
-        : base
+        : base;
 
-      const execIds = searched.map((r) => r.execution_id)
+      const execIds = searched.map((r) => r.execution_id);
       if (execIds.length === 0) {
-        setRows([])
-        return
+        setRows([]);
+        return;
       }
 
-      // Evidence counts
       const { data: attsRaw, error: attErr } = await supabase
         .from("test_attachments")
         .select("execution_id")
-        .in("execution_id", execIds)
+        .in("execution_id", execIds);
 
-      if (attErr) throw attErr
+      if (attErr) throw attErr;
 
-      const counts = new Map<string, number>()
+      const counts = new Map<string, number>();
       for (const a of (attsRaw ?? []) as Array<{ execution_id: string }>) {
-        counts.set(a.execution_id, (counts.get(a.execution_id) ?? 0) + 1)
+        counts.set(a.execution_id, (counts.get(a.execution_id) ?? 0) + 1);
       }
 
       const withCounts = searched.map((r) => ({
         ...r,
         evidence_count: counts.get(r.execution_id) ?? 0,
-      }))
+      }));
 
-      setRows(hasEvidence ? withCounts.filter((r) => r.evidence_count > 0) : withCounts)
+      setRows(
+        hasEvidence
+          ? withCounts.filter((r) => r.evidence_count > 0)
+          : withCounts
+      );
     } catch (err) {
-      console.error(err)
-      toast.error("Failed to load execution history")
-      setRows([])
+      console.error(err);
+      toast.error("Failed to load execution history");
+      setRows([]);
     } finally {
-      setLoading(false)
-    }
-  }
-
-  async function openExecution(execution: ExecutionHistoryRow) {
-    setActiveExecution(execution)
-    setOpenView(true)
-    setEvidence([])
-    setEvidenceLoading(true)
-
-    try {
-      const { data, error } = await supabase
-        .from("test_attachments")
-        .select("id, execution_id, file_name, file_path, file_type, file_size, created_at, step_number, description")
-        .eq("execution_id", execution.execution_id)
-        .order("step_number", { ascending: true, nullsFirst: false })
-        .order("created_at", { ascending: true })
-
-      if (error) throw error
-      setEvidence((data ?? []) as AttachmentRow[])
-    } catch (err) {
-      console.error(err)
-      toast.error("Failed to load evidence")
-      setEvidence([])
-    } finally {
-      setEvidenceLoading(false)
+      setLoading(false);
     }
   }
 
   function toggleRowExpansion(executionId: string) {
     setExpandedRows((prev) => {
-      const next = new Set(prev)
-      if (next.has(executionId)) {
-        next.delete(executionId)
-      } else {
-        next.add(executionId)
-      }
-      return next
-    })
+      const next = new Set(prev);
+      if (next.has(executionId)) next.delete(executionId);
+      else next.add(executionId);
+      return next;
+    });
   }
 
-  function formatDuration(ms: number | null) {
-    if (!ms) return "-"
-    const seconds = Math.floor(ms / 1000)
-    const minutes = Math.floor(seconds / 60)
-    if (minutes > 0) {
-      return `${minutes}m ${seconds % 60}s`
-    }
-    return `${seconds}s`
-  }
-
-  function getFileUrl(filePath: string): Promise<string> {
-    return createSignedUrl(filePath, 60 * 60) // 1 hour expiry
-  }
-
-  async function createSignedUrl(filePath: string, expiresInSeconds: number): Promise<string> {
+  async function createSignedUrl(
+    filePath: string,
+    expiresInSeconds: number
+  ): Promise<string> {
     try {
       const { data, error } = await supabase.storage
         .from("test-attachments")
-        .createSignedUrl(filePath, expiresInSeconds)
-      
-      if (error) throw error
-      return data.signedUrl
+        .createSignedUrl(filePath, expiresInSeconds);
+
+      if (error) throw error;
+      return data.signedUrl;
     } catch (err) {
-      console.error("Error creating signed URL:", err)
-      return ""
+      console.error("Error creating signed URL:", err);
+      return "";
+    }
+  }
+
+  async function openExecution(execution: ExecutionHistoryRow) {
+    setActiveExecution(execution);
+    setOpenView(true);
+    setEvidence([]);
+    setEvidenceLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("test_attachments")
+        .select(
+          "id, execution_id, file_name, file_path, file_type, file_size, created_at, step_number, description"
+        )
+        .eq("execution_id", execution.execution_id)
+        .order("step_number", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+      setEvidence((data ?? []) as AttachmentRow[]);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load evidence");
+      setEvidence([]);
+    } finally {
+      setEvidenceLoading(false);
     }
   }
 
   async function downloadEvidence() {
-    if (evidence.length === 0) return
-    
-    toast.info("Downloading evidence files...")
-    
+    if (evidence.length === 0) return;
+
+    toast.info("Downloading evidence files...");
     for (const att of evidence) {
       try {
-        const url = await getFileUrl(att.file_path)
-        if (!url) continue
-        
-        const a = document.createElement("a")
-        a.href = url
-        a.download = att.file_name
-        a.click()
+        const url = await createSignedUrl(att.file_path, 60 * 60);
+        if (!url) continue;
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = att.file_name;
+        a.click();
       } catch (err) {
-        console.error("Download error:", err)
+        console.error("Download error:", err);
       }
     }
   }
 
   function exportToCSV() {
     if (rows.length === 0) {
-      toast.error("No data to export")
-      return
+      toast.error("No data to export");
+      return;
     }
 
-    // CSV headers
     const headers = [
       "Date",
       "Time",
@@ -444,12 +770,17 @@ export function ExecutionHistory() {
       "Evidence Count",
       "Failure Reason",
       "Execution Notes",
-    ]
+      "Needs Update",
+      "Create Issue",
+      "Review Note",
+      "Reviewed At",
+    ];
 
-    // CSV rows
     const csvRows = rows.map((r) => {
-      const date = new Date(r.created_at)
-      const durationSeconds = r.duration_ms ? Math.floor(r.duration_ms / 1000) : 0
+      const date = new Date(r.created_at);
+      const durationSeconds = r.duration_ms
+        ? Math.floor(r.duration_ms / 1000)
+        : 0;
 
       return [
         date.toLocaleDateString(),
@@ -462,453 +793,930 @@ export function ExecutionHistory() {
         r.evidence_count,
         r.failure_reason || "",
         r.execution_notes || "",
-      ]
-    })
+        r.review_needs_update ? "yes" : "no",
+        r.review_create_issue ? "yes" : "no",
+        r.review_note || "",
+        r.reviewed_at ? new Date(r.reviewed_at).toLocaleString() : "",
+      ];
+    });
 
-    // Escape and quote CSV fields
     const escapeCsvField = (field: string | number) => {
-      const str = String(field)
+      const str = String(field);
       if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-        return `"${str.replace(/"/g, '""')}"`
+        return `"${str.replace(/"/g, '""')}"`;
       }
-      return str
-    }
+      return str;
+    };
 
-    // Build CSV content
     const csv = [
       headers.join(","),
       ...csvRows.map((row) => row.map(escapeCsvField).join(",")),
-    ].join("\n")
+    ].join("\n");
 
-    // Download
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    
-    // Generate filename with date range
-    const filename = `execution-history-${dateFilter}-${new Date().toISOString().split("T")[0]}.csv`
-    link.download = filename
-    
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const filename = `execution-history-${dateFilter}-${
+      new Date().toISOString().split("T")[0]
+    }.csv`;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 
-    toast.success(`Exported ${rows.length} executions to CSV`)
+    toast.success(`Exported ${rows.length} executions to CSV`);
   }
 
   function exportTrendReport() {
     if (rows.length === 0) {
-      toast.error("No data to export")
-      return
+      toast.error("No data to export");
+      return;
     }
 
-    // Group by date
-const byDate = new Map<string, { passed: number; failed: number; blocked: number; skipped: number; total: number }>()
-    
+    const byDate = new Map<
+      string,
+      {
+        passed: number;
+        failed: number;
+        blocked: number;
+        skipped: number;
+        total: number;
+      }
+    >();
     rows.forEach((r) => {
-      const date = new Date(r.created_at).toLocaleDateString()
-      const existing = byDate.get(date) || { passed: 0, failed: 0, blocked:0, skipped: 0,total: 0 }
-      
-      existing.total++
-if (r.execution_status === "passed") existing.passed++
-if (r.execution_status === "failed") existing.failed++
-if (r.execution_status === "blocked") existing.blocked++
-if (r.execution_status === "skipped") existing.skipped++
+      const date = new Date(r.created_at).toLocaleDateString();
+      const existing = byDate.get(date) || {
+        passed: 0,
+        failed: 0,
+        blocked: 0,
+        skipped: 0,
+        total: 0,
+      };
+      existing.total++;
+      if (r.execution_status === "passed") existing.passed++;
+      if (r.execution_status === "failed") existing.failed++;
+      if (r.execution_status === "blocked") existing.blocked++;
+      if (r.execution_status === "skipped") existing.skipped++;
+      byDate.set(date, existing);
+    });
 
-      
-      byDate.set(date, existing)
-    })
-
-    // Build trend CSV
-    const headers = ["Date", "Total Tests", "Passed", "Failed", "Pass Rate %"]
+    const headers = ["Date", "Total Tests", "Passed", "Failed", "Pass Rate %"];
     const trendRows = Array.from(byDate.entries())
       .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
       .map(([date, stats]) => {
-        const passRate = Math.round((stats.passed / stats.total) * 100)
-        return [date, stats.total, stats.passed, stats.failed, passRate]
-      })
+        const passRate = stats.total
+          ? Math.round((stats.passed / stats.total) * 100)
+          : 0;
+        return [date, stats.total, stats.passed, stats.failed, passRate];
+      });
 
     const csv = [
       headers.join(","),
       ...trendRows.map((row) => row.join(",")),
-    ].join("\n")
+    ].join("\n");
 
-    // Download
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `test-trends-${dateFilter}-${new Date().toISOString().split("T")[0]}.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `test-trends-${dateFilter}-${
+      new Date().toISOString().split("T")[0]
+    }.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 
-    toast.success("Exported trend report")
+    toast.success("Exported trend report");
   }
 
-  function statusBadge(s: AllowedStatus) {
-  switch (s) {
-    case "passed":
-      return (
-        <Badge className="bg-green-600 gap-1">
-          <CheckCircle2 className="h-3 w-3" />
-          Passed
-        </Badge>
-      )
+  // ========= Post-run review =========
 
-    case "failed":
-      return (
-        <Badge variant="destructive" className="gap-1">
-          <XCircle className="h-3 w-3" />
-          Failed
-        </Badge>
-      )
+  async function openRunReview(run: RunWithStats) {
+    setActiveRun(run);
+    setIsRunReviewOpen(true);
+    setRunRows([]);
+    setRunRowsLoading(true);
 
-    case "blocked":
-      return (
-        <Badge className="bg-orange-600 gap-1">
-          <AlertTriangle className="h-3 w-3" />
-          Blocked
-        </Badge>
-      )
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) return;
 
-    case "skipped":
-      return (
-        <Badge className="bg-slate-600 gap-1">
-          <MinusCircle className="h-3 w-3" />
-          Skipped
-        </Badge>
-      )
+      // Load executions for that session (all statuses you care about)
+      const { data: execsRaw, error } = await supabase
+        .from("test_executions")
+        .select(
+          `
+          id,
+          suite_id,
+          session_id,
+          test_case_id,
+          execution_status,
+          execution_notes,
+          failure_reason,
+          created_at,
+          started_at,
+          completed_at,
+          review_needs_update,
+          review_create_issue,
+          review_note,
+          reviewed_at,
+          test_suites:suite_id ( id, name ),
+          test_cases:test_case_id ( id, title, description )
+        `
+        )
+        .eq("executed_by", auth.user.id)
+        .eq("session_id", run.id)
+        .in("execution_status", INCLUDED_STATUSES)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      const execs = (execsRaw ?? []) as unknown as SupabaseExecutionRow[];
+
+      // Evidence counts for this run
+      const execIds = execs.map((e) => e.id);
+      let counts = new Map<string, number>();
+      if (execIds.length) {
+        const { data: attsRaw, error: attErr } = await supabase
+          .from("test_attachments")
+          .select("execution_id")
+          .in("execution_id", execIds);
+        if (attErr) throw attErr;
+        for (const a of (attsRaw ?? []) as Array<{ execution_id: string }>) {
+          counts.set(a.execution_id, (counts.get(a.execution_id) ?? 0) + 1);
+        }
+      }
+
+      const mapped: ExecutionHistoryRow[] = execs.map((e) => {
+        let duration: number | null = null;
+        if (e.started_at && e.completed_at)
+          duration =
+            new Date(e.completed_at).getTime() -
+            new Date(e.started_at).getTime();
+
+        return {
+          execution_id: e.id,
+          suite_id: e.suite_id,
+          suite_name: e.test_suites?.name ?? "Unknown Suite",
+          session_id: e.session_id ?? null,
+          test_case_id: e.test_case_id,
+          test_title: e.test_cases?.title ?? "Unknown Test",
+          test_description: e.test_cases?.description ?? null,
+          execution_status: (e.execution_status as AllowedStatus) ?? "passed",
+          execution_notes: e.execution_notes ?? null,
+          failure_reason: e.failure_reason ?? null,
+          created_at: e.created_at,
+          started_at: e.started_at ?? null,
+          completed_at: e.completed_at ?? null,
+          duration_ms: duration,
+          evidence_count: counts.get(e.id) ?? 0,
+
+          review_needs_update: Boolean(e.review_needs_update ?? false),
+          review_create_issue: Boolean(e.review_create_issue ?? false),
+          review_note: (e.review_note ?? null) as string | null,
+          reviewed_at: (e.reviewed_at ?? null) as string | null,
+        };
+      });
+
+      setRunRows(mapped);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load run details");
+      setRunRows([]);
+    } finally {
+      setRunRowsLoading(false);
+    }
   }
-}
 
+  function patchRunRow(
+    executionId: string,
+    patch: Partial<ExecutionHistoryRow>
+  ) {
+    setRunRows((prev) =>
+      prev.map((r) => (r.execution_id === executionId ? { ...r, ...patch } : r))
+    );
+  }
 
-  // Stats for dashboard
-  const stats = useMemo(() => {
-    const total = rows.length
-    const passed = rows.filter((r) => r.execution_status === "passed").length
-    const failed = rows.filter((r) => r.execution_status === "failed").length
-    const withEvidence = rows.filter((r) => r.evidence_count > 0).length
-    
-    return { total, passed, failed, withEvidence }
-  }, [rows])
+  function bulkMarkFailuresNeedsUpdate(value: boolean) {
+    setRunRows((prev) =>
+      prev.map((r) =>
+        r.execution_status === "failed"
+          ? { ...r, review_needs_update: value }
+          : r
+      )
+    );
+  }
+
+  function bulkMarkAllCreateIssue(value: boolean) {
+    setRunRows((prev) =>
+      prev.map((r) => ({ ...r, review_create_issue: value }))
+    );
+  }
+
+  async function saveRunReview() {
+    if (!activeRun) return;
+    if (runRows.length === 0) {
+      toast.error("Nothing to save");
+      return;
+    }
+
+    setRunSaveBusy(true);
+    try {
+      // Update in small batches to avoid payload limits
+      const batchSize = 50;
+      for (let i = 0; i < runRows.length; i += batchSize) {
+        const slice = runRows.slice(i, i + batchSize);
+
+        // Supabase update per row (safe + simple).
+        // If you want higher performance later, we can add a single RPC.
+        for (const r of slice) {
+          const { error } = await supabase
+            .from("test_executions")
+            .update({
+              review_needs_update: r.review_needs_update,
+              review_create_issue: r.review_create_issue,
+              review_note: r.review_note?.trim() ? r.review_note.trim() : null,
+              reviewed_at: new Date().toISOString(),
+            })
+            .eq("id", r.execution_id);
+
+          if (error) throw error;
+        }
+      }
+
+      toast.success("Run review saved");
+
+      // refresh runs list so “review done” reflects
+      void fetchRuns();
+      // refresh executions list so exports include review columns
+      void fetchHistory();
+      setIsRunReviewOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to save review");
+    } finally {
+      setRunSaveBusy(false);
+    }
+  }
+
+  // ===== Stats for dashboard (executions tab) =====
+  const execStats = useMemo(() => {
+    const total = rows.length;
+    const passed = rows.filter((r) => r.execution_status === "passed").length;
+    const failed = rows.filter((r) => r.execution_status === "failed").length;
+    const withEvidence = rows.filter((r) => r.evidence_count > 0).length;
+    return { total, passed, failed, withEvidence };
+  }, [rows]);
+
+  const runSummaryStats = useMemo(() => {
+    const totalRuns = runs.length;
+    const completed = runs.filter((r) => r.status === "completed").length;
+    const withFailures = runs.filter((r) => r.failed_cases > 0).length;
+    const reviewed = runs.filter((r) => r.review_done).length;
+    return { totalRuns, completed, withFailures, reviewed };
+  }, [runs]);
 
   return (
-  <div className="space-y-4 text-sm">
-      {/* Stats Dashboard */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">Total Executions</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-green-600">{stats.passed}</div>
-            <p className="text-xs text-muted-foreground">Passed</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-red-600">{stats.failed}</div>
-            <p className="text-xs text-muted-foreground">Failed</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{stats.withEvidence}</div>
-            <p className="text-xs text-muted-foreground">With Evidence</p>
-          </CardContent>
-        </Card>
-      </div>
+    <div className="space-y-4 text-sm">
+      <Tabs defaultValue="runs" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="runs" className="gap-2">
+            <ClipboardCheck className="h-4 w-4" />
+            Runs (Post-run review)
+          </TabsTrigger>
+          <TabsTrigger value="executions" className="gap-2">
+            <ListChecks className="h-4 w-4" />
+            Executions
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Main History Table */}
-      <Card>
-  <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
-          <CardTitle>Execution History</CardTitle>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search suite, test title, reason…"
-              className="w-[280px]"
-            />
-
-            <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Date range" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All time</SelectItem>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="week">Last 7 days</SelectItem>
-                <SelectItem value="month">Last 30 days</SelectItem>
-                <SelectItem value="year">Last year</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={suiteId} onValueChange={setSuiteId}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="All suites" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All suites</SelectItem>
-                {availableSuites.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="All results" />
-              </SelectTrigger>
-             <SelectContent>
-  <SelectItem value="all">All results</SelectItem>
-  <SelectItem value="passed">Passed</SelectItem>
-  <SelectItem value="failed">Failed</SelectItem>
-  <SelectItem value="blocked">Blocked</SelectItem>
-  <SelectItem value="skipped">Skipped</SelectItem>
-</SelectContent>
-            </Select>
-
-            <div className="flex items-center gap-2">
-              <Checkbox checked={hasEvidence} onCheckedChange={(v) => setHasEvidence(Boolean(v))} />
-              <span className="text-sm text-muted-foreground">Has evidence</span>
-            </div>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <Download className="h-4 w-4" />
-                  Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={exportToCSV}>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Export All Data (CSV)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={exportTrendReport}>
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Export Trend Report (CSV)
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+        {/* ================== RUNS TAB ================== */}
+        <TabsContent value="runs" className="space-y-4 mt-4">
+          {/* Run summary */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-2xl font-bold">
+                  {runSummaryStats.totalRuns}
+                </div>
+                <p className="text-xs text-muted-foreground">Runs</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-2xl font-bold text-green-600">
+                  {runSummaryStats.completed}
+                </div>
+                <p className="text-xs text-muted-foreground">Completed</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-2xl font-bold text-red-600">
+                  {runSummaryStats.withFailures}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Runs with failures
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-2xl font-bold">
+                  {runSummaryStats.reviewed}
+                </div>
+                <p className="text-xs text-muted-foreground">Reviewed</p>
+              </CardContent>
+            </Card>
           </div>
-        </CardHeader>
 
-  <CardContent className="pt-0">
-          {loading ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="ml-3 text-muted-foreground">Loading history…</span>
-            </div>
-          ) : rows.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              No executions match your filters.
-            </div>
-          ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[40px]"></TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Suite</TableHead>
-                    <TableHead className="max-w-[360px] w-[360px]">Test Case</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Duration</TableHead>
-                    <TableHead>Evidence</TableHead>
-                    <TableHead className="w-[90px]">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((r) => {
-                    const isExpanded = expandedRows.has(r.execution_id)
-                    
-                    return (
-                      <React.Fragment key={r.execution_id}>
-                        <TableRow>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={() => toggleRowExpansion(r.execution_id)}
-                            >
-                              {isExpanded ? (
-                                <ChevronUp className="h-4 w-4" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
+              <CardTitle>Run History</CardTitle>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Input
+                  value={runsSearch}
+                  onChange={(e) => setRunsSearch(e.target.value)}
+                  placeholder="Search run name, suite…"
+                  className="w-[280px]"
+                />
+
+                <Select value={dateFilter} onValueChange={setDateFilter}>
+                  <SelectTrigger className="w-[160px]">
+                    <SelectValue placeholder="Date range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All time</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="week">Last 7 days</SelectItem>
+                    <SelectItem value="month">Last 30 days</SelectItem>
+                    <SelectItem value="year">Last year</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={suiteId} onValueChange={setSuiteId}>
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="All suites" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All suites</SelectItem>
+                    {availableSuites.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+
+            <CardContent className="pt-0">
+              {runsLoading ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="ml-3 text-muted-foreground">
+                    Loading runs…
+                  </span>
+                </div>
+              ) : runs.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  No runs match your filters.
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Suite</TableHead>
+                      <TableHead>Run</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Results</TableHead>
+                      <TableHead>Evidence</TableHead>
+                      <TableHead>Review</TableHead>
+                      <TableHead className="w-[120px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {runs.map((r) => {
+                      const created = new Date(r.created_at);
+                      const passRate = r.test_cases_total
+                        ? Math.round(
+                            (r.passed_cases / r.test_cases_total) * 100
+                          )
+                        : 0;
+
+                      return (
+                        <TableRow key={r.id}>
+                          <TableCell className="text-muted-foreground">
                             <div className="flex items-center gap-2">
                               <Calendar className="h-4 w-4" />
-                              {new Date(r.created_at).toLocaleDateString()}
+                              {created.toLocaleDateString()}
                             </div>
                             <div className="text-xs">
-                              {new Date(r.created_at).toLocaleTimeString()}
+                              {created.toLocaleTimeString()}
                             </div>
                           </TableCell>
-                          <TableCell className="font-medium">{r.suite_name}</TableCell>
-                          <TableCell>
-                            <div className="font-medium">{r.test_title}</div>
-                              
+
+                          <TableCell className="font-medium">
+                            {r.suite_name}
                           </TableCell>
-                          <TableCell>{statusBadge(r.execution_status)}</TableCell>
+
                           <TableCell>
-                            <div className="flex items-center gap-2 text-sm">
-                              <Clock className="h-4 w-4 text-muted-foreground" />
-                              {formatDuration(r.duration_ms)}
+                            <div className="font-medium">
+                              {r.name || `Run ${r.id.slice(0, 8)}…`}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {r.test_cases_completed ?? 0}/
+                              {r.test_cases_total ?? r.test_cases_total}{" "}
+                              complete • {r.progress_percentage ?? passRate}%
                             </div>
                           </TableCell>
+
+                          <TableCell>{runStatusBadge(r.status)}</TableCell>
+
+                          <TableCell className="text-xs">
+                            <div className="flex flex-wrap gap-2">
+                              <Badge variant="secondary">
+                                P {r.passed_cases}
+                              </Badge>
+                              <Badge variant="secondary">
+                                F {r.failed_cases}
+                              </Badge>
+                              <Badge variant="secondary">
+                                B {r.blocked_cases}
+                              </Badge>
+                              <Badge variant="secondary">
+                                S {r.skipped_cases}
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              Pass rate: {passRate}%
+                            </div>
+                          </TableCell>
+
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm font-medium">{r.evidence_count}</span>
+                              <span className="text-sm font-medium">
+                                {r.evidence_total}
+                              </span>
                             </div>
                           </TableCell>
+
+                          <TableCell>
+                            {r.review_done ? (
+                              <Badge className="bg-emerald-600">Reviewed</Badge>
+                            ) : (
+                              <Badge variant="secondary">Not reviewed</Badge>
+                            )}
+                          </TableCell>
+
                           <TableCell>
                             <Button
                               size="sm"
                               variant="outline"
                               className="gap-1"
-                              onClick={() => openExecution(r)}
+                              onClick={() => void openRunReview(r)}
                             >
                               <Eye className="h-4 w-4" />
-                              View
+                              Review
                             </Button>
                           </TableCell>
                         </TableRow>
-                        
-                        {/* Expanded Details Row */}
-                        {isExpanded && (
-                          <TableRow>
-                            <TableCell colSpan={8} className="bg-muted/30">
-                              <div className="p-4 space-y-3">
-                                {r.execution_notes && (
-                                  <div>
-                                    <div className="text-sm font-medium mb-1">Execution Notes:</div>
-                                    <div className="text-sm text-muted-foreground bg-background p-3 rounded-lg">
-                                      {r.execution_notes}
-                                    </div>
-                                  </div>
-                                )}
-                                
-                                {r.failure_reason && (
-                                  <div>
-                                    <div className="text-sm font-medium mb-1 flex items-center gap-2 text-destructive">
-                                      <AlertCircle className="h-4 w-4" />
-                                      Failure Reason:
-                                    </div>
-                                    <div className="text-sm text-muted-foreground bg-background p-3 rounded-lg border-l-4 border-destructive">
-                                      {r.failure_reason}
-                                    </div>
-                                  </div>
-                                )}
-                                
-                                <div className="flex gap-4 text-xs text-muted-foreground">
-                                  <div>
-                                    <span className="font-medium">Started:</span>{" "}
-                                    {r.started_at ? new Date(r.started_at).toLocaleString() : "-"}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">Completed:</span>{" "}
-                                    {r.completed_at ? new Date(r.completed_at).toLocaleString() : "-"}
-                                  </div>
-                                </div>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </React.Fragment>
-                    )
-                  })}
-                </TableBody>
-              </Table>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
 
-              {/* Pagination Controls */}
-              <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                <div className="flex items-center gap-4">
-                  <div className="text-sm text-muted-foreground">
-                    Showing {Math.min((currentPage - 1) * pageSize + 1, totalCount)} to{" "}
-                    {Math.min(currentPage * pageSize, totalCount)} of {totalCount} results
-                  </div>
-                  
-                  <Select 
-                    value={String(pageSize)} 
-                    onValueChange={(v) => setPageSize(Number(v))}
-                  >
-                    <SelectTrigger className="w-[120px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">10 per page</SelectItem>
-                      <SelectItem value="20">20 per page</SelectItem>
-                      <SelectItem value="50">50 per page</SelectItem>
-                      <SelectItem value="100">100 per page</SelectItem>
-                    </SelectContent>
-                  </Select>
+          {/* Run Review Dialog */}
+
+          <RunReviewDialog
+            open={isRunReviewOpen}
+            onOpenChange={(v) => {
+              setIsRunReviewOpen(v);
+              if (!v) {
+                setActiveRun(null);
+                setRunRows([]);
+              }
+            }}
+            activeRun={activeRun}
+            rows={runRows}
+            loading={runRowsLoading}
+            saving={runSaveBusy}
+            onMarkFailuresNeedsUpdate={() => bulkMarkFailuresNeedsUpdate(true)}
+            onClearFailuresNeedsUpdate={() =>
+              bulkMarkFailuresNeedsUpdate(false)
+            }
+            onMarkAllCreateIssue={() => bulkMarkAllCreateIssue(true)}
+            onClearAllCreateIssue={() => bulkMarkAllCreateIssue(false)}
+            onPatchRow={patchRunRow}
+            onOpenEvidence={(row) => void openExecution(row)}
+            onSave={() => void saveRunReview()}
+          />
+        </TabsContent>
+
+        {/* ================== EXECUTIONS TAB ================== */}
+        <TabsContent value="executions" className="space-y-4 mt-4">
+          {/* Stats Dashboard */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-2xl font-bold">{execStats.total}</div>
+                <p className="text-xs text-muted-foreground">
+                  Total Executions
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-2xl font-bold text-green-600">
+                  {execStats.passed}
                 </div>
+                <p className="text-xs text-muted-foreground">Passed</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-2xl font-bold text-red-600">
+                  {execStats.failed}
+                </div>
+                <p className="text-xs text-muted-foreground">Failed</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-2xl font-bold">
+                  {execStats.withEvidence}
+                </div>
+                <p className="text-xs text-muted-foreground">With Evidence</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Main History Table */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
+              <CardTitle>Execution History</CardTitle>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search suite, test title, reason…"
+                  className="w-[280px]"
+                />
+
+                <Select value={dateFilter} onValueChange={setDateFilter}>
+                  <SelectTrigger className="w-[160px]">
+                    <SelectValue placeholder="Date range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All time</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="week">Last 7 days</SelectItem>
+                    <SelectItem value="month">Last 30 days</SelectItem>
+                    <SelectItem value="year">Last year</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={suiteId} onValueChange={setSuiteId}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="All suites" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All suites</SelectItem>
+                    {availableSuites.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={status}
+                  onValueChange={(v) => setStatus(v as StatusFilter)}
+                >
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="All results" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All results</SelectItem>
+                    <SelectItem value="passed">Passed</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                    <SelectItem value="blocked">Blocked</SelectItem>
+                    <SelectItem value="skipped">Skipped</SelectItem>
+                  </SelectContent>
+                </Select>
 
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(1)}
-                    disabled={currentPage === 1}
-                  >
-                    First
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    Previous
-                  </Button>
-                  
-                  <div className="flex items-center gap-2 px-3">
-                    <span className="text-sm">
-                      Page {currentPage} of {Math.ceil(totalCount / pageSize)}
-                    </span>
-                  </div>
-                  
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage((p) => p + 1)}
-                    disabled={currentPage >= Math.ceil(totalCount / pageSize)}
-                  >
-                    Next
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(Math.ceil(totalCount / pageSize))}
-                    disabled={currentPage >= Math.ceil(totalCount / pageSize)}
-                  >
-                    Last
-                  </Button>
+                  <Checkbox
+                    checked={hasEvidence}
+                    onCheckedChange={(v) => setHasEvidence(Boolean(v))}
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    Has evidence
+                  </span>
                 </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* View Evidence Dialog */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="gap-2">
+                      <Download className="h-4 w-4" />
+                      Export
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={exportToCSV}>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Export All Data (CSV)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={exportTrendReport}>
+                      <BarChart3 className="h-4 w-4 mr-2" />
+                      Export Trend Report (CSV)
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </CardHeader>
+
+            <CardContent className="pt-0">
+              {loading ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="ml-3 text-muted-foreground">
+                    Loading history…
+                  </span>
+                </div>
+              ) : rows.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  No executions match your filters.
+                </div>
+              ) : (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[40px]"></TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Suite</TableHead>
+                        <TableHead className="max-w-[360px] w-[360px]">
+                          Test Case
+                        </TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead>Evidence</TableHead>
+                        <TableHead className="w-[90px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((r) => {
+                        const isExpanded = expandedRows.has(r.execution_id);
+
+                        return (
+                          <React.Fragment key={r.execution_id}>
+                            <TableRow>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() =>
+                                    toggleRowExpansion(r.execution_id)
+                                  }
+                                >
+                                  {isExpanded ? (
+                                    <ChevronUp className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </TableCell>
+
+                              <TableCell className="text-sm text-muted-foreground">
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="h-4 w-4" />
+                                  {new Date(r.created_at).toLocaleDateString()}
+                                </div>
+                                <div className="text-xs">
+                                  {new Date(r.created_at).toLocaleTimeString()}
+                                </div>
+                              </TableCell>
+
+                              <TableCell className="font-medium">
+                                {r.suite_name}
+                              </TableCell>
+
+                              <TableCell>
+                                <div className="font-medium">
+                                  {r.test_title}
+                                </div>
+                              </TableCell>
+
+                              <TableCell>
+                                {statusBadge(r.execution_status)}
+                              </TableCell>
+
+                              <TableCell>
+                                <div className="flex items-center gap-2 text-sm">
+                                  <Clock className="h-4 w-4 text-muted-foreground" />
+                                  {formatDuration(r.duration_ms)}
+                                </div>
+                              </TableCell>
+
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm font-medium">
+                                    {r.evidence_count}
+                                  </span>
+                                </div>
+                              </TableCell>
+
+                              <TableCell>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1"
+                                  onClick={() => openExecution(r)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                  View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+
+                            {isExpanded && (
+                              <TableRow>
+                                <TableCell colSpan={8} className="bg-muted/30">
+                                  <div className="p-4 space-y-3">
+                                    {r.execution_notes && (
+                                      <div>
+                                        <div className="text-sm font-medium mb-1">
+                                          Execution Notes:
+                                        </div>
+                                        <div className="text-sm text-muted-foreground bg-background p-3 rounded-lg">
+                                          {r.execution_notes}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {r.failure_reason && (
+                                      <div>
+                                        <div className="text-sm font-medium mb-1 flex items-center gap-2 text-destructive">
+                                          <AlertCircle className="h-4 w-4" />
+                                          Failure Reason:
+                                        </div>
+                                        <div className="text-sm text-muted-foreground bg-background p-3 rounded-lg border-l-4 border-destructive">
+                                          {r.failure_reason}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <div className="flex gap-4 text-xs text-muted-foreground">
+                                      <div>
+                                        <span className="font-medium">
+                                          Started:
+                                        </span>{" "}
+                                        {r.started_at
+                                          ? new Date(
+                                              r.started_at
+                                            ).toLocaleString()
+                                          : "-"}
+                                      </div>
+                                      <div>
+                                        <span className="font-medium">
+                                          Completed:
+                                        </span>{" "}
+                                        {r.completed_at
+                                          ? new Date(
+                                              r.completed_at
+                                            ).toLocaleString()
+                                          : "-"}
+                                      </div>
+                                      <div>
+                                        <span className="font-medium">
+                                          Reviewed:
+                                        </span>{" "}
+                                        {r.reviewed_at
+                                          ? new Date(
+                                              r.reviewed_at
+                                            ).toLocaleString()
+                                          : "-"}
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <Badge variant="secondary">
+                                          Needs update:{" "}
+                                          {r.review_needs_update ? "yes" : "no"}
+                                        </Badge>
+                                        <Badge variant="secondary">
+                                          Create issue:{" "}
+                                          {r.review_create_issue ? "yes" : "no"}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+
+                  {/* Pagination Controls */}
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                    <div className="flex items-center gap-4">
+                      <div className="text-sm text-muted-foreground">
+                        Showing{" "}
+                        {Math.min((currentPage - 1) * pageSize + 1, totalCount)}{" "}
+                        to {Math.min(currentPage * pageSize, totalCount)} of{" "}
+                        {totalCount} results
+                      </div>
+
+                      <Select
+                        value={String(pageSize)}
+                        onValueChange={(v) => setPageSize(Number(v))}
+                      >
+                        <SelectTrigger className="w-[120px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10 per page</SelectItem>
+                          <SelectItem value="20">20 per page</SelectItem>
+                          <SelectItem value="50">50 per page</SelectItem>
+                          <SelectItem value="100">100 per page</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                      >
+                        First
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setCurrentPage((p) => Math.max(1, p - 1))
+                        }
+                        disabled={currentPage === 1}
+                      >
+                        Previous
+                      </Button>
+
+                      <div className="flex items-center gap-2 px-3">
+                        <span className="text-sm">
+                          Page {currentPage} of{" "}
+                          {Math.ceil(totalCount / pageSize)}
+                        </span>
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((p) => p + 1)}
+                        disabled={
+                          currentPage >= Math.ceil(totalCount / pageSize)
+                        }
+                      >
+                        Next
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setCurrentPage(Math.ceil(totalCount / pageSize))
+                        }
+                        disabled={
+                          currentPage >= Math.ceil(totalCount / pageSize)
+                        }
+                      >
+                        Last
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* View Evidence Dialog (existing) */}
       <Dialog open={openView} onOpenChange={setOpenView}>
         <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
           <DialogHeader>
@@ -921,21 +1729,27 @@ if (r.execution_status === "skipped") existing.skipped++
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue="screenshots" className="flex-1 flex flex-col overflow-hidden">
+          <Tabs
+            defaultValue="screenshots"
+            className="flex-1 flex flex-col overflow-hidden"
+          >
             <TabsList>
               <TabsTrigger value="screenshots">
                 Screenshots ({evidence.length})
               </TabsTrigger>
-              <TabsTrigger value="details">
-                Details
-              </TabsTrigger>
+              <TabsTrigger value="details">Details</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="screenshots" className="flex-1 overflow-auto mt-4">
+            <TabsContent
+              value="screenshots"
+              className="flex-1 overflow-auto mt-4"
+            >
               {evidenceLoading ? (
                 <div className="flex items-center justify-center py-10">
                   <Loader2 className="h-6 w-6 animate-spin" />
-                  <span className="ml-3 text-muted-foreground">Loading evidence…</span>
+                  <span className="ml-3 text-muted-foreground">
+                    Loading evidence…
+                  </span>
                 </div>
               ) : evidence.length === 0 ? (
                 <div className="py-10 text-center text-muted-foreground">
@@ -961,33 +1775,47 @@ if (r.execution_status === "skipped") existing.skipped++
                 <div className="space-y-4">
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Execution Information</CardTitle>
+                      <CardTitle className="text-base">
+                        Execution Information
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3 text-sm">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <span className="text-muted-foreground">Status:</span>
-                          <div className="mt-1">{statusBadge(activeExecution.execution_status)}</div>
+                          <div className="mt-1">
+                            {statusBadge(activeExecution.execution_status)}
+                          </div>
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Duration:</span>
+                          <span className="text-muted-foreground">
+                            Duration:
+                          </span>
                           <div className="font-medium mt-1">
                             {formatDuration(activeExecution.duration_ms)}
                           </div>
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Started:</span>
+                          <span className="text-muted-foreground">
+                            Started:
+                          </span>
                           <div className="font-medium mt-1">
-                            {activeExecution.started_at 
-                              ? new Date(activeExecution.started_at).toLocaleString()
+                            {activeExecution.started_at
+                              ? new Date(
+                                  activeExecution.started_at
+                                ).toLocaleString()
                               : "-"}
                           </div>
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Completed:</span>
+                          <span className="text-muted-foreground">
+                            Completed:
+                          </span>
                           <div className="font-medium mt-1">
                             {activeExecution.completed_at
-                              ? new Date(activeExecution.completed_at).toLocaleString()
+                              ? new Date(
+                                  activeExecution.completed_at
+                                ).toLocaleString()
                               : "-"}
                           </div>
                         </div>
@@ -998,7 +1826,9 @@ if (r.execution_status === "skipped") existing.skipped++
                   {activeExecution.execution_notes && (
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-base">Execution Notes</CardTitle>
+                        <CardTitle className="text-base">
+                          Execution Notes
+                        </CardTitle>
                       </CardHeader>
                       <CardContent>
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap">
@@ -1044,7 +1874,10 @@ if (r.execution_status === "skipped") existing.skipped++
 
       {/* Image Preview Dialog */}
       {previewImage && (
-        <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
+        <Dialog
+          open={!!previewImage}
+          onOpenChange={() => setPreviewImage(null)}
+        >
           <DialogContent className="max-w-[95vw] max-h-[95vh] p-0">
             <DialogHeader className="sr-only">
               <DialogTitle>Image Preview</DialogTitle>
@@ -1060,72 +1893,64 @@ if (r.execution_status === "skipped") existing.skipped++
         </Dialog>
       )}
     </div>
-  )
+  );
 }
 
-// Separate component to handle signed URL loading for each attachment
 function AttachmentCardWithSignedUrl({
   attachment,
   onPreview,
   getSignedUrl,
 }: {
-  attachment: AttachmentRow
-  onPreview: (url: string) => void
-  getSignedUrl: (path: string, expires: number) => Promise<string>
+  attachment: AttachmentRow;
+  onPreview: (url: string) => void;
+  getSignedUrl: (path: string, expires: number) => Promise<string>;
 }) {
-  const [imageUrl, setImageUrl] = useState<string>("")
-  const [loading, setLoading] = useState(true)
+  const [imageUrl, setImageUrl] = useState<string>("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
 
     async function loadUrl() {
       try {
-        setLoading(true)
-        const url = await getSignedUrl(attachment.file_path, 60 * 60) // 1 hour
-        if (!cancelled) {
-          setImageUrl(url)
-        }
+        setLoading(true);
+        const url = await getSignedUrl(attachment.file_path, 60 * 60);
+        if (!cancelled) setImageUrl(url);
       } catch (err) {
-        console.error("Error loading image:", err)
-        if (!cancelled) {
-          setImageUrl("")
-        }
+        console.error("Error loading image:", err);
+        if (!cancelled) setImageUrl("");
       } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
-    loadUrl()
-
+    void loadUrl();
     return () => {
-      cancelled = true
-    }
-  }, [attachment.file_path, getSignedUrl])
+      cancelled = true;
+    };
+  }, [attachment.file_path, getSignedUrl]);
 
-  const isImage = attachment.file_type?.startsWith("image/")
+  const isImage = attachment.file_type?.startsWith("image/");
 
-  async function handleDownload(e: React.MouseEvent) {
-    e.stopPropagation()
-    
-    // Refresh URL before download to avoid expiry
-    const freshUrl = await getSignedUrl(attachment.file_path, 60 * 60)
-    if (!freshUrl) {
-      toast.error("Failed to download file")
-      return
-    }
-
-    const a = document.createElement("a")
-    a.href = freshUrl
-    a.download = attachment.file_name
-    a.click()
-  }
+  const handleDownload = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const freshUrl = await getSignedUrl(attachment.file_path, 60 * 60);
+      if (!freshUrl) {
+        toast.error("Failed to download file");
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = freshUrl;
+      a.download = attachment.file_name;
+      a.click();
+    },
+    [attachment.file_path, attachment.file_name, getSignedUrl]
+  );
 
   return (
     <Card className="overflow-hidden group">
-      <div 
+      <div
         className="aspect-video bg-muted relative cursor-pointer"
         onClick={() => imageUrl && onPreview(imageUrl)}
       >
@@ -1144,16 +1969,18 @@ function AttachmentCardWithSignedUrl({
             <FileText className="h-12 w-12 text-muted-foreground" />
           </div>
         )}
-        
-        {attachment.step_number && (
+
+        {attachment.step_number != null && (
           <Badge className="absolute top-2 left-2 text-xs">
             Step {attachment.step_number}
           </Badge>
         )}
       </div>
-      
+
       <CardContent className="p-3">
-        <p className="text-sm font-medium line-clamp-1">{attachment.file_name}</p>
+        <p className="text-sm font-medium line-clamp-1">
+          {attachment.file_name}
+        </p>
         {attachment.description && (
           <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
             {attachment.description}
@@ -1175,5 +2002,5 @@ function AttachmentCardWithSignedUrl({
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
