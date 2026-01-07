@@ -2,7 +2,6 @@
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import BillingPage from "@/components/billing/billingmanagment";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
-import PromotionalBanner from "@/components/billing/billingmanagment";
 import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 export default function Billing() {
