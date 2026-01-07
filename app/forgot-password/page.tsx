@@ -1,43 +1,31 @@
-import { ForgotPasswordForm } from "@/components/auth/forgot-password-form"
-import { ClientPageWrapper } from '@/components/auth/client-page-wrapper'
-import Image from "next/image"
-
-
+import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";
+import { ClientPageWrapper } from "@/components/auth/client-page-wrapper";
+import Image from "next/image";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
+import { Logo } from "@/components/pagecomponents/brandlogo";
 
 export default function ForgotPasswordPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-            <div className="flex w-full max-w-sm flex-col gap-6">
-
-                  <Image
-                       src="/logo-sq-dark.svg"
-                       alt="SynthQA Logo"
-                       width={5000      }
-                       height={2000}
-                       className="hidden dark:inline-block h-20 w-auto sm:h-20"
-                       loading="eager"
-                       priority
-                     />
-                     {/* Light-mode logo */}
-                     <Image
-                       src="/logo-sq-light.svg"
-                       alt="SynthQA Logo"
-                       width={1000}
-                       height={100}
-                       className="inline-block dark:hidden h-20 w-auto sm:h-20"
-                       loading="eager"
-                       priority
-                     />
-      
-             <ClientPageWrapper>
-                <ForgotPasswordForm />
-            </ClientPageWrapper>
+    <div className="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
+      <div className="flex w-full max-w-sm flex-col gap-0">
+        {" "}
+        <div className="flex justify-center">
+          <Logo size="xl" />{" "}
+        </div>
+        <main className="space-y-5">
+          {" "}
+          <ClientPageWrapper>
+            <ForgotPasswordForm />
+          </ClientPageWrapper>
+        </main>{" "}
+      </div>{" "}
+      <div className="flex-1" />{" "}
+      <div className="flex h-4 items-center space-x-4 text-sm"></div>{" "}
+      <SiteFooter />{" "}
     </div>
-
-    </div>
-  )
+  );
 }
 
 export const metadata = {
-  title: 'SynthQA - Forgot Password?',
-}
+  title: "SynthQA - Forgot Password?",
+};

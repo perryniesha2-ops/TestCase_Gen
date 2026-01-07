@@ -448,46 +448,58 @@ function mapSubscriptionStatus(stripeStatus: string): string {
   return statusMap[stripeStatus] || "active";
 }
 
-// Helper: Update usage limits based on plan
 async function updateUsageLimits(userId: string, planId: string) {
   const planLimits = {
     free: { testCases: 20, apiCalls: 200 },
     pro: { testCases: 500, apiCalls: 5000 },
     team: { testCases: 2000, apiCalls: 20000 },
-    enterprise: { testCases: -1, apiCalls: -1 },
+    enterprise: { testCases: -1, apiCalls: -1 }, // -1 = unlimited
   };
 
   const limits =
     planLimits[planId as keyof typeof planLimits] || planLimits.free;
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = new Date().toISOString().slice(0, 7); // "2026-01"
 
-  // Get existing usage to preserve current month's usage
-  const { data: existingUsage } = await supabaseAdmin
-    .from("user_usage")
-    .select("test_cases_generated, api_calls_used")
-    .eq("user_id", userId)
-    .eq("month", currentMonth)
-    .single();
+  console.log(`📊 Updating usage limits for ${userId} to ${planId}:`, limits);
 
-  const upsertData = {
-    user_id: userId,
-    month: currentMonth,
-    test_cases_generated: existingUsage?.test_cases_generated || 0,
-    api_calls_used: existingUsage?.api_calls_used || 0,
-    monthly_limit_test_cases: limits.testCases,
-    monthly_limit_api_calls: limits.apiCalls,
-    updated_at: new Date().toISOString(),
-  };
+  try {
+    // Get existing usage to preserve current counts
+    const { data: existingUsage } = await supabaseAdmin
+      .from("user_usage")
+      .select("test_cases_generated, api_calls_used")
+      .eq("user_id", userId)
+      .eq("month", currentMonth)
+      .single();
 
-  const { error } = await supabaseAdmin.from("user_usage").upsert(upsertData, {
-    onConflict: "user_id,month",
-    ignoreDuplicates: false,
-  });
+    const upsertData = {
+      user_id: userId,
+      month: currentMonth,
+      test_cases_generated: existingUsage?.test_cases_generated || 0,
+      api_calls_used: existingUsage?.api_calls_used || 0,
+      monthly_limit_test_cases: limits.testCases,
+      monthly_limit_api_calls: limits.apiCalls,
+      updated_at: new Date().toISOString(),
+    };
 
-  if (error) {
-    console.error("❌ Error updating usage limits:", error);
-  } else {
-    console.log(`✅ Usage limits updated for ${userId}: ${planId}`);
+    console.log("📊 Upserting usage data:", upsertData);
+
+    const { error } = await supabaseAdmin
+      .from("user_usage")
+      .upsert(upsertData, {
+        onConflict: "user_id,month",
+        ignoreDuplicates: false, // IMPORTANT: Allow updates
+      });
+
+    if (error) {
+      console.error("❌ Error updating usage limits:", error);
+      throw error;
+    }
+
+    console.log(`✅ Usage limits updated successfully for ${userId}`);
+    return true;
+  } catch (error) {
+    console.error("❌ Failed to update usage limits:", error);
+    return false;
   }
 }
 

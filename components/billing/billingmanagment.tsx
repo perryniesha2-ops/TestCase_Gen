@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -31,6 +31,7 @@ import {
   Sparkles,
   Users,
   Mail,
+  RefreshCw,
 } from "lucide-react";
 import {
   Accordion,
@@ -38,6 +39,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { PricingContactSheet } from "../billing/pricingcontact";
 
 // ------------------------- Types -------------------------
 
@@ -61,16 +63,14 @@ type PlanFeature = { name: string; included: boolean };
 type Plan = {
   id: Tier;
   name: string;
-  /** Monthly price (USD) for the monthly billing option. Null = custom. */
   price: number | null;
-  /** Monthly price (USD) when billed yearly (i.e., discounted monthly equivalent). Null = custom. */
   yearlyPrice: number | null;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
   features: PlanFeature[];
   cta: string;
   popular: boolean;
-  contactSales?: boolean; // NEW: Flag for contact sales plans
+  contactSales?: boolean;
 };
 
 // ------------------------- Data -------------------------
@@ -102,8 +102,8 @@ const plans: Plan[] = [
   {
     id: "pro",
     name: "Pro",
-    price: 15, // UPDATED: Reduced from $29 to $15
-    yearlyPrice: 12, // UPDATED: 20% discount ($15 * 0.8 = $12)
+    price: 15,
+    yearlyPrice: 12,
     description: "For serious testers and small teams",
     icon: FlaskConical,
     features: [
@@ -125,8 +125,8 @@ const plans: Plan[] = [
   {
     id: "team",
     name: "Team",
-    price: null, // UPDATED: Now custom pricing
-    yearlyPrice: null, // UPDATED: Now custom pricing
+    price: null,
+    yearlyPrice: null,
     description: "For growing teams and organizations",
     icon: Users,
     features: [
@@ -142,9 +142,9 @@ const plans: Plan[] = [
       { name: "Priority support + Slack channel", included: true },
       { name: "Custom onboarding", included: true },
     ],
-    cta: "Contact Sales", // UPDATED: Contact sales instead of trial
+    cta: "Contact Sales",
     popular: false,
-    contactSales: true, // UPDATED: Flag this as contact sales
+    contactSales: true,
   },
   {
     id: "enterprise",
@@ -168,7 +168,7 @@ const plans: Plan[] = [
     ],
     cta: "Contact Sales",
     popular: false,
-    contactSales: true, // UPDATED: Flag this as contact sales
+    contactSales: true,
   },
 ];
 
@@ -208,15 +208,17 @@ function fmtUSD(n: number) {
     maximumFractionDigits: 0,
   });
 }
+
 function priceFor(plan: Plan, isYearly: boolean): number | null {
   return isYearly ? plan.yearlyPrice : plan.price;
 }
+
 function yearlySavings(plan: Plan): number {
-  // plans store monthly equivalent for both price and yearlyPrice
   if (plan.price == null || plan.yearlyPrice == null) return 0;
   const monthlyDiff = Math.max(0, plan.price - plan.yearlyPrice);
-  return monthlyDiff * 12; // dollars saved per year
+  return monthlyDiff * 12;
 }
+
 function usagePct(u?: UserProfile["usage"]): number {
   if (!u) return 0;
   if (u.monthly_limit <= 0) return 0;
@@ -232,27 +234,34 @@ export default function BillingPage() {
   const [user, setUser] = React.useState<UserProfile | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [billingLoading, setBillingLoading] = React.useState(false);
+  const [refetching, setRefetching] = React.useState(false);
   const [isYearly, setIsYearly] = React.useState(false);
+  const [contactSheetOpen, setContactSheetOpen] = React.useState(false);
+  const [selectedPlan, setSelectedPlan] = React.useState<"team" | "enterprise">(
+    "team"
+  );
 
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
 
-  React.useEffect(() => {
-    (async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) {
-          router.push("/login");
-          return;
-        }
+  // Function to fetch user data
+  const fetchUserData = React.useCallback(async () => {
+    try {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
 
-        // Fetch real user profile from database
-        const { data: profile, error } = await supabase
-          .from("user_profiles")
-          .select(
-            `
+      if (!authUser) {
+        router.push("/login");
+        return null;
+      }
+
+      // Fetch real user profile from database
+      const { data: profile, error } = await supabase
+        .from("user_profiles")
+        .select(
+          `
           *,
           user_usage(
             test_cases_generated,
@@ -260,76 +269,124 @@ export default function BillingPage() {
             monthly_limit_test_cases
           )
         `
-          )
-          .eq("id", user.id)
-          .single();
+        )
+        .eq("id", authUser.id)
+        .single();
 
-        if (error) {
-          console.error("Error fetching profile:", error);
-          // Fallback to mock data if database isn't set up yet
-          const mock: UserProfile = {
-            id: user.id,
-            email: user.email || "",
-            subscription_tier: "free",
-            subscription_status: "active",
-            usage: {
-              test_cases_generated: 3,
-              api_calls_used: 15,
-              monthly_limit: 10,
-            },
-          };
-          setUser(mock);
-        } else {
-          // Use real data from database
-          const realProfile: UserProfile = {
-            id: profile.id,
-            email: profile.email,
-            subscription_tier: profile.subscription_tier || "free",
-            subscription_status: profile.subscription_status || "active",
-            trial_ends_at: profile.trial_ends_at,
-            usage: {
-              test_cases_generated:
-                profile.user_usage?.[0]?.test_cases_generated || 0,
-              api_calls_used: profile.user_usage?.[0]?.api_calls_used || 0,
-              monthly_limit:
-                profile.user_usage?.[0]?.monthly_limit_test_cases || 10,
-            },
-          };
-          setUser(realProfile);
-        }
-      } catch (e) {
-        console.error(e);
-        toast.error("Failed to load billing information");
-      } finally {
-        setLoading(false);
+      if (error) {
+        console.error("Error fetching profile:", error);
+        // Fallback to mock data
+        const mock: UserProfile = {
+          id: authUser.id,
+          email: authUser.email || "",
+          subscription_tier: "free",
+          subscription_status: "active",
+          usage: {
+            test_cases_generated: 3,
+            api_calls_used: 15,
+            monthly_limit: 20,
+          },
+        };
+        return mock;
+      } else {
+        // Use real data from database with FALLBACK for limits
+        const realProfile: UserProfile = {
+          id: profile.id,
+          email: profile.email,
+          subscription_tier: profile.subscription_tier || "free",
+          subscription_status: profile.subscription_status || "active",
+          trial_ends_at: profile.trial_ends_at,
+          usage: {
+            test_cases_generated:
+              profile.user_usage?.[0]?.test_cases_generated || 0,
+            api_calls_used: profile.user_usage?.[0]?.api_calls_used || 0,
+            // IMPORTANT: Fallback to subscription tier if no limit in user_usage
+            monthly_limit:
+              profile.user_usage?.[0]?.monthly_limit_test_cases ||
+              (profile.subscription_tier === "pro"
+                ? 500
+                : profile.subscription_tier === "team"
+                ? 2000
+                : profile.subscription_tier === "enterprise"
+                ? -1
+                : 20),
+          },
+        };
+        return realProfile;
       }
-    })();
+    } catch (e) {
+      console.error("Error fetching user data:", e);
+      toast.error("Failed to load billing information");
+      return null;
+    }
   }, [router, supabase]);
+
+  // Initial load
+  React.useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const userData = await fetchUserData();
+      setUser(userData);
+      setLoading(false);
+    })();
+  }, [fetchUserData]);
+
+  // Check for successful checkout and refetch data
+  React.useEffect(() => {
+    const success = searchParams.get("success");
+    const sessionId = searchParams.get("session_id");
+
+    if (success === "true" && sessionId) {
+      console.log("✅ Checkout successful, refetching data...");
+
+      // Show success message
+      toast.success("🎉 Subscription activated! Updating your account...");
+
+      // Refetch data after a short delay to allow webhook to process
+      const refetchTimer = setTimeout(async () => {
+        setRefetching(true);
+        const userData = await fetchUserData();
+        setUser(userData);
+        setRefetching(false);
+
+        if (userData) {
+          toast.success(
+            `Welcome to ${userData.subscription_tier.toUpperCase()} plan!`
+          );
+        }
+
+        // Clean up URL
+        router.replace("/billing", { scroll: false });
+      }, 2000); // 2 second delay
+
+      return () => clearTimeout(refetchTimer);
+    }
+  }, [searchParams, fetchUserData, router]);
+
+  // Manual refresh function
+  const handleRefresh = async () => {
+    setRefetching(true);
+    const userData = await fetchUserData();
+    setUser(userData);
+    setRefetching(false);
+    toast.success("Data refreshed!");
+  };
 
   async function handleSubscribe(planId: Tier) {
     if (!user) return;
     setBillingLoading(true);
     try {
-      // UPDATED: Handle Team and Enterprise as contact sales
+      // Open ContactSheet for Team and Enterprise
       if (planId === "team" || planId === "enterprise") {
-        const subject =
-          planId === "team" ? "Team Plan Inquiry" : "Enterprise Plan Inquiry";
-        window.open(
-          `mailto:sales@synthqa.com?subject=${encodeURIComponent(
-            subject
-          )}&body=${encodeURIComponent(
-            `Hi, I'm interested in the ${
-              planId === "team" ? "Team" : "Enterprise"
-            } plan.\n\nName: \nCompany: \nCurrent team size: \n\nPlease contact me to discuss pricing and features.`
-          )}`,
-          "_blank"
-        );
-        toast.success("Opening email client. We'll get back to you soon!");
+        setSelectedPlan(planId);
+        setContactSheetOpen(true);
+        setBillingLoading(false);
         return;
       }
 
       if (planId === "free") {
         toast.success("You're already on the free plan!");
+        setBillingLoading(false);
         return;
       }
 
@@ -377,9 +434,21 @@ export default function BillingPage() {
 
         {/* Header */}
         <div className="mb-10 text-center">
-          <Badge variant="secondary" className="mb-3">
-            Pricing
-          </Badge>
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <Badge variant="secondary">Pricing</Badge>
+            {/* Refresh button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={refetching}
+              className="h-7"
+            >
+              <RefreshCw
+                className={cn("h-3 w-3", refetching && "animate-spin")}
+              />
+            </Button>
+          </div>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
             Choose your plan
           </h1>
@@ -412,6 +481,20 @@ export default function BillingPage() {
           </div>
         </div>
 
+        {/* Show loading state during refetch */}
+        {refetching && (
+          <Card className="mb-6 border-primary/30 bg-primary/5">
+            <CardContent className="py-4">
+              <div className="flex items-center justify-center gap-3 text-sm">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <span className="text-muted-foreground">
+                  Updating your subscription details...
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Usage */}
         {user && (
           <Card className="mb-10">
@@ -430,7 +513,9 @@ export default function BillingPage() {
                   <span>AI-generated test cases</span>
                   <span>
                     {user.usage.test_cases_generated} /{" "}
-                    {user.usage.monthly_limit}
+                    {user.usage.monthly_limit === -1
+                      ? "∞"
+                      : user.usage.monthly_limit}
                   </span>
                 </div>
                 <Progress value={usagePct(user.usage)} />
@@ -504,7 +589,7 @@ export default function BillingPage() {
           </CardContent>
         </Card>
 
-        {/* UPDATED: Team & Enterprise CTA */}
+        {/* Team & Enterprise CTA */}
         <Card className="border-primary/30 bg-gradient-to-r from-primary/10 to-primary/5">
           <CardContent className="py-10 text-center">
             <div className="flex justify-center gap-4 mb-4">
@@ -527,6 +612,22 @@ export default function BillingPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Contact Sales Sheet */}
+      <PricingContactSheet
+        open={contactSheetOpen}
+        onOpenChange={setContactSheetOpen}
+        defaultSubject={
+          selectedPlan === "team"
+            ? "Team Plan Inquiry"
+            : "Enterprise Plan Inquiry"
+        }
+        defaultMessage={`Hi, I'm interested in the ${
+          selectedPlan === "team" ? "Team" : "Enterprise"
+        } plan.\n\nName: \nCompany: \nCurrent team size: \n\nPlease contact me to discuss pricing and features.`}
+        title="Contact Sales"
+        description="Tell us about your needs and we'll get back to you with a custom quote."
+      />
     </div>
   );
 }
@@ -567,7 +668,7 @@ function PlanCard({
   onSelect: () => void;
 }) {
   const Icon = plan.icon;
-  const price = priceFor(plan, isYearly); // can be null
+  const price = priceFor(plan, isYearly);
   const showSavings =
     isYearly &&
     plan.price != null &&

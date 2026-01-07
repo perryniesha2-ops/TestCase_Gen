@@ -6,7 +6,6 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
   SheetFooter,
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -15,22 +14,49 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Mail } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 type Props = {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   action?: string;
-
-  className?: string;
+  defaultSubject?: string;
+  defaultMessage?: string;
+  title?: string;
+  description?: string;
 };
 
-export function ContactSheet({
+export function PricingContactSheet({
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
   action = "/api/send-support-emails",
-  className,
+  defaultSubject = "",
+  defaultMessage = "",
+  title = "Contact Sales",
+  description = "Tell us about your needs and we'll get back to you shortly.",
 }: Props) {
-  const [open, setOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+
+  // Use controlled state if provided, otherwise use internal state
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
+
+  // Update form when defaults change
+  React.useEffect(() => {
+    if (open && defaultSubject) {
+      const subjectInput = document.getElementById(
+        "subject"
+      ) as HTMLInputElement;
+      if (subjectInput) subjectInput.value = defaultSubject;
+    }
+    if (open && defaultMessage) {
+      const messageInput = document.getElementById(
+        "message"
+      ) as HTMLTextAreaElement;
+      if (messageInput) messageInput.value = defaultMessage;
+    }
+  }, [open, defaultSubject, defaultMessage]);
 
   async function onSubmit(form: HTMLFormElement) {
     setLoading(true);
@@ -66,10 +92,12 @@ export function ContactSheet({
 
       if (!res.ok) {
         toast.error(
-          json?.error || "We couldn’t send your message. Please try again."
+          json?.error || "We couldn't send your message. Please try again."
         );
       } else {
-        toast.success("Thanks! Your message has been sent.");
+        toast.success(
+          "Thanks! Your message has been sent. We'll be in touch soon!"
+        );
         form.reset();
         setOpen(false);
       }
@@ -82,29 +110,14 @@ export function ContactSheet({
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "text-sm font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-2",
-            className
-          )}
-        >
-          <Mail className="h-4 w-4" />
-        </button>
-      </SheetTrigger>
-
-      {/* Make the sheet content a flex column and the middle area a ScrollArea */}
       <SheetContent
         side="right"
         className="flex h-full flex-col p-0 sm:max-w-[560px]"
       >
         <div className="border-b px-6 py-4">
           <SheetHeader>
-            <SheetTitle>Contact Support</SheetTitle>
-            <p className="text-sm text-muted-foreground">
-              Tell us a bit about the issue and we’ll reply to your email.
-            </p>
+            <SheetTitle>{title}</SheetTitle>
+            <p className="text-sm text-muted-foreground">{description}</p>
           </SheetHeader>
         </div>
 
@@ -120,22 +133,26 @@ export function ContactSheet({
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="name">Your Name</Label>
+                <Label htmlFor="name">
+                  Your Name <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="name"
                   name="name"
-                  placeholder="example: Ada Lovelace"
+                  placeholder="Ada Lovelace"
                   autoComplete="name"
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">Your Email</Label>
+                <Label htmlFor="email">
+                  Your Email <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="email"
                   name="email"
                   type="email"
-                  placeholder="example: you@example.com"
+                  placeholder="you@example.com"
                   autoComplete="email"
                   required
                 />
@@ -143,27 +160,32 @@ export function ContactSheet({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="subject">Subject</Label>
+              <Label htmlFor="subject">
+                Subject <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="subject"
                 name="subject"
-                placeholder="Issue summary"
+                placeholder="What can we help with?"
+                defaultValue={defaultSubject}
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="message">Message</Label>
+              <Label htmlFor="message">
+                Message <span className="text-destructive">*</span>
+              </Label>
               <Textarea
                 id="message"
                 name="message"
-                placeholder="Describe what you need help with..."
+                placeholder="Tell us about your needs..."
                 className="min-h-[160px]"
+                defaultValue={defaultMessage}
                 required
               />
               <p className="text-xs text-muted-foreground">
-                Include steps to reproduce, screenshots, and your browser/device
-                if relevant.
+                Include your company name, team size, and specific requirements.
               </p>
             </div>
 
@@ -192,7 +214,7 @@ export function ContactSheet({
               Cancel
             </Button>
             <Button form="contact-form" type="submit" disabled={loading}>
-              {loading ? "Sending..." : "Send to Support"}
+              {loading ? "Sending..." : "Send Message"}
             </Button>
           </div>
         </SheetFooter>

@@ -671,10 +671,10 @@ export default function PrivacyPolicyPage() {
                     To exercise your rights:
                   </div>
                   <p>
-                    Contact us at href="mailto:privacy@synthqa.app"
+                    Contact us at href="mailto:admin@synthqa.app"
                     className="text-primary hover:underline"
                   </p>
-                  privacy@synthqa.app or use the account settings in your
+                  admin@synthqa.app or use the account settings in your
                   dashboard. We will respond within 30 days.
                 </div>
 
@@ -794,7 +794,7 @@ export default function PrivacyPolicyPage() {
                         href="mailto:support@synthqa.app"
                         className="text-primary hover:underline"
                       >
-                        support@synthqa.app
+                        admin@synthqa.app
                       </a>
                     </p>
                   </div>

@@ -282,6 +282,7 @@ export function ExecutionHistory() {
   const [runRows, setRunRows] = useState<ExecutionHistoryRow[]>([]);
   const [runRowsLoading, setRunRowsLoading] = useState(false);
   const [runSaveBusy, setRunSaveBusy] = useState(false);
+  const [showAborted, setShowAborted] = useState(false);
 
   const INCLUDED_STATUSES: AllowedStatus[] = [
     "passed",
@@ -299,7 +300,7 @@ export function ExecutionHistory() {
   useEffect(() => {
     void fetchRuns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suiteId, dateFilter, debouncedRunsSearch]);
+  }, [suiteId, dateFilter, debouncedRunsSearch, showAborted]);
 
   // Executions fetch
   useEffect(() => {
@@ -405,6 +406,15 @@ export function ExecutionHistory() {
         .order("created_at", { ascending: false })
         .limit(200);
 
+      // Only show completed and aborted runs (runs that are finished)
+      if (showAborted) {
+        // Show both completed and aborted
+        q = q.in("status", ["completed", "aborted"]);
+      } else {
+        // Only show completed
+        q = q.eq("status", "completed");
+      }
+
       if (suiteId !== "all") q = q.eq("suite_id", suiteId);
       if (startDate) q = q.gte("created_at", startDate);
 
@@ -431,10 +441,7 @@ export function ExecutionHistory() {
           })
         : sessions;
 
-      if (filtered.length === 0) {
-        setRuns([]);
-        return;
-      }
+      // ... rest of the function stays the same
 
       const sessionIds = filtered.map((x) => x.id);
 
@@ -1171,6 +1178,15 @@ export function ExecutionHistory() {
                     ))}
                   </SelectContent>
                 </Select>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={showAborted}
+                    onCheckedChange={(v) => setShowAborted(Boolean(v))}
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    Show incomplete runs
+                  </span>
+                </div>
               </div>
             </CardHeader>
 

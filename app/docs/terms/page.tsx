@@ -724,9 +724,9 @@ export default function TermsOfServicePage() {
               <AccordionTrigger>Governing Law</AccordionTrigger>
               <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                 <p>
-                  These Terms are governed by the laws of [Your State/Country],
+                  These Terms are governed by the laws of the United States,
                   without regard to conflict of law principles. Any disputes
-                  shall be resolved in the courts of [Your Jurisdiction].
+                  shall be resolved in the courts.
                 </p>
               </AccordionContent>
             </AccordionItem>

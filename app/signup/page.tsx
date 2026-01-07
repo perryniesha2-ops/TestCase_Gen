@@ -20,18 +20,24 @@ import { Logo } from "@/components/pagecomponents/brandlogo";
 export default function SignupPage() {
   return (
     <div className="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
-      <div className="flex w-full max-w-sm flex-col gap-6">
-        <Logo size="xl" />
-        <main className="mt-6 flex-1 w-full">
+      {" "}
+      <div className="flex w-full max-w-sm flex-col gap-0">
+        {" "}
+        <div className="flex justify-center">
+          <Logo size="xl" />{" "}
+        </div>
+        <main className="space-y-5">
+          {" "}
           <SignupForm />
-        </main>
-      </div>
+        </main>{" "}
+      </div>{" "}
       <FieldDescription className="px-6 text-center">
+        {" "}
         By clicking continue, you agree to our Terms of and Privacy Policy.
-      </FieldDescription>
-      <div className="flex h-4 items-center space-x-4 text-sm">
-        <SiteFooter />
-      </div>
+      </FieldDescription>{" "}
+      <div className="flex-1" />{" "}
+      <div className="flex h-4 items-center space-x-4 text-sm"></div>{" "}
+      <SiteFooter />{" "}
     </div>
   );
 }

@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
+import { PricingContactSheet } from "../billing/pricingcontact";
 
 // ---- Motion helpers ----
 const easeOut: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -80,9 +80,18 @@ const listItem: Variants = {
 // ---- Page ----
 export default function PricingPage() {
   const [yearly, setYearly] = React.useState(false);
+  const [contactSheetOpen, setContactSheetOpen] = React.useState(false);
+  const [selectedPlan, setSelectedPlan] = React.useState<"team" | "enterprise">(
+    "team"
+  );
   const reduceMotion = useReducedMotion();
 
   const viewportOnce = { once: true, amount: 0.25 as const };
+
+  const handleContactSales = (planType: "team" | "enterprise") => {
+    setSelectedPlan(planType);
+    setContactSheetOpen(true);
+  };
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -176,7 +185,7 @@ export default function PricingPage() {
           yearly={yearly}
           description="For serious testers and small teams"
           ctaText="Start Pro trial"
-          href="/login?redirect=/billing&plan=pro"
+          href={`/login?redirect=/billing&plan=pro&yearly=${yearly}`}
           features={[
             { text: "500 AI-generated test cases/month", on: true },
             { text: "Unlimited manual test cases", on: true },
@@ -309,6 +318,20 @@ export default function PricingPage() {
       >
         Powered by OpenAI • Anthropic • Supabase
       </motion.p>
+
+      {/* Contact Sales Sheet */}
+      <PricingContactSheet
+        open={contactSheetOpen}
+        onOpenChange={setContactSheetOpen}
+        defaultSubject={
+          selectedPlan === "team"
+            ? "Team Plan Inquiry"
+            : "Enterprise Plan Inquiry"
+        }
+        defaultMessage={`Hi, I'm interested in the ${
+          selectedPlan === "team" ? "Team" : "Enterprise"
+        } plan.\n\nName: \nCompany: \nCurrent team size: \n\nPlease contact me to discuss pricing and features.`}
+      />
     </div>
   );
 }
@@ -330,7 +353,7 @@ function MotionPlanCard(
     ctaText: string;
     popular?: boolean;
     contactSales?: boolean;
-    href?: string; // NEW: Use Link instead of onClick for non-contact plans
+    href?: string;
     onClick?: () => void;
   }
 ) {
@@ -418,7 +441,7 @@ function MotionPlanCard(
         </CardHeader>
 
         <CardContent className="flex flex-1 flex-col">
-          {/* Use Link for subscription plans, Button for contact sales */}
+          {/* Use Link for login redirects, Button for contact sales */}
           {href ? (
             <Button
               asChild
@@ -515,21 +538,4 @@ function MotionFaqItem(
       </div>
     </motion.div>
   );
-}
-
-// Handle Team and Enterprise contact sales
-function handleContactSales(planType: "team" | "enterprise") {
-  const subject =
-    planType === "team" ? "Team Plan Inquiry" : "Enterprise Plan Inquiry";
-  const body = `Hi, I'm interested in the ${
-    planType === "team" ? "Team" : "Enterprise"
-  } plan.\n\nName: \nCompany: \nCurrent team size: \n\nPlease contact me to discuss pricing and features.`;
-
-  window.open(
-    `mailto:sales@synthqa.com?subject=${encodeURIComponent(
-      subject
-    )}&body=${encodeURIComponent(body)}`,
-    "_blank"
-  );
-  toast.success("Opening email client. We'll get back to you soon!");
 }

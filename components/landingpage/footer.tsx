@@ -57,10 +57,10 @@ export function Footer() {
           className="flex flex-wrap items-center gap-3"
         >
           <motion.div variants={item}>
-            <TermsSheet />
+            <FooterLink href="docs/privacy">Privacy Policy</FooterLink>
           </motion.div>
           <motion.div variants={item}>
-            <PrivacySheet />
+            <FooterLink href="docs/terms">Terms of Service</FooterLink>
           </motion.div>
           <motion.div variants={item}>
             <ContactSheet />
