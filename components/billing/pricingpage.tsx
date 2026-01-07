@@ -10,6 +10,7 @@ import {
   Building2,
   Zap,
   BadgePercent,
+  Mail,
 } from "lucide-react";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
 
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 // ---- Motion helpers ----
 const easeOut: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -148,7 +150,7 @@ export default function PricingPage() {
           yearly={yearly}
           description="Perfect for getting started"
           ctaText="Get started"
-          onClick={() => window.location.assign("/signup")}
+          href="/signup"
           features={[
             { text: "20 AI-generated test cases/month", on: true },
             { text: "🎉 Limited time: 2x free test cases!", on: true },
@@ -169,12 +171,12 @@ export default function PricingPage() {
           popular
           title="Pro"
           icon={<Crown className="h-6 w-6" />}
-          priceMo={29}
-          priceYr={25}
+          priceMo={15}
+          priceYr={12}
           yearly={yearly}
           description="For serious testers and small teams"
           ctaText="Start Pro trial"
-          onClick={() => handleSubscribe("pro", yearly)}
+          href="/login?redirect=/billing&plan=pro"
           features={[
             { text: "500 AI-generated test cases/month", on: true },
             { text: "Unlimited manual test cases", on: true },
@@ -194,12 +196,12 @@ export default function PricingPage() {
           variants={cardIn}
           title="Team"
           icon={<Users className="h-6 w-6" />}
-          priceMo={79}
-          priceYr={69}
+          custom
           yearly={yearly}
           description="For growing teams and organizations"
-          ctaText="Start Team trial"
-          onClick={() => handleSubscribe("team", yearly)}
+          ctaText="Contact sales"
+          contactSales
+          onClick={() => handleContactSales("team")}
           features={[
             { text: "2,000 AI-generated test cases/month", on: true },
             { text: "Unlimited manual test cases", on: true },
@@ -223,11 +225,8 @@ export default function PricingPage() {
           yearly={yearly}
           description="Custom solutions for large orgs"
           ctaText="Contact sales"
-          onClick={() =>
-            window.location.assign(
-              "mailto:sales@synthqa.app?subject=Enterprise%20Plan%20Inquiry"
-            )
-          }
+          contactSales
+          onClick={() => handleContactSales("enterprise")}
           features={[
             { text: "Unlimited AI-generated test cases", on: true },
             { text: "Unlimited manual test cases", on: true },
@@ -255,7 +254,7 @@ export default function PricingPage() {
         <MotionFaqItem
           variants={cardIn}
           q="Is there a free trial?"
-          a="Yes. Pro and Team plans include a 14-day free trial. No credit card required to start."
+          a="Yes. Pro plan includes a 14-day free trial. For Team and Enterprise plans, contact our sales team for a personalized demo and trial."
         />
         <MotionFaqItem
           variants={cardIn}
@@ -288,8 +287,8 @@ export default function PricingPage() {
               Ready to generate your first test suite?
             </h3>
             <p className="mt-2 text-muted-foreground">
-              Create an account and generate up to 50 test cases on the free
-              trial.
+              Create an account and start with 20 free AI-generated test cases
+              per month.
             </p>
             <div className="mt-6 flex justify-center gap-3">
               <Button asChild size="lg">
@@ -330,6 +329,8 @@ function MotionPlanCard(
     features: Feature[];
     ctaText: string;
     popular?: boolean;
+    contactSales?: boolean;
+    href?: string; // NEW: Use Link instead of onClick for non-contact plans
     onClick?: () => void;
   }
 ) {
@@ -344,6 +345,8 @@ function MotionPlanCard(
     features,
     ctaText,
     popular,
+    contactSales,
+    href,
     onClick,
     ...motionProps
   } = props;
@@ -392,7 +395,14 @@ function MotionPlanCard(
 
           <div className="mt-4">
             {custom ? (
-              <span className="text-4xl font-bold">Custom</span>
+              <div>
+                <span className="text-4xl font-bold">Custom</span>
+                {contactSales && (
+                  <div className="text-sm text-muted-foreground mt-1">
+                    Contact us for pricing
+                  </div>
+                )}
+              </div>
             ) : (
               <div>
                 <span className="text-4xl font-bold">${price}</span>
@@ -408,13 +418,28 @@ function MotionPlanCard(
         </CardHeader>
 
         <CardContent className="flex flex-1 flex-col">
-          <Button
-            className="mb-4 w-full"
-            variant={popular ? "default" : "outline"}
-            onClick={onClick}
-          >
-            {ctaText}
-          </Button>
+          {/* Use Link for subscription plans, Button for contact sales */}
+          {href ? (
+            <Button
+              asChild
+              className="mb-4 w-full"
+              variant={popular ? "default" : "outline"}
+            >
+              <Link href={href}>
+                {contactSales && <Mail className="mr-2 h-4 w-4" />}
+                {ctaText}
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              className="mb-4 w-full"
+              variant={popular ? "default" : "outline"}
+              onClick={onClick}
+            >
+              {contactSales && <Mail className="mr-2 h-4 w-4" />}
+              {ctaText}
+            </Button>
+          )}
 
           <motion.ul
             className="space-y-3 text-sm"
@@ -492,17 +517,19 @@ function MotionFaqItem(
   );
 }
 
-async function handleSubscribe(planId: string, yearly: boolean) {
-  try {
-    const res = await fetch("/api/billing/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ planId, yearly }),
-    });
-    if (!res.ok) throw new Error("Subscription failed");
-    const { checkoutUrl } = await res.json();
-    window.location.href = checkoutUrl;
-  } catch (e) {
-    console.error(e);
-  }
+// Handle Team and Enterprise contact sales
+function handleContactSales(planType: "team" | "enterprise") {
+  const subject =
+    planType === "team" ? "Team Plan Inquiry" : "Enterprise Plan Inquiry";
+  const body = `Hi, I'm interested in the ${
+    planType === "team" ? "Team" : "Enterprise"
+  } plan.\n\nName: \nCompany: \nCurrent team size: \n\nPlease contact me to discuss pricing and features.`;
+
+  window.open(
+    `mailto:sales@synthqa.com?subject=${encodeURIComponent(
+      subject
+    )}&body=${encodeURIComponent(body)}`,
+    "_blank"
+  );
+  toast.success("Opening email client. We'll get back to you soon!");
 }
