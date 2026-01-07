@@ -1,10 +1,9 @@
 // app/billing/page.tsx
-import { AppSidebar } from "@/components/pagecomponents/app-sidebar"
-import BillingPage from "@/components/billing/billingmanagment"
+import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
+import BillingPage from "@/components/billing/billingmanagment";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
-import PromotionalBanner from "@/components/billing/billingmanagment"
-
-
+import PromotionalBanner from "@/components/billing/billingmanagment";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 export default function Billing() {
   return (
@@ -12,14 +11,20 @@ export default function Billing() {
       <AppSidebar className="hidden md:block" />
 
       <div className="flex min-h-screen flex-col px-4 md:px-6">
-        <SiteHeader  title="Billing"
-        subtitle="Manage and Update Your Subsription"/>
-
-            <BillingPage />
+        <SiteHeader
+          title="Billing"
+          subtitle="Manage and Update Your Subsription"
+        />
+        <main>
+          <BillingPage />
+        </main>
+      </div>
+      <div className="pt-10"></div>
+      <SiteFooter />
     </div>
-          </div>
-  )
-}export const metadata = {
-  title: 'Billing - SynthQA',
-  description: 'Manage and Update Your Subsription',
+  );
 }
+export const metadata = {
+  title: "Billing - SynthQA",
+  description: "Manage and Update Your Subsription",
+};
