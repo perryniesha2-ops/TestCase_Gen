@@ -1,10 +1,11 @@
 // app/billing/page.tsx
-import { Suspense } from "react";
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import BillingPage from "@/components/billing/billingmanagment";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
 import { SiteFooter } from "@/components/pagecomponents/site-footer";
-import { Loader2 } from "lucide-react";
+import { ClientPageWrapper } from "@/components/auth/client-page-wrapper";
+
+export const dynamic = "force-dynamic";
 
 export default function Billing() {
   return (
@@ -17,15 +18,9 @@ export default function Billing() {
           subtitle="Manage and Update Your Subsription"
         />
         <main>
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin" />
-              </div>
-            }
-          >
+          <ClientPageWrapper>
             <BillingPage />
-          </Suspense>
+          </ClientPageWrapper>
         </main>
       </div>
       <div className="pt-10"></div>
@@ -33,7 +28,6 @@ export default function Billing() {
     </div>
   );
 }
-
 export const metadata = {
   title: "Billing - SynthQA",
   description: "Manage and Update Your Subsription",

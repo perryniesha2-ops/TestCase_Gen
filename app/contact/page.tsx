@@ -279,3 +279,7 @@ export default function ContactUs() {
     </div>
   );
 }
+export const metadata = {
+  title: "Help and Support - SynthQA",
+  description: "",
+};

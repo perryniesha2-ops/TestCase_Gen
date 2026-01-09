@@ -268,7 +268,7 @@ export default function BrowserExtensionGuidePage() {
                     </li>
                     <Button asChild>
                       <a
-                        href="/downloads/SynthQA-Evidence-Capture-v0.1.0.zip"
+                        href="/downloads/SynthQA-Evidence-Extension-v0.1.1.zip"
                         download
                       >
                         Download Extension (.zip)
