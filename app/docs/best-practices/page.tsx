@@ -1395,7 +1395,3 @@ export default function BestPracticesGuidePage() {
     </div>
   );
 }
-export const metadata = {
-  title: "Best Practices Guide - SynthQA",
-  description: "",
-};
