@@ -122,32 +122,43 @@ async function selectRegionOnTab(tabId) {
       return new Promise((resolve, reject) => {
         const dpr = window.devicePixelRatio || 1;
 
-        // Overlay
+        const Z = 2147483647; // max-ish
+
+        // Overlay (captures input)
         const overlay = document.createElement("div");
         overlay.style.position = "fixed";
         overlay.style.inset = "0";
-        overlay.style.zIndex = "2147483647";
+        overlay.style.zIndex = String(Z);
         overlay.style.cursor = "crosshair";
-        overlay.style.background = "rgba(0,0,0,0.15)";
+        overlay.style.background = "rgba(0,0,0,0.18)";
         overlay.style.userSelect = "none";
+        overlay.style.pointerEvents = "auto";
 
+        // Selection box (MUST be above overlay)
         const box = document.createElement("div");
         box.style.position = "fixed";
+        box.style.zIndex = String(Z + 1);
         box.style.border = "2px solid #fff";
         box.style.boxShadow = "0 0 0 9999px rgba(0,0,0,0.35)";
         box.style.pointerEvents = "none";
         box.style.display = "none";
+        box.style.borderRadius = "6px";
 
+        // Tip (also above overlay)
         const tip = document.createElement("div");
-        tip.textContent = "Drag to select region • Enter=Confirm • Esc=Cancel";
         tip.style.position = "fixed";
+        tip.style.zIndex = String(Z + 2);
         tip.style.top = "12px";
         tip.style.left = "12px";
-        tip.style.padding = "8px 10px";
-        tip.style.borderRadius = "10px";
+        tip.style.padding = "10px 12px";
+        tip.style.borderRadius = "12px";
         tip.style.font = "12px system-ui, sans-serif";
-        tip.style.background = "rgba(0,0,0,0.75)";
+        tip.style.background = "rgba(0,0,0,0.78)";
         tip.style.color = "#fff";
+        tip.style.maxWidth = "320px";
+        tip.innerHTML =
+          `<div style="font-weight:600;margin-bottom:4px;">Select a region</div>` +
+          `<div>Drag to draw • <b>Enter</b>=Confirm • <b>Esc</b>=Cancel</div>`;
 
         document.documentElement.appendChild(overlay);
         document.documentElement.appendChild(box);
@@ -158,6 +169,7 @@ async function selectRegionOnTab(tabId) {
         let curX = 0,
           curY = 0;
         let dragging = false;
+        let hasSelection = false;
 
         const rectFromPoints = () => {
           const x = Math.min(startX, curX);
@@ -176,45 +188,63 @@ async function selectRegionOnTab(tabId) {
           box.style.height = `${r.height}px`;
         };
 
-        const onMouseDown = (e) => {
-          dragging = true;
-          startX = e.clientX;
-          startY = e.clientY;
-          curX = startX;
-          curY = startY;
-          draw();
-        };
-
-        const onMouseMove = (e) => {
-          if (!dragging) return;
-          curX = e.clientX;
-          curY = e.clientY;
-          draw();
-        };
-
         const cleanup = () => {
-          overlay.removeEventListener("mousedown", onMouseDown, true);
-          overlay.removeEventListener("mousemove", onMouseMove, true);
-          overlay.removeEventListener("mouseup", onMouseUp, true);
+          overlay.removeEventListener("pointerdown", onPointerDown, true);
+          window.removeEventListener("pointermove", onPointerMove, true);
+          window.removeEventListener("pointerup", onPointerUp, true);
           window.removeEventListener("keydown", onKey, true);
           overlay.remove();
           box.remove();
           tip.remove();
         };
 
-        const finishIfValid = () => {
+        const confirm = () => {
           const r = rectFromPoints();
-          if (r.width < 5 || r.height < 5) return false;
+          if (r.width < 8 || r.height < 8) {
+            tip.innerHTML =
+              `<div style="font-weight:600;margin-bottom:4px;">Region too small</div>` +
+              `<div>Drag a larger area • <b>Enter</b>=Confirm • <b>Esc</b>=Cancel</div>`;
+            return;
+          }
           cleanup();
           resolve({ ...r, dpr });
-          return true;
         };
 
-        const onMouseUp = () => {
+        const onPointerDown = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // capture all subsequent moves even if cursor leaves overlay
+          overlay.setPointerCapture?.(e.pointerId);
+
+          dragging = true;
+          hasSelection = true;
+          startX = e.clientX;
+          startY = e.clientY;
+          curX = startX;
+          curY = startY;
+          draw();
+
+          tip.innerHTML =
+            `<div style="font-weight:600;margin-bottom:4px;">Adjust selection</div>` +
+            `<div>Release to stop • <b>Enter</b>=Confirm • <b>Esc</b>=Cancel</div>`;
+        };
+
+        const onPointerMove = (e) => {
+          if (!dragging) return;
+          e.preventDefault();
+          e.stopPropagation();
+          curX = e.clientX;
+          curY = e.clientY;
+          draw();
+        };
+
+        const onPointerUp = (e) => {
+          if (!dragging) return;
+          e.preventDefault();
+          e.stopPropagation();
           dragging = false;
-          // Optional: auto-confirm on mouseup for “infallible” UX
-          // Comment out if you want explicit Enter-only confirmation.
-          finishIfValid();
+          // Do NOT auto-confirm. Confirm on Enter.
         };
 
         const onKey = (e) => {
@@ -224,21 +254,21 @@ async function selectRegionOnTab(tabId) {
             return;
           }
           if (e.key === "Enter") {
-            finishIfValid();
+            if (!hasSelection) return;
+            confirm();
           }
         };
 
-        overlay.addEventListener("mousedown", onMouseDown, true);
-        overlay.addEventListener("mousemove", onMouseMove, true);
-        overlay.addEventListener("mouseup", onMouseUp, true);
+        overlay.addEventListener("pointerdown", onPointerDown, true);
+        window.addEventListener("pointermove", onPointerMove, true);
+        window.addEventListener("pointerup", onPointerUp, true);
         window.addEventListener("keydown", onKey, true);
       });
     },
   });
 
-  // If user cancels, result can be undefined depending on failure mode.
   if (!result) throw new Error("Selection cancelled");
-  return result; // { x,y,width,height,dpr }
+  return result;
 }
 
 // -------------------------
@@ -299,7 +329,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       // --- Popup helper (optional) ---
-      if (message?.command === "GET_ACTIVE_TAB_CONTEXT") {
+      if (message?.command === "CAPTURE_SCREENSHOT_ACTIVE_TAB") {
         const tab = await getActiveTab();
         if (!tab?.id) return sendResponse({ ok: true, data: null });
         const map = await getArmedMap();

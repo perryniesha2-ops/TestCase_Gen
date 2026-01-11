@@ -1,32 +1,32 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
+} from "@/components/ui/card";
 import {
   Folder,
   Smartphone,
@@ -39,32 +39,44 @@ import {
   Package,
   Terminal,
   X,
-} from "lucide-react"
+} from "lucide-react";
 
-type ProjectStatus = 'active' | 'archived' | 'completed' | 'on_hold'
-type ProjectColor = 'blue' | 'green' | 'purple' | 'orange' | 'red' | 'pink' | 'indigo' | 'yellow' | 'gray'
+type ProjectStatus = "active" | "archived" | "completed" | "on_hold";
+type ProjectColor =
+  | "blue"
+  | "green"
+  | "purple"
+  | "orange"
+  | "red"
+  | "pink"
+  | "indigo"
+  | "yellow"
+  | "gray";
 
 interface Project {
-  id: string
-  name: string
-  description?: string | null
-  status: ProjectStatus
-  color: ProjectColor
-  icon: string
-  test_suites_count?: number
-  requirements_count?: number
-  templates_count?: number
+  id: string;
+  name: string;
+  description?: string | null;
+  status: ProjectStatus;
+  color: ProjectColor;
+  icon: string;
+  test_suites_count?: number;
+  requirements_count?: number;
+  templates_count?: number;
 }
 
 interface ProjectSelectProps {
-  value?: string
-  onSelect: (project: Project | null) => void
-  disabled?: boolean
-  placeholder?: string
-  allowEmpty?: boolean
+  value?: string;
+  onSelect: (project: Project | null) => void;
+  disabled?: boolean;
+  placeholder?: string;
+  allowEmpty?: boolean;
 }
 
-const projectIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+const projectIcons: Record<
+  string,
+  React.ComponentType<{ className?: string }>
+> = {
   folder: Folder,
   smartphone: Smartphone,
   code: Code,
@@ -75,42 +87,48 @@ const projectIcons: Record<string, React.ComponentType<{ className?: string }>> 
   rocket: Rocket,
   package: Package,
   terminal: Terminal,
-}
+};
 
-export function ProjectSelect({ value, onSelect, disabled }: ProjectSelectProps) {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
-  const [showDetailsDialog, setShowDetailsDialog] = useState(false)
-  const [loading, setLoading] = useState(false)
+export function ProjectSelect({
+  value,
+  onSelect,
+  disabled,
+}: ProjectSelectProps) {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchProjects()
-  }, [])
+    fetchProjects();
+  }, []);
 
   useEffect(() => {
     if (value) {
-      const project = projects.find(p => p.id === value)
-      setSelectedProject(project || null)
+      const project = projects.find((p) => p.id === value);
+      setSelectedProject(project || null);
     } else {
-      setSelectedProject(null)
+      setSelectedProject(null);
     }
-  }, [value, projects])
+  }, [value, projects]);
 
   async function fetchProjects() {
-    setLoading(true)
+    setLoading(true);
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (!user) return
+      if (!user) return;
 
       const { data, error } = await supabase
         .from("projects")
         .select("*")
         .eq("status", "active")
-        .order("name")
+        .order("name");
 
-      if (error) throw error
+      if (error) throw error;
 
       // Get counts for each project
       const projectsWithCounts = await Promise.all(
@@ -120,46 +138,57 @@ export function ProjectSelect({ value, onSelect, disabled }: ProjectSelectProps)
             { count: reqCount },
             { count: templatesCount },
           ] = await Promise.all([
-            supabase.from("test_suites").select("*", { count: "exact", head: true }).eq("project_id", project.id),
-            supabase.from("requirements").select("*", { count: "exact", head: true }).eq("project_id", project.id),
-            supabase.from("test_case_templates").select("*", { count: "exact", head: true }).eq("project_id", project.id),
-          ])
+            supabase
+              .from("test_suites")
+              .select("*", { count: "exact", head: true })
+              .eq("project_id", project.id),
+            supabase
+              .from("requirements")
+              .select("*", { count: "exact", head: true })
+              .eq("project_id", project.id),
+            supabase
+              .from("test_case_templates")
+              .select("*", { count: "exact", head: true })
+              .eq("project_id", project.id),
+          ]);
 
           return {
             ...project,
             test_suites_count: suitesCount || 0,
             requirements_count: reqCount || 0,
             templates_count: templatesCount || 0,
-          } as Project
+          } as Project;
         })
-      )
+      );
 
-      setProjects(projectsWithCounts)
+      setProjects(projectsWithCounts);
     } catch (error) {
-      console.error("Error fetching projects:", error)
+      console.error("Error fetching projects:", error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   function handleProjectSelect(projectId: string) {
-    const project = projects.find(p => p.id === projectId)
-    if (!project) return
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) return;
 
-    setSelectedProject(project)
-    onSelect(project)
-    toast.success(`Assigned to project "${project.name}"`)
+    setSelectedProject(project);
+    onSelect(project);
+    toast.success(`Assigned to project "${project.name}"`);
   }
 
   function clearProject() {
-    setSelectedProject(null)
-    onSelect(null)
+    setSelectedProject(null);
+    onSelect(null);
   }
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">Assign to Project (Optional)</Label>
+        <Label className="text-sm font-medium">
+          Assign to Project (Optional)
+        </Label>
         {selectedProject && (
           <Button
             type="button"
@@ -180,10 +209,12 @@ export function ProjectSelect({ value, onSelect, disabled }: ProjectSelectProps)
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {(() => {
-                  const Icon = projectIcons[selectedProject.icon] || Folder
-                  return <Icon className="h-4 w-4 text-primary" />
+                  const Icon = projectIcons[selectedProject.icon] || Folder;
+                  return <Icon className="h-4 w-4 text-primary" />;
                 })()}
-                <CardTitle className="text-base">{selectedProject.name}</CardTitle>
+                <CardTitle className="text-base">
+                  {selectedProject.name}
+                </CardTitle>
                 <Badge variant="outline" className="text-xs">
                   {selectedProject.status}
                 </Badge>
@@ -195,37 +226,6 @@ export function ProjectSelect({ value, onSelect, disabled }: ProjectSelectProps)
               </CardDescription>
             )}
           </CardHeader>
-          <CardContent className="pb-3">
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div className="text-center">
-                <div className="font-bold text-blue-600">
-                  {selectedProject.test_suites_count || 0}
-                </div>
-                <div className="text-muted-foreground">Suites</div>
-              </div>
-              <div className="text-center">
-                <div className="font-bold text-purple-600">
-                  {selectedProject.requirements_count || 0}
-                </div>
-                <div className="text-muted-foreground">Reqs</div>
-              </div>
-              <div className="text-center">
-                <div className="font-bold text-green-600">
-                  {selectedProject.templates_count || 0}
-                </div>
-                <div className="text-muted-foreground">Templates</div>
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="w-full mt-3"
-              onClick={() => setShowDetailsDialog(true)}
-            >
-              View Details
-            </Button>
-          </CardContent>
         </Card>
       ) : (
         <>
@@ -235,11 +235,15 @@ export function ProjectSelect({ value, onSelect, disabled }: ProjectSelectProps)
             disabled={disabled || loading}
           >
             <SelectTrigger className="h-10">
-              <SelectValue placeholder={loading ? "Loading projects..." : "Select a project"} />
+              <SelectValue
+                placeholder={
+                  loading ? "Loading projects..." : "Select a project"
+                }
+              />
             </SelectTrigger>
             <SelectContent>
-              {projects.map(project => {
-                const Icon = projectIcons[project.icon] || Folder
+              {projects.map((project) => {
+                const Icon = projectIcons[project.icon] || Folder;
                 return (
                   <SelectItem key={project.id} value={project.id}>
                     <div className="flex items-center gap-2">
@@ -250,7 +254,7 @@ export function ProjectSelect({ value, onSelect, disabled }: ProjectSelectProps)
                       </Badge>
                     </div>
                   </SelectItem>
-                )
+                );
               })}
 
               {projects.length === 0 && !loading && (
@@ -274,8 +278,8 @@ export function ProjectSelect({ value, onSelect, disabled }: ProjectSelectProps)
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 {(() => {
-                  const Icon = projectIcons[selectedProject.icon] || Folder
-                  return <Icon className="h-5 w-5" />
+                  const Icon = projectIcons[selectedProject.icon] || Folder;
+                  return <Icon className="h-5 w-5" />;
                 })()}
                 {selectedProject.name}
               </DialogTitle>
@@ -287,7 +291,9 @@ export function ProjectSelect({ value, onSelect, disabled }: ProjectSelectProps)
             <div className="space-y-4 py-4">
               <div className="flex items-center gap-2">
                 <Badge>{selectedProject.status}</Badge>
-                <div className={`w-3 h-3 rounded-full bg-${selectedProject.color}-500`} />
+                <div
+                  className={`w-3 h-3 rounded-full bg-${selectedProject.color}-500`}
+                />
               </div>
 
               <div className="space-y-3">
@@ -295,15 +301,21 @@ export function ProjectSelect({ value, onSelect, disabled }: ProjectSelectProps)
                 <div className="grid gap-2 text-sm">
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-muted-foreground">Test Suites:</span>
-                    <span className="font-medium">{selectedProject.test_suites_count || 0}</span>
+                    <span className="font-medium">
+                      {selectedProject.test_suites_count || 0}
+                    </span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-muted-foreground">Requirements:</span>
-                    <span className="font-medium">{selectedProject.requirements_count || 0}</span>
+                    <span className="font-medium">
+                      {selectedProject.requirements_count || 0}
+                    </span>
                   </div>
                   <div className="flex justify-between py-2">
                     <span className="text-muted-foreground">Templates:</span>
-                    <span className="font-medium">{selectedProject.templates_count || 0}</span>
+                    <span className="font-medium">
+                      {selectedProject.templates_count || 0}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -312,5 +324,5 @@ export function ProjectSelect({ value, onSelect, disabled }: ProjectSelectProps)
         </Dialog>
       )}
     </div>
-  )
+  );
 }

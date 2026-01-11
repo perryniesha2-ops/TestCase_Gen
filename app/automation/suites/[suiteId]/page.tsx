@@ -1,4 +1,4 @@
-import { AutomationSuitePage } from "@/components/automation/automationpage";
+import { AutomationPage } from "@/components/automation/automationpage";
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
 
@@ -20,7 +20,7 @@ export default async function AutomationSuiteRoute({ params }: PageProps) {
       <div className="flex min-h-screen flex-col px-4 md:px-6">
         <SiteHeader title="Automation" subtitle="" />
         <main className="max-w-5xl mx-auto w-full mt-6">
-          <AutomationSuitePage suiteId={suiteId} />
+          <AutomationPage suiteId={suiteId} />
         </main>
       </div>
     </div>

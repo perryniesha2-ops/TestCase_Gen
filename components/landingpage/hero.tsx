@@ -91,11 +91,7 @@ export function Hero() {
             <motion.div
               whileHover={reduce ? undefined : { y: -2 }}
               whileTap={reduce ? undefined : { scale: 0.98 }}
-            >
-              <Button asChild size="lg" variant="outline">
-                <Link href="#demo">Watch product overview</Link>
-              </Button>
-            </motion.div>
+            ></motion.div>
           </motion.div>
 
           <motion.p variants={fadeIn} className="text-xs text-muted-foreground">

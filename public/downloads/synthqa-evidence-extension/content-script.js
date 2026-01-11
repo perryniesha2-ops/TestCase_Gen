@@ -36,7 +36,7 @@ window.addEventListener("message", (event) => {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.channel !== channel) return;
 
-  if (msg?.type === "EVIDENCE_CAPTURED" || msg?.type === "VIDEO_CAPTURED") {
+  if (msg?.type === "EVIDENCE_CAPTURED") {
     window.postMessage(msg, window.location.origin);
   }
 });

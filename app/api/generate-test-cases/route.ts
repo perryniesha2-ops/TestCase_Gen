@@ -38,7 +38,11 @@ function isAnthropicTextBlock(b: unknown): b is { type: "text"; text: string } {
 
 function anthropicTextFromContent(blocks: unknown): string {
   if (!Array.isArray(blocks)) return "";
-  return blocks.filter(isAnthropicTextBlock).map((b) => b.text).join("\n\n").trim();
+  return blocks
+    .filter(isAnthropicTextBlock)
+    .map((b) => b.text)
+    .join("\n\n")
+    .trim();
 }
 
 // ----- AI Model Configuration -----
@@ -151,7 +155,7 @@ CRITICAL: Every test step must be:
 1. SPECIFIC: "Click the 'Sign In' button" not "Click login"
 2. ACTIONABLE: "Type 'test@example.com' in input[name='email']" not "Enter credentials"
 3. VERIFIABLE: "Verify URL is /dashboard and 'Welcome' heading is visible" not "Check if logged in"
-4. COMPLETE: Include URLs, element selectors, test data, expected results`
+4. COMPLETE: Include URLs, element selectors, test data, expected results`,
 } as const;
 
 type CoverageKey = keyof typeof COVERAGE_PROMPTS;
@@ -259,6 +263,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       requirements?: string;
       requirement_id?: string;
+      project_id?: string | null;
       model?: string;
       testCaseCount?: number | string;
       coverage?: string;
@@ -276,7 +281,8 @@ export async function POST(request: Request) {
     const template = body.template ?? "";
     const title = (body.title ?? "").trim();
     const description = body.description ?? null;
-    const application_url = (body.application_url ?? "").trim(); // ✅ NEW
+    const application_url = (body.application_url ?? "").trim();
+    const project_id = body.project_id || null;
 
     // Validation
     if (!requirements) {
@@ -293,19 +299,28 @@ export async function POST(request: Request) {
     }
     if (!Number.isFinite(testCaseCount)) {
       return NextResponse.json(
-        { error: "Test case count must be a number between 1 and 50", field: "testCaseCount" },
+        {
+          error: "Test case count must be a number between 1 and 50",
+          field: "testCaseCount",
+        },
         { status: 400 }
       );
     }
     if (testCaseCount <= 0) {
       return NextResponse.json(
-        { error: "Test case count must be greater than 0", field: "testCaseCount" },
+        {
+          error: "Test case count must be greater than 0",
+          field: "testCaseCount",
+        },
         { status: 400 }
       );
     }
     if (testCaseCount > 50) {
       return NextResponse.json(
-        { error: "Cannot generate more than 50 test cases at once", field: "testCaseCount" },
+        {
+          error: "Cannot generate more than 50 test cases at once",
+          field: "testCaseCount",
+        },
         { status: 400 }
       );
     }
@@ -327,16 +342,21 @@ export async function POST(request: Request) {
       await checkAndRecordUsage(user.id, testCaseCount);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Usage limit exceeded";
-      return NextResponse.json({ error: msg, upgradeRequired: true }, { status: 429 });
+      return NextResponse.json(
+        { error: msg, upgradeRequired: true },
+        { status: 429 }
+      );
     }
 
     const model = AI_MODELS[modelKey];
 
     // ✅ ENHANCED: Build automation-focused prompt
     const coverageInstruction = COVERAGE_PROMPTS[coverage];
-    const templateInstruction = template ? `\n\nUse this template structure:\n${template}` : "";
-    const urlContext = application_url 
-      ? `\n\nAPPLICATION BASE URL: ${application_url}\nUse this as the base URL for all navigation steps.` 
+    const templateInstruction = template
+      ? `\n\nUse this template structure:\n${template}`
+      : "";
+    const urlContext = application_url
+      ? `\n\nAPPLICATION BASE URL: ${application_url}\nUse this as the base URL for all navigation steps.`
       : "";
 
     const promptUsed = `${AUTOMATION_GUIDELINES}
@@ -368,7 +388,9 @@ CRITICAL REQUIREMENTS:
 - Include EXACT test data (emails, passwords, names, values)
 - Specify EXACT element selectors or button text
 - Define CLEAR, VERIFIABLE expected results
-- Use FULL URLs for navigation steps${application_url ? ` based on ${application_url}` : ''}
+- Use FULL URLs for navigation steps${
+      application_url ? ` based on ${application_url}` : ""
+    }
 - Break complex actions into individual steps
 - Each step should map to a single Playwright command
 
@@ -376,8 +398,12 @@ Make the test cases executable, unambiguous, and automation-ready.`;
 
     // ---- Call LLM (primary, then fallback) ----
     const isAnthropicModel = model.startsWith("claude");
-    const primary: "anthropic" | "openai" = isAnthropicModel ? "anthropic" : "openai";
-    const fallback: "anthropic" | "openai" = isAnthropicModel ? "openai" : "anthropic";
+    const primary: "anthropic" | "openai" = isAnthropicModel
+      ? "anthropic"
+      : "openai";
+    const fallback: "anthropic" | "openai" = isAnthropicModel
+      ? "openai"
+      : "anthropic";
 
     let rawText = "";
     let usedProvider = "";
@@ -426,7 +452,10 @@ Make the test cases executable, unambiguous, and automation-ready.`;
         }
       } catch (fallbackError) {
         return NextResponse.json(
-          { error: "Generation temporarily unavailable. Please try again later." },
+          {
+            error:
+              "Generation temporarily unavailable. Please try again later.",
+          },
           { status: 503 }
         );
       }
@@ -512,13 +541,14 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     const rows = testCases.map((tc) => ({
       generation_id: generation.id,
       requirement_id,
+      project_id,
       user_id: user.id,
       title: tc.title,
       description: tc.description,
       test_type: tc.test_type || "functional",
       priority: normalizePriority(tc.priority),
       preconditions: tc.preconditions ?? null,
-      test_steps: tc.test_steps, 
+      test_steps: tc.test_steps,
       expected_result: tc.expected_result,
       is_edge_case: Boolean(tc.is_edge_case),
       is_manual: false,

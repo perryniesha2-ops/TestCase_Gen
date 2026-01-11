@@ -1,7 +1,5 @@
 const statusEl = document.getElementById("status");
 const shotBtn = document.getElementById("shot");
-const startBtn = document.getElementById("start");
-const stopBtn = document.getElementById("stop");
 
 let ctx = null;
 
@@ -12,8 +10,7 @@ function render() {
       <div class="muted">Go to SynthQA and click Open target.</div>
     `;
     shotBtn.disabled = true;
-    startBtn.disabled = true;
-    stopBtn.disabled = true;
+
     return;
   }
 
@@ -26,8 +23,6 @@ function render() {
     }</span></div>
   `;
   shotBtn.disabled = false;
-  startBtn.disabled = false;
-  stopBtn.disabled = false;
 }
 
 async function loadContext() {

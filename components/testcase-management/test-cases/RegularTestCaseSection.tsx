@@ -1,11 +1,24 @@
-"use client"
+"use client";
 
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { BulkActionsToolbar } from "./toolbars/BulkActionsToolbar"
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { BulkActionsToolbar } from "./toolbars/BulkActionsToolbar";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -19,44 +32,47 @@ import {
   MoreHorizontal,
   XCircle,
   FolderOpen,
-} from "lucide-react"
+} from "lucide-react";
 
-import type { TestCase, TestExecution } from "@/types/test-cases"
+import type { TestCase, TestExecution } from "@/types/test-cases";
 
 type Props = {
-  testCases: TestCase[]
-  paginated: TestCase[]
-  filteredCount: number
+  testCases: TestCase[];
+  paginated: TestCase[];
+  filteredCount: number;
 
-  execution: TestExecution
-  updating: string | null
-   onRun: (tc: TestCase) => void
+  execution: TestExecution;
+  updating: string | null;
+  onRun: (tc: TestCase) => void;
 
-  selectedIds: Set<string>
-  selectAll: () => void
-  deselectAll: () => void
-  toggleSelection: (id: string) => void
+  selectedIds: Set<string>;
+  selectAll: () => void;
+  deselectAll: () => void;
+  toggleSelection: (id: string) => void;
 
-  onBulkUpdate: (ids: string[], updates: Partial<TestCase>) => Promise<void>
-  onBulkDelete: (ids: string[]) => Promise<void>
-  onBulkAddToSuite: (ids: string[], suiteId: string) => Promise<void>
-  onBulkExport: (ids: string[]) => void
+  onBulkUpdate: (ids: string[], updates: Partial<TestCase>) => Promise<void>;
+  onBulkDelete: (ids: string[]) => Promise<void>;
+  onBulkAddToSuite: (ids: string[], suiteId: string) => Promise<void>;
+  onBulkExport: (ids: string[]) => void;
 
-  currentPage: number
-  totalPages: number
-  startIndex: number
-  endIndex: number
-  onPrevPage: () => void
-  onNextPage: () => void
+  currentPage: number;
+  totalPages: number;
+  startIndex: number;
+  endIndex: number;
+  onPrevPage: () => void;
+  onNextPage: () => void;
 
-  getPriorityColor: (priority: string) => string
-  getProjectColor: (color: string) => string
+  getPriorityColor: (priority: string) => string;
+  getProjectColor: (color: string) => string;
 
-  onOpenDetails: (tc: TestCase) => void
-  onOpenCreate: () => void
-  onOpenActionSheet: (tc: TestCase) => void
-  onUpdateStatus: (testCaseId: string, status: "draft" | "active" | "archived") => void
-}
+  onOpenDetails: (tc: TestCase) => void;
+  onOpenCreate: () => void;
+  onOpenActionSheet: (tc: TestCase) => void;
+  onUpdateStatus: (
+    testCaseId: string,
+    status: "draft" | "active" | "archived"
+  ) => void;
+};
 
 export function RegularTestCaseSection(props: Props) {
   const {
@@ -73,7 +89,7 @@ export function RegularTestCaseSection(props: Props) {
     onBulkUpdate,
     onBulkDelete,
     onBulkAddToSuite,
-   onBulkExport,
+    onBulkExport,
     currentPage,
     totalPages,
     startIndex,
@@ -86,13 +102,23 @@ export function RegularTestCaseSection(props: Props) {
     onOpenCreate,
     onOpenActionSheet,
     onUpdateStatus,
-  } = props
+  } = props;
 
-  const passed = testCases.filter((tc) => execution[tc.id]?.status === "passed").length
-  const failed = testCases.filter((tc) => execution[tc.id]?.status === "failed").length
-  const blocked = testCases.filter((tc) => execution[tc.id]?.status === "blocked").length
-  const inProgress = testCases.filter((tc) => execution[tc.id]?.status === "in_progress").length
-  const notRun = testCases.filter((tc) => execution[tc.id]?.status === "not_run").length
+  const passed = testCases.filter(
+    (tc) => execution[tc.id]?.status === "passed"
+  ).length;
+  const failed = testCases.filter(
+    (tc) => execution[tc.id]?.status === "failed"
+  ).length;
+  const blocked = testCases.filter(
+    (tc) => execution[tc.id]?.status === "blocked"
+  ).length;
+  const inProgress = testCases.filter(
+    (tc) => execution[tc.id]?.status === "in_progress"
+  ).length;
+  const notRun = testCases.filter(
+    (tc) => execution[tc.id]?.status === "not_run"
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -127,14 +153,14 @@ export function RegularTestCaseSection(props: Props) {
       {/* Table */}
       <div className="border rounded-lg overflow-hidden">
         <BulkActionsToolbar
-         selectedIds={selectedIds}
-  allTestCases={testCases}
-  onSelectAll={selectAll}
-  onDeselectAll={deselectAll}
-  onBulkUpdate={onBulkUpdate}
-  onBulkDelete={onBulkDelete}
-  onBulkAddToSuite={onBulkAddToSuite}
-  onBulkExport={onBulkExport}
+          selectedIds={selectedIds}
+          allTestCases={testCases}
+          onSelectAll={selectAll}
+          onDeselectAll={deselectAll}
+          onBulkUpdate={onBulkUpdate}
+          onBulkDelete={onBulkDelete}
+          onBulkAddToSuite={onBulkAddToSuite}
+          onBulkExport={onBulkExport}
         />
 
         <Table>
@@ -142,8 +168,13 @@ export function RegularTestCaseSection(props: Props) {
             <TableRow>
               <TableHead className="w-[50px]">
                 <Checkbox
-                  checked={selectedIds.size === testCases.length && testCases.length > 0}
-                  onCheckedChange={(checked) => (checked ? selectAll() : deselectAll())}
+                  checked={
+                    selectedIds.size === testCases.length &&
+                    testCases.length > 0
+                  }
+                  onCheckedChange={(checked) =>
+                    checked ? selectAll() : deselectAll()
+                  }
                 />
               </TableHead>
               <TableHead>Title</TableHead>
@@ -162,7 +193,11 @@ export function RegularTestCaseSection(props: Props) {
                   <div className="flex flex-col items-center gap-2">
                     <FlaskConical className="h-8 w-8 text-muted-foreground" />
                     <p className="text-muted-foreground">No test cases found</p>
-                    <Button onClick={onOpenCreate} variant="outline" className="mt-2">
+                    <Button
+                      onClick={onOpenCreate}
+                      variant="outline"
+                      className="mt-2"
+                    >
                       Create your first test case
                     </Button>
                   </div>
@@ -170,12 +205,15 @@ export function RegularTestCaseSection(props: Props) {
               </TableRow>
             ) : (
               paginated.map((testCase) => {
-                const exec = execution[testCase.id]
+                const exec = execution[testCase.id];
 
                 return (
                   <TableRow key={testCase.id}>
                     <TableCell>
-                      <Checkbox checked={selectedIds.has(testCase.id)} onCheckedChange={() => toggleSelection(testCase.id)} />
+                      <Checkbox
+                        checked={selectedIds.has(testCase.id)}
+                        onCheckedChange={() => toggleSelection(testCase.id)}
+                      />
                     </TableCell>
 
                     <TableCell className="font-medium">
@@ -183,15 +221,29 @@ export function RegularTestCaseSection(props: Props) {
                         className="flex items-center gap-2 cursor-pointer hover:text-primary"
                         onClick={() => onOpenDetails(testCase)}
                       >
-                        {exec?.status === "passed" && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-                        {exec?.status === "failed" && <XCircle className="h-4 w-4 text-red-600" />}
-                        {exec?.status === "blocked" && <AlertTriangle className="h-4 w-4 text-orange-600" />}
-                        {exec?.status === "skipped" && <Circle className="h-4 w-4 text-gray-400" />}
-                        {exec?.status === "in_progress" && <Clock className="h-4 w-4 text-blue-600" />}
-                        {exec?.status === "not_run" && <Circle className="h-4 w-4 text-gray-400" />}
+                        {exec?.status === "passed" && (
+                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        )}
+                        {exec?.status === "failed" && (
+                          <XCircle className="h-4 w-4 text-red-600" />
+                        )}
+                        {exec?.status === "blocked" && (
+                          <AlertTriangle className="h-4 w-4 text-orange-600" />
+                        )}
+                        {exec?.status === "skipped" && (
+                          <Circle className="h-4 w-4 text-gray-400" />
+                        )}
+                        {exec?.status === "in_progress" && (
+                          <Clock className="h-4 w-4 text-blue-600" />
+                        )}
+                        {exec?.status === "not_run" && (
+                          <Circle className="h-4 w-4 text-gray-400" />
+                        )}
                         <span className="truncate">{testCase.title}</span>
                         {exec?.duration_minutes ? (
-                          <span className="text-xs text-muted-foreground">({exec.duration_minutes}m)</span>
+                          <span className="text-xs text-muted-foreground">
+                            ({exec.duration_minutes}m)
+                          </span>
                         ) : null}
                       </div>
                     </TableCell>
@@ -199,22 +251,34 @@ export function RegularTestCaseSection(props: Props) {
                     <TableCell>
                       {testCase.projects ? (
                         <div className="flex items-center gap-2 min-w-0">
-                          <FolderOpen className={`h-4 w-4 ${getProjectColor(testCase.projects.color)}`} />
-                          <span className="text-sm truncate">{testCase.projects.name}</span>
+                          <FolderOpen
+                            className={`h-4 w-4 ${getProjectColor(
+                              testCase.projects.color
+                            )}`}
+                          />
+                          <span className="text-sm truncate">
+                            {testCase.projects.name}
+                          </span>
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">No project</span>
+                        <span className="text-xs text-muted-foreground">
+                          No project
+                        </span>
                       )}
                     </TableCell>
 
                     <TableCell>
                       <Select
                         value={testCase.status}
-                        onValueChange={(value: "draft" | "active" | "archived") => onUpdateStatus(testCase.id, value)}
+                        onValueChange={(
+                          value: "draft" | "active" | "archived"
+                        ) => onUpdateStatus(testCase.id, value)}
                         disabled={updating === testCase.id}
                       >
                         <SelectTrigger className="w-[140px] h-8">
-                          {updating === testCase.id ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : null}
+                          {updating === testCase.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin mr-2" />
+                          ) : null}
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -226,7 +290,9 @@ export function RegularTestCaseSection(props: Props) {
                     </TableCell>
 
                     <TableCell>
-                      <Badge className={getPriorityColor(testCase.priority)}>{testCase.priority}</Badge>
+                      <Badge className={getPriorityColor(testCase.priority)}>
+                        {testCase.priority}
+                      </Badge>
                     </TableCell>
 
                     <TableCell>
@@ -234,12 +300,17 @@ export function RegularTestCaseSection(props: Props) {
                     </TableCell>
 
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => onOpenActionSheet(testCase)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => onOpenActionSheet(testCase)}
+                      >
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
-                )
+                );
               })
             )}
           </TableBody>
@@ -250,14 +321,25 @@ export function RegularTestCaseSection(props: Props) {
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {startIndex + 1}-{Math.min(endIndex, filteredCount)} of {filteredCount} test cases
+            Showing {startIndex + 1}-{Math.min(endIndex, filteredCount)} of{" "}
+            {filteredCount} test cases
           </p>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onPrevPage} disabled={currentPage === 1}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onPrevPage}
+              disabled={currentPage === 1}
+            >
               <ChevronLeft className="h-4 w-4 mr-1" />
               Previous
             </Button>
-            <Button variant="outline" size="sm" onClick={onNextPage} disabled={currentPage === totalPages}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onNextPage}
+              disabled={currentPage === totalPages}
+            >
               Next
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
@@ -265,5 +347,5 @@ export function RegularTestCaseSection(props: Props) {
         </div>
       )}
     </div>
-  )
+  );
 }

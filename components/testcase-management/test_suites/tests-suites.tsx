@@ -53,7 +53,7 @@ import {
   SessionStats,
   Project,
 } from "@/types/test-cases";
-import { TestSuiteDetailsDialog } from "./testSuiteDetailsDialog";
+import { TestSuiteDetailsDialog } from "./dialogs/testSuiteDetailsDialog";
 import { SuiteReports } from "./suitesreport";
 import { Calendar } from "@/components/ui/calendar";
 import {

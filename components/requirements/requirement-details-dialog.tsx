@@ -1,34 +1,38 @@
 // components/requirements/requirement-details-dialog.tsx
-"use client"
+"use client";
 
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+  DialogClose,
+} from "@/components/ui/dialog";
 import {
   Link as LinkIcon,
   ExternalLink,
   BarChart3,
   FolderOpen,
-} from "lucide-react"
+  Loader2,
+} from "lucide-react";
 import {
   getTypeColor,
   getPriorityColor,
   getStatusBadge,
   getCoverageColor,
   getProjectColor,
-} from "@/lib/utils/requirement-helpers"
-import type { Requirement } from "@/types/requirements"
+} from "@/lib/utils/requirement-helpers";
+import type { Requirement } from "@/types/requirements";
 
 interface RequirementDetailsDialogProps {
-  requirement: Requirement
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onOpenLinkDialog: () => void
+  requirement: Requirement;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onOpenLinkDialog: () => void;
 }
 
 export function RequirementDetailsDialog({
@@ -39,13 +43,20 @@ export function RequirementDetailsDialog({
 }: RequirementDetailsDialogProps) {
   const hasCriteria =
     Array.isArray(requirement.acceptance_criteria) &&
-    requirement.acceptance_criteria.length > 0
+    requirement.acceptance_criteria.length > 0;
+
+  const [loading, setLoading] = useState(false);
+  const [openView, setOpenView] = useState(false);
+
+  function handleClose() {
+    setOpenView(false);
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[95vw] sm:max-w-3xl lg:max-w-4xl max-h-[90vh] flex flex-col p-0"
-      
+        className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
+        onInteractOutside={(e) => e.preventDefault()}
       >
         {/* Sticky header */}
         <DialogHeader className="sticky top-0 z-10 bg-background border-b px-6 py-4">
@@ -110,7 +121,11 @@ export function RequirementDetailsDialog({
             {/* Coverage pill (keeps consistent baseline with badges) */}
             <Badge variant="secondary" className="gap-2">
               <BarChart3 className="h-3.5 w-3.5" />
-              <span className={`font-medium ${getCoverageColor(requirement.coverage_percentage)}`}>
+              <span
+                className={`font-medium ${getCoverageColor(
+                  requirement.coverage_percentage
+                )}`}
+              >
                 {requirement.coverage_percentage}% coverage
               </span>
             </Badge>
@@ -151,7 +166,9 @@ export function RequirementDetailsDialog({
                 <h4 className="text-sm font-semibold">Test Coverage Summary</h4>
                 <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="rounded-md bg-background/60 p-3 border">
-                    <p className="text-xs text-muted-foreground">Linked Test Cases</p>
+                    <p className="text-xs text-muted-foreground">
+                      Linked Test Cases
+                    </p>
                     <p className="mt-1 text-2xl font-bold">
                       {requirement.test_case_count}
                     </p>
@@ -159,7 +176,11 @@ export function RequirementDetailsDialog({
 
                   <div className="rounded-md bg-background/60 p-3 border">
                     <p className="text-xs text-muted-foreground">Coverage</p>
-                    <p className={`mt-1 text-2xl font-bold ${getCoverageColor(requirement.coverage_percentage)}`}>
+                    <p
+                      className={`mt-1 text-2xl font-bold ${getCoverageColor(
+                        requirement.coverage_percentage
+                      )}`}
+                    >
                       {requirement.coverage_percentage}%
                     </p>
                   </div>
@@ -213,9 +234,16 @@ export function RequirementDetailsDialog({
             </section>
           </div>
         </div>
-
-     
+        <div className="border-t bg-background px-6 py-4">
+          <DialogFooter className="gap-2 sm:gap-3">
+            <DialogClose asChild>
+              <Button variant="outline" onClick={handleClose}>
+                Close
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

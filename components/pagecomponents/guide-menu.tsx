@@ -22,6 +22,7 @@ import {
   Settings,
   BarChart3,
   Home,
+  Code2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -199,6 +200,18 @@ export function GuideMenu() {
             >
               <Chrome className="h-4 w-4 mr-2" />
               Browser Extension
+            </Link>
+          </MenubarItem>
+          <MenubarItem asChild>
+            <Link
+              href="/docs/playwright-automation"
+              className={cn(
+                "cursor-pointer",
+                isActive("/docs/playwright-automation") && "bg-accent"
+              )}
+            >
+              <Code2 className="h-4 w-4 mr-2" />
+              Playwright Automation
             </Link>
           </MenubarItem>
           <MenubarSeparator />

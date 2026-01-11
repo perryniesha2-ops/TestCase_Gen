@@ -43,6 +43,7 @@ import Link from "next/link";
 import { checkAndRecordUsage } from "@/lib/usage-tracker";
 import { TemplateSelect } from "@/components/templates/template-select";
 import { QuickTemplateSave } from "@/components/templates/quick-templates";
+import { ProjectSelect } from "@/components/projects/project-select";
 
 type TemplateCategory =
   | "functional"
@@ -69,6 +70,7 @@ interface RequirementOption {
   type: string;
   priority: string;
   value: string;
+  project_id?: string | null;
 }
 
 interface TemplateContent {
@@ -125,7 +127,7 @@ interface Template {
   template_content: TemplateContent;
 }
 
-export interface Project {
+export interface ProjectRow {
   id: string;
   user_id: string;
   name: string;
@@ -267,7 +269,7 @@ export function GeneratorForm() {
   const [model, setModel] = useState("claude-sonnet-4-5");
   const [testCaseCount, setTestCaseCount] = useState("10");
   const [selectedProject, setSelectedProject] = useState<string>("");
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [coverage, setCoverage] = useState<
     "standard" | "comprehensive" | "exhaustive"
   >("comprehensive");
@@ -293,6 +295,10 @@ export function GeneratorForm() {
 
   const router = useRouter();
 
+  const [projectSource, setProjectSource] = useState<
+    "none" | "requirement" | "user"
+  >("none");
+
   async function fetchRequirements() {
     setFetchingRequirements(true);
     try {
@@ -300,7 +306,7 @@ export function GeneratorForm() {
 
       const { data, error } = await supabase
         .from("requirements")
-        .select("id, title, description, type, priority, status")
+        .select("id, title, description, type, priority, status, project_id")
         .order("title", { ascending: true });
 
       if (error) throw error;
@@ -313,6 +319,7 @@ export function GeneratorForm() {
         type: req.type,
         priority: req.priority,
         value: req.description,
+        project_id: req.project_id ?? null,
       }));
 
       setSavedRequirements(dbRequirements);
@@ -354,7 +361,6 @@ export function GeneratorForm() {
 
   useEffect(() => {
     fetchRequirements();
-    fetchProjects();
   }, []);
 
   const availableRequirements =
@@ -404,6 +410,25 @@ export function GeneratorForm() {
       [platformId]: framework,
     }));
   };
+
+  useEffect(() => {
+    if (mode !== "saved") return;
+    if (!selectedReqData) return;
+
+    const reqProjectId = selectedReqData.project_id ?? null;
+
+    // If requirement has a project -> always apply it
+    if (reqProjectId) {
+      setSelectedProject(reqProjectId);
+      setProjectSource("requirement");
+      return;
+    }
+
+    if (projectSource === "requirement") {
+      setSelectedProject("");
+      setProjectSource("none");
+    }
+  }, [mode, selectedRequirement, selectedReqData?.project_id]);
 
   async function handleRegularSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -460,6 +485,7 @@ export function GeneratorForm() {
         template: selectedTemplate?.id || null,
         title: title.trim(),
         description: description?.trim() || null,
+        project_id: selectedProject || null,
       };
 
       const response = await fetch("/api/generate-test-cases", {
@@ -572,6 +598,7 @@ export function GeneratorForm() {
         testCaseCount: parseInt(crossPlatformTestCount, 10),
         coverage: crossPlatformCoverage,
         template: crossPlatformTemplate?.id || null,
+        project_id: selectedProject || null,
       };
 
       const response = await fetch("/api/cross-platform-testing", {
@@ -688,22 +715,6 @@ export function GeneratorForm() {
     setCoverage(settings.coverage);
   }
 
-  async function fetchProjects() {
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("projects")
-        .select("*")
-        .eq("status", "active")
-        .order("name");
-
-      if (error) throw error;
-      setProjects(data || []);
-    } catch (error) {
-      console.error("Error fetching projects:", error);
-    }
-  }
-
   function getModelDisplayName(modelKey: string): string {
     if (modelKey === "claude-sonnet-4-5") return "Claude Sonnet 4.5";
     if (modelKey === "claude-haiku-4-5") return "Claude Haiku 4.5";
@@ -733,7 +744,7 @@ export function GeneratorForm() {
       if (profile?.preferences?.test_case_defaults) {
         const defaults = profile.preferences.test_case_defaults;
 
-        setModel(defaults.model || "claude-sonnet-4-5");
+        setModel(defaults.model || "Claude Sonnet 4.5");
         setTestCaseCount(String(defaults.count || 10));
         setCoverage(defaults.coverage || "comprehensive");
 
@@ -746,7 +757,6 @@ export function GeneratorForm() {
 
   useEffect(() => {
     fetchRequirements();
-    fetchProjects();
     loadUserPreferences();
   }, []);
 
@@ -1001,6 +1011,28 @@ Example:
                 )}
               </div>
 
+              {/* Project Selection */}
+              <div className="mt-4 space-y-3 border rounded-lg p-4 bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm font-medium">Project</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Optional, but recommended for organizing generations and
+                      linking assets.
+                    </p>
+                  </div>
+                </div>
+
+                <ProjectSelect
+                  value={selectedProject || undefined}
+                  disabled={loading}
+                  onSelect={(project) => {
+                    setSelectedProject(project?.id ?? "");
+                    setSelectedProject(project?.id ?? "");
+                  }}
+                />
+              </div>
+
               {/* Template Selection */}
               <div className="mt-4 space-y-3 border rounded-lg p-4 bg-muted/30">
                 <div className="flex items-center justify-between gap-2">
@@ -1021,18 +1053,7 @@ Example:
                     onTemplateSaved={() => {
                       toast.success("Template saved from current settings");
                     }}
-                  >
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="whitespace-nowrap"
-                      disabled={loading}
-                    >
-                      <Save className="h-4 w-4 mr-2" />
-                      Save settings
-                    </Button>
-                  </QuickTemplateSave>
+                  ></QuickTemplateSave>
                 </div>
 
                 {selectedTemplate && (
@@ -1237,7 +1258,7 @@ User authentication functionality that works consistently across web and mobile 
                     disabled={loading}
                   >
                     <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select model" />
+                      <SelectValue placeholder="Claude Sonnet 4.5" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="claude-sonnet-4-5">

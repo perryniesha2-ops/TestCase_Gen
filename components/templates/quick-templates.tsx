@@ -1,12 +1,12 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -15,55 +15,64 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Save, Loader2 } from "lucide-react"
+} from "@/components/ui/select";
+import { Save, Loader2 } from "lucide-react";
 
-type TemplateCategory = 'functional' | 'security' | 'performance' | 'integration' | 'regression' | 'accessibility' | 'other'
+type TemplateCategory =
+  | "functional"
+  | "security"
+  | "performance"
+  | "integration"
+  | "regression"
+  | "accessibility"
+  | "other";
 
 interface QuickTemplateSaveProps {
   currentSettings: {
-    model: string
-    testCaseCount: number
-    coverage: string
-  }
-  onTemplateSaved?: () => void
-  children?: React.ReactNode
+    model: string;
+    testCaseCount: number;
+    coverage: string;
+  };
+  onTemplateSaved?: () => void;
+  children?: React.ReactNode;
 }
 
-export function QuickTemplateSave({ 
-  currentSettings, 
+export function QuickTemplateSave({
+  currentSettings,
   onTemplateSaved,
-  children 
+  children,
 }: QuickTemplateSaveProps) {
-  const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     category: "functional" as TemplateCategory,
-  })
+  });
 
   async function handleSave() {
     if (!formData.name.trim()) {
-      toast.error("Please enter a template name")
-      return
+      toast.error("Please enter a template name");
+      return;
     }
 
-    setLoading(true)
+    setLoading(true);
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       if (!user) {
-        toast.error("Please sign in to save templates")
-        return
+        toast.error("Please sign in to save templates");
+        return;
       }
 
       const templateContent = {
@@ -72,31 +81,29 @@ export function QuickTemplateSave({
         coverage: currentSettings.coverage,
         includeEdgeCases: true,
         includeNegativeTests: true,
-      }
+      };
 
-      const { error } = await supabase
-        .from("test_case_templates")
-        .insert({
-          user_id: user.id,
-          name: formData.name.trim(),
-          description: formData.description.trim() || null,
-          category: formData.category,
-          template_content: templateContent,
-          is_public: false,
-          is_favorite: false,
-        })
+      const { error } = await supabase.from("test_case_templates").insert({
+        user_id: user.id,
+        name: formData.name.trim(),
+        description: formData.description.trim() || null,
+        category: formData.category,
+        template_content: templateContent,
+        is_public: false,
+        is_favorite: false,
+      });
 
-      if (error) throw error
+      if (error) throw error;
 
-      toast.success("Template saved successfully!")
-      setOpen(false)
-      setFormData({ name: "", description: "", category: "functional" })
-      onTemplateSaved?.()
+      toast.success("Template saved successfully!");
+      setOpen(false);
+      setFormData({ name: "", description: "", category: "functional" });
+      onTemplateSaved?.();
     } catch (error) {
-      console.error("Error saving template:", error)
-      toast.error("Failed to save template")
+      console.error("Error saving template:", error);
+      toast.error("Failed to save template");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -132,11 +139,15 @@ export function QuickTemplateSave({
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Test Cases:</span>
-              <span className="font-medium">{currentSettings.testCaseCount}</span>
+              <span className="font-medium">
+                {currentSettings.testCaseCount}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Coverage:</span>
-              <span className="font-medium capitalize">{currentSettings.coverage}</span>
+              <span className="font-medium capitalize">
+                {currentSettings.coverage}
+              </span>
             </div>
           </div>
 
@@ -145,7 +156,9 @@ export function QuickTemplateSave({
             <Input
               id="template-name"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
               placeholder="e.g., My API Tests"
               maxLength={100}
             />
@@ -156,7 +169,9 @@ export function QuickTemplateSave({
             <Textarea
               id="template-description"
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, description: e.target.value })
+              }
               placeholder="Describe when to use this template..."
               rows={2}
               maxLength={500}
@@ -167,7 +182,12 @@ export function QuickTemplateSave({
             <Label htmlFor="template-category">Category</Label>
             <Select
               value={formData.category}
-              onValueChange={(value) => setFormData({ ...formData, category: value as TemplateCategory })}
+              onValueChange={(value) =>
+                setFormData({
+                  ...formData,
+                  category: value as TemplateCategory,
+                })
+              }
             >
               <SelectTrigger>
                 <SelectValue />
@@ -178,7 +198,9 @@ export function QuickTemplateSave({
                 <SelectItem value="performance">Performance Testing</SelectItem>
                 <SelectItem value="integration">Integration Testing</SelectItem>
                 <SelectItem value="regression">Regression Testing</SelectItem>
-                <SelectItem value="accessibility">Accessibility Testing</SelectItem>
+                <SelectItem value="accessibility">
+                  Accessibility Testing
+                </SelectItem>
                 <SelectItem value="other">Other</SelectItem>
               </SelectContent>
             </Select>
@@ -190,13 +212,20 @@ export function QuickTemplateSave({
             type="button"
             variant="outline"
             onClick={() => {
-              setOpen(false)
-              setFormData({ name: "", description: "", category: "functional" })
+              setOpen(false);
+              setFormData({
+                name: "",
+                description: "",
+                category: "functional",
+              });
             }}
           >
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={loading || !formData.name.trim()}>
+          <Button
+            onClick={handleSave}
+            disabled={loading || !formData.name.trim()}
+          >
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -212,5 +241,5 @@ export function QuickTemplateSave({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

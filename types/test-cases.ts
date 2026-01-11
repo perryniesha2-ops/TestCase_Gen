@@ -183,6 +183,12 @@ export interface TestSuite {
     scripted_count: number;
     mode: AutomationMode;
   };
+  automation_stats?: {
+    total: number;
+    with_steps: number;
+    with_automation: number;
+    ready: number;
+  };
 }
 
 export interface SessionStats {

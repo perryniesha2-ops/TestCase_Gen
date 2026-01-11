@@ -17,8 +17,18 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Upload, Camera, X, Loader2, Download, Eye } from "lucide-react";
+import Link from "next/link";
+import {
+  Upload,
+  Camera,
+  X,
+  Loader2,
+  Download,
+  Eye,
+  Chrome,
+} from "lucide-react";
 import { extensionRequest } from "@/lib/extensions/extensionRequest";
+import { detectExtensionInstalled } from "@/lib/extensions/detectExtension";
 
 interface TestAttachment {
   id: string;
@@ -39,6 +49,9 @@ interface ScreenshotUploadProps {
   attachments?: TestAttachment[];
   onDeleteAttachment?: (attachmentId: string) => void;
   targetUrl?: string;
+  ensureExtensionInstalled?: () => Promise<boolean>;
+  extensionInstalled?: boolean | null;
+  checkingExtension?: boolean;
 }
 
 const BUCKET = "test-attachments";
@@ -72,6 +85,9 @@ export function ScreenshotUpload({
   onUploadComplete,
   attachments = [],
   onDeleteAttachment,
+  ensureExtensionInstalled,
+  extensionInstalled: extensionInstalledProp,
+  checkingExtension,
 }: ScreenshotUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -81,6 +97,8 @@ export function ScreenshotUpload({
   const [extensionInstalled, setExtensionInstalled] = useState<boolean | null>(
     null
   );
+  const resolvedExtensionInstalled =
+    extensionInstalledProp ?? extensionInstalled;
 
   const handleFileSelect = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -167,19 +185,6 @@ export function ScreenshotUpload({
     }
   }
 
-  async function checkExtensionInstalled() {
-    try {
-      await extensionRequest("PING");
-      setExtensionInstalled(true);
-    } catch {
-      setExtensionInstalled(false);
-    }
-  }
-
-  useEffect(() => {
-    void checkExtensionInstalled();
-  }, []);
-
   async function handleDelete(attachmentId: string, filePath: string) {
     const confirmed = window.confirm("Delete this screenshot?");
     if (!confirmed) return;
@@ -233,7 +238,13 @@ export function ScreenshotUpload({
   );
 
   async function captureFromExtension(mode: "full" | "region") {
-    if (!extensionInstalled) {
+    const installed = ensureExtensionInstalled
+      ? await ensureExtensionInstalled()
+      : await detectExtensionInstalled();
+
+    setExtensionInstalled(installed);
+
+    if (!installed) {
       toast.error(
         "Please install the SynthQA browser extension to capture screenshots."
       );
@@ -284,7 +295,7 @@ export function ScreenshotUpload({
   }
 
   const captureDisabled =
-    uploading || extensionInstalled === false || !targetUrl?.trim();
+    uploading || resolvedExtensionInstalled === false || !targetUrl?.trim();
 
   return (
     <div className="space-y-4">
@@ -355,7 +366,7 @@ export function ScreenshotUpload({
                     onClick={() => void captureFromExtension("full")}
                     disabled={captureDisabled}
                     title={
-                      extensionInstalled === false
+                      resolvedExtensionInstalled === false
                         ? "Install the SynthQA browser extension to use Capture"
                         : !targetUrl?.trim()
                         ? "Enter a target URL to capture screenshots"
@@ -385,17 +396,15 @@ export function ScreenshotUpload({
                   </Button>
                 </div>
 
-                {extensionInstalled === false && (
+                {resolvedExtensionInstalled === false && (
                   <p className="text-xs text-amber-600 mt-2">
                     Browser extension required for Capture.
-                    <a
-                      href="/docs/extension-guide"
-                      target="_blank"
-                      className="underline ml-1"
-                      rel="noreferrer"
+                    <Link
+                      href="/downloads/SynthQA-Evidence-Extension-v0.1.1.zip"
+                      className="ml-1 underline underline-offset-2 font-medium hover:text-amber-700"
                     >
-                      Install instructions
-                    </a>
+                      Install
+                    </Link>
                   </p>
                 )}
 
@@ -430,16 +439,14 @@ export function ScreenshotUpload({
           </div>
 
           <div className="max-h-[260px] overflow-y-auto pr-1">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {attachments.map((attachment) => (
-                <AttachmentCard
-                  key={attachment.id}
-                  attachment={attachment}
-                  onPreview={handlePreview}
-                  onDelete={handleDelete}
-                />
-              ))}
-            </div>
+            {attachments.map((attachment) => (
+              <AttachmentCard
+                key={attachment.id}
+                attachment={attachment}
+                onPreview={handlePreview}
+                onDelete={handleDelete}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -499,7 +506,7 @@ function AttachmentCard({
             <img
               src={imageUrl}
               alt={attachment.file_name}
-              className="w-full h-full object-cover"
+              className="w-full max-h-[55vh] object-contain rounded-lg mx-auto"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
@@ -580,8 +587,18 @@ function PreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
-        <DialogHeader>
+      <DialogContent
+        className="
+        w-[95vw]
+        sm:max-w-[95vw]
+        lg:max-w-4xl
+        max-h-[90vh]
+        overflow-hidden
+        flex
+        flex-col
+      "
+      >
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>{attachment.file_name}</DialogTitle>
           <DialogDescription>
             {attachment.description || "No description"}
@@ -591,7 +608,8 @@ function PreviewDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[60vh] overflow-auto">
+        {/* Scroll area */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pr-1 pb-2">
           {loading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               Loading…
@@ -609,7 +627,7 @@ function PreviewDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-shrink-0 border-t pt-3">
           <Button
             variant="outline"
             onClick={handleDownload}

@@ -1,7 +1,7 @@
 // components/test-management/TestSessionExecution.tsx
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -80,6 +80,8 @@ type ExecutionStatus =
   | "skipped"
   | "blocked";
 
+type ExtensionStatus = boolean | null;
+
 interface SessionStats {
   passed: number;
   failed: number;
@@ -132,7 +134,10 @@ export function TestSessionExecution({
   const [targetUrl, setTargetUrl] = useState<string>("");
   const [showEvidenceDialog, setShowEvidenceDialog] = useState(false);
 
-  const [extensionInstalled, setExtensionInstalled] = useState<boolean>(true);
+  const [extensionInstalled, setExtensionInstalled] =
+    useState<ExtensionStatus>(null);
+  const [checkingExtension, setCheckingExtension] = useState(false);
+  const lastExtensionCheckRef = useRef<number>(0);
 
   // Refs
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -149,26 +154,27 @@ export function TestSessionExecution({
     skipped: 0,
   };
 
+  const refreshExtensionStatus = useCallback(async () => {
+    // small throttle to prevent spamming PING during rapid rerenders
+    const now = Date.now();
+    if (now - lastExtensionCheckRef.current < 800) return extensionInstalled;
+
+    lastExtensionCheckRef.current = now;
+    setCheckingExtension(true);
+    try {
+      const installed = await detectExtensionInstalled();
+      setExtensionInstalled(installed);
+      return installed;
+    } finally {
+      setCheckingExtension(false);
+    }
+  }, [extensionInstalled]);
+
   // Fetch test cases when suite changes
   useEffect(() => {
     if (!suite.id) return;
     void fetchSuiteTestCases();
   }, [suite.id]);
-
-  // When parent sets open=true, start session
-  useEffect(() => {
-    if (!open) {
-      // Reset when dialog closes
-      sessionStartedRef.current = false;
-      return;
-    }
-
-    // Only start if we haven't already started a session
-    if (!sessionStartedRef.current) {
-      sessionStartedRef.current = true;
-      void startNewSession();
-    }
-  }, [open]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -244,12 +250,46 @@ export function TestSessionExecution({
     failureReason,
   ]);
 
+  useEffect(() => {
+    if (!showEvidenceDialog) return;
+    void refreshExtensionStatus(); // immediate check when popup opens
+  }, [showEvidenceDialog, refreshExtensionStatus]);
+
   // Focus dialog when opened
   useEffect(() => {
     if (showExecutionDialog && dialogRef.current) {
       dialogRef.current.focus();
     }
   }, [showExecutionDialog]);
+
+  useEffect(() => {
+    if (!open) {
+      sessionStartedRef.current = false;
+      return;
+    }
+
+    if (!sessionStartedRef.current) {
+      sessionStartedRef.current = true;
+      void startNewSession();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!showEvidenceDialog) return;
+
+    const onFocus = () => void refreshExtensionStatus();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refreshExtensionStatus();
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [showEvidenceDialog, refreshExtensionStatus]);
 
   async function fetchSuiteTestCases(): Promise<SuiteTestCase[]> {
     setTestsLoading(true);
@@ -1276,15 +1316,27 @@ export function TestSessionExecution({
                         open={showEvidenceDialog}
                         onOpenChange={setShowEvidenceDialog}
                       >
-                        <DialogContent className="max-w-3xl">
-                          <DialogHeader>
+                        <DialogContent
+                          className="
+      w-[95vw]
+      sm:max-w-[95vw]
+      lg:max-w-5xl
+      h-[90vh]
+      overflow-hidden
+      flex
+      flex-col
+    "
+                        >
+                          <DialogHeader className="shrink-0">
                             <DialogTitle>Test Evidence</DialogTitle>
                             <DialogDescription>
                               Capture or upload screenshots for this execution.
                             </DialogDescription>
                           </DialogHeader>
 
-                          <div className="space-y-4">
+                          {/* SINGLE scroll container for everything that can grow */}
+                          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-2 space-y-6">
+                            {/* Target URL */}
                             <div className="space-y-2">
                               <Label htmlFor="target-url-modal">
                                 Target URL
@@ -1301,6 +1353,7 @@ export function TestSessionExecution({
                               />
                             </div>
 
+                            {/* Screenshot section */}
                             {currentTest && currentExecutionId ? (
                               <ScreenshotUpload
                                 executionId={currentExecutionId}
@@ -1318,6 +1371,13 @@ export function TestSessionExecution({
                                     prev.filter((a) => a.id !== attachmentId)
                                   )
                                 }
+                                ensureExtensionInstalled={async () => {
+                                  const installed =
+                                    await refreshExtensionStatus();
+                                  return installed === true;
+                                }}
+                                extensionInstalled={extensionInstalled}
+                                checkingExtension={checkingExtension}
                               />
                             ) : (
                               <div className="text-sm text-muted-foreground">
@@ -1326,7 +1386,7 @@ export function TestSessionExecution({
                             )}
                           </div>
 
-                          <DialogFooter>
+                          <DialogFooter className="shrink-0 border-t pt-3">
                             <Button
                               variant="outline"
                               onClick={() => setShowEvidenceDialog(false)}
