@@ -24,18 +24,14 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!planId || !userId) {
-      console.error("❌ Missing required fields:", { planId, userId });
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    console.log(`✅ Processing: ${planId}, yearly: ${isYearly}`);
-
     // Don't process free, enterprise, or team through checkout
     if (planId === "free" || planId === "enterprise" || planId === "team") {
-      console.log("⚠️ Invalid plan for checkout:", planId);
       return NextResponse.json(
         { error: "Invalid plan for checkout" },
         { status: 400 }
@@ -53,8 +49,6 @@ export async function POST(request: NextRequest) {
       console.error("❌ Authentication failed");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    console.log("✅ User authenticated:", user.id);
 
     // Get the correct price ID
     const priceKey = `${planId}_${
@@ -111,16 +105,10 @@ export async function POST(request: NextRequest) {
 
     // FIXED: Check if customer exists in Stripe before using it
     if (existingProfile?.stripe_customer_id) {
-      console.log(
-        "🔍 Checking if customer exists:",
-        existingProfile.stripe_customer_id
-      );
-
       try {
         // Try to retrieve the customer from Stripe
         await stripe.customers.retrieve(existingProfile.stripe_customer_id);
         customerId = existingProfile.stripe_customer_id;
-        console.log("✅ Using existing customer:", customerId);
       } catch (error: any) {
         if (error.code === "resource_missing") {
           // Customer doesn't exist in Stripe - create a new one
@@ -134,7 +122,6 @@ export async function POST(request: NextRequest) {
           });
 
           customerId = customer.id;
-          console.log("✅ Created new customer:", customerId);
 
           // Update database with new customer ID
           await supabase
@@ -161,7 +148,6 @@ export async function POST(request: NextRequest) {
       });
 
       customerId = customer.id;
-      console.log("✅ Created new customer:", customerId);
 
       // Store customer ID in database
       await supabase
@@ -206,8 +192,6 @@ export async function POST(request: NextRequest) {
         },
       },
     });
-
-    console.log("✅ Checkout session created:", session.id);
 
     return NextResponse.json({
       checkoutUrl: session.url,

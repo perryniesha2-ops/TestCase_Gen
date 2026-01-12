@@ -1,21 +1,20 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { AddRequirementModal } from "@/components/requirements/add-requirement-modal"
-import { Plus } from "lucide-react"
-import { useRouter } from "next/navigation"
-
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { AddRequirementModal } from "@/components/requirements/add-requirement-modal";
+import { Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,194 +22,190 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   Loader2,
   Search,
   FileDown,
   ChevronDown,
   FolderOpen,
-} from "lucide-react"
-import { RequirementsTable } from "./requirements-table"
-import { RequirementDetailsDialog } from "./requirement-details-dialog"
-import { LinkTestCasesDialog } from "./link-test-cases-dialog"
-import { EditRequirementModal } from "./edit-requirement-modal"
-import { useRequirements } from "@/hooks/use-requirements"
-import { getProjectColor } from "@/lib/utils/requirement-helpers"
-import type { Requirement, Project } from "@/types/requirements"
+} from "lucide-react";
+import { RequirementsTable } from "./requirements-table";
+import { RequirementDetailsDialog } from "./requirement-details-dialog";
+import { LinkTestCasesDialog } from "./link-test-cases-dialog";
+import { EditRequirementModal } from "./edit-requirement-modal";
+import { useRequirements } from "@/hooks/use-requirements";
+import { getProjectColor } from "@/lib/utils/requirement-helpers";
+import { useAuth } from "@/lib/auth/auth-context";
+import type { Requirement, Project } from "@/types/requirements";
 
 interface RequirementsListProps {
-  onRequirementSelected?: (requirement: Requirement) => void
-  selectable?: boolean
+  onRequirementSelected?: (requirement: Requirement) => void;
+  selectable?: boolean;
 }
 
 export function RequirementsList({
   onRequirementSelected,
   selectable = false,
 }: RequirementsListProps) {
-  // Filter State
-  const [selectedProject, setSelectedProject] = useState<string>("")
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [priorityFilter, setPriorityFilter] = useState("all")
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
-  
+  // Hooks
+  const { user } = useAuth();
+  const router = useRouter();
 
-  // Dialog State
-  const [selectedRequirement, setSelectedRequirement] = useState<Requirement | null>(null)
-  const [showDetailsDialog, setShowDetailsDialog] = useState(false)
-  const [showLinkDialog, setShowLinkDialog] = useState(false)
-  const [showEditDialog, setShowEditDialog] = useState(false)
+  // useState Hooks
+  const [selectedProject, setSelectedProject] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedRequirement, setSelectedRequirement] =
+    useState<Requirement | null>(null);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
 
-  const router = useRouter()
+  // Constrants
+  const itemsPerPage = 10;
 
-
-  // Projects State
-  const [projects, setProjects] = useState<Project[]>([])
-
-  // Custom hook for requirements data
+  // Custom Hooks
   const { requirements, loading, fetchRequirements, deleteRequirement } =
-    useRequirements(selectedProject)
+    useRequirements(selectedProject);
 
-  // Load projects on mount
+  // Metrics
+  const selectedProjectName = selectedProject
+    ? projects.find((p) => p.id === selectedProject)?.name
+    : null;
+
+  const filteredRequirements = requirements.filter((req) => {
+    const matchesSearch =
+      req.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.external_id?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = statusFilter === "all" || req.status === statusFilter;
+    const matchesPriority =
+      priorityFilter === "all" || req.priority === priorityFilter;
+
+    return matchesSearch && matchesStatus && matchesPriority;
+  });
+
+  const totalPages = Math.ceil(filteredRequirements.length / itemsPerPage);
+  const paginatedRequirements = filteredRequirements.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  //  useEffect HOOKS
   useEffect(() => {
-    fetchProjects()
-  }, [])
+    if (user) {
+      fetchProjects();
+    }
+  }, [user]);
 
-  // Fetch projects from database
+  // ALL FUNCTIONS
   async function fetchProjects() {
-    try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+    if (!user) return;
 
-      if (!user) return
+    try {
+      const supabase = createClient();
 
       const { data, error } = await supabase
         .from("projects")
         .select("id, name, color, icon")
         .eq("user_id", user.id)
-        .order("name")
+        .order("name");
 
-      if (error) throw error
-      setProjects(data || [])
+      if (error) throw error;
+      setProjects(data || []);
     } catch (error) {
-      console.error("Error fetching projects:", error)
+      console.error("Error fetching projects:", error);
     }
   }
 
-  // Get selected project name for display
-  const selectedProjectName = selectedProject
-    ? projects.find((p) => p.id === selectedProject)?.name
-    : null
-
-  // Filter requirements based on search and filters
-  const filteredRequirements = requirements.filter((req) => {
-    const matchesSearch =
-      req.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.external_id?.toLowerCase().includes(searchTerm.toLowerCase())
-
-    const matchesStatus = statusFilter === "all" || req.status === statusFilter
-    const matchesPriority = priorityFilter === "all" || req.priority === priorityFilter
-
-    return matchesSearch && matchesStatus && matchesPriority
-  })
-
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredRequirements.length / itemsPerPage)
-  const paginatedRequirements = filteredRequirements.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  )
-
   const handleRequirementAdded = async () => {
-  await fetchRequirements()   
-  router.refresh()            
-}
+    await fetchRequirements();
+    router.refresh();
+  };
 
-  // Event Handlers
   function handleRowClick(requirement: Requirement) {
     if (selectable && onRequirementSelected) {
-      onRequirementSelected(requirement)
+      onRequirementSelected(requirement);
     } else {
-      setSelectedRequirement(requirement)
-      setShowDetailsDialog(true)
+      setSelectedRequirement(requirement);
+      setShowDetailsDialog(true);
     }
   }
 
   function handleOpenLinkDialog(requirement: Requirement) {
-    setSelectedRequirement(requirement)
-    setShowLinkDialog(true)
+    setSelectedRequirement(requirement);
+    setShowLinkDialog(true);
   }
 
   function handleOpenEditDialog(requirement: Requirement) {
-    setSelectedRequirement(requirement)
-    setShowEditDialog(true)
+    setSelectedRequirement(requirement);
+    setShowEditDialog(true);
   }
 
   async function handleDelete(requirement: Requirement) {
     if (!confirm(`Are you sure you want to delete "${requirement.title}"?`)) {
-      return
+      return;
     }
 
-    const success = await deleteRequirement(requirement.id)
+    const success = await deleteRequirement(requirement.id);
     if (success) {
-      toast.success("Requirement deleted successfully")
-      fetchRequirements()
+      toast.success("Requirement deleted successfully");
+      fetchRequirements();
     }
   }
 
   function handleExport() {
-    toast.info("Export functionality coming soon")
+    toast.info("Export functionality coming soon");
   }
 
   function handleProjectFilterChange(projectId: string) {
-    setSelectedProject(projectId)
-    setCurrentPage(1)
+    setSelectedProject(projectId);
+    setCurrentPage(1);
   }
 
   function handleStatusFilterChange(status: string) {
-    setStatusFilter(status)
-    setCurrentPage(1)
+    setStatusFilter(status);
+    setCurrentPage(1);
   }
 
   function handlePriorityFilterChange(priority: string) {
-    setPriorityFilter(priority)
-    setCurrentPage(1)
+    setPriorityFilter(priority);
+    setCurrentPage(1);
   }
 
   function handleSearchChange(value: string) {
-    setSearchTerm(value)
-    setCurrentPage(1)
+    setSearchTerm(value);
+    setCurrentPage(1);
   }
 
-
-
-  // Loading State
+  //  EARLY RETURNS
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
-    )
+    );
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-end gap-2">
-<AddRequirementModal
-  defaultProjectId={selectedProject || undefined}
-  onRequirementAdded={handleRequirementAdded}
->
-  <Button>
-    <Plus className="h-4 w-4 mr-2" />
-    New Requirement
-  </Button>
-</AddRequirementModal>
-</div>
+        <AddRequirementModal
+          defaultProjectId={selectedProject || undefined}
+          onRequirementAdded={handleRequirementAdded}
+        >
+          <Button>
+            <Plus className="h-4 w-4 mr-2" />
+            New Requirement
+          </Button>
+        </AddRequirementModal>
+      </div>
+
       {/* Filters Section */}
       <div className="flex items-center gap-4">
         {/* Search Input */}
@@ -225,7 +220,7 @@ export function RequirementsList({
         </div>
 
         {/* Project Filter Dropdown */}
-         <DropdownMenu>
+        <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="min-w-[180px] justify-between">
               {selectedProjectName ? (
@@ -254,7 +249,9 @@ export function RequirementsList({
                 key={project.id}
                 onClick={() => handleProjectFilterChange(project.id)}
               >
-                <FolderOpen className={`h-4 w-4 mr-2 ${getProjectColor(project.color)}`} />
+                <FolderOpen
+                  className={`h-4 w-4 mr-2 ${getProjectColor(project.color)}`}
+                />
                 <span>{project.name}</span>
               </DropdownMenuItem>
             ))}
@@ -281,7 +278,10 @@ export function RequirementsList({
         </Select>
 
         {/* Priority Filter */}
-        <Select value={priorityFilter} onValueChange={handlePriorityFilterChange}>
+        <Select
+          value={priorityFilter}
+          onValueChange={handlePriorityFilterChange}
+        >
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Priority" />
           </SelectTrigger>
@@ -346,5 +346,5 @@ export function RequirementsList({
         />
       )}
     </div>
-  )
+  );
 }

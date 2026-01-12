@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Save, Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/auth/auth-context";
 
 type TemplateCategory =
   | "functional"
@@ -56,24 +57,22 @@ export function QuickTemplateSave({
     description: "",
     category: "functional" as TemplateCategory,
   });
+  const { user } = useAuth();
 
   async function handleSave() {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     if (!formData.name.trim()) {
       toast.error("Please enter a template name");
       return;
     }
 
-    setLoading(true);
     try {
+      setLoading(true);
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please sign in to save templates");
-        return;
-      }
 
       const templateContent = {
         model: currentSettings.model,

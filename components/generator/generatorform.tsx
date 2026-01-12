@@ -667,9 +667,7 @@ export function GeneratorForm() {
             onClick: () => router.push("/billing"),
           },
         });
-      }
-      // ✅ IMPROVED: Success with low remaining warning
-      else if (
+      } else if (
         data.usage &&
         data.usage.remaining >= 0 &&
         data.usage.remaining <= 5
@@ -680,9 +678,7 @@ export function GeneratorForm() {
             data.usage.remaining === 1 ? "" : "s"
           } remaining this month`,
         });
-      }
-      // ✅ Normal success
-      else {
+      } else {
         toast.success("Cross-platform tests generated!", {
           description: `Created ${data.total_test_cases} test cases across ${selectedPlatforms.length} platform(s)`,
         });
@@ -747,8 +743,6 @@ export function GeneratorForm() {
         setModel(defaults.model || "Claude Sonnet 4.5");
         setTestCaseCount(String(defaults.count || 10));
         setCoverage(defaults.coverage || "comprehensive");
-
-        console.log("✅ Loaded user preferences:", defaults);
       }
     } catch (error) {
       console.error("Error loading preferences:", error);
@@ -1201,7 +1195,7 @@ User authentication functionality that works consistently across web and mobile 
                 </p>
               </div>
 
-              {/* ✅ NEW: Template Selection for Cross-Platform */}
+              {/* Template Selection for Cross-Platform */}
               <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex-1">

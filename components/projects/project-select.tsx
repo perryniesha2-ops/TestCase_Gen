@@ -40,6 +40,7 @@ import {
   Terminal,
   X,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth/auth-context";
 
 type ProjectStatus = "active" | "archived" | "completed" | "on_hold";
 type ProjectColor =
@@ -94,14 +95,21 @@ export function ProjectSelect({
   onSelect,
   disabled,
 }: ProjectSelectProps) {
+  // ✅ 1. ALL CONTEXT HOOKS FIRST
+  const { user } = useAuth();
+
+  // ✅ 2. ALL useState HOOKS
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // ✅ 3. ALL useEffect HOOKS
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    if (user) {
+      fetchProjects();
+    }
+  }, [user]);
 
   useEffect(() => {
     if (value) {
@@ -112,58 +120,75 @@ export function ProjectSelect({
     }
   }, [value, projects]);
 
+  // ✅ 4. ALL FUNCTIONS
   async function fetchProjects() {
+    if (!user) return;
+
     setLoading(true);
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
 
-      if (!user) return;
-
-      const { data, error } = await supabase
+      // ✅ Fetch projects
+      const { data: projectsData, error: projectsError } = await supabase
         .from("projects")
         .select("*")
         .eq("status", "active")
         .order("name");
 
-      if (error) throw error;
+      if (projectsError) throw projectsError;
+      if (!projectsData || projectsData.length === 0) {
+        setProjects([]);
+        return;
+      }
 
-      // Get counts for each project
-      const projectsWithCounts = await Promise.all(
-        (data || []).map(async (project) => {
-          const [
-            { count: suitesCount },
-            { count: reqCount },
-            { count: templatesCount },
-          ] = await Promise.all([
-            supabase
-              .from("test_suites")
-              .select("*", { count: "exact", head: true })
-              .eq("project_id", project.id),
-            supabase
-              .from("requirements")
-              .select("*", { count: "exact", head: true })
-              .eq("project_id", project.id),
-            supabase
-              .from("test_case_templates")
-              .select("*", { count: "exact", head: true })
-              .eq("project_id", project.id),
-          ]);
+      const projectIds = projectsData.map((p) => p.id);
 
-          return {
-            ...project,
-            test_suites_count: suitesCount || 0,
-            requirements_count: reqCount || 0,
-            templates_count: templatesCount || 0,
-          } as Project;
-        })
-      );
+      // ✅ OPTIMIZED: Fetch ALL counts in 3 queries instead of N×3 queries
+      const [suitesResult, reqResult, templatesResult] = await Promise.all([
+        supabase
+          .from("test_suites")
+          .select("project_id")
+          .in("project_id", projectIds),
+        supabase
+          .from("requirements")
+          .select("project_id")
+          .in("project_id", projectIds),
+        supabase
+          .from("test_case_templates")
+          .select("project_id")
+          .in("project_id", projectIds),
+      ]);
+
+      // ✅ Count in memory instead of 3N queries
+      const suiteCounts: Record<string, number> = {};
+      const reqCounts: Record<string, number> = {};
+      const templateCounts: Record<string, number> = {};
+
+      suitesResult.data?.forEach((item) => {
+        suiteCounts[item.project_id] = (suiteCounts[item.project_id] || 0) + 1;
+      });
+
+      reqResult.data?.forEach((item) => {
+        reqCounts[item.project_id] = (reqCounts[item.project_id] || 0) + 1;
+      });
+
+      templatesResult.data?.forEach((item) => {
+        templateCounts[item.project_id] =
+          (templateCounts[item.project_id] || 0) + 1;
+      });
+
+      // ✅ Map counts to projects
+      const projectsWithCounts = projectsData.map((project) => ({
+        ...project,
+        test_suites_count: suiteCounts[project.id] || 0,
+        requirements_count: reqCounts[project.id] || 0,
+        templates_count: templateCounts[project.id] || 0,
+      })) as Project[];
 
       setProjects(projectsWithCounts);
     } catch (error) {
       console.error("Error fetching projects:", error);
+      toast.error("Failed to load projects");
     } finally {
       setLoading(false);
     }
@@ -183,6 +208,7 @@ export function ProjectSelect({
     onSelect(null);
   }
 
+  // ✅ 5. MAIN RENDER
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">

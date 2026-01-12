@@ -1,5 +1,4 @@
 const channel = "synthqa-evidence-extension";
-console.log("[SynthQA Extension] content script injected:", location.href);
 
 // page -> SW bridge (extensionRequest)
 window.addEventListener("message", (event) => {

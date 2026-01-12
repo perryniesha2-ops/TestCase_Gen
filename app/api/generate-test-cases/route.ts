@@ -123,7 +123,6 @@ const FALLBACK_GPT = "gpt-4o";
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-// ✅ ENHANCED: Automation-focused coverage prompts
 const COVERAGE_PROMPTS = {
   standard: `Generate standard test cases with AUTOMATION-READY steps. Each test case should:
 - Include specific, actionable UI steps (click button X, type Y in field Z)
@@ -173,7 +172,6 @@ function normalizePriority(p: unknown): Priority {
   return ALLOWED.has(s as Priority) ? (s as Priority) : "medium";
 }
 
-// ✅ ENHANCED: Automation-specific prompt template
 const AUTOMATION_GUIDELINES = `
 AUTOMATION REQUIREMENTS:
 You are creating test cases that will be AUTOMATICALLY CONVERTED to Playwright automation scripts.
@@ -270,7 +268,7 @@ export async function POST(request: Request) {
       template?: string;
       title?: string;
       description?: string | null;
-      application_url?: string; // ✅ NEW: Base URL for the application
+      application_url?: string;
     };
 
     const requirements = (body.requirements ?? "").trim();
@@ -350,7 +348,6 @@ export async function POST(request: Request) {
 
     const model = AI_MODELS[modelKey];
 
-    // ✅ ENHANCED: Build automation-focused prompt
     const coverageInstruction = COVERAGE_PROMPTS[coverage];
     const templateInstruction = template
       ? `\n\nUse this template structure:\n${template}`

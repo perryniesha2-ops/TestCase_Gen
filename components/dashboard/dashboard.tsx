@@ -24,6 +24,7 @@ import {
   Activity,
   Users,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth/auth-context";
 
 interface DashboardMetrics {
   test_cases: {
@@ -61,6 +62,8 @@ type ExecutionStatus =
 const PRIORITY_ORDER = ["critical", "high", "medium", "low"] as const;
 
 export function TestManagementDashboard() {
+  const { user } = useAuth();
+
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     test_cases: {
       total: 0,
@@ -88,11 +91,16 @@ export function TestManagementDashboard() {
     selectedTeamId === "personal" ? "Personal" : "Team (Coming Soon)";
 
   useEffect(() => {
+    if (!user?.id) return;
     fetchDashboardData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id]);
 
   async function fetchDashboardData() {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       await Promise.all([
@@ -101,18 +109,15 @@ export function TestManagementDashboard() {
         fetchRecentActivity(),
       ]);
     } catch (error) {
-      console.error("Error fetching dashboard data:", error);
     } finally {
       setLoading(false);
     }
   }
 
   async function fetchTestCaseMetrics() {
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
     if (!user) return;
+
+    const supabase = createClient();
 
     const { data: testCases, error: tcErr } = await supabase
       .from("test_cases")
@@ -187,11 +192,9 @@ export function TestManagementDashboard() {
   }
 
   async function fetchRequirementsMetrics() {
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
     if (!user) return;
+
+    const supabase = createClient();
 
     const { data: requirements, error: reqErr } = await supabase
       .from("requirements")
@@ -236,11 +239,9 @@ export function TestManagementDashboard() {
   }
 
   async function fetchRecentActivity() {
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
     if (!user) return;
+
+    const supabase = createClient();
 
     const { data, error } = await supabase
       .from("test_executions")

@@ -39,7 +39,6 @@ export async function POST(request: NextRequest) {
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-      console.log(`✅ Webhook verified: ${event.type}`);
     } catch (err: any) {
       console.error("❌ Webhook signature verification failed:", err.message);
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
@@ -49,7 +48,6 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        console.log(`📋 Checkout completed: ${session.id}`);
 
         if (session.subscription) {
           const subscription = await stripe.subscriptions.retrieve(
@@ -64,41 +62,35 @@ export async function POST(request: NextRequest) {
 
       case "customer.subscription.created": {
         const subscription = event.data.object as Stripe.Subscription;
-        console.log(`🆕 Subscription created: ${subscription.id}`);
         await handleSubscriptionCreated(subscription);
         break;
       }
 
       case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription;
-        console.log(`🔄 Subscription updated: ${subscription.id}`);
         await handleSubscriptionUpdated(subscription);
         break;
       }
 
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
-        console.log(`❌ Subscription deleted: ${subscription.id}`);
         await handleSubscriptionDeleted(subscription);
         break;
       }
 
       case "invoice.payment_succeeded": {
         const invoice = event.data.object as Stripe.Invoice;
-        console.log(`💳 Payment succeeded: ${invoice.id}`);
         await handleInvoicePaymentSucceeded(invoice);
         break;
       }
 
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
-        console.log(`⚠️ Payment failed: ${invoice.id}`);
         await handleInvoicePaymentFailed(invoice);
         break;
       }
 
       default:
-        console.log(`⚪ Unhandled event type: ${event.type}`);
     }
 
     return NextResponse.json({ received: true });
@@ -122,13 +114,9 @@ async function handleSubscriptionCreated(
     return;
   }
 
-  console.log(`👤 Processing subscription for user: ${userId}`);
-
   try {
     const planId = subscription.metadata?.plan_id || "pro";
     const mappedStatus = mapSubscriptionStatus(subscription.status);
-
-    console.log(`📊 Plan: ${planId}, Status: ${mappedStatus}`);
 
     // FIXED: Type-safe access to subscription properties
     const subscriptionData = subscription as any; // Type assertion for properties not in types
@@ -156,7 +144,6 @@ async function handleSubscriptionCreated(
       .eq("id", userId);
 
     if (profileError) {
-      console.error("❌ Error updating user profile:", profileError);
       throw profileError;
     }
 
@@ -221,8 +208,6 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
       throw error;
     }
 
-    console.log(`✅ Subscription updated for user ${userId}`);
-
     // Create billing event
     await createBillingEvent({
       user_id: userId,
@@ -247,7 +232,6 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   const userId = subscription.metadata?.user_id;
 
   if (!userId) {
-    console.error("❌ No user_id in subscription metadata");
     return;
   }
 
@@ -270,8 +254,6 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
       console.error("❌ Error canceling subscription:", error);
       throw error;
     }
-
-    console.log(`✅ Subscription canceled for user ${userId}`);
 
     // Create billing event
     await createBillingEvent({
@@ -332,8 +314,6 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
 
     if (error) {
       console.error("❌ Error updating payment status:", error);
-    } else {
-      console.log(`✅ Payment succeeded for user ${userId}`);
     }
 
     // FIXED: Type-safe invoice access
@@ -402,8 +382,6 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
 
     if (error) {
       console.error("❌ Error updating payment failure:", error);
-    } else {
-      console.log(`⚠️ Payment failed for user ${userId}`);
     }
 
     // FIXED: Type-safe invoice access
@@ -460,8 +438,6 @@ async function updateUsageLimits(userId: string, planId: string) {
     planLimits[planId as keyof typeof planLimits] || planLimits.free;
   const currentMonth = new Date().toISOString().slice(0, 7); // "2026-01"
 
-  console.log(`📊 Updating usage limits for ${userId} to ${planId}:`, limits);
-
   try {
     // Get existing usage to preserve current counts
     const { data: existingUsage } = await supabaseAdmin
@@ -481,8 +457,6 @@ async function updateUsageLimits(userId: string, planId: string) {
       updated_at: new Date().toISOString(),
     };
 
-    console.log("📊 Upserting usage data:", upsertData);
-
     const { error } = await supabaseAdmin
       .from("user_usage")
       .upsert(upsertData, {
@@ -495,7 +469,6 @@ async function updateUsageLimits(userId: string, planId: string) {
       throw error;
     }
 
-    console.log(`✅ Usage limits updated successfully for ${userId}`);
     return true;
   } catch (error) {
     console.error("❌ Failed to update usage limits:", error);
@@ -529,8 +502,6 @@ async function createBillingEvent(event: {
 
     if (error) {
       console.error("❌ Error creating billing event:", error);
-    } else {
-      console.log(`✅ Billing event created: ${event.event_type}`);
     }
   } catch (error: any) {
     console.error("❌ Error in createBillingEvent:", error);

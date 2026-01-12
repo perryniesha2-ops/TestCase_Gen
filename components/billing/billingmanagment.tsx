@@ -315,7 +315,6 @@ export default function BillingPage() {
         return realProfile;
       }
     } catch (e) {
-      console.error("Error fetching user data:", e);
       toast.error("Failed to load billing information");
       return null;
     }

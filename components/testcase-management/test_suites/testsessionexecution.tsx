@@ -1,7 +1,7 @@
 // components/test-management/TestSessionExecution.tsx
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,6 @@ import {
   Loader2,
 } from "lucide-react";
 
-// Import your types
 import type {
   TestSuite,
   TestSession,
@@ -49,6 +48,7 @@ import type {
 import { ScreenshotUpload } from "../ScreenshotUpload";
 import { ExtensionRequiredCallout } from "@/components/extensions/extensionrequiredcallout";
 import { detectExtensionInstalled } from "@/lib/extensions/detectExtension";
+import { useAuth } from "@/lib/auth/auth-context";
 
 interface TestCase {
   id: string;
@@ -102,7 +102,10 @@ export function TestSessionExecution({
   onOpenChange,
   onSessionComplete,
 }: TestSessionExecutionProps) {
-  // State
+  // HOOKS FIRST
+  const { user } = useAuth();
+
+  // useState hooks
   const [suiteTestCases, setSuiteTestCases] = useState<SuiteTestCase[]>([]);
   const [currentTestIndex, setCurrentTestIndex] = useState(0);
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(
@@ -112,37 +115,34 @@ export function TestSessionExecution({
   const [currentSession, setCurrentSession] = useState<TestSession | null>(
     null
   );
-
   const [executionNotes, setExecutionNotes] = useState("");
   const [failureReason, setFailureReason] = useState("");
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
   const [autoAdvance, setAutoAdvance] = useState(true);
-
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [testsLoading, setTestsLoading] = useState(false);
   const [isStartingSession, setIsStartingSession] = useState(false);
-
   const [currentExecutionStatus, setCurrentExecutionStatus] =
     useState<ExecutionStatus | null>(null);
   const [isCurrentExecutionReadOnly, setIsCurrentExecutionReadOnly] =
     useState(false);
-
   const [showExecutionDialog, setShowExecutionDialog] = useState(false);
   const [showPauseDialog, setShowPauseDialog] = useState(false);
   const [attachments, setAttachments] = useState<TestAttachment[]>([]);
   const [targetUrl, setTargetUrl] = useState<string>("");
   const [showEvidenceDialog, setShowEvidenceDialog] = useState(false);
-
   const [extensionInstalled, setExtensionInstalled] =
     useState<ExtensionStatus>(null);
   const [checkingExtension, setCheckingExtension] = useState(false);
-  const lastExtensionCheckRef = useRef<number>(0);
 
-  // Refs
+  // useRef hooks
   const dialogRef = useRef<HTMLDivElement>(null);
   const sessionStartedRef = useRef(false);
+  const lastExtensionCheckRef = useRef<number>(0);
+  const hasFetchedTestCasesRef = useRef(false);
 
+  //Computed values
   const currentTest = suiteTestCases[currentTestIndex] ?? null;
   const totalTests = suiteTestCases.length;
   const completedCount = currentSession?.test_cases_completed ?? 0;
@@ -153,9 +153,17 @@ export function TestSessionExecution({
     blocked: 0,
     skipped: 0,
   };
+  const isResultActionDisabled =
+    !currentSession ||
+    !currentExecutionId ||
+    isCurrentExecutionReadOnly ||
+    actionLoading ||
+    testsLoading;
 
+  const supabase = useMemo(() => createClient(), []);
+
+  //ALL useCallback hooks
   const refreshExtensionStatus = useCallback(async () => {
-    // small throttle to prevent spamming PING during rapid rerenders
     const now = Date.now();
     if (now - lastExtensionCheckRef.current < 800) return extensionInstalled;
 
@@ -250,12 +258,83 @@ export function TestSessionExecution({
     failureReason,
   ]);
 
+  //ALL useEffect hooks
+  useEffect(() => {
+    if (!suite.id) return;
+    void fetchSuiteTestCases();
+  }, [suite.id]);
+
+  useEffect(() => {
+    return () => {
+      setSessionId(null);
+      setCurrentSession(null);
+      setIsStartingSession(false);
+      sessionStartedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (currentExecutionId) {
+      fetchAttachments(currentExecutionId);
+    }
+  }, [currentExecutionId]);
+
+  useEffect(() => {
+    function handleKeyPress(e: KeyboardEvent) {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      if (!showExecutionDialog) return;
+      if (!currentTest || !currentSession || !currentExecutionId) return;
+      if (isCurrentExecutionReadOnly || actionLoading) return;
+
+      switch (e.key.toLowerCase()) {
+        case "p":
+          e.preventDefault();
+          void completeTestExecution("passed");
+          break;
+        case "f":
+          e.preventDefault();
+          if (!failureReason.trim()) {
+            toast.error("Please provide a failure reason first");
+            return;
+          }
+          void completeTestExecution("failed");
+          break;
+        case "b":
+          e.preventDefault();
+          void completeTestExecution("blocked");
+          break;
+        case "s":
+          e.preventDefault();
+          void completeTestExecution("skipped");
+          break;
+        default:
+          break;
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyPress);
+    return () => document.removeEventListener("keydown", handleKeyPress);
+  }, [
+    showExecutionDialog,
+    currentTest,
+    currentSession,
+    currentExecutionId,
+    isCurrentExecutionReadOnly,
+    actionLoading,
+    failureReason,
+  ]);
+
   useEffect(() => {
     if (!showEvidenceDialog) return;
-    void refreshExtensionStatus(); // immediate check when popup opens
+    void refreshExtensionStatus();
   }, [showEvidenceDialog, refreshExtensionStatus]);
 
-  // Focus dialog when opened
   useEffect(() => {
     if (showExecutionDialog && dialogRef.current) {
       dialogRef.current.focus();
@@ -291,12 +370,12 @@ export function TestSessionExecution({
     };
   }, [showEvidenceDialog, refreshExtensionStatus]);
 
+  // ALL FUNCTIONS AFTER HOOKS
   async function fetchSuiteTestCases(): Promise<SuiteTestCase[]> {
     setTestsLoading(true);
     try {
       const supabase = createClient();
 
-      // First, get the test_suite_cases
       const { data: suiteLinks, error: linksError } = await supabase
         .from("test_suite_cases")
         .select(
@@ -316,7 +395,6 @@ export function TestSessionExecution({
         return [];
       }
 
-      // Now fetch each test case individually with its steps
       const testCaseIds = suiteLinks.map((link) => link.test_case_id);
 
       const { data: testCases, error: testCasesError } = await supabase
@@ -331,16 +409,13 @@ export function TestSessionExecution({
         throw testCasesError;
       }
 
-      // Create a map of test cases by ID for quick lookup
       const testCaseMap = new Map((testCases || []).map((tc) => [tc.id, tc]));
 
-      // Combine suite links with test case data
       const transformed: SuiteTestCase[] = suiteLinks
         .map((link) => {
           const testCase = testCaseMap.get(link.test_case_id);
 
           if (!testCase) {
-            console.warn(`⚠️ Test case ${link.test_case_id} not found`);
             return null;
           }
 
@@ -351,20 +426,15 @@ export function TestSessionExecution({
           }> = [];
 
           if (testCase?.test_steps) {
-            // If it's a string (JSON), parse it
             if (typeof testCase.test_steps === "string") {
               try {
                 normalizedSteps = JSON.parse(testCase.test_steps);
               } catch (e) {
                 normalizedSteps = [];
               }
-            }
-            // If it's already an array, use it
-            else if (Array.isArray(testCase.test_steps)) {
+            } else if (Array.isArray(testCase.test_steps)) {
               normalizedSteps = testCase.test_steps;
-            }
-            // If it's an object (PostgreSQL array format), convert to array
-            else if (typeof testCase.test_steps === "object") {
+            } else if (typeof testCase.test_steps === "object") {
               normalizedSteps = Object.values(testCase.test_steps);
             }
           }
@@ -411,16 +481,18 @@ export function TestSessionExecution({
   }
 
   async function startNewSession() {
-    // Prevent duplicate session creation
     if (isStartingSession) {
-      console.log("⚠️ Session start already in progress, skipping...");
       return;
     }
 
-    // If we already have an active session, don't create another
     if (sessionId) {
-      console.log("⚠️ Session already exists:", sessionId);
       setShowExecutionDialog(true);
+      return;
+    }
+
+    if (!user) {
+      console.error("❌ No user found");
+      toast.error("Please log in to start a test session");
       return;
     }
 
@@ -429,24 +501,12 @@ export function TestSessionExecution({
       setLoading(true);
 
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        console.error("❌ No user found");
-        toast.error("Please log in to start a test session");
-        return;
-      }
-
       const tests = await fetchSuiteTestCases();
 
       if (!tests || tests.length === 0) {
         onOpenChange(false);
         return;
       }
-
-      console.log("✅ Creating new session for suite:", suite.id);
 
       const { data, error } = await supabase
         .from("test_run_sessions")
@@ -470,8 +530,6 @@ export function TestSessionExecution({
         throw error;
       }
 
-      console.log("✅ Session created:", data.id);
-
       const session: TestSession = {
         ...data,
         stats: { passed: 0, failed: 0, blocked: 0, skipped: 0 },
@@ -494,7 +552,7 @@ export function TestSessionExecution({
       console.error("❌ Error in startNewSession:", error);
       toast.error("Failed to start test session");
       onOpenChange(false);
-      sessionStartedRef.current = false; // Reset on error
+      sessionStartedRef.current = false;
     } finally {
       setLoading(false);
       setIsStartingSession(false);
@@ -523,16 +581,11 @@ export function TestSessionExecution({
     testCase: SuiteTestCase,
     currentSessionId: string
   ) {
+    if (!user) return;
+
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        return;
-      }
 
-      // Check if execution already exists for this session + test case
       const { data: existing, error: existingError } = await supabase
         .from("test_executions")
         .select(
@@ -601,7 +654,6 @@ export function TestSessionExecution({
   }
 
   async function completeTestExecution(status: ExecutionStatus) {
-    // Validate all required state
     if (!currentExecutionId || !currentSession || !currentTest) {
       return;
     }
@@ -618,7 +670,6 @@ export function TestSessionExecution({
       return;
     }
 
-    // Validate failure reason for failed tests
     if (status === "failed" && !failureReason.trim()) {
       toast.error("Please provide a failure reason");
       return;
@@ -674,7 +725,6 @@ export function TestSessionExecution({
 
       toast.success(`Test ${status}`);
 
-      // Reset form
       setExecutionNotes("");
       setFailureReason("");
       setCompletedSteps(new Set());
@@ -698,8 +748,6 @@ export function TestSessionExecution({
     if (!currentSession) return;
     try {
       const supabase = createClient();
-
-      console.log("✅ Completing session:", currentSession.id);
 
       await supabase
         .from("test_run_sessions")
@@ -726,8 +774,6 @@ export function TestSessionExecution({
     if (!currentSession) return;
     try {
       const supabase = createClient();
-
-      console.log("🚫 Aborting session:", currentSession.id);
 
       await supabase
         .from("test_run_sessions")
@@ -772,14 +818,6 @@ export function TestSessionExecution({
   async function endSession() {
     if (!currentSession) return;
 
-    console.log(
-      "🛑 Ending session:",
-      currentSession.id,
-      "Progress:",
-      currentSession.progress_percentage
-    );
-
-    // Only mark as completed if truly 100% done
     if (currentSession.progress_percentage === 100) {
       await completeSession();
     } else {
@@ -799,13 +837,6 @@ export function TestSessionExecution({
       return next;
     });
   }
-
-  const isResultActionDisabled =
-    !currentSession ||
-    !currentExecutionId ||
-    isCurrentExecutionReadOnly ||
-    actionLoading ||
-    testsLoading;
 
   return (
     <>

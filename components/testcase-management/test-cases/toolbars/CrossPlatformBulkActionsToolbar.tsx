@@ -1,8 +1,8 @@
 // components/testcase-management/test-cases/CrossPlatformBulkActionsToolbar.tsx
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   CheckSquare,
   Square,
@@ -20,23 +20,26 @@ import {
   XCircle,
   Trash2,
   FileText,
-} from "lucide-react"
-import { BulkUpdateDialog } from "../dialogs/BulkUpdateDialog"
-import type { CrossPlatformTestCase } from "@/types/test-cases"
+} from "lucide-react";
+import { BulkUpdateDialog } from "../dialogs/BulkUpdateDialog";
+import type { CrossPlatformTestCase } from "@/types/test-cases";
 
 interface CrossPlatformBulkActionsToolbarProps {
-  selectedIds: Set<string>
-  allTestCases: CrossPlatformTestCase[]
-  onSelectAll: () => void
-  onDeselectAll: () => void
-  onBulkApprove: (ids: string[]) => Promise<void>
-  onBulkReject: (ids: string[]) => Promise<void>
-onBulkUpdate: (ids: string[], updates: Partial<CrossPlatformTestCase>) => Promise<void>
-  onBulkDelete: (ids: string[]) => Promise<void>
+  selectedIds: Set<string>;
+  allTestCases: CrossPlatformTestCase[];
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  onBulkApprove: (ids: string[]) => Promise<void>;
+  onBulkReject: (ids: string[]) => Promise<void>;
+  onBulkUpdate: (
+    ids: string[],
+    updates: Partial<CrossPlatformTestCase>
+  ) => Promise<void>;
+  onBulkDelete: (ids: string[]) => Promise<void>;
 }
 
-type BulkAction = "approve" | "reject" | "priority" | "delete"
-type DialogAction = "approve" | "reject" | "priority"
+type BulkAction = "approve" | "reject" | "priority" | "delete";
+type DialogAction = "approve" | "reject" | "priority";
 
 export function CrossPlatformBulkActionsToolbar({
   selectedIds,
@@ -48,74 +51,73 @@ export function CrossPlatformBulkActionsToolbar({
   onBulkUpdate,
   onBulkDelete,
 }: CrossPlatformBulkActionsToolbarProps) {
-  const [showDialog, setShowDialog] = useState(false)
-  const [currentAction, setCurrentAction] = useState<DialogAction | null>(null)
+  const [showDialog, setShowDialog] = useState(false);
+  const [currentAction, setCurrentAction] = useState<DialogAction | null>(null);
 
-  const selectedCount = selectedIds.size
-  const totalCount = allTestCases.length
-  const allSelected = selectedCount === totalCount && totalCount > 0
-
+  const selectedCount = selectedIds.size;
+  const totalCount = allTestCases.length;
+  const allSelected = selectedCount === totalCount && totalCount > 0;
 
   const pendingCount = allTestCases.filter(
     (tc) => selectedIds.has(tc.id) && (!tc.status || tc.status === "pending")
-  ).length
+  ).length;
 
   function handleActionClick(action: BulkAction) {
     if (action === "delete") {
-      handleBulkDelete()
-      return
+      handleBulkDelete();
+      return;
     }
 
-    // ✅ FIXED: Always allow clicking approve/reject
-    // The dialog and hook will handle validation
-    setCurrentAction(action as DialogAction)
-    setShowDialog(true)
+    setCurrentAction(action as DialogAction);
+    setShowDialog(true);
   }
 
   async function handleBulkDelete() {
     const confirmed = window.confirm(
-      `Delete ${selectedCount} test case${selectedCount === 1 ? "" : "s"}? This cannot be undone.`
-    )
-    if (!confirmed) return
+      `Delete ${selectedCount} test case${
+        selectedCount === 1 ? "" : "s"
+      }? This cannot be undone.`
+    );
+    if (!confirmed) return;
 
     try {
-      await onBulkDelete(Array.from(selectedIds))
+      await onBulkDelete(Array.from(selectedIds));
     } catch (error) {
-      console.error("Bulk delete error:", error)
+      console.error("Bulk delete error:", error);
     }
   }
 
   async function handleBulkUpdate(updates: Partial<CrossPlatformTestCase>) {
     try {
-      await onBulkUpdate(Array.from(selectedIds), updates)
-      setShowDialog(false)
-      setCurrentAction(null)
+      await onBulkUpdate(Array.from(selectedIds), updates);
+      setShowDialog(false);
+      setCurrentAction(null);
     } catch (error) {
-      console.error("Bulk update error:", error)
+      console.error("Bulk update error:", error);
     }
   }
 
   async function handleBulkApprove() {
     try {
-      await onBulkApprove(Array.from(selectedIds))
-      setShowDialog(false)
-      setCurrentAction(null)
+      await onBulkApprove(Array.from(selectedIds));
+      setShowDialog(false);
+      setCurrentAction(null);
     } catch (error) {
-      console.error("Bulk approve error:", error)
+      console.error("Bulk approve error:", error);
     }
   }
 
   async function handleBulkReject() {
     try {
-      await onBulkReject(Array.from(selectedIds))
-      setShowDialog(false)
-      setCurrentAction(null)
+      await onBulkReject(Array.from(selectedIds));
+      setShowDialog(false);
+      setCurrentAction(null);
     } catch (error) {
-      console.error("Bulk reject error:", error)
+      console.error("Bulk reject error:", error);
     }
   }
 
-  if (selectedCount === 0) return null
+  if (selectedCount === 0) return null;
 
   return (
     <>
@@ -139,11 +141,14 @@ export function CrossPlatformBulkActionsToolbar({
         <div className="flex items-center gap-2">
           <span className="font-medium">{selectedCount} selected</span>
           {selectedCount < totalCount && (
-            <span className="text-sm text-muted-foreground">of {totalCount}</span>
+            <span className="text-sm text-muted-foreground">
+              of {totalCount}
+            </span>
           )}
-          {/* ✅ FIXED: Show pending count if any */}
           {pendingCount > 0 && (
-            <span className="text-sm text-amber-600">({pendingCount} pending)</span>
+            <span className="text-sm text-amber-600">
+              ({pendingCount} pending)
+            </span>
           )}
         </div>
 
@@ -163,7 +168,6 @@ export function CrossPlatformBulkActionsToolbar({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
 
-            {/* ✅ FIXED: Always show Approve, disable if no pending */}
             <DropdownMenuItem
               onClick={() => handleActionClick("approve")}
               disabled={pendingCount === 0}
@@ -173,7 +177,6 @@ export function CrossPlatformBulkActionsToolbar({
               Approve & Convert {pendingCount > 0 ? `(${pendingCount})` : ""}
             </DropdownMenuItem>
 
-            {/* ✅ FIXED: Always show Reject, disable if no pending */}
             <DropdownMenuItem
               onClick={() => handleActionClick("reject")}
               disabled={pendingCount === 0}
@@ -231,5 +234,5 @@ export function CrossPlatformBulkActionsToolbar({
         />
       )}
     </>
-  )
+  );
 }

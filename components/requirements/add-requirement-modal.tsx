@@ -1,14 +1,20 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -16,297 +22,384 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
-import { Plus, Loader2, X, FileText, Settings, Sparkles, FolderOpen } from "lucide-react"
-import { useRouter } from "next/navigation"
-import type { Requirement } from "@/types/requirements"
-
+  Plus,
+  Loader2,
+  X,
+  FileText,
+  Settings,
+  Sparkles,
+  FolderOpen,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import type { Requirement } from "@/types/requirements";
 
 interface Project {
-  id: string
-  name: string
-  color: string
-  icon: string
-  status: string
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+  status: string;
 }
 
 interface AddRequirementModalProps {
-  onRequirementAdded?: (req: Requirement) => void | Promise<void>
-  children?: React.ReactNode
-  defaultProjectId?: string
+  onRequirementAdded?: (req: Requirement) => void | Promise<void>;
+  children?: React.ReactNode;
+  defaultProjectId?: string;
 }
 
 type MetadataField = {
-  key: string
-  value: string
-  type: 'text' | 'number' | 'boolean'
-}
+  key: string;
+  value: string;
+  type: "text" | "number" | "boolean";
+};
 
-export function AddRequirementModal({ 
-  onRequirementAdded, 
+export function AddRequirementModal({
+  onRequirementAdded,
   children,
-  defaultProjectId 
+  defaultProjectId,
 }: AddRequirementModalProps) {
-  const router = useRouter()
-  const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [generatingTests, setGeneratingTests] = useState(false)
-  const [acceptanceCriteria, setAcceptanceCriteria] = useState<string[]>([''])
-  const [autoGenerateTests, setAutoGenerateTests] = useState(false)
-  const NONE = "__none__"
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [generatingTests, setGeneratingTests] = useState(false);
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState<string[]>([""]);
+  const [autoGenerateTests, setAutoGenerateTests] = useState(false);
+  const NONE = "__none__";
 
   // Projects
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loadingProjects, setLoadingProjects] = useState(false)
-  
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
   const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    requirement_type: 'functional',
-    priority: 'medium',
-    externalId: '',
-    source: 'manual',
-    status: 'draft',
-    project_id: defaultProjectId || ''
-  })
+    title: "",
+    description: "",
+    requirement_type: "functional",
+    priority: "medium",
+    externalId: "",
+    source: "manual",
+    status: "draft",
+    project_id: defaultProjectId || "",
+  });
 
-  const [metadataFields, setMetadataFields] = useState<MetadataField[]>([])
-
+  const [metadataFields, setMetadataFields] = useState<MetadataField[]>([]);
+  const [rawRequirement, setRawRequirement] = useState("");
+  const [parsing, setParsing] = useState(false);
 
   // Load projects when modal opens
   useEffect(() => {
     if (open) {
-      fetchProjects()
+      fetchProjects();
     }
-  }, [open])
+  }, [open]);
 
   // Set default project if provided
   useEffect(() => {
     if (defaultProjectId) {
-      setFormData(prev => ({ ...prev, project_id: defaultProjectId }))
+      setFormData((prev) => ({ ...prev, project_id: defaultProjectId }));
     }
-  }, [defaultProjectId])
+  }, [defaultProjectId]);
 
   async function fetchProjects() {
-    setLoadingProjects(true)
+    setLoadingProjects(true);
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) return
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
 
       const { data, error } = await supabase
-        .from('projects')
-        .select('id, name, color, icon, status')
-        .eq('user_id', user.id)
-        .in('status', ['active', 'on_hold']) // Only show active/on_hold projects
-        .order('name')
+        .from("projects")
+        .select("id, name, color, icon, status")
+        .eq("user_id", user.id)
+        .in("status", ["active", "on_hold"]) // Only show active/on_hold projects
+        .order("name");
 
-      if (error) throw error
-      setProjects(data || [])
+      if (error) throw error;
+      setProjects(data || []);
     } catch (error) {
-      console.error('Error fetching projects:', error)
+      console.error("Error fetching projects:", error);
     } finally {
-      setLoadingProjects(false)
+      setLoadingProjects(false);
     }
   }
 
   function addAcceptanceCriteria() {
-    setAcceptanceCriteria([...acceptanceCriteria, ''])
+    setAcceptanceCriteria([...acceptanceCriteria, ""]);
   }
 
   function removeAcceptanceCriteria(index: number) {
     if (acceptanceCriteria.length > 1) {
-      setAcceptanceCriteria(acceptanceCriteria.filter((_, i) => i !== index))
+      setAcceptanceCriteria(acceptanceCriteria.filter((_, i) => i !== index));
     }
   }
 
   function updateAcceptanceCriteria(index: number, value: string) {
-    const newCriteria = acceptanceCriteria.map((criteria, i) => 
+    const newCriteria = acceptanceCriteria.map((criteria, i) =>
       i === index ? value : criteria
-    )
-    setAcceptanceCriteria(newCriteria)
+    );
+    setAcceptanceCriteria(newCriteria);
   }
 
   function addMetadataField() {
-    setMetadataFields([...metadataFields, { key: '', value: '', type: 'text' }])
+    setMetadataFields([
+      ...metadataFields,
+      { key: "", value: "", type: "text" },
+    ]);
   }
 
   function removeMetadataField(index: number) {
-    setMetadataFields(metadataFields.filter((_, i) => i !== index))
+    setMetadataFields(metadataFields.filter((_, i) => i !== index));
   }
 
-  function updateMetadataField(index: number, field: 'key' | 'value' | 'type', value: string) {
-    const newFields = metadataFields.map((item, i) => 
+  function updateMetadataField(
+    index: number,
+    field: "key" | "value" | "type",
+    value: string
+  ) {
+    const newFields = metadataFields.map((item, i) =>
       i === index ? { ...item, [field]: value } : item
-    )
-    setMetadataFields(newFields)
+    );
+    setMetadataFields(newFields);
   }
 
   function buildMetadata(): Record<string, string | number | boolean> {
-    const meta: Record<string, string | number | boolean> = {}
-    
-    metadataFields.forEach(field => {
+    const meta: Record<string, string | number | boolean> = {};
+
+    metadataFields.forEach((field) => {
       if (field.key && field.value) {
-        let value: string | number | boolean = field.value
-        if (field.type === 'number') {
-          value = Number(field.value)
-        } else if (field.type === 'boolean') {
-          value = field.value.toLowerCase() === 'true'
+        let value: string | number | boolean = field.value;
+        if (field.type === "number") {
+          value = Number(field.value);
+        } else if (field.type === "boolean") {
+          value = field.value.toLowerCase() === "true";
         }
-        meta[field.key] = value
+        meta[field.key] = value;
       }
-    })
+    });
 
     // Add system metadata
-    meta.created_via = 'manual_entry'
-    meta.auto_generate_tests = autoGenerateTests
+    meta.created_via = "manual_entry";
+    meta.auto_generate_tests = autoGenerateTests;
     if (formData.externalId) {
-      meta.external_reference = formData.externalId
+      meta.external_reference = formData.externalId;
     }
 
-    return meta
+    return meta;
   }
 
-  async function generateTestCases(requirementId: string, requirementTitle: string) {
-    setGeneratingTests(true)
+  async function generateTestCases(
+    requirementId: string,
+    requirementTitle: string
+  ) {
+    setGeneratingTests(true);
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) return
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
 
       // Call your AI generation endpoint
-      const response = await fetch('/api/generate-tests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/generate-tests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           requirement_id: requirementId,
           title: formData.title,
           description: formData.description,
-          acceptance_criteria: acceptanceCriteria.filter(c => c.trim()),
+          acceptance_criteria: acceptanceCriteria.filter((c) => c.trim()),
           requirement_type: formData.requirement_type,
-          project_id: formData.project_id || null
-        })
-      })
+          project_id: formData.project_id || null,
+        }),
+      });
 
       if (!response.ok) {
-        throw new Error('Failed to generate tests')
+        throw new Error("Failed to generate tests");
       }
 
-      const { generation_id, test_cases_count } = await response.json()
+      const { generation_id, test_cases_count } = await response.json();
 
-      toast.success(
-        `Generated ${test_cases_count} test cases!`,
-        {
-          action: {
-            label: 'View Tests',
-            onClick: () => router.push(`/test-cases?generation=${generation_id}`)
-          }
-        }
-      )
+      toast.success(`Generated ${test_cases_count} test cases!`, {
+        action: {
+          label: "View Tests",
+          onClick: () => router.push(`/test-cases?generation=${generation_id}`),
+        },
+      });
     } catch (error) {
-      console.error('Error generating tests:', error)
-      toast.error('Failed to generate test cases')
+      console.error("Error generating tests:", error);
+      toast.error("Failed to generate test cases");
     } finally {
-      setGeneratingTests(false)
+      setGeneratingTests(false);
     }
   }
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
+    e.preventDefault();
+    setLoading(true);
 
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       if (!user) {
-        toast.error('Please log in to add requirements')
-        return
+        toast.error("Please log in to add requirements");
+        return;
       }
 
-      const validCriteria = acceptanceCriteria.filter(criteria => criteria.trim() !== '')
-      const builtMetadata = buildMetadata()
+      const validCriteria = acceptanceCriteria.filter(
+        (criteria) => criteria.trim() !== ""
+      );
+      const builtMetadata = buildMetadata();
 
       const requirementData = {
-  user_id: user.id,
-  title: formData.title,
-  description: formData.description,
-  type: formData.requirement_type,  
-  external_id: formData.externalId || null,
-  acceptance_criteria: validCriteria.length > 0 ? validCriteria : null,
-  priority: formData.priority,
-  source: formData.source,
-  status: formData.status,
-  project_id: formData.project_id || null,
-  metadata: Object.keys(builtMetadata).length > 0 ? builtMetadata : null
-}
+        user_id: user.id,
+        title: formData.title,
+        description: formData.description,
+        type: formData.requirement_type,
+        external_id: formData.externalId || null,
+        acceptance_criteria: validCriteria.length > 0 ? validCriteria : null,
+        priority: formData.priority,
+        source: formData.source,
+        status: formData.status,
+        project_id: formData.project_id || null,
+        metadata: Object.keys(builtMetadata).length > 0 ? builtMetadata : null,
+      };
 
       const { data: requirement, error } = await supabase
-        .from('requirements')
+        .from("requirements")
         .insert(requirementData)
         .select()
-        .single()
+        .single();
 
-      if (error) throw error
+      if (error) throw error;
 
-      toast.success('Requirement created successfully')
+      toast.success("Requirement created successfully");
 
       // Auto-generate tests if enabled
       if (autoGenerateTests && requirement.id) {
-        await generateTestCases(requirement.id, requirement.title)
+        await generateTestCases(requirement.id, requirement.title);
       }
 
-      setOpen(false)
-      resetForm()
-      await onRequirementAdded?.(requirement as Requirement)
-
-
+      setOpen(false);
+      resetForm();
+      await onRequirementAdded?.(requirement as Requirement);
     } catch (error) {
-      console.error('Error creating requirement:', error)
-      toast.error('Failed to create requirement')
+      console.error("Error creating requirement:", error);
+      toast.error("Failed to create requirement");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   function resetForm() {
     setFormData({
-      title: '',
-      description: '',
-      requirement_type: 'functional',
-      priority: 'medium',
-      externalId: '',
-      source: 'manual',
-      status: 'draft',
-      project_id: defaultProjectId || ''
-    })
-    setAcceptanceCriteria([''])
-    setMetadataFields([])
-    setAutoGenerateTests(false)
+      title: "",
+      description: "",
+      requirement_type: "functional",
+      priority: "medium",
+      externalId: "",
+      source: "manual",
+      status: "draft",
+      project_id: defaultProjectId || "",
+    });
+    setAcceptanceCriteria([""]);
+    setMetadataFields([]);
+    setAutoGenerateTests(false);
   }
 
   // Get project icon color
   function getProjectColor(color: string) {
     const colors: Record<string, string> = {
-      blue: 'text-blue-500',
-      green: 'text-green-500',
-      purple: 'text-purple-500',
-      orange: 'text-orange-500',
-      red: 'text-red-500',
-      pink: 'text-pink-500',
-      indigo: 'text-indigo-500',
-      yellow: 'text-yellow-500',
-      gray: 'text-gray-500'
+      blue: "text-blue-500",
+      green: "text-green-500",
+      purple: "text-purple-500",
+      orange: "text-orange-500",
+      red: "text-red-500",
+      pink: "text-pink-500",
+      indigo: "text-indigo-500",
+      yellow: "text-yellow-500",
+      gray: "text-gray-500",
+    };
+    return colors[color] || "text-gray-500";
+  }
+
+  async function parseRequirementWithAI() {
+    if (!rawRequirement.trim()) {
+      toast.error("Paste a requirement first.");
+      return;
     }
-    return colors[color] || 'text-gray-500'
+
+    setParsing(true);
+    try {
+      const response = await fetch("/api/requirements/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          raw_text: rawRequirement,
+          // optionally pass user selections so the model aligns with your UI choices
+          requirement_type: formData.requirement_type,
+          priority: formData.priority,
+          source: formData.source,
+          project_id: formData.project_id || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.error || "Failed to parse requirement");
+      }
+
+      const parsed = await response.json();
+
+      // Fill title/description if model provides them (do not overwrite if user already typed)
+      setFormData((prev) => ({
+        ...prev,
+        title: prev.title?.trim() ? prev.title : parsed.title || prev.title,
+        description: prev.description?.trim()
+          ? prev.description
+          : parsed.description || prev.description,
+      }));
+
+      // Fill acceptance criteria
+      if (
+        Array.isArray(parsed.acceptance_criteria) &&
+        parsed.acceptance_criteria.length > 0
+      ) {
+        setAcceptanceCriteria(parsed.acceptance_criteria);
+      } else {
+        toast.message(
+          "Parsed requirement, but no acceptance criteria were detected."
+        );
+      }
+
+      // Optional: load metadata fields UI from parsed.metadata
+      if (parsed.metadata && typeof parsed.metadata === "object") {
+        const next: MetadataField[] = Object.entries(parsed.metadata).map(
+          ([key, value]) => {
+            if (typeof value === "number")
+              return { key, value: String(value), type: "number" };
+            if (typeof value === "boolean")
+              return { key, value: String(value), type: "boolean" };
+            return { key, value: String(value), type: "text" };
+          }
+        );
+        setMetadataFields(next);
+      }
+
+      toast.success("Requirement parsed. Review the fields before saving.");
+    } catch (e: any) {
+      toast.error(e?.message ? `Parse failed: ${e.message}` : "Parse failed");
+    } finally {
+      setParsing(false);
+    }
   }
 
   return (
@@ -319,7 +412,7 @@ export function AddRequirementModal({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent 
+      <DialogContent
         className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
         onInteractOutside={(e) => e.preventDefault()}
       >
@@ -328,7 +421,8 @@ export function AddRequirementModal({
             <div className="space-y-1">
               <DialogTitle>Create New Requirement</DialogTitle>
               <DialogDescription>
-                Define a new requirement that can be used to generate test cases and track coverage.
+                Define a new requirement that can be used to generate test cases
+                and track coverage.
               </DialogDescription>
             </div>
             <Button
@@ -337,8 +431,8 @@ export function AddRequirementModal({
               size="icon"
               className="h-8 w-8 rounded-full"
               onClick={() => {
-                setOpen(false)
-                resetForm()
+                setOpen(false);
+                resetForm();
               }}
             >
               <X className="h-4 w-4" />
@@ -349,11 +443,17 @@ export function AddRequirementModal({
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <Tabs defaultValue="basic" className="w-full space-y-6">
             <TabsList className="grid w-full grid-cols-2 rounded-lg bg-muted/40 p-1">
-              <TabsTrigger value="basic" className="flex items-center gap-2 py-2">
+              <TabsTrigger
+                value="basic"
+                className="flex items-center gap-2 py-2"
+              >
                 <FileText className="h-4 w-4" />
                 Basic Info
               </TabsTrigger>
-              <TabsTrigger value="advanced" className="flex items-center gap-2 py-2">
+              <TabsTrigger
+                value="advanced"
+                className="flex items-center gap-2 py-2"
+              >
                 <Settings className="h-4 w-4" />
                 Advanced
               </TabsTrigger>
@@ -364,35 +464,42 @@ export function AddRequirementModal({
                 {/* Project Selection - NEW */}
                 <div className="space-y-2">
                   <Label htmlFor="project">
-                    Project <span className="text-muted-foreground text-xs">(Optional)</span>
+                    Project{" "}
+                    <span className="text-muted-foreground text-xs">
+                      (Optional)
+                    </span>
                   </Label>
                   <Select
-  value={formData.project_id ? formData.project_id : NONE}
-  onValueChange={(value) =>
-    setFormData((prev) => ({
-      ...prev,
-      project_id: value === NONE ? "" : value,
-    }))
-  }
-  disabled={loading || loadingProjects}
->
-  <SelectTrigger>
-    <SelectValue placeholder="No project selected" />
-  </SelectTrigger>
+                    value={formData.project_id ? formData.project_id : NONE}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        project_id: value === NONE ? "" : value,
+                      }))
+                    }
+                    disabled={loading || loadingProjects}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="No project selected" />
+                    </SelectTrigger>
 
-  <SelectContent>
-    <SelectItem value={NONE}>No project</SelectItem>
+                    <SelectContent>
+                      <SelectItem value={NONE}>No project</SelectItem>
 
-    {projects.map((project) => (
-      <SelectItem key={project.id} value={project.id}>
-        <div className="flex items-center gap-2">
-          <FolderOpen className={`h-4 w-4 ${getProjectColor(project.color)}`} />
-          <span>{project.name}</span>
-        </div>
-      </SelectItem>
-    ))}
-  </SelectContent>
-</Select>
+                      {projects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          <div className="flex items-center gap-2">
+                            <FolderOpen
+                              className={`h-4 w-4 ${getProjectColor(
+                                project.color
+                              )}`}
+                            />
+                            <span>{project.name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <p className="text-xs text-muted-foreground">
                     Link this requirement to a project for better organization
                   </p>
@@ -406,7 +513,9 @@ export function AddRequirementModal({
                   <Input
                     id="title"
                     value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, title: e.target.value })
+                    }
                     placeholder="e.g., User Authentication System"
                     required
                     disabled={loading}
@@ -416,13 +525,18 @@ export function AddRequirementModal({
                 {/* Type and Priority */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Requirement Type <span className="text-destructive">*</span></Label>
-                    <Select 
-                      value={formData.requirement_type} 
-                      onValueChange={(value) => setFormData({ 
-                        ...formData, 
-                        requirement_type: value,
-                      })}
+                    <Label>
+                      Requirement Type{" "}
+                      <span className="text-destructive">*</span>
+                    </Label>
+                    <Select
+                      value={formData.requirement_type}
+                      onValueChange={(value) =>
+                        setFormData({
+                          ...formData,
+                          requirement_type: value,
+                        })
+                      }
                       disabled={loading}
                     >
                       <SelectTrigger>
@@ -430,7 +544,9 @@ export function AddRequirementModal({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="functional">Functional</SelectItem>
-                        <SelectItem value="non_functional">Non-Functional</SelectItem>
+                        <SelectItem value="non_functional">
+                          Non-Functional
+                        </SelectItem>
                         <SelectItem value="business">Business</SelectItem>
                         <SelectItem value="technical">Technical</SelectItem>
                         <SelectItem value="security">Security</SelectItem>
@@ -442,9 +558,11 @@ export function AddRequirementModal({
 
                   <div className="space-y-2">
                     <Label>Priority</Label>
-                    <Select 
-                      value={formData.priority} 
-                      onValueChange={(value) => setFormData({ ...formData, priority: value })}
+                    <Select
+                      value={formData.priority}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, priority: value })
+                      }
                       disabled={loading}
                     >
                       <SelectTrigger>
@@ -464,9 +582,11 @@ export function AddRequirementModal({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Status</Label>
-                    <Select 
-                      value={formData.status} 
-                      onValueChange={(value) => setFormData({ ...formData, status: value })}
+                    <Select
+                      value={formData.status}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, status: value })
+                      }
                       disabled={loading}
                     >
                       <SelectTrigger>
@@ -484,9 +604,11 @@ export function AddRequirementModal({
 
                   <div className="space-y-2">
                     <Label>Source</Label>
-                    <Select 
-                      value={formData.source} 
-                      onValueChange={(value) => setFormData({ ...formData, source: value })}
+                    <Select
+                      value={formData.source}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, source: value })
+                      }
                       disabled={loading}
                     >
                       <SelectTrigger>
@@ -512,7 +634,9 @@ export function AddRequirementModal({
                   <Textarea
                     id="description"
                     value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
                     placeholder="Detailed description of the requirement. Be specific about what needs to be implemented or achieved..."
                     rows={5}
                     required
@@ -526,12 +650,15 @@ export function AddRequirementModal({
                   <Input
                     id="externalId"
                     value={formData.externalId}
-                    onChange={(e) => setFormData({ ...formData, externalId: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, externalId: e.target.value })
+                    }
                     placeholder="e.g., JIRA-123, REQ-456, STORY-789"
                     disabled={loading}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Reference ID from external tools like JIRA, Azure DevOps, etc.
+                    Reference ID from external tools like JIRA, Azure DevOps,
+                    etc.
                   </p>
                 </div>
 
@@ -558,7 +685,9 @@ export function AddRequirementModal({
                         </div>
                         <Input
                           value={criteria}
-                          onChange={(e) => updateAcceptanceCriteria(index, e.target.value)}
+                          onChange={(e) =>
+                            updateAcceptanceCriteria(index, e.target.value)
+                          }
                           placeholder={`Acceptance criteria ${index + 1}...`}
                           disabled={loading}
                           className="flex-1"
@@ -578,156 +707,93 @@ export function AddRequirementModal({
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Define specific criteria that must be met for this requirement to be considered complete.
+                    Define specific criteria that must be met for this
+                    requirement to be considered complete.
                   </p>
                 </div>
               </TabsContent>
 
               <TabsContent value="advanced" className="space-y-6 pt-2">
-                <div className="space-y-4 p-4 border rounded-lg bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-purple-600" />
-                    <h4 className="font-medium">AI Test Generation</h4>
-                  </div>
-                  
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
-                      <Label htmlFor="auto-generate" className="flex items-center gap-2">
-                        Auto-generate test cases
-                        <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-normal">
-                          AI Powered
-                        </span>
+                      <Label className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-purple-600" />
+                        Paste a full requirement (AI will extract criteria)
                       </Label>
                       <p className="text-xs text-muted-foreground">
-                        Automatically generate test cases when this requirement is created using AI
+                        Paste a paragraph or spec. We’ll break it into
+                        acceptance criteria and structured points.
                       </p>
                     </div>
-                    <Switch
-                      id="auto-generate"
-                      checked={autoGenerateTests}
-                      onCheckedChange={setAutoGenerateTests}
-                      disabled={loading}
-                    />
-                  </div>
 
-                  {autoGenerateTests && (
-                    <div className="p-3 bg-white dark:bg-gray-900 rounded border space-y-2">
-                      <p className="text-sm font-medium">What will be generated:</p>
-                      <ul className="text-xs text-muted-foreground space-y-1">
-                        <li className="flex items-center gap-2">
-                          <div className="h-1.5 w-1.5 rounded-full bg-purple-500" />
-                          5-15 test cases based on requirement complexity
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <div className="h-1.5 w-1.5 rounded-full bg-purple-500" />
-                          Positive and negative test scenarios
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <div className="h-1.5 w-1.5 rounded-full bg-purple-500" />
-                          Edge cases and boundary conditions
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <div className="h-1.5 w-1.5 rounded-full bg-purple-500" />
-                          Tests linked to your project automatically
-                        </li>
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                {/* Custom Metadata */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label>Custom Metadata (Optional)</Label>
                     <Button
                       type="button"
-                      onClick={addMetadataField}
-                      size="sm"
                       variant="outline"
-                      disabled={loading}
+                      size="sm"
+                      onClick={() => void parseRequirementWithAI()}
+                      disabled={loading || parsing}
                     >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add Field
+                      {parsing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Parsing…
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          Extract Criteria
+                        </>
+                      )}
                     </Button>
                   </div>
-                  
-                  {metadataFields.length === 0 ? (
-                    <p className="text-sm text-muted-foreground bg-muted/50 p-4 rounded-lg text-center">
-                      No custom metadata fields added yet. Click &quot;Add Field&quot; to include custom properties.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {metadataFields.map((field, index) => (
-                        <div key={index} className="grid grid-cols-12 gap-2 items-end">
-                          <div className="col-span-4">
-                            <Label className="text-xs">Key</Label>
-                            <Input
-                              value={field.key}
-                              onChange={(e) => updateMetadataField(index, 'key', e.target.value)}
-                              placeholder="e.g., story_points"
-                              disabled={loading}
-                              className="text-sm"
-                            />
-                          </div>
-                          <div className="col-span-4">
-                            <Label className="text-xs">Value</Label>
-                            <Input
-                              value={field.value}
-                              onChange={(e) => updateMetadataField(index, 'value', e.target.value)}
-                              placeholder="e.g., 5"
-                              disabled={loading}
-                              className="text-sm"
-                            />
-                          </div>
-                          <div className="col-span-3">
-                            <Label className="text-xs">Type</Label>
-                            <Select
-                              value={field.type}
-                              onValueChange={(value) => updateMetadataField(index, 'type', value)}
-                              disabled={loading}
-                            >
-                              <SelectTrigger className="text-sm">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="text">Text</SelectItem>
-                                <SelectItem value="number">Number</SelectItem>
-                                <SelectItem value="boolean">Boolean</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="col-span-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeMetadataField(index)}
-                              disabled={loading}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  
-                  <p className="text-xs text-muted-foreground">
-                    Add custom properties to track additional information like story points, business value, technical complexity, etc.
-                  </p>
-                </div>
 
-                {/* Preview Metadata */}
-                {metadataFields.some(f => f.key && f.value) && (
-                  <div className="space-y-2">
-                    <Label>Metadata Preview</Label>
-                    <div className="bg-muted p-3 rounded-lg">
-                      <pre className="text-xs text-muted-foreground">
-                        {JSON.stringify(buildMetadata(), null, 2)}
-                      </pre>
-                    </div>
+                  <Textarea
+                    value={rawRequirement}
+                    onChange={(e) => setRawRequirement(e.target.value)}
+                    placeholder={`Example:\nUsers must be able to log in using email/password or passkeys. After 5 failed attempts, lock for 15 minutes. Sessions expire after 30 minutes of inactivity...`}
+                    rows={7}
+                    className="text-sm"
+                    disabled={loading || parsing}
+                  />
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        // convenience: auto-create title/desc from raw if user wants quick fill
+                        if (!formData.title.trim())
+                          setFormData((p) => ({
+                            ...p,
+                            title: "New Requirement",
+                          }));
+                        if (!formData.description.trim())
+                          setFormData((p) => ({
+                            ...p,
+                            description: rawRequirement.trim(),
+                          }));
+                        toast.message(
+                          "Copied raw text into Description. You can still Extract Criteria."
+                        );
+                      }}
+                      disabled={loading || parsing || !rawRequirement.trim()}
+                    >
+                      Use as Description
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setRawRequirement("")}
+                      disabled={loading || parsing || !rawRequirement.trim()}
+                    >
+                      Clear
+                    </Button>
                   </div>
-                )}
+                </div>
               </TabsContent>
 
               {/* Actions - Always visible */}
@@ -737,8 +803,8 @@ export function AddRequirementModal({
                   variant="outline"
                   className="flex-1"
                   onClick={() => {
-                    setOpen(false)
-                    resetForm()
+                    setOpen(false);
+                    resetForm();
                   }}
                   disabled={loading || generatingTests}
                 >
@@ -747,18 +813,25 @@ export function AddRequirementModal({
                 <Button
                   type="submit"
                   className="flex-1"
-                  disabled={loading || generatingTests || !formData.title || !formData.description}
+                  disabled={
+                    loading ||
+                    generatingTests ||
+                    !formData.title ||
+                    !formData.description
+                  }
                 >
                   {loading || generatingTests ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      {generatingTests ? 'Generating Tests...' : 'Creating...'}
+                      {generatingTests ? "Generating Tests..." : "Creating..."}
                     </>
                   ) : (
                     <>
                       <Plus className="h-4 w-4 mr-2" />
                       Create Requirement
-                      {autoGenerateTests && <Sparkles className="h-4 w-4 ml-2" />}
+                      {autoGenerateTests && (
+                        <Sparkles className="h-4 w-4 ml-2" />
+                      )}
                     </>
                   )}
                 </Button>
@@ -768,5 +841,5 @@ export function AddRequirementModal({
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

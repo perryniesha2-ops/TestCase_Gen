@@ -1,9 +1,9 @@
 // components/testcase-management/test-cases/dialogs/BulkUpdateDialog.tsx
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,30 +11,35 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Label } from "@/components/ui/label"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react"
-import type { TestCase, Project, TestSuite, CrossPlatformTestCase } from "@/types/test-cases"
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import type {
+  TestCase,
+  Project,
+  TestSuite,
+  CrossPlatformTestCase,
+} from "@/types/test-cases";
 
 interface BulkUpdateDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  action: "status" | "priority" | "project" | "suite" | "approve" | "reject"
-  selectedCount: number
-  type?: "regular" | "cross-platform"
-  pendingCount?: number
-  onUpdate?: (updates: any) => Promise<void>  // ✅ Changed from strict typing
-  onAddToSuite?: (suiteId: string) => Promise<void>
-  onApprove?: () => Promise<void>
-  onReject?: () => Promise<void>
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  action: "status" | "priority" | "project" | "suite" | "approve" | "reject";
+  selectedCount: number;
+  type?: "regular" | "cross-platform";
+  pendingCount?: number;
+  onUpdate?: (updates: any) => Promise<void>;
+  onAddToSuite?: (suiteId: string) => Promise<void>;
+  onApprove?: () => Promise<void>;
+  onReject?: () => Promise<void>;
 }
 
 export function BulkUpdateDialog({
@@ -49,155 +54,166 @@ export function BulkUpdateDialog({
   onApprove,
   onReject,
 }: BulkUpdateDialogProps) {
-  const [loading, setLoading] = useState(false)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [suites, setSuites] = useState<TestSuite[]>([])
-  
-  const [selectedStatus, setSelectedStatus] = useState("")
-  const [selectedPriority, setSelectedPriority] = useState("")
-  const [selectedProject, setSelectedProject] = useState("__none__")
-  const [selectedSuite, setSelectedSuite] = useState("")
+  const [loading, setLoading] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [suites, setSuites] = useState<TestSuite[]>([]);
+
+  const [selectedStatus, setSelectedStatus] = useState("");
+  const [selectedPriority, setSelectedPriority] = useState("");
+  const [selectedProject, setSelectedProject] = useState("__none__");
+  const [selectedSuite, setSelectedSuite] = useState("");
 
   useEffect(() => {
     if (open && action === "project") {
-      fetchProjects()
+      fetchProjects();
     }
     if (open && action === "suite") {
-      fetchSuites()
+      fetchSuites();
     }
-  }, [open, action])
+  }, [open, action]);
 
   // Reset form when dialog closes
   useEffect(() => {
     if (!open) {
-      setSelectedStatus("")
-      setSelectedPriority("")
-      setSelectedProject("__none__")
-      setSelectedSuite("")
+      setSelectedStatus("");
+      setSelectedPriority("");
+      setSelectedProject("__none__");
+      setSelectedSuite("");
     }
-  }, [open])
+  }, [open]);
 
   async function fetchProjects() {
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
       const { data, error } = await supabase
         .from("projects")
         .select("id, name, color, icon")
         .eq("user_id", user.id)
-        .order("name")
+        .order("name");
 
-      if (error) throw error
-      setProjects(data || [])
+      if (error) throw error;
+      setProjects(data || []);
     } catch (error) {
-      console.error("Error fetching projects:", error)
+      console.error("Error fetching projects:", error);
     }
   }
 
   async function fetchSuites() {
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
       const { data, error } = await supabase
         .from("test_suites")
         .select("id, name, suite_type, status, created_at, project_id")
         .eq("user_id", user.id)
-        .order("name")
+        .order("name");
 
-      if (error) throw error
-      setSuites(data || [])
+      if (error) throw error;
+      setSuites(data || []);
     } catch (error) {
-      console.error("Error fetching suites:", error)
+      console.error("Error fetching suites:", error);
     }
   }
 
   async function handleSubmit() {
-    setLoading(true)
+    setLoading(true);
     try {
       // Handle cross-platform actions
       if (action === "approve" && onApprove) {
-        await onApprove()
-        onOpenChange(false)
-        return
+        await onApprove();
+        onOpenChange(false);
+        return;
       }
 
       if (action === "reject" && onReject) {
-        await onReject()
-        onOpenChange(false)
-        return
+        await onReject();
+        onOpenChange(false);
+        return;
       }
 
       // Handle suite action
       if (action === "suite") {
         if (!selectedSuite) {
-          alert("Please select a suite")
-          return
+          alert("Please select a suite");
+          return;
         }
         if (onAddToSuite) {
-          await onAddToSuite(selectedSuite)
+          await onAddToSuite(selectedSuite);
         }
-        onOpenChange(false)
-        return
+        onOpenChange(false);
+        return;
       }
 
       // Handle regular update actions
       if (onUpdate) {
-        const updates: any = {}
-        
+        const updates: any = {};
+
         if (action === "status" && selectedStatus) {
-          updates.status = selectedStatus
+          updates.status = selectedStatus;
         }
         if (action === "priority" && selectedPriority) {
-          updates.priority = selectedPriority
+          updates.priority = selectedPriority;
         }
         if (action === "project") {
-          updates.project_id = selectedProject === "__none__" ? null : selectedProject || null
+          updates.project_id =
+            selectedProject === "__none__" ? null : selectedProject || null;
         }
 
         if (Object.keys(updates).length === 0) {
-          alert("Please select a value")
-          return
+          alert("Please select a value");
+          return;
         }
 
-        await onUpdate(updates)
-        onOpenChange(false)
+        await onUpdate(updates);
+        onOpenChange(false);
       }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   function getDialogTitle() {
     switch (action) {
       case "status":
-        return "Change Status"
+        return "Change Status";
       case "priority":
-        return type === "cross-platform" ? "Change Priority" : "Change Priority"
+        return type === "cross-platform"
+          ? "Change Priority"
+          : "Change Priority";
       case "project":
-        return "Assign to Project"
+        return "Assign to Project";
       case "suite":
-        return "Add to Test Suite"
+        return "Add to Test Suite";
       case "approve":
-        return "Approve & Convert Test Cases"
+        return "Approve & Convert Test Cases";
       case "reject":
-        return "Reject Test Cases"
+        return "Reject Test Cases";
       default:
-        return "Bulk Update"
+        return "Bulk Update";
     }
   }
 
   function getDialogDescription() {
     if (action === "approve") {
-      return `You are about to approve ${pendingCount || selectedCount} pending test case${(pendingCount || selectedCount) === 1 ? "" : "s"}`
+      return `You are about to approve ${
+        pendingCount || selectedCount
+      } pending test case${(pendingCount || selectedCount) === 1 ? "" : "s"}`;
     }
     if (action === "reject") {
-      return `You are about to reject ${pendingCount || selectedCount} pending test case${(pendingCount || selectedCount) === 1 ? "" : "s"}`
+      return `You are about to reject ${
+        pendingCount || selectedCount
+      } pending test case${(pendingCount || selectedCount) === 1 ? "" : "s"}`;
     }
-    return `Update ${selectedCount} test case${selectedCount === 1 ? "" : "s"}`
+    return `Update ${selectedCount} test case${selectedCount === 1 ? "" : "s"}`;
   }
 
   return (
@@ -231,7 +247,10 @@ export function BulkUpdateDialog({
           {action === "priority" && (
             <div className="space-y-2">
               <Label htmlFor="priority">New Priority</Label>
-              <Select value={selectedPriority} onValueChange={setSelectedPriority}>
+              <Select
+                value={selectedPriority}
+                onValueChange={setSelectedPriority}
+              >
                 <SelectTrigger id="priority">
                   <SelectValue placeholder="Select priority" />
                 </SelectTrigger>
@@ -249,7 +268,10 @@ export function BulkUpdateDialog({
           {action === "project" && (
             <div className="space-y-2">
               <Label htmlFor="project">Project</Label>
-              <Select value={selectedProject} onValueChange={setSelectedProject}>
+              <Select
+                value={selectedProject}
+                onValueChange={setSelectedProject}
+              >
                 <SelectTrigger id="project">
                   <SelectValue placeholder="Select project" />
                 </SelectTrigger>
@@ -297,9 +319,20 @@ export function BulkUpdateDialog({
                 <div className="space-y-2">
                   <p className="font-semibold">This action will:</p>
                   <ul className="list-disc list-inside space-y-1 text-sm">
-                    <li>Convert {pendingCount || selectedCount} pending test case{(pendingCount || selectedCount) === 1 ? "" : "s"} to regular test case{(pendingCount || selectedCount) === 1 ? "" : "s"}</li>
-                    <li>Set status to <strong>Active</strong></li>
-                    <li>Make {(pendingCount || selectedCount) === 1 ? "it" : "them"} available to add to test suites</li>
+                    <li>
+                      Convert {pendingCount || selectedCount} pending test case
+                      {(pendingCount || selectedCount) === 1 ? "" : "s"} to
+                      regular test case
+                      {(pendingCount || selectedCount) === 1 ? "" : "s"}
+                    </li>
+                    <li>
+                      Set status to <strong>Active</strong>
+                    </li>
+                    <li>
+                      Make{" "}
+                      {(pendingCount || selectedCount) === 1 ? "it" : "them"}{" "}
+                      available to add to test suites
+                    </li>
                     <li>Keep original as approved for reference</li>
                   </ul>
                 </div>
@@ -315,8 +348,15 @@ export function BulkUpdateDialog({
                 <div className="space-y-2">
                   <p className="font-semibold">This action will:</p>
                   <ul className="list-disc list-inside space-y-1 text-sm">
-                    <li>Mark {pendingCount || selectedCount} test case{(pendingCount || selectedCount) === 1 ? "" : "s"} as <strong>Rejected</strong></li>
-                    <li>{(pendingCount || selectedCount) === 1 ? "It" : "They"} will remain visible but cannot be converted</li>
+                    <li>
+                      Mark {pendingCount || selectedCount} test case
+                      {(pendingCount || selectedCount) === 1 ? "" : "s"} as{" "}
+                      <strong>Rejected</strong>
+                    </li>
+                    <li>
+                      {(pendingCount || selectedCount) === 1 ? "It" : "They"}{" "}
+                      will remain visible but cannot be converted
+                    </li>
                     <li>You can always change this later if needed</li>
                   </ul>
                 </div>
@@ -333,21 +373,30 @@ export function BulkUpdateDialog({
           >
             Cancel
           </Button>
-          <Button 
-            onClick={handleSubmit} 
+          <Button
+            onClick={handleSubmit}
             disabled={loading}
-            variant={action === "reject" ? "destructive" : action === "approve" ? "default" : "default"}
-            className={action === "approve" ? "bg-green-600 hover:bg-green-700" : ""}
+            variant={
+              action === "reject"
+                ? "destructive"
+                : action === "approve"
+                ? "default"
+                : "default"
+            }
+            className={
+              action === "approve" ? "bg-green-600 hover:bg-green-700" : ""
+            }
           >
             {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {action === "approve" && <CheckCircle2 className="h-4 w-4 mr-2" />}
             {action === "reject" && <XCircle className="h-4 w-4 mr-2" />}
             {action === "approve" && `Approve ${pendingCount || selectedCount}`}
             {action === "reject" && `Reject ${pendingCount || selectedCount}`}
-            {!["approve", "reject"].includes(action) && `Update ${selectedCount}`}
+            {!["approve", "reject"].includes(action) &&
+              `Update ${selectedCount}`}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

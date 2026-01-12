@@ -60,6 +60,7 @@ import {
   Eye,
   Loader2,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth/auth-context";
 
 // Types
 type TemplateCategory =
@@ -129,12 +130,7 @@ const categoryColors: Record<TemplateCategory, string> = {
   other: "bg-gray-500",
 };
 
-/**
- * Get display name for AI model
- * Handles both old and new model naming conventions
- */
 function getModelDisplayName(modelKey: string): string {
-  // Latest models (Dec 2024)
   if (modelKey === "claude-sonnet-4-5") return "Claude Sonnet 4.5";
   if (modelKey === "claude-haiku-4-5") return "Claude Haiku 4.5";
   if (modelKey === "claude-opus-4-5") return "Claude Opus 4.5";
@@ -143,7 +139,6 @@ function getModelDisplayName(modelKey: string): string {
   if (modelKey === "gpt-4o") return "GPT-4o";
   if (modelKey === "gpt-4o-mini") return "GPT-4o Mini";
 
-  // Legacy models (backwards compatibility)
   if (modelKey.includes("claude-3-5-sonnet")) return "Claude 3.5 Sonnet";
   if (modelKey.includes("claude-3-5-haiku")) return "Claude 3.5 Haiku";
   if (modelKey.includes("claude-sonnet-4")) return "Claude Sonnet 4";
@@ -151,7 +146,6 @@ function getModelDisplayName(modelKey: string): string {
   if (modelKey.includes("gpt-4-turbo")) return "GPT-4 Turbo";
   if (modelKey.includes("gpt-3.5")) return "GPT-3.5 Turbo";
 
-  // Fallback - extract readable name
   if (modelKey.includes("claude")) return "Claude";
   if (modelKey.includes("gpt")) return "GPT";
 
@@ -159,6 +153,10 @@ function getModelDisplayName(modelKey: string): string {
 }
 
 export function TemplateManager() {
+  // ✅ 1. ALL CONTEXT HOOKS FIRST
+  const { user } = useAuth();
+
+  // ✅ 2. ALL useState HOOKS
   const [templates, setTemplates] = useState<Template[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,7 +169,6 @@ export function TemplateManager() {
   const [activeTab, setActiveTab] = useState<"my-templates" | "public">(
     "my-templates"
   );
-
   const [formData, setFormData] = useState<TemplateFormData>({
     name: "",
     description: "",
@@ -183,26 +180,29 @@ export function TemplateManager() {
     includeNegativeTests: true,
   });
 
+  // ✅ 3. COMPUTED VALUES
+  const favoriteTemplates = filteredTemplates.filter((t) => t.is_favorite);
+  const mostUsedTemplate = [...templates].sort(
+    (a, b) => b.usage_count - a.usage_count
+  )[0];
+
+  // ✅ 4. ALL useEffect HOOKS
   useEffect(() => {
-    fetchTemplates();
-  }, []);
+    if (user) {
+      fetchTemplates();
+    }
+  }, [user]);
 
   useEffect(() => {
     filterTemplates();
-  }, [templates, searchQuery, categoryFilter, activeTab]);
+  }, [templates, searchQuery, categoryFilter, activeTab, user]);
 
+  // ✅ 5. ALL FUNCTIONS
   async function fetchTemplates() {
-    setLoading(true);
+    if (!user) return;
+
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please sign in to view templates");
-        return;
-      }
 
       const { data, error } = await supabase
         .from("test_case_templates")
@@ -220,43 +220,44 @@ export function TemplateManager() {
   }
 
   function filterTemplates() {
+    // ✅ Use user from context - NO auth query!
+    if (!user) {
+      setFilteredTemplates([]);
+      return;
+    }
+
     let filtered = templates;
 
     // Filter by tab (my templates vs public)
-    const supabase = createClient();
-    supabase.auth
-      .getUser()
-      .then(({ data: { user } }) => {
-        if (user) {
-          filtered =
-            activeTab === "my-templates"
-              ? filtered.filter((t) => t.user_id === user.id)
-              : filtered.filter((t) => t.is_public && t.user_id !== user.id);
-        }
+    filtered =
+      activeTab === "my-templates"
+        ? filtered.filter((t) => t.user_id === user.id)
+        : filtered.filter((t) => t.is_public && t.user_id !== user.id);
 
-        // Filter by category
-        if (categoryFilter !== "all") {
-          filtered = filtered.filter((t) => t.category === categoryFilter);
-        }
+    // Filter by category
+    if (categoryFilter !== "all") {
+      filtered = filtered.filter((t) => t.category === categoryFilter);
+    }
 
-        // Filter by search query
-        if (searchQuery.trim()) {
-          const query = searchQuery.toLowerCase();
-          filtered = filtered.filter(
-            (t) =>
-              t.name.toLowerCase().includes(query) ||
-              t.description?.toLowerCase().includes(query)
-          );
-        }
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (t) =>
+          t.name.toLowerCase().includes(query) ||
+          t.description?.toLowerCase().includes(query)
+      );
+    }
 
-        setFilteredTemplates(filtered);
-      })
-      .catch((err) => {
-        console.error("Error filtering templates:", err);
-      });
+    setFilteredTemplates(filtered);
   }
 
   async function saveTemplate() {
+    if (!user) {
+      toast.error("Please log in to save templates");
+      return;
+    }
+
     if (!formData.name.trim()) {
       toast.error("Please enter a template name");
       return;
@@ -265,14 +266,6 @@ export function TemplateManager() {
     setLoading(true);
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please sign in to save templates");
-        return;
-      }
 
       const templateContent: TemplateContent = {
         model: formData.model,
@@ -341,16 +334,14 @@ export function TemplateManager() {
   }
 
   async function duplicateTemplate(template: Template) {
-    try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Please log in to duplicate templates");
+      return;
+    }
 
-      if (!user) {
-        toast.error("Please sign in to duplicate templates");
-        return;
-      }
+    try {
+      setLoading(true);
+      const supabase = createClient();
 
       const { error } = await supabase.from("test_case_templates").insert({
         user_id: user.id,
@@ -368,6 +359,8 @@ export function TemplateManager() {
     } catch (error) {
       console.error("Error duplicating template:", error);
       toast.error("Failed to duplicate template");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -392,7 +385,7 @@ export function TemplateManager() {
       name: "",
       description: "",
       category: "functional",
-      model: "claude-sonnet-4-5", // Updated to latest
+      model: "claude-sonnet-4-5",
       testCaseCount: 10,
       coverage: "comprehensive",
       includeEdgeCases: true,
@@ -421,11 +414,6 @@ export function TemplateManager() {
     resetForm();
     setShowDialog(true);
   }
-
-  const favoriteTemplates = filteredTemplates.filter((t) => t.is_favorite);
-  const mostUsedTemplate = [...templates].sort(
-    (a, b) => b.usage_count - a.usage_count
-  )[0];
 
   return (
     <div className="space-y-6">
