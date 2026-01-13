@@ -1,4 +1,3 @@
-// lib/auth-context.tsx
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
@@ -18,9 +17,11 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   useEffect(() => {
+    // ✅ Create client INSIDE useEffect
+    const supabase = createClient();
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -35,7 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, []); // ✅ Empty array - runs once on mount
 
   return (
     <AuthContext.Provider value={{ user, loading }}>
