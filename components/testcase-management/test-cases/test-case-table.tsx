@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
+
 import {
   CheckCircle2,
   XCircle,
@@ -31,10 +33,12 @@ import type {
 import { TestCaseToolbar } from "./toolbars/TestCaseToolbar";
 import { RegularTestCaseSection } from "./RegularTestCaseSection";
 import { CrossPlatformTestCaseSection } from "./CrossPlatformTestCaseSection";
+
 import { TestCaseFormDialog } from "./dialogs/test-case-form-dialog";
 import { DeleteTestCaseDialog } from "./dialogs/delete-test-case-dialog";
 import { TestCaseActionSheet } from "./test-case-action-sheet";
 import { TestRunnerDialog } from "./dialogs/test-runner-dialog";
+
 import { useBulkActions } from "@/hooks/useBulkActions";
 import { useTestCaseData } from "@/hooks/useTestCaseData";
 import { useExecutions } from "@/hooks/useExecutions";
@@ -50,17 +54,17 @@ const platformIcons = {
 type CaseType = "regular" | "cross-platform";
 
 export function TabbedTestCaseTable() {
-  //  ALL ROUTER/SEARCH HOOKS
   const searchParams = useSearchParams();
-
   const generationId = searchParams.get("generation");
   const sessionId = searchParams.get("session");
 
-  //  ALL useState HOOKS
+  // UI filters/pagination
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedProject, setSelectedProject] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [crossPlatformCurrentPage, setCrossPlatformCurrentPage] = useState(1);
+
+  // CRUD dialogs
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -68,8 +72,12 @@ export function TabbedTestCaseTable() {
   const [deletingTestCase, setDeletingTestCase] = useState<TestCase | null>(
     null
   );
+
+  // Action sheet
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [actionSheetCase, setActionSheetCase] = useState<TestCase | null>(null);
+
+  // Runner
   const [showRunnerDialog, setShowRunnerDialog] = useState(false);
   const [runnerCase, setRunnerCase] = useState<
     TestCase | CrossPlatformTestCase | null
@@ -77,10 +85,7 @@ export function TabbedTestCaseTable() {
   const [runnerCaseType, setRunnerCaseType] = useState<CaseType>("regular");
   const [updating, setUpdating] = useState<string | null>(null);
 
-  // CONSTANTS
-  const itemsPerPage = 10;
-
-  // ALL CUSTOM HOOKS
+  // Data
   const {
     loading,
     testCases,
@@ -94,24 +99,26 @@ export function TabbedTestCaseTable() {
     selectedProject,
   });
 
+  // Executions (ALL execution writes should live here)
   const {
     execution,
     setExecution,
     hydrateExecutions,
     toggleStep,
-    saveProgress,
-    saveResult,
-    reset,
+    // Rename these based on your hook API.
+    saveProgress, // <— incremental progress meta/steps/status
+    saveResult, // <— finalize passed/failed/blocked/skipped
+    reset, // <— reset to not_run
   } = useExecutions({ sessionId });
 
-  const regularBulkActions = useBulkActions(testCases, refresh);
+  // Bulk actions
   const crossPlatformBulkActions = useBulkActions(
     crossPlatformCases,
     refresh,
     "cross-platform"
   );
+  const regularBulkActions = useBulkActions(testCases, refresh);
 
-  //  DESTRUCTURE FROM CUSTOM HOOKS
   const {
     selectedIds,
     toggleSelection,
@@ -123,7 +130,32 @@ export function TabbedTestCaseTable() {
     bulkExport,
   } = regularBulkActions;
 
-  //ALL useMemo HOOKS
+  const getRelativeTime = useCallback((dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 60) return `${diffMins} mins ago`;
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString();
+  }, []);
+
+  // hydrate executions when lists change
+  useEffect(() => {
+    if (loading) return;
+    void hydrateExecutions({
+      testCaseIds: testCases.map((t) => t.id),
+      crossPlatformIds: crossPlatformCases.map((c) => c.id),
+    }).catch((e) => console.error("hydrateExecutions error:", e));
+  }, [loading, testCases, crossPlatformCases, hydrateExecutions]);
+
+  const itemsPerPage = 10;
+
   const filteredTestCases = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return testCases.filter(
@@ -142,61 +174,25 @@ export function TabbedTestCaseTable() {
     );
   }, [crossPlatformCases, searchTerm]);
 
-  const totalPages = useMemo(
-    () => Math.ceil(filteredTestCases.length / itemsPerPage),
-    [filteredTestCases.length, itemsPerPage]
+  const totalPages = Math.ceil(filteredTestCases.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedTestCases = filteredTestCases.slice(startIndex, endIndex);
+
+  const crossPlatformTotalPages = Math.ceil(
+    filteredCrossPlatformCases.length / itemsPerPage
+  );
+  const crossPlatformStartIndex = (crossPlatformCurrentPage - 1) * itemsPerPage;
+  const crossPlatformEndIndex = crossPlatformStartIndex + itemsPerPage;
+  const paginatedCrossPlatformCases = filteredCrossPlatformCases.slice(
+    crossPlatformStartIndex,
+    crossPlatformEndIndex
   );
 
-  const paginatedTestCases = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filteredTestCases.slice(startIndex, endIndex);
-  }, [filteredTestCases, currentPage, itemsPerPage]);
+  const selectedProjectName = selectedProject
+    ? projects.find((p) => p.id === selectedProject)?.name ?? null
+    : null;
 
-  const crossPlatformTotalPages = useMemo(
-    () => Math.ceil(filteredCrossPlatformCases.length / itemsPerPage),
-    [filteredCrossPlatformCases.length, itemsPerPage]
-  );
-
-  const paginatedCrossPlatformCases = useMemo(() => {
-    const startIndex = (crossPlatformCurrentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filteredCrossPlatformCases.slice(startIndex, endIndex);
-  }, [filteredCrossPlatformCases, crossPlatformCurrentPage, itemsPerPage]);
-
-  const selectedProjectName = useMemo(
-    () =>
-      selectedProject
-        ? projects.find((p) => p.id === selectedProject)?.name ?? null
-        : null,
-    [selectedProject, projects]
-  );
-
-  const startIndex = useMemo(
-    () => (currentPage - 1) * itemsPerPage,
-    [currentPage, itemsPerPage]
-  );
-
-  const endIndex = useMemo(
-    () => Math.min(startIndex + itemsPerPage, filteredTestCases.length),
-    [startIndex, itemsPerPage, filteredTestCases.length]
-  );
-
-  const crossPlatformStartIndex = useMemo(
-    () => (crossPlatformCurrentPage - 1) * itemsPerPage,
-    [crossPlatformCurrentPage, itemsPerPage]
-  );
-
-  const crossPlatformEndIndex = useMemo(
-    () =>
-      Math.min(
-        crossPlatformStartIndex + itemsPerPage,
-        filteredCrossPlatformCases.length
-      ),
-    [crossPlatformStartIndex, itemsPerPage, filteredCrossPlatformCases.length]
-  );
-
-  // ALL useCallback HOOKS
   const getPriorityColor = useCallback((priority: string) => {
     switch (priority) {
       case "critical":
@@ -261,21 +257,7 @@ export function TabbedTestCaseTable() {
     }
   }, []);
 
-  const getRelativeTime = useCallback((dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffMins < 60) return `${diffMins} mins ago`;
-    if (diffHours < 24) return `${diffHours} hours ago`;
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
-    return date.toLocaleDateString();
-  }, []);
-
+  // CRUD handlers
   const openCreate = useCallback(() => {
     setEditingTestCase(null);
     setShowCreateDialog(true);
@@ -341,16 +323,6 @@ export function TabbedTestCaseTable() {
     [openRunner]
   );
 
-  //ALL useEffect HOOKS
-  useEffect(() => {
-    if (loading) return;
-    void hydrateExecutions({
-      testCaseIds: testCases.map((t) => t.id),
-      crossPlatformIds: crossPlatformCases.map((c) => c.id),
-    }).catch((e) => console.error("hydrateExecutions error:", e));
-  }, [loading, testCases, crossPlatformCases, hydrateExecutions]);
-
-  // EARLY RETURNS
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -358,8 +330,6 @@ export function TabbedTestCaseTable() {
       </div>
     );
   }
-
-  // MAIN RENDER
   return (
     <div className="space-y-6">
       {/* Session Info */}
@@ -450,9 +420,10 @@ export function TabbedTestCaseTable() {
             getProjectColor={getProjectColor}
             onOpenCreate={openCreate}
             onOpenActionSheet={openActionSheet}
-            onRun={(tc) => openRunner(tc, "regular")}
+            onRun={(tc) => openRunner(tc, "regular")} // optional, only if Props includes it
           />
         </TabsContent>
+        <div className="h-2" />
 
         <TabsContent value="cross-platform" className="space-y-6">
           <CrossPlatformTestCaseSection
@@ -488,9 +459,10 @@ export function TabbedTestCaseTable() {
             onRun={(tc) => openRunner(tc, "cross-platform")}
           />
         </TabsContent>
+        <div className="h-2" />
       </Tabs>
 
-      {/* Dialogs */}
+      {/* Create/Edit */}
       <TestCaseFormDialog
         open={showCreateDialog || showEditDialog}
         mode={showCreateDialog ? "create" : "edit"}
@@ -504,6 +476,7 @@ export function TabbedTestCaseTable() {
         onSuccess={refresh}
       />
 
+      {/* Runner */}
       {runnerCase && (
         <TestRunnerDialog
           open={showRunnerDialog}
@@ -521,6 +494,7 @@ export function TabbedTestCaseTable() {
         />
       )}
 
+      {/* Delete */}
       <DeleteTestCaseDialog
         testCase={deletingTestCase}
         open={showDeleteDialog}
@@ -540,14 +514,17 @@ export function TabbedTestCaseTable() {
         }}
       />
 
+      {/* Action Sheet */}
       <TestCaseActionSheet
         testCase={actionSheetCase}
         open={showActionSheet}
         onOpenChange={setShowActionSheet}
         onEdit={openEdit}
         onDelete={openDelete}
-        onViewDetails={(tc) => {}}
-        onRunTest={runTestFromSheet}
+        onViewDetails={(tc) => {
+          /* optional */
+        }}
+        onRunTest={runTestFromSheet} // ✅ opens runner only
         isAutomated={false}
       />
     </div>

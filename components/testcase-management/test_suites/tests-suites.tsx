@@ -91,7 +91,6 @@ import { TriagePanel } from "./triage-panel";
 import { TestCaseQuickViewDialog } from "../test-cases/dialogs/test-case-view-dialog";
 import { TestSuiteTable } from "./test-suite-table";
 import { TestSuiteSheet } from "./test-suite-sheet";
-import { useAuth } from "@/lib/auth/auth-context";
 
 interface FormData {
   name: string;
@@ -109,26 +108,35 @@ type SuiteEditForm = {
 };
 
 export function TestSuitesPage() {
-  const { user, loading: authLoading } = useAuth();
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterProject, setFilterProject] = useState<string>("all");
   const [projects, setProjects] = useState<Project[]>([]);
+
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedSuite, setSelectedSuite] = useState<TestSuite | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [activeTab, setActiveTab] = useState("suites");
+
   const [executingSuite, setExecutingSuite] = useState<TestSuite | null>(null);
   const [showExecutionDialog, setShowExecutionDialog] = useState(false);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerSuite, setDrawerSuite] = useState<TestSuite | null>(null);
   const [editingSuite, setEditingSuite] = useState<TestSuite | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+
   const [openTestCase, setOpenTestCase] = useState(false);
   const [activeTestCaseId, setActiveTestCaseId] = useState<string | null>(null);
+
+  function openSuiteDrawer(suite: TestSuite) {
+    setDrawerSuite(suite);
+    setDrawerOpen(true);
+  }
+
   const [formData, setFormData] = useState<FormData>({
     name: "",
     description: "",
@@ -138,40 +146,107 @@ export function TestSuitesPage() {
     project_id: "",
   });
 
-  const [suiteEditForm, setSuiteEditForm] = useState<SuiteEditForm>({
-    name: "",
-    status: "active",
-    suite_type: "manual",
-  });
-
-  //  useEffect hooks
   useEffect(() => {
-    if (user) {
-      fetchTestSuites();
-      fetchProjects();
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (!drawerSuite) return;
-    const updated = testSuites.find((s) => s.id === drawerSuite.id);
-    if (updated) setDrawerSuite(updated);
-  }, [testSuites, drawerSuite?.id]);
-
-  //Functions
+    fetchTestSuites();
+    fetchProjects();
+  }, []);
 
   async function fetchTestSuites() {
-    if (!user) return;
     try {
       const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      const { data, error } = await supabase.rpc("get_test_suites_with_stats", {
-        p_user_id: user.id,
-      });
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("test_suites")
+        .select(
+          `
+          *,
+          projects:project_id(id, name, color, icon)
+        `
+        )
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      setTestSuites(data || []);
+      // Get execution stats and test case count for each suite
+      const suitesWithStats = await Promise.all(
+        (data || []).map(async (suite) => {
+          // Get test case count
+          const { data: testCases } = await supabase
+            .from("test_suite_cases")
+            .select("id")
+            .eq("suite_id", suite.id);
+
+          // Get execution stats
+          const { data: executions } = await supabase
+            .from("test_executions")
+            .select("execution_status")
+            .eq("suite_id", suite.id);
+
+          const stats = executions?.reduce(
+            (acc, exec) => {
+              acc.total++;
+              if (exec.execution_status === "passed") acc.passed++;
+              else if (exec.execution_status === "failed") acc.failed++;
+              else if (exec.execution_status === "skipped") acc.skipped++;
+              else if (exec.execution_status === "blocked") acc.blocked++;
+              return acc;
+            },
+            { total: 0, passed: 0, failed: 0, skipped: 0, blocked: 0 }
+          ) ?? { total: 0, passed: 0, failed: 0, skipped: 0, blocked: 0 };
+
+          const { data: suiteCases, error: suiteCasesError } = await supabase
+            .from("test_suite_cases")
+            .select(
+              `
+    test_case_id,
+    test_cases (
+      id,
+      test_steps
+    )
+  `
+            )
+            .eq("suite_id", suite.id);
+
+          if (suiteCasesError) throw suiteCasesError;
+
+          const eligibleCaseIds = (suiteCases ?? [])
+            .map((row: any) => {
+              const tc = Array.isArray(row.test_cases)
+                ? row.test_cases[0]
+                : row.test_cases;
+              const hasSteps =
+                Array.isArray(tc?.test_steps) && tc.test_steps.length > 0;
+              return hasSteps ? row.test_case_id : null;
+            })
+            .filter(Boolean) as string[];
+
+          const eligible_count = eligibleCaseIds.length;
+
+          let scripted_count = 0;
+
+          const mode: "manual" | "partial" | "automated" =
+            eligible_count > 0 && scripted_count === eligible_count
+              ? "automated"
+              : scripted_count > 0
+              ? "partial"
+              : "manual";
+
+          return {
+            ...suite,
+            test_case_count: testCases?.length || 0,
+            execution_stats: stats,
+            automation: { eligible_count, scripted_count, mode },
+          };
+        })
+      );
+
+      setTestSuites(suitesWithStats);
     } catch (error) {
       console.error("Error fetching test suites:", error);
       toast.error("Failed to load test suites");
@@ -180,11 +255,19 @@ export function TestSuitesPage() {
     }
   }
 
-  async function fetchProjects() {
-    if (!user) return;
+  useEffect(() => {
+    if (!drawerSuite) return;
+    const updated = testSuites.find((s) => s.id === drawerSuite.id);
+    if (updated) setDrawerSuite(updated);
+  }, [testSuites, drawerSuite?.id]);
 
+  async function fetchProjects() {
     try {
       const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
       const { data, error } = await supabase
         .from("projects")
@@ -199,26 +282,14 @@ export function TestSuitesPage() {
     }
   }
 
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <p className="text-muted-foreground">Please log in to continue</p>
-      </div>
-    );
-  }
-
   async function createTestSuite() {
-    if (!user) return;
     try {
       const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
 
       const { data, error } = await supabase
         .from("test_suites")
@@ -361,11 +432,6 @@ export function TestSuitesPage() {
     setShowExecutionDialog(true);
   }
 
-  function openSuiteDrawer(suite: TestSuite) {
-    setDrawerSuite(suite);
-    setDrawerOpen(true);
-  }
-
   function getStatusIcon(status: string) {
     if (status === "active")
       return <Clock className="h-4 w-4 text-green-500" />;
@@ -389,11 +455,41 @@ export function TestSuitesPage() {
     return colors[color] || "text-gray-500";
   }
 
+  // Filter suites
+  const filteredSuites = testSuites.filter((suite) => {
+    const matchesSearch =
+      suite.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      suite.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = filterType === "all" || suite.suite_type === filterType;
+    const matchesProject =
+      filterProject === "all" ||
+      suite.project_id === filterProject ||
+      (filterProject === "none" && !suite.project_id);
+    return matchesSearch && matchesType && matchesProject;
+  });
+
+  // Calculate summary stats
+  const summaryStats = {
+    total: testSuites.length,
+    active: testSuites.filter((s) => s.status === "active").length,
+    completed: testSuites.filter((s) => s.status === "completed").length,
+    totalTests: testSuites.reduce(
+      (sum, s) => sum + (s.test_case_count || 0),
+      0
+    ),
+  };
+
   function getDisplaySuiteType(suite: TestSuite) {
     if (suite.suite_type !== "manual") return suite.suite_type;
 
     return "manual";
   }
+
+  const [suiteEditForm, setSuiteEditForm] = useState<SuiteEditForm>({
+    name: "",
+    status: "active",
+    suite_type: "manual",
+  });
 
   function openEditSuite(suite: TestSuite) {
     setEditingSuite(suite);
@@ -436,46 +532,6 @@ export function TestSuitesPage() {
     } finally {
       setEditSaving(false);
     }
-  }
-
-  //Computed values
-  const filteredSuites = testSuites.filter((suite) => {
-    const matchesSearch =
-      suite.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      suite.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = filterType === "all" || suite.suite_type === filterType;
-    const matchesProject =
-      filterProject === "all" ||
-      suite.project_id === filterProject ||
-      (filterProject === "none" && !suite.project_id);
-    return matchesSearch && matchesType && matchesProject;
-  });
-
-  const summaryStats = {
-    total: testSuites.length,
-    active: testSuites.filter((s) => s.status === "active").length,
-    completed: testSuites.filter((s) => s.status === "completed").length,
-    totalTests: testSuites.reduce(
-      (sum, s) => sum + (s.test_case_count || 0),
-      0
-    ),
-  };
-
-  // NOW you can do conditional rendering
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <p className="text-muted-foreground">Please log in to continue</p>
-      </div>
-    );
   }
 
   return (

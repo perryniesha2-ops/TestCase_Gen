@@ -37,7 +37,6 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/lib/auth/auth-context";
 
 interface TestSuite {
   id: string;
@@ -86,10 +85,6 @@ export function SuiteReports({
   suiteId,
   showAllSuites = false,
 }: SuiteReportsProps) {
-  // ALL CONTEXT HOOKS
-  const { user } = useAuth();
-
-  // useState HOOKS
   const [suiteStats, setSuiteStats] = useState<SuiteExecutionStats[]>([]);
   const [testCasePerformance, setTestCasePerformance] = useState<
     TestCasePerformance[]
@@ -97,11 +92,10 @@ export function SuiteReports({
   const [executionTrends, setExecutionTrends] = useState<ExecutionTrend[]>([]);
   const [availableSuites, setAvailableSuites] = useState<TestSuite[]>([]);
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState("30");
+  const [timeRange, setTimeRange] = useState("30"); // days
   const [selectedSuite, setSelectedSuite] = useState<string>("all");
   const [error, setError] = useState<string | null>(null);
 
-  // useEffect HOOKS
   useEffect(() => {
     if (suiteId) {
       setSelectedSuite(suiteId);
@@ -109,20 +103,22 @@ export function SuiteReports({
   }, [suiteId]);
 
   useEffect(() => {
-    if (user) {
-      fetchReportsData();
-    }
-  }, [timeRange, selectedSuite, user]);
+    fetchReportsData();
+  }, [timeRange, selectedSuite]);
 
-  // ALL FUNCTIONS
   async function fetchReportsData() {
-    if (!user) return;
-
     setLoading(true);
     setError(null);
     try {
+      // 1) Get suites and store them
       const suites = await fetchAvailableSuites();
+
+      // 2) Fetch all report data using the fresh suite list
       const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
       const days = parseInt(timeRange, 10);
       const suiteFilter = selectedSuite !== "all" ? selectedSuite : null;
@@ -197,13 +193,15 @@ export function SuiteReports({
   }
 
   async function fetchAvailableSuites(): Promise<TestSuite[]> {
-    if (!user) {
-      setAvailableSuites([]);
-      return [];
-    }
-
     try {
       const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setAvailableSuites([]);
+        return [];
+      }
 
       const { data, error } = await supabase
         .from("test_suites")
@@ -220,6 +218,347 @@ export function SuiteReports({
       console.error("Error fetching available suites:", error);
       setAvailableSuites([]);
       return [];
+    }
+  }
+
+  async function fetchSuiteExecutionStats(suitesFromCaller?: TestSuite[]) {
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setSuiteStats([]);
+        return;
+      }
+
+      // Prefer suites passed from fetchReportsData, fallback to state
+      let suitesToAnalyze =
+        suitesFromCaller && suitesFromCaller.length > 0
+          ? suitesFromCaller
+          : availableSuites;
+
+      if (selectedSuite !== "all" && selectedSuite) {
+        suitesToAnalyze = suitesToAnalyze.filter((s) => s.id === selectedSuite);
+      }
+
+      if (suitesToAnalyze.length === 0) {
+        setSuiteStats([]);
+        return;
+      }
+
+      const cutoffDate = new Date(
+        Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000
+      ).toISOString();
+
+      const stats = await Promise.all(
+        suitesToAnalyze.map(async (suite) => {
+          const { data: executions, error } = await supabase
+            .from("test_executions")
+            .select("execution_status, started_at, completed_at, created_at")
+            .eq("suite_id", suite.id)
+            .gte("created_at", cutoffDate);
+
+          if (error) {
+            console.error(
+              `Error fetching executions for suite ${suite.id}:`,
+              error
+            );
+            return null;
+          }
+
+          if (!executions || executions.length === 0) {
+            return {
+              suite_id: suite.id,
+              suite_name: suite.name,
+              suite_type: suite.suite_type,
+              execution_count: 0,
+              total_tests: 0,
+              avg_pass_rate: 0,
+              avg_execution_time: 0,
+              last_execution: "",
+              trend: "stable" as const,
+            };
+          }
+
+          const totalExecutions = executions.length;
+          const passedExecutions = executions.filter(
+            (e) => e.execution_status === "passed"
+          ).length;
+          const passRate =
+            totalExecutions > 0
+              ? (passedExecutions / totalExecutions) * 100
+              : 0;
+
+          const completedExecutions = executions.filter(
+            (e) => e.started_at && e.completed_at
+          );
+          const avgTime =
+            completedExecutions.length > 0
+              ? completedExecutions.reduce((acc, exec) => {
+                  const start = new Date(exec.started_at!).getTime();
+                  const end = new Date(exec.completed_at!).getTime();
+                  return acc + (end - start);
+                }, 0) /
+                completedExecutions.length /
+                1000 /
+                60
+              : 0;
+
+          const now = Date.now();
+          const oneWeekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+          const twoWeeksAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
+
+          const recentExecs = executions.filter(
+            (e) => new Date(e.created_at) >= oneWeekAgo
+          );
+          const recentPass = recentExecs.filter(
+            (e) => e.execution_status === "passed"
+          ).length;
+          const recentTotal = recentExecs.length;
+
+          const previousExecs = executions.filter((e) => {
+            const d = new Date(e.created_at);
+            return d >= twoWeeksAgo && d < oneWeekAgo;
+          });
+          const previousPass = previousExecs.filter(
+            (e) => e.execution_status === "passed"
+          ).length;
+          const previousTotal = previousExecs.length;
+
+          let trend: "up" | "down" | "stable" = "stable";
+          if (recentTotal > 0 && previousTotal > 0) {
+            const recentRate = recentPass / recentTotal;
+            const previousRate = previousPass / previousTotal;
+            if (recentRate > previousRate + 0.1) trend = "up";
+            else if (recentRate < previousRate - 0.1) trend = "down";
+          }
+
+          const sortedByDate = [...executions].sort(
+            (a, b) =>
+              new Date(b.created_at).getTime() -
+              new Date(a.created_at).getTime()
+          );
+
+          return {
+            suite_id: suite.id,
+            suite_name: suite.name,
+            suite_type: suite.suite_type,
+            execution_count: totalExecutions,
+            total_tests: totalExecutions,
+            avg_pass_rate: Math.round(passRate),
+            avg_execution_time: Math.round(avgTime * 10) / 10,
+            last_execution: sortedByDate[0]?.created_at || "",
+            trend,
+          };
+        })
+      );
+
+      setSuiteStats(stats.filter(Boolean) as SuiteExecutionStats[]);
+    } catch (error) {
+      console.error("Error fetching suite execution stats:", error);
+      throw error;
+    }
+  }
+
+  async function fetchTestCasePerformance() {
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const cutoffDate = new Date(
+        Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000
+      ).toISOString();
+
+      // Build query
+      let query = supabase
+        .from("test_executions")
+        .select(
+          "test_case_id, execution_status, started_at, completed_at, failure_reason, created_at"
+        )
+        .gte("created_at", cutoffDate);
+
+      if (selectedSuite !== "all" && selectedSuite) {
+        query = query.eq("suite_id", selectedSuite);
+      }
+
+      const { data: executions, error } = await query;
+
+      if (error) throw error;
+      if (!executions || executions.length === 0) {
+        setTestCasePerformance([]);
+        return;
+      }
+
+      // Get unique test case IDs
+      const testCaseIds = Array.from(
+        new Set(executions.map((e) => e.test_case_id))
+      );
+
+      if (testCaseIds.length === 0) {
+        setTestCasePerformance([]);
+        return;
+      }
+
+      // Fetch test case details
+      const { data: testCases, error: testCaseError } = await supabase
+        .from("test_cases")
+        .select("id, title")
+        .in("id", testCaseIds);
+
+      if (testCaseError) throw testCaseError;
+
+      // Create a lookup map
+      const testCaseMap =
+        testCases?.reduce((acc, tc) => {
+          acc[tc.id] = tc.title;
+          return acc;
+        }, {} as Record<string, string>) || {};
+
+      // Group executions by test case
+      const testCaseGroups = executions.reduce((acc, exec) => {
+        if (!acc[exec.test_case_id]) {
+          acc[exec.test_case_id] = [];
+        }
+        acc[exec.test_case_id].push(exec);
+        return acc;
+      }, {} as Record<string, typeof executions>);
+
+      // Calculate performance metrics
+      const performance = Object.entries(testCaseGroups).map(
+        ([testCaseId, execs]) => {
+          const totalExecs = execs.length;
+          const passedExecs = execs.filter(
+            (e) => e.execution_status === "passed"
+          ).length;
+          const failedExecs = execs.filter(
+            (e) => e.execution_status === "failed"
+          );
+
+          const passRate =
+            totalExecs > 0 ? (passedExecs / totalExecs) * 100 : 0;
+
+          // Calculate average execution time
+          const completedExecs = execs.filter(
+            (e) => e.started_at && e.completed_at
+          );
+          const avgTime =
+            completedExecs.length > 0
+              ? completedExecs.reduce((acc, exec) => {
+                  const start = new Date(exec.started_at!).getTime();
+                  const end = new Date(exec.completed_at!).getTime();
+                  return acc + (end - start);
+                }, 0) /
+                completedExecs.length /
+                1000 /
+                60 // minutes
+              : 0;
+
+          // Find most recent failure
+          const sortedFailures = failedExecs.sort(
+            (a, b) =>
+              new Date(b.created_at).getTime() -
+              new Date(a.created_at).getTime()
+          );
+          const lastFailure = sortedFailures[0];
+
+          return {
+            test_case_id: testCaseId,
+            test_title: testCaseMap[testCaseId] || "Unknown Test",
+            total_executions: totalExecs,
+            pass_rate: Math.round(passRate),
+            avg_execution_time: Math.round(avgTime * 10) / 10,
+            last_failure_date: lastFailure?.created_at,
+            failure_frequency: Math.round(
+              (failedExecs.length / totalExecs) * 100
+            ),
+            last_failure_reason: lastFailure?.failure_reason,
+          };
+        }
+      );
+
+      // Sort by failure frequency (most problematic first)
+      performance.sort((a, b) => b.failure_frequency - a.failure_frequency);
+
+      setTestCasePerformance(performance);
+    } catch (error) {
+      console.error("Error fetching test case performance:", error);
+      throw error;
+    }
+  }
+
+  async function fetchExecutionTrends() {
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const cutoffDate = new Date(
+        Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000
+      ).toISOString();
+
+      // Build query
+      let query = supabase
+        .from("test_executions")
+        .select("execution_status, created_at")
+        .gte("created_at", cutoffDate);
+
+      if (selectedSuite !== "all" && selectedSuite) {
+        query = query.eq("suite_id", selectedSuite);
+      }
+
+      const { data: executions, error } = await query;
+
+      if (error) throw error;
+      if (!executions || executions.length === 0) {
+        setExecutionTrends([]);
+        return;
+      }
+
+      // Group by date
+      const dailyStats = new Map<
+        string,
+        {
+          passed: number;
+          failed: number;
+          blocked: number;
+          skipped: number;
+          total: number;
+        }
+      >();
+
+      executions.forEach((exec) => {
+        const date = new Date(exec.created_at).toISOString().split("T")[0];
+        if (!dailyStats.has(date)) {
+          dailyStats.set(date, {
+            passed: 0,
+            failed: 0,
+            blocked: 0,
+            skipped: 0,
+            total: 0,
+          });
+        }
+        const stats = dailyStats.get(date)!;
+        stats.total++;
+        if (exec.execution_status === "passed") stats.passed++;
+        else if (exec.execution_status === "failed") stats.failed++;
+        else if (exec.execution_status === "blocked") stats.blocked++;
+        else if (exec.execution_status === "skipped") stats.skipped++;
+      });
+
+      const trends = Array.from(dailyStats.entries())
+        .map(([date, stats]) => ({ date, ...stats }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      setExecutionTrends(trends);
+    } catch (error) {
+      console.error("Error fetching execution trends:", error);
+      throw error;
     }
   }
 
@@ -266,13 +605,6 @@ export function SuiteReports({
     }
   }
 
-  //  COMPUTED VALUES
-  const hasAnyData =
-    suiteStats.length > 0 ||
-    testCasePerformance.length > 0 ||
-    executionTrends.length > 0;
-
-  //  EARLY RETURNS (after all hooks)
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -296,6 +628,11 @@ export function SuiteReports({
       </div>
     );
   }
+
+  const hasAnyData =
+    suiteStats.length > 0 ||
+    testCasePerformance.length > 0 ||
+    executionTrends.length > 0;
 
   return (
     <div className="space-y-6">

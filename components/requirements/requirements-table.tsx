@@ -1,8 +1,6 @@
 // components/requirements/requirements-table.tsx
 "use client";
 
-import * as React from "react";
-
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -13,16 +11,27 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  Edit,
+  Trash2,
+  Sparkles,
   ExternalLink,
   MoreHorizontal,
+  Link as LinkIcon,
   FolderOpen,
 } from "lucide-react";
-
+import { toast } from "sonner";
 import {
   getTypeColor,
   getPriorityColor,
@@ -32,9 +41,7 @@ import {
   getProjectColor,
   getRelativeTime,
 } from "@/lib/utils/requirement-helpers";
-
 import type { Requirement } from "@/types/requirements";
-import { RequirementActionsSheet } from "./requirement-actions-sheet";
 
 interface RequirementsTableProps {
   requirements: Requirement[];
@@ -66,29 +73,6 @@ export function RequirementsTable({
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = Math.min(startIndex + itemsPerPage, totalCount);
 
-  // Sheet state (single instance for the whole table)
-  const [actionsOpen, setActionsOpen] = React.useState(false);
-  const [actionsRequirement, setActionsRequirement] =
-    React.useState<Requirement | null>(null);
-
-  function openActions(requirement: Requirement) {
-    setActionsRequirement(requirement);
-    setActionsOpen(true);
-  }
-
-  // If the requirement is deleted while sheet is open, close it safely
-  React.useEffect(() => {
-    if (!actionsOpen) return;
-    if (!actionsRequirement) return;
-    const stillExists = requirements.some(
-      (r) => r.id === actionsRequirement.id
-    );
-    if (!stillExists) {
-      setActionsOpen(false);
-      setActionsRequirement(null);
-    }
-  }, [actionsOpen, actionsRequirement, requirements]);
-
   return (
     <div className="space-y-4">
       {/* Table */}
@@ -101,13 +85,12 @@ export function RequirementsTable({
               <TableHead className="w-[120px]">Type</TableHead>
               <TableHead className="w-[100px]">Priority</TableHead>
               <TableHead className="w-[100px]">Status</TableHead>
-              <TableHead className="w-[160px]">Coverage</TableHead>
+              <TableHead className="w-[120px]">Coverage</TableHead>
               <TableHead className="w-[120px]">External ID</TableHead>
               <TableHead className="w-[120px]">Created</TableHead>
-              <TableHead className="w-[80px] text-right">Actions</TableHead>
+              <TableHead className="w-[80px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
-
           <TableBody>
             {requirements.length === 0 ? (
               <TableRow>
@@ -127,7 +110,9 @@ export function RequirementsTable({
                   requirement={requirement}
                   selectable={selectable}
                   onRowClick={onRowClick}
-                  onOpenActions={openActions}
+                  onOpenLinkDialog={onOpenLinkDialog}
+                  onOpenEditDialog={onOpenEditDialog}
+                  onDelete={onDelete}
                 />
               ))
             )}
@@ -141,7 +126,6 @@ export function RequirementsTable({
           <p className="text-sm text-muted-foreground">
             Showing {startIndex + 1}-{endIndex} of {totalCount} requirements
           </p>
-
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -181,20 +165,6 @@ export function RequirementsTable({
           </div>
         </div>
       )}
-
-      {/* Actions Sheet (one instance) */}
-      <RequirementActionsSheet
-        open={actionsOpen}
-        onOpenChange={(open) => {
-          setActionsOpen(open);
-          if (!open) setActionsRequirement(null);
-        }}
-        requirement={actionsRequirement}
-        onView={(req) => onRowClick(req)}
-        onLinkTests={(req) => onOpenLinkDialog(req)}
-        onEdit={(req) => onOpenEditDialog(req)}
-        onDelete={(req) => onDelete(req)}
-      />
     </div>
   );
 }
@@ -203,14 +173,18 @@ interface RequirementRowProps {
   requirement: Requirement;
   selectable: boolean;
   onRowClick: (requirement: Requirement) => void;
-  onOpenActions: (requirement: Requirement) => void;
+  onOpenLinkDialog: (requirement: Requirement) => void;
+  onOpenEditDialog: (requirement: Requirement) => void;
+  onDelete: (requirement: Requirement) => void;
 }
 
 function RequirementRow({
   requirement,
   selectable,
   onRowClick,
-  onOpenActions,
+  onOpenLinkDialog,
+  onOpenEditDialog,
+  onDelete,
 }: RequirementRowProps) {
   return (
     <TableRow
@@ -221,8 +195,8 @@ function RequirementRow({
     >
       {/* Title & Description */}
       <TableCell>
-        <div className="space-y-1 min-w-0">
-          <div className="font-medium truncate">{requirement.title}</div>
+        <div className="space-y-1">
+          <div className="font-medium">{requirement.title}</div>
           <div className="text-sm text-muted-foreground line-clamp-1">
             {requirement.description}
           </div>
@@ -232,7 +206,7 @@ function RequirementRow({
       {/* Project */}
       <TableCell>
         {requirement.projects ? (
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2">
             <FolderOpen
               className={`h-4 w-4 ${getProjectColor(
                 requirement.projects.color
@@ -266,7 +240,7 @@ function RequirementRow({
 
       {/* Coverage */}
       <TableCell>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {getCoverageIcon(requirement.coverage_percentage)}
           <div className="flex flex-col">
             <span
@@ -280,11 +254,10 @@ function RequirementRow({
               {requirement.test_case_count} tests
             </span>
           </div>
-
           {requirement.test_case_count > 0 && (
-            <div className="w-20 bg-muted rounded-full h-1.5">
+            <div className="w-16 bg-gray-200 rounded-full h-1">
               <div
-                className={`h-1.5 rounded-full transition-all ${
+                className={`h-1 rounded-full transition-all ${
                   requirement.coverage_percentage >= 80
                     ? "bg-green-500"
                     : requirement.coverage_percentage >= 60
@@ -316,19 +289,68 @@ function RequirementRow({
       </TableCell>
 
       {/* Actions */}
-      <TableCell className="text-right">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 w-8 p-0"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenActions(requirement);
-          }}
-          aria-label="Open requirement actions"
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
+      <TableCell>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onRowClick(requirement);
+              }}
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              View Details
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenLinkDialog(requirement);
+              }}
+            >
+              <LinkIcon className="h-4 w-4 mr-2" />
+              Link Tests
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                toast.info("Test generation coming soon");
+              }}
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              Generate Tests
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenEditDialog(requirement);
+              }}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Edit
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(requirement);
+              }}
+              className="text-destructive"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </TableCell>
     </TableRow>
   );

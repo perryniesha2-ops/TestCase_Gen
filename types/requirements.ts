@@ -17,9 +17,8 @@ export interface Requirement {
   priority: "low" | "medium" | "high" | "critical";
   status: "draft" | "active" | "archived";
   source: string;
-  projectid?: string | null;
-  project_id?: string | null;
-  projects?: Project | null;
+  projectid: string | null;
+  projects?: Project;
   metadata?: Record<string, string | number | boolean>;
   created_at: string;
   updated_at: string;
