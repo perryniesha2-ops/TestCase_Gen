@@ -62,7 +62,6 @@ import {
   Package,
   Terminal,
 } from "lucide-react";
-import { useAuth } from "@/lib/auth/auth-context";
 
 // Types
 type ProjectStatus = "active" | "archived" | "completed" | "on_hold";
@@ -159,10 +158,6 @@ const colorClasses: Record<
 };
 
 export function ProjectManager() {
-  // ✅ 1. ALL CONTEXT HOOKS FIRST
-  const { user } = useAuth();
-
-  // ✅ 2. ALL useState HOOKS
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<ProjectWithStats[]>(
     []
@@ -177,6 +172,7 @@ export function ProjectManager() {
     "all"
   );
   const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
+
   const [formData, setFormData] = useState<ProjectFormData>({
     name: "",
     description: "",
@@ -187,93 +183,65 @@ export function ProjectManager() {
     target_end_date: "",
   });
 
-  // ✅ 3. COMPUTED VALUES
-  const activeProjects = projects.filter((p) => p.status === "active");
-  const completedProjects = projects.filter((p) => p.status === "completed");
-  const totalItems = projects.reduce(
-    (sum, p) =>
-      sum + p.test_suites_count + p.requirements_count + p.templates_count,
-    0
-  );
-
-  // ✅ 4. ALL useEffect HOOKS
   useEffect(() => {
-    if (user) {
-      fetchProjects();
-    }
-  }, [user]);
+    fetchProjects();
+  }, []);
 
   useEffect(() => {
     filterProjects();
   }, [projects, searchQuery, statusFilter, activeTab]);
 
-  // ✅ 5. ALL FUNCTIONS
   async function fetchProjects() {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     try {
       const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      const { data: projectsData, error: projectsError } = await supabase
+      if (!user) {
+        toast.error("Please sign in to view projects");
+        return;
+      }
+
+      const { data, error } = await supabase
         .from("projects")
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (projectsError) throw projectsError;
+      if (error) throw error;
 
-      if (!projectsData || projectsData.length === 0) {
-        setProjects([]);
-        return;
-      }
+      // Get counts for each project
+      const projectsWithCounts = await Promise.all(
+        (data || []).map(async (project) => {
+          const [
+            { count: suitesCount },
+            { count: reqCount },
+            { count: templatesCount },
+          ] = await Promise.all([
+            supabase
+              .from("test_suites")
+              .select("*", { count: "exact", head: true })
+              .eq("project_id", project.id),
+            supabase
+              .from("requirements")
+              .select("*", { count: "exact", head: true })
+              .eq("project_id", project.id),
+            supabase
+              .from("test_case_templates")
+              .select("*", { count: "exact", head: true })
+              .eq("project_id", project.id),
+          ]);
 
-      const projectIds = projectsData.map((p) => p.id);
-
-      // ✅ OPTIMIZED: Batch fetch ALL counts in 3 queries instead of N×3
-      const [suitesResult, reqResult, templatesResult] = await Promise.all([
-        supabase
-          .from("test_suites")
-          .select("project_id")
-          .in("project_id", projectIds),
-        supabase
-          .from("requirements")
-          .select("project_id")
-          .in("project_id", projectIds),
-        supabase
-          .from("test_case_templates")
-          .select("project_id")
-          .in("project_id", projectIds),
-      ]);
-
-      // ✅ Count in memory
-      const suiteCounts: Record<string, number> = {};
-      const reqCounts: Record<string, number> = {};
-      const templateCounts: Record<string, number> = {};
-
-      suitesResult.data?.forEach((item) => {
-        suiteCounts[item.project_id] = (suiteCounts[item.project_id] || 0) + 1;
-      });
-
-      reqResult.data?.forEach((item) => {
-        reqCounts[item.project_id] = (reqCounts[item.project_id] || 0) + 1;
-      });
-
-      templatesResult.data?.forEach((item) => {
-        templateCounts[item.project_id] =
-          (templateCounts[item.project_id] || 0) + 1;
-      });
-
-      // ✅ Map counts to projects
-      const projectsWithCounts = projectsData.map((project) => ({
-        ...project,
-        test_suites_count: suiteCounts[project.id] || 0,
-        requirements_count: reqCounts[project.id] || 0,
-        templates_count: templateCounts[project.id] || 0,
-        test_cases_count: 0,
-      })) as ProjectWithStats[];
+          return {
+            ...project,
+            test_suites_count: suitesCount || 0,
+            requirements_count: reqCount || 0,
+            templates_count: templatesCount || 0,
+            test_cases_count: 0, // Can be calculated if needed
+          } as ProjectWithStats;
+        })
+      );
 
       setProjects(projectsWithCounts);
     } catch (error) {
@@ -312,11 +280,6 @@ export function ProjectManager() {
   }
 
   async function saveProject() {
-    if (!user) {
-      toast.error("Please sign in to manage projects");
-      return;
-    }
-
     if (!formData.name.trim()) {
       toast.error("Please enter a project name");
       return;
@@ -325,6 +288,14 @@ export function ProjectManager() {
     setLoading(true);
     try {
       const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        toast.error("Please sign in to manage projects");
+        return;
+      }
 
       const projectData = {
         user_id: user.id,
@@ -436,6 +407,14 @@ export function ProjectManager() {
     resetForm();
     setShowDialog(true);
   }
+
+  const activeProjects = projects.filter((p) => p.status === "active");
+  const completedProjects = projects.filter((p) => p.status === "completed");
+  const totalItems = projects.reduce(
+    (sum, p) =>
+      sum + p.test_suites_count + p.requirements_count + p.templates_count,
+    0
+  );
 
   return (
     <div className="space-y-6">

@@ -40,7 +40,6 @@ import {
   Terminal,
   X,
 } from "lucide-react";
-import { useAuth } from "@/lib/auth/auth-context";
 
 type ProjectStatus = "active" | "archived" | "completed" | "on_hold";
 type ProjectColor =
@@ -95,21 +94,14 @@ export function ProjectSelect({
   onSelect,
   disabled,
 }: ProjectSelectProps) {
-  // ✅ 1. ALL CONTEXT HOOKS FIRST
-  const { user } = useAuth();
-
-  // ✅ 2. ALL useState HOOKS
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // ✅ 3. ALL useEffect HOOKS
   useEffect(() => {
-    if (user) {
-      fetchProjects();
-    }
-  }, [user]);
+    fetchProjects();
+  }, []);
 
   useEffect(() => {
     if (value) {
@@ -120,75 +112,58 @@ export function ProjectSelect({
     }
   }, [value, projects]);
 
-  // ✅ 4. ALL FUNCTIONS
   async function fetchProjects() {
-    if (!user) return;
-
     setLoading(true);
     try {
       const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      // ✅ Fetch projects
-      const { data: projectsData, error: projectsError } = await supabase
+      if (!user) return;
+
+      const { data, error } = await supabase
         .from("projects")
         .select("*")
         .eq("status", "active")
         .order("name");
 
-      if (projectsError) throw projectsError;
-      if (!projectsData || projectsData.length === 0) {
-        setProjects([]);
-        return;
-      }
+      if (error) throw error;
 
-      const projectIds = projectsData.map((p) => p.id);
+      // Get counts for each project
+      const projectsWithCounts = await Promise.all(
+        (data || []).map(async (project) => {
+          const [
+            { count: suitesCount },
+            { count: reqCount },
+            { count: templatesCount },
+          ] = await Promise.all([
+            supabase
+              .from("test_suites")
+              .select("*", { count: "exact", head: true })
+              .eq("project_id", project.id),
+            supabase
+              .from("requirements")
+              .select("*", { count: "exact", head: true })
+              .eq("project_id", project.id),
+            supabase
+              .from("test_case_templates")
+              .select("*", { count: "exact", head: true })
+              .eq("project_id", project.id),
+          ]);
 
-      // ✅ OPTIMIZED: Fetch ALL counts in 3 queries instead of N×3 queries
-      const [suitesResult, reqResult, templatesResult] = await Promise.all([
-        supabase
-          .from("test_suites")
-          .select("project_id")
-          .in("project_id", projectIds),
-        supabase
-          .from("requirements")
-          .select("project_id")
-          .in("project_id", projectIds),
-        supabase
-          .from("test_case_templates")
-          .select("project_id")
-          .in("project_id", projectIds),
-      ]);
-
-      // ✅ Count in memory instead of 3N queries
-      const suiteCounts: Record<string, number> = {};
-      const reqCounts: Record<string, number> = {};
-      const templateCounts: Record<string, number> = {};
-
-      suitesResult.data?.forEach((item) => {
-        suiteCounts[item.project_id] = (suiteCounts[item.project_id] || 0) + 1;
-      });
-
-      reqResult.data?.forEach((item) => {
-        reqCounts[item.project_id] = (reqCounts[item.project_id] || 0) + 1;
-      });
-
-      templatesResult.data?.forEach((item) => {
-        templateCounts[item.project_id] =
-          (templateCounts[item.project_id] || 0) + 1;
-      });
-
-      // ✅ Map counts to projects
-      const projectsWithCounts = projectsData.map((project) => ({
-        ...project,
-        test_suites_count: suiteCounts[project.id] || 0,
-        requirements_count: reqCounts[project.id] || 0,
-        templates_count: templateCounts[project.id] || 0,
-      })) as Project[];
+          return {
+            ...project,
+            test_suites_count: suitesCount || 0,
+            requirements_count: reqCount || 0,
+            templates_count: templatesCount || 0,
+          } as Project;
+        })
+      );
 
       setProjects(projectsWithCounts);
     } catch (error) {
       console.error("Error fetching projects:", error);
-      toast.error("Failed to load projects");
     } finally {
       setLoading(false);
     }
@@ -208,7 +183,6 @@ export function ProjectSelect({
     onSelect(null);
   }
 
-  // ✅ 5. MAIN RENDER
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -252,6 +226,37 @@ export function ProjectSelect({
               </CardDescription>
             )}
           </CardHeader>
+          <CardContent className="pb-3">
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="text-center">
+                <div className="font-bold text-blue-600">
+                  {selectedProject.test_suites_count || 0}
+                </div>
+                <div className="text-muted-foreground">Suites</div>
+              </div>
+              <div className="text-center">
+                <div className="font-bold text-purple-600">
+                  {selectedProject.requirements_count || 0}
+                </div>
+                <div className="text-muted-foreground">Reqs</div>
+              </div>
+              <div className="text-center">
+                <div className="font-bold text-green-600">
+                  {selectedProject.templates_count || 0}
+                </div>
+                <div className="text-muted-foreground">Templates</div>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full mt-3"
+              onClick={() => setShowDetailsDialog(true)}
+            >
+              View Details
+            </Button>
+          </CardContent>
         </Card>
       ) : (
         <>

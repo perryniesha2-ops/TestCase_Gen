@@ -4,25 +4,34 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { useAuth } from "@/lib/auth/auth-context";
 import type { Requirement } from "@/types/requirements";
 
 export function useRequirements(projectFilter?: string) {
-  const { user } = useAuth();
-
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchRequirements = useCallback(async () => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
     try {
       setLoading(true);
       const supabase = createClient();
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
+      if (userError) {
+        console.error("Auth error:", userError);
+        toast.error("Authentication error");
+        return;
+      }
+
+      if (!user) {
+        console.error("No user found");
+        toast.error("Please log in to view requirements");
+        return;
+      }
+
+      // ✅ Build query WITH project join
       let query = supabase
         .from("requirements")
         .select(
@@ -43,24 +52,27 @@ export function useRequirements(projectFilter?: string) {
 
       if (reqError) {
         console.error("Requirements query error:", reqError);
+        console.error(
+          "Error details:",
+          reqError.message,
+          reqError.details,
+          reqError.hint
+        );
         toast.error(`Failed to load requirements: ${reqError.message}`);
         return;
       }
 
-      if (!reqData || reqData.length === 0) {
-        setRequirements([]);
-        return;
-      }
-
-      const requirementIds = reqData.map((r) => r.id);
-      const coverageMap = await calculateCoverageBatch(requirementIds);
-
-      // Map coverage to requirements
-      const requirementsWithCoverage = reqData.map((req) => ({
-        ...req,
-        test_case_count: coverageMap[req.id]?.testCaseCount ?? 0,
-        coverage_percentage: coverageMap[req.id]?.percentage ?? 0,
-      }));
+      // Calculate coverage for each requirement
+      const requirementsWithCoverage = await Promise.all(
+        (reqData || []).map(async (req) => {
+          const coverage = await calculateCoverage(req.id);
+          return {
+            ...req,
+            test_case_count: coverage.testCaseCount,
+            coverage_percentage: coverage.percentage,
+          };
+        })
+      );
 
       setRequirements(requirementsWithCoverage);
     } catch (error) {
@@ -69,98 +81,67 @@ export function useRequirements(projectFilter?: string) {
     } finally {
       setLoading(false);
     }
-  }, [projectFilter, user]);
+  }, [projectFilter]);
 
   useEffect(() => {
     fetchRequirements();
   }, [fetchRequirements]);
 
-  async function calculateCoverageBatch(
-    requirementIds: string[]
-  ): Promise<Record<string, { testCaseCount: number; percentage: number }>> {
-    if (requirementIds.length === 0) return {};
-
+  async function calculateCoverage(requirementId: string) {
     try {
       const supabase = createClient();
 
+      // Get linked test cases
       const { data: linkData, error: linkError } = await supabase
         .from("requirement_test_cases")
-        .select("requirement_id, test_case_id")
-        .in("requirement_id", requirementIds);
+        .select("test_case_id")
+        .eq("requirement_id", requirementId);
 
       if (linkError) {
         console.error("Coverage link error:", linkError);
-        return {};
+        return { testCaseCount: 0, percentage: 0 };
       }
 
-      // Group by requirement
-      const linksByRequirement: Record<string, string[]> = {};
-      (linkData || []).forEach((link) => {
-        if (!linksByRequirement[link.requirement_id]) {
-          linksByRequirement[link.requirement_id] = [];
-        }
-        linksByRequirement[link.requirement_id].push(link.test_case_id);
-      });
+      const testCaseIds = linkData?.map((link) => link.test_case_id) || [];
 
-      // Get all unique test case IDs
-      const allTestCaseIds = Array.from(
-        new Set(Object.values(linksByRequirement).flat())
-      );
-
-      if (allTestCaseIds.length === 0) {
-        // No test cases linked to any requirement
-        return requirementIds.reduce((acc, id) => {
-          acc[id] = { testCaseCount: 0, percentage: 0 };
-          return acc;
-        }, {} as Record<string, { testCaseCount: number; percentage: number }>);
+      if (testCaseIds.length === 0) {
+        return { testCaseCount: 0, percentage: 0 };
       }
 
+      // Get latest execution status for each test case
       const { data: execData, error: execError } = await supabase
         .from("test_executions")
-        .select("test_case_id, execution_status, created_at")
-        .in("test_case_id", allTestCaseIds)
+        .select("test_case_id, execution_status")
+        .in("test_case_id", testCaseIds)
         .order("created_at", { ascending: false });
 
       if (execError) {
         console.error("Coverage execution error:", execError);
+        return { testCaseCount: testCaseIds.length, percentage: 0 };
       }
 
       // Get latest execution per test case
-      const latestExecutions: Record<string, string> = {};
-      (execData || []).forEach((exec) => {
-        if (!latestExecutions[exec.test_case_id]) {
-          latestExecutions[exec.test_case_id] = exec.execution_status;
-        }
-      });
+      const latestExecutions =
+        execData?.reduce((acc: Record<string, string>, exec) => {
+          if (!acc[exec.test_case_id]) {
+            acc[exec.test_case_id] = exec.execution_status;
+          }
+          return acc;
+        }, {}) || {};
 
-      // Calculate coverage for each requirement
-      const coverageMap: Record<
-        string,
-        { testCaseCount: number; percentage: number }
-      > = {};
+      const passedCount = Object.values(latestExecutions).filter(
+        (status) => status === "passed"
+      ).length;
 
-      requirementIds.forEach((reqId) => {
-        const testCaseIds = linksByRequirement[reqId] || [];
-        const testCaseCount = testCaseIds.length;
+      const percentage = Math.round((passedCount / testCaseIds.length) * 100);
 
-        if (testCaseCount === 0) {
-          coverageMap[reqId] = { testCaseCount: 0, percentage: 0 };
-          return;
-        }
-
-        const passedCount = testCaseIds.filter(
-          (tcId) => latestExecutions[tcId] === "passed"
-        ).length;
-
-        const percentage = Math.round((passedCount / testCaseCount) * 100);
-
-        coverageMap[reqId] = { testCaseCount, percentage };
-      });
-
-      return coverageMap;
+      return {
+        testCaseCount: testCaseIds.length,
+        percentage,
+      };
     } catch (error) {
-      console.error("Error calculating coverage batch:", error);
-      return {};
+      console.error("Error calculating coverage:", error);
+      return { testCaseCount: 0, percentage: 0 };
     }
   }
 

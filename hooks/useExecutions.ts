@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/lib/auth/auth-context";
 import type {
   ExecutionDetails,
   ExecutionStatus,
@@ -28,16 +27,14 @@ const FINAL_STATUSES: ExecutionStatus[] = [
 ];
 
 export function useExecutions({ sessionId }: UseExecutionsArgs) {
-  //  USE AUTH CONTEXT
-  const { user } = useAuth();
-
-  // ALL useState
   const [execution, setExecution] = useState<TestExecution>({});
 
-  //ALL useRef
+  // Always read the latest execution state inside async callbacks
   const executionRef = useRef<TestExecution>({});
+  useEffect(() => {
+    executionRef.current = execution;
+  }, [execution]);
 
-  //  ALL useMemo
   const defaultRow = useMemo<ExecutionRow>(
     () => ({
       status: "not_run",
@@ -47,12 +44,12 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
     []
   );
 
-  // ALL useCallback
   const ensureRow = useCallback(
     (testCaseId: string): ExecutionRow => {
       const current = executionRef.current[testCaseId];
       if (current) return current as ExecutionRow;
 
+      // Seed local state so UI reads are safe immediately
       setExecution((prev) => ({
         ...prev,
         [testCaseId]: defaultRow,
@@ -113,6 +110,7 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         }
       });
 
+      // Replace is fine because hydrate is authoritative for this session filter.
       setExecution(executionMap);
     },
     [sessionId]
@@ -120,14 +118,18 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
 
   const saveProgress = useCallback(
     async (testCaseId: string, updates: Partial<TestExecution[string]>) => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
-      const supabase = createClient();
       const current = ensureRow(testCaseId);
 
       const nextStatus: ExecutionStatus = (updates.status ??
         current.status) as ExecutionStatus;
 
+      // timestamps: normalize based on status
       const startedAt =
         nextStatus === "not_run"
           ? null
@@ -163,6 +165,7 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         started_at: startedAt,
         completed_at: completedAt,
 
+        // allow caller to persist duration/attachments
         duration_minutes:
           updates.duration_minutes ?? current.duration_minutes ?? null,
         attachments:
@@ -171,7 +174,7 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         updated_at: new Date().toISOString(),
       };
 
-      // Upsert
+      // Upsert (update if id exists, else insert)
       if (current.id) {
         const { error } = await supabase
           .from("test_executions")
@@ -196,7 +199,7 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         }));
       }
 
-      // Update local state
+      // Reflect updates locally (single source for UI)
       setExecution((prev) => ({
         ...prev,
         [testCaseId]: {
@@ -216,7 +219,7 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         },
       }));
     },
-    [ensureRow, sessionId, user]
+    [ensureRow, sessionId]
   );
 
   const toggleStep = useCallback(
@@ -233,7 +236,7 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
           ? "in_progress"
           : (current.status as ExecutionStatus);
 
-      // Optimistic UI
+      // optimistic UI
       setExecution((prev) => ({
         ...prev,
         [testCaseId]: {
@@ -271,6 +274,7 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         notes: details.notes,
         failure_reason: details.failure_reason,
 
+        // your dialog uses "environment"; DB uses test_environment
         test_environment:
           (details as any).environment ?? current.test_environment ?? "staging",
         browser: details.browser,
@@ -294,18 +298,13 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
     [saveProgress]
   );
 
-  // ALL useEffect
-  useEffect(() => {
-    executionRef.current = execution;
-  }, [execution]);
-
   return {
     execution,
-    setExecution,
+    setExecution, // keep for your delete-local behavior
     hydrateExecutions,
     toggleStep,
-    saveProgress,
-    saveResult,
-    reset,
+    saveProgress, // <-- for TestRunnerDialog incremental persistence
+    saveResult, // <-- finalize
+    reset, // <-- reset
   };
 }

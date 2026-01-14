@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { AddRequirementModal } from "@/components/requirements/add-requirement-modal";
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
+
 import {
   Select,
   SelectContent,
@@ -36,7 +37,6 @@ import { LinkTestCasesDialog } from "./link-test-cases-dialog";
 import { EditRequirementModal } from "./edit-requirement-modal";
 import { useRequirements } from "@/hooks/use-requirements";
 import { getProjectColor } from "@/lib/utils/requirement-helpers";
-import { useAuth } from "@/lib/auth/auth-context";
 import type { Requirement, Project } from "@/types/requirements";
 
 interface RequirementsListProps {
@@ -48,67 +48,44 @@ export function RequirementsList({
   onRequirementSelected,
   selectable = false,
 }: RequirementsListProps) {
-  // Hooks
-  const { user } = useAuth();
-  const router = useRouter();
-
-  // useState Hooks
+  // Filter State
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Dialog State
   const [selectedRequirement, setSelectedRequirement] =
     useState<Requirement | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+
+  const router = useRouter();
+
+  // Projects State
   const [projects, setProjects] = useState<Project[]>([]);
 
-  // Constrants
-  const itemsPerPage = 10;
-
-  // Custom Hooks
+  // Custom hook for requirements data
   const { requirements, loading, fetchRequirements, deleteRequirement } =
     useRequirements(selectedProject);
 
-  // Metrics
-  const selectedProjectName = selectedProject
-    ? projects.find((p) => p.id === selectedProject)?.name
-    : null;
-
-  const filteredRequirements = requirements.filter((req) => {
-    const matchesSearch =
-      req.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.external_id?.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesStatus = statusFilter === "all" || req.status === statusFilter;
-    const matchesPriority =
-      priorityFilter === "all" || req.priority === priorityFilter;
-
-    return matchesSearch && matchesStatus && matchesPriority;
-  });
-
-  const totalPages = Math.ceil(filteredRequirements.length / itemsPerPage);
-  const paginatedRequirements = filteredRequirements.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
-
-  //  useEffect HOOKS
+  // Load projects on mount
   useEffect(() => {
-    if (user) {
-      fetchProjects();
-    }
-  }, [user]);
+    fetchProjects();
+  }, []);
 
-  // ALL FUNCTIONS
+  // Fetch projects from database
   async function fetchProjects() {
-    if (!user) return;
-
     try {
       const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
 
       const { data, error } = await supabase
         .from("projects")
@@ -123,11 +100,38 @@ export function RequirementsList({
     }
   }
 
+  // Get selected project name for display
+  const selectedProjectName = selectedProject
+    ? projects.find((p) => p.id === selectedProject)?.name
+    : null;
+
+  // Filter requirements based on search and filters
+  const filteredRequirements = requirements.filter((req) => {
+    const matchesSearch =
+      req.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.external_id?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = statusFilter === "all" || req.status === statusFilter;
+    const matchesPriority =
+      priorityFilter === "all" || req.priority === priorityFilter;
+
+    return matchesSearch && matchesStatus && matchesPriority;
+  });
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredRequirements.length / itemsPerPage);
+  const paginatedRequirements = filteredRequirements.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   const handleRequirementAdded = async () => {
     await fetchRequirements();
     router.refresh();
   };
 
+  // Event Handlers
   function handleRowClick(requirement: Requirement) {
     if (selectable && onRequirementSelected) {
       onRequirementSelected(requirement);
@@ -183,7 +187,7 @@ export function RequirementsList({
     setCurrentPage(1);
   }
 
-  //  EARLY RETURNS
+  // Loading State
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -205,7 +209,6 @@ export function RequirementsList({
           </Button>
         </AddRequirementModal>
       </div>
-
       {/* Filters Section */}
       <div className="flex items-center gap-4">
         {/* Search Input */}

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/lib/auth/auth-context";
 import type {
   TestCase,
   CrossPlatformTestCase,
@@ -34,9 +33,8 @@ export function useTestCaseData({
   sessionId,
   selectedProject,
 }: UseTestCaseDataArgs): UseTestCaseDataResult {
-  const { user } = useAuth();
-
   const [loading, setLoading] = useState(true);
+
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [crossPlatformCases, setCrossPlatformCases] = useState<
     CrossPlatformTestCase[]
@@ -45,6 +43,7 @@ export function useTestCaseData({
   const [currentSession, setCurrentSession] = useState<TestSession | null>(
     null
   );
+
   const [generations, setGenerations] = useState<Record<string, Generation>>(
     {}
   );
@@ -52,23 +51,56 @@ export function useTestCaseData({
     Record<string, CrossPlatformSuite>
   >({});
 
-  const refresh = useCallback(async () => {
-    if (!user) {
-      setTestCases([]);
-      setCrossPlatformCases([]);
-      setProjects([]);
+  const fetchProjects = useCallback(async () => {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("projects")
+      .select("id, name, color, icon")
+      .eq("user_id", user.id)
+      .order("name");
+
+    if (error) throw error;
+    setProjects(data || []);
+  }, []);
+
+  const fetchTestSession = useCallback(async () => {
+    if (!sessionId) {
       setCurrentSession(null);
-      setGenerations({});
-      setCrossPlatformSuites({});
-      setLoading(false);
       return;
     }
 
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("test_run_sessions")
+      .select("*")
+      .eq("id", sessionId)
+      .single();
+
+    if (error) throw error;
+    setCurrentSession(data);
+  }, [sessionId]);
+
+  const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      // Build test cases query
+      if (!user) {
+        // caller can toast
+        setTestCases([]);
+        setCrossPlatformCases([]);
+        return;
+      }
+
+      // Regular test cases
       let testCaseQuery = supabase
         .from("test_cases")
         .select(`*, projects:project_id(id, name, color, icon)`)
@@ -80,90 +112,77 @@ export function useTestCaseData({
       if (selectedProject)
         testCaseQuery = testCaseQuery.eq("project_id", selectedProject);
 
-      const [
-        testCasesResult,
-        crossPlatformResult,
-        projectsResult,
-        generationsResult,
-        suitesResult,
-        sessionResult,
-      ] = await Promise.all([
-        testCaseQuery,
-        supabase
+      const { data: testCasesData, error: testCasesError } =
+        await testCaseQuery;
+      if (testCasesError) throw testCasesError;
+      setTestCases(testCasesData || []);
+
+      // Cross-platform test cases
+      const { data: crossPlatformData, error: crossPlatformError } =
+        await supabase
           .from("platform_test_cases")
           .select(
             `
-            *,
-            cross_platform_test_suites!inner(
-              id,
-              requirement,
-              user_id,
-              platforms,
-              generated_at
-            )
-          `
+          *,
+          cross_platform_test_suites!inner(
+            id,
+            requirement,
+            user_id,
+            platforms,
+            generated_at
+          )
+        `
           )
           .eq("cross_platform_test_suites.user_id", user.id)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("projects")
-          .select("id, name, color, icon")
-          .eq("user_id", user.id)
-          .order("name"),
-        supabase
-          .from("test_case_generations")
-          .select("id, title")
-          .eq("user_id", user.id),
-        supabase
-          .from("cross_platform_test_suites")
-          .select("*")
-          .eq("user_id", user.id),
-        sessionId
-          ? supabase
-              .from("test_run_sessions")
-              .select("*")
-              .eq("id", sessionId)
-              .single()
-          : Promise.resolve({ data: null, error: null }),
-      ]);
+          .order("created_at", { ascending: false });
 
-      if (testCasesResult.error) throw testCasesResult.error;
-      if (crossPlatformResult.error) throw crossPlatformResult.error;
-      if (projectsResult.error) throw projectsResult.error;
-      if (generationsResult.error) throw generationsResult.error;
-      if (suitesResult.error) throw suitesResult.error;
-      if (sessionResult.error && sessionId) throw sessionResult.error;
+      if (crossPlatformError) throw crossPlatformError;
+      setCrossPlatformCases(crossPlatformData || []);
 
-      setTestCases(testCasesResult.data || []);
-      setCrossPlatformCases(crossPlatformResult.data || []);
-      setProjects(projectsResult.data || []);
-      setCurrentSession(sessionResult.data);
+      // Generations
+      const { data: generationsData, error: generationsError } = await supabase
+        .from("test_case_generations")
+        .select("id, title")
+        .eq("user_id", user.id);
 
-      // Transform generations
+      if (generationsError) throw generationsError;
       const generationsMap: Record<string, Generation> = {};
-      generationsResult.data?.forEach((gen) => {
+      generationsData?.forEach((gen) => {
         generationsMap[gen.id] = gen;
       });
       setGenerations(generationsMap);
 
-      // Transform suites
+      // Cross-platform suites
+      const { data: suitesData, error: suitesError } = await supabase
+        .from("cross_platform_test_suites")
+        .select("*")
+        .eq("user_id", user.id);
+
+      if (suitesError) throw suitesError;
       const suitesMap: Record<string, CrossPlatformSuite> = {};
-      suitesResult.data?.forEach((suite) => {
+      suitesData?.forEach((suite) => {
         suitesMap[suite.id] = suite;
       });
       setCrossPlatformSuites(suitesMap);
-    } catch (error) {
-      console.error("Error fetching data:", error);
     } finally {
       setLoading(false);
     }
-  }, [user, generationId, selectedProject, sessionId]);
+  }, [generationId, selectedProject]);
 
   useEffect(() => {
-    if (user) {
-      void refresh();
-    }
-  }, [refresh, user]);
+    // load once
+    void fetchProjects();
+  }, [fetchProjects]);
+
+  useEffect(() => {
+    // session changes
+    void fetchTestSession();
+  }, [fetchTestSession]);
+
+  useEffect(() => {
+    // data changes
+    void refresh();
+  }, [refresh]);
 
   return {
     loading,
