@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -129,12 +130,7 @@ const categoryColors: Record<TemplateCategory, string> = {
   other: "bg-gray-500",
 };
 
-/**
- * Get display name for AI model
- * Handles both old and new model naming conventions
- */
 function getModelDisplayName(modelKey: string): string {
-  // Latest models (Dec 2024)
   if (modelKey === "claude-sonnet-4-5") return "Claude Sonnet 4.5";
   if (modelKey === "claude-haiku-4-5") return "Claude Haiku 4.5";
   if (modelKey === "claude-opus-4-5") return "Claude Opus 4.5";
@@ -143,7 +139,6 @@ function getModelDisplayName(modelKey: string): string {
   if (modelKey === "gpt-4o") return "GPT-4o";
   if (modelKey === "gpt-4o-mini") return "GPT-4o Mini";
 
-  // Legacy models (backwards compatibility)
   if (modelKey.includes("claude-3-5-sonnet")) return "Claude 3.5 Sonnet";
   if (modelKey.includes("claude-3-5-haiku")) return "Claude 3.5 Haiku";
   if (modelKey.includes("claude-sonnet-4")) return "Claude Sonnet 4";
@@ -151,7 +146,6 @@ function getModelDisplayName(modelKey: string): string {
   if (modelKey.includes("gpt-4-turbo")) return "GPT-4 Turbo";
   if (modelKey.includes("gpt-3.5")) return "GPT-3.5 Turbo";
 
-  // Fallback - extract readable name
   if (modelKey.includes("claude")) return "Claude";
   if (modelKey.includes("gpt")) return "GPT";
 
@@ -159,6 +153,7 @@ function getModelDisplayName(modelKey: string): string {
 }
 
 export function TemplateManager() {
+  const { user, loading: authLoading } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -184,25 +179,26 @@ export function TemplateManager() {
   });
 
   useEffect(() => {
-    fetchTemplates();
-  }, []);
+    if (user) {
+      fetchTemplates();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     filterTemplates();
   }, [templates, searchQuery, categoryFilter, activeTab]);
 
   async function fetchTemplates() {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please sign in to view templates");
-        return;
-      }
 
       const { data, error } = await supabase
         .from("test_case_templates")
@@ -220,43 +216,39 @@ export function TemplateManager() {
   }
 
   function filterTemplates() {
+    if (!user) return;
+
     let filtered = templates;
 
-    // Filter by tab (my templates vs public)
-    const supabase = createClient();
-    supabase.auth
-      .getUser()
-      .then(({ data: { user } }) => {
-        if (user) {
-          filtered =
-            activeTab === "my-templates"
-              ? filtered.filter((t) => t.user_id === user.id)
-              : filtered.filter((t) => t.is_public && t.user_id !== user.id);
-        }
+    filtered =
+      activeTab === "my-templates"
+        ? filtered.filter((t) => t.user_id === user.id) // ✅ Use user from context
+        : filtered.filter((t) => t.is_public && t.user_id !== user.id);
 
-        // Filter by category
-        if (categoryFilter !== "all") {
-          filtered = filtered.filter((t) => t.category === categoryFilter);
-        }
+    // Filter by category
+    if (categoryFilter !== "all") {
+      filtered = filtered.filter((t) => t.category === categoryFilter);
+    }
 
-        // Filter by search query
-        if (searchQuery.trim()) {
-          const query = searchQuery.toLowerCase();
-          filtered = filtered.filter(
-            (t) =>
-              t.name.toLowerCase().includes(query) ||
-              t.description?.toLowerCase().includes(query)
-          );
-        }
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (t) =>
+          t.name.toLowerCase().includes(query) ||
+          t.description?.toLowerCase().includes(query)
+      );
+    }
 
-        setFilteredTemplates(filtered);
-      })
-      .catch((err) => {
-        console.error("Error filtering templates:", err);
-      });
+    setFilteredTemplates(filtered);
   }
 
   async function saveTemplate() {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     if (!formData.name.trim()) {
       toast.error("Please enter a template name");
       return;
@@ -265,14 +257,6 @@ export function TemplateManager() {
     setLoading(true);
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please sign in to save templates");
-        return;
-      }
 
       const templateContent: TemplateContent = {
         model: formData.model,
@@ -322,6 +306,7 @@ export function TemplateManager() {
   }
 
   async function deleteTemplate(id: string) {
+    if (!user) return;
     if (!confirm("Delete this template? This action cannot be undone.")) return;
 
     try {
@@ -341,16 +326,10 @@ export function TemplateManager() {
   }
 
   async function duplicateTemplate(template: Template) {
+    if (!user) return;
+
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please sign in to duplicate templates");
-        return;
-      }
 
       const { error } = await supabase.from("test_case_templates").insert({
         user_id: user.id,
@@ -427,8 +406,26 @@ export function TemplateManager() {
     (a, b) => b.usage_count - a.usage_count
   )[0];
 
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-muted-foreground">
+          Please sign in to manage templates
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div></div>
@@ -576,7 +573,7 @@ export function TemplateManager() {
                 return (
                   <Card
                     key={template.id}
-                    className="relative group hover:shadow-lg transition-shadow"
+                    className="relative group hover:shadow-lg transition-shadow overflow-auto"
                   >
                     {/* Category indicator */}
                     <div

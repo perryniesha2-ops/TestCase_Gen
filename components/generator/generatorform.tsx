@@ -10,7 +10,7 @@ import React, {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-
+import { useAuth } from "@/lib/auth/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -119,7 +119,6 @@ type BootstrapDefaults = {
 } | null;
 
 type BootstrapResponse = {
-  user: UserProfile;
   projects: ProjectRowLite[];
   requirements: RequirementRow[];
   defaults: BootstrapDefaults;
@@ -285,7 +284,7 @@ function coerceCoverage(v: unknown, fallback: Coverage): Coverage {
 /**
  * Single bootstrap loader: user + projects + requirements + defaults
  */
-function useGeneratorBootstrap() {
+function useGeneratorBootstrap(userId: string | undefined) {
   const router = useRouter();
   const [bootstrapping, setBootstrapping] = useState(true);
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -295,10 +294,14 @@ function useGeneratorBootstrap() {
 
   const abortRef = useRef<AbortController | null>(null);
   const load = useCallback(async () => {
+    if (!userId) {
+      setBootstrapping(false);
+      return;
+    }
+
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
-
     setBootstrapping(true);
 
     try {
@@ -331,9 +334,6 @@ function useGeneratorBootstrap() {
         );
       }
 
-      if (!data.user) throw new Error("Bootstrap response missing user");
-
-      setUser(data.user);
       setProjects(data.projects ?? []);
       setRequirements(mapRequirementsToOptions(data.requirements ?? []));
       setDefaults(data.defaults ?? null);
@@ -350,16 +350,15 @@ function useGeneratorBootstrap() {
     } finally {
       setBootstrapping(false);
     }
-  }, [router]);
+  }, [userId, router]);
 
   useEffect(() => {
     void load();
     return () => abortRef.current?.abort();
-  }, [load]);
+  }, [load, userId]);
 
   return {
     bootstrapping,
-    user,
     projects,
     requirements,
     defaults,
@@ -369,15 +368,15 @@ function useGeneratorBootstrap() {
 
 export function GeneratorForm() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
 
   // Bootstrap
   const {
     bootstrapping,
-    user,
-    projects, // available if you want to use it; ProjectSelect likely fetches internally anyway
+    projects,
     requirements: bootReqs,
     defaults,
-  } = useGeneratorBootstrap();
+  } = useGeneratorBootstrap(user?.id);
 
   // UI state
   const [generationType, setGenerationType] =
@@ -800,9 +799,22 @@ export function GeneratorForm() {
       setSubmitting(false);
     }
   }
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="flex items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <span className="text-muted-foreground">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+  if (!user) {
+    router.push("/login");
+    return null;
+  }
 
   const pageBusy = bootstrapping || submitting;
-
   return (
     <div className="space-y-10 px-1 md:px-2">
       <Card className="mx-auto w-full max-w-7xl">

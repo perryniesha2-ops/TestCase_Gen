@@ -39,3 +39,33 @@ export function Logo({ className, size = "sm" }: LogoProps) {
     </Link>
   );
 }
+
+/**
+ * ICON
+ */
+type IconProps = {
+  className?: string;
+  size?: "sm" | "md" | "lg" | "xl";
+};
+
+export function Icon({ className, size = "sm" }: IconProps) {
+  const { resolvedTheme } = useTheme();
+  const mounted = useMounted();
+
+  const src =
+    mounted && resolvedTheme === "light"
+      ? "/logo-icon-light.svg"
+      : "/logo-icon-dark.svg";
+
+  return (
+    <Link href="/dashboard">
+      <img
+        src={src}
+        alt="SynthQA"
+        className={cn(sizeClasses[size], "w-auto", className)}
+        loading="eager"
+        decoding="async"
+      />
+    </Link>
+  );
+}

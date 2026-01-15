@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -122,25 +123,20 @@ export function PlaywrightExecutionHistory({
   const [selectedRun, setSelectedRun] = useState<PlaywrightRun | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
+  const { user } = useAuth();
+
   useEffect(() => {
-    void loadExecutions();
+    if (user) {
+      void loadExecutions();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suiteId, dateFilter, statusFilter]);
+  }, [suiteId, dateFilter, statusFilter, user]);
 
   async function loadExecutions() {
+    if (!user) return;
     try {
       setLoading(true);
       const supabase = createClient();
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        setExecutions([]);
-        return;
-      }
 
       let query = supabase
         .from("test_executions")

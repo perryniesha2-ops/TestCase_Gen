@@ -3,9 +3,9 @@
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -240,18 +240,15 @@ export default function BillingPage() {
   const [selectedPlan, setSelectedPlan] = React.useState<"team" | "enterprise">(
     "team"
   );
-
   const router = useRouter();
+  const { user: authUser } = useAuth();
+
   const searchParams = useSearchParams();
   const supabase = createClient();
 
   // Function to fetch user data
   const fetchUserData = React.useCallback(async () => {
     try {
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-
       if (!authUser) {
         router.push("/login");
         return null;
@@ -300,7 +297,6 @@ export default function BillingPage() {
             test_cases_generated:
               profile.user_usage?.[0]?.test_cases_generated || 0,
             api_calls_used: profile.user_usage?.[0]?.api_calls_used || 0,
-            // IMPORTANT: Fallback to subscription tier if no limit in user_usage
             monthly_limit:
               profile.user_usage?.[0]?.monthly_limit_test_cases ||
               (profile.subscription_tier === "pro"
@@ -318,17 +314,19 @@ export default function BillingPage() {
       toast.error("Failed to load billing information");
       return null;
     }
-  }, [router, supabase]);
+  }, [authUser, router, supabase]);
 
   // Initial load
   React.useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const userData = await fetchUserData();
-      setUser(userData);
-      setLoading(false);
-    })();
-  }, [fetchUserData]);
+    if (authUser) {
+      (async () => {
+        setLoading(true);
+        const userData = await fetchUserData();
+        setUser(userData);
+        setLoading(false);
+      })();
+    }
+  }, [fetchUserData, authUser]);
 
   // Check for successful checkout and refetch data
   React.useEffect(() => {
@@ -336,7 +334,7 @@ export default function BillingPage() {
     const sessionId = searchParams.get("session_id");
 
     if (success === "true" && sessionId) {
-      console.log("✅ Checkout successful, refetching data...");
+      console.log("✅ Checkout successful, refreshing data...");
 
       // Show success message
       toast.success("🎉 Subscription activated! Updating your account...");

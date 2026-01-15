@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,7 @@ export function AddRequirementModal({
   children,
   defaultProjectId,
 }: AddRequirementModalProps) {
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -103,14 +105,14 @@ export function AddRequirementModal({
   }, [defaultProjectId]);
 
   async function fetchProjects() {
+    if (!user) {
+      setLoadingProjects(false);
+      return;
+    }
+
     setLoadingProjects(true);
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
 
       const { data, error } = await supabase
         .from("projects")
@@ -196,16 +198,14 @@ export function AddRequirementModal({
     requirementId: string,
     requirementTitle: string
   ) {
+    if (!user) {
+      setLoading(false);
+    }
+
     setGeneratingTests(true);
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
 
-      if (!user) return;
-
-      // Call your AI generation endpoint
       const response = await fetch("/api/generate-tests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -241,18 +241,14 @@ export function AddRequirementModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!user) {
+      toast.error("Please log in to add requirements");
+      return;
+    }
     setLoading(true);
 
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please log in to add requirements");
-        return;
-      }
 
       const validCriteria = acceptanceCriteria.filter(
         (criteria) => criteria.trim() !== ""
@@ -380,7 +376,6 @@ export function AddRequirementModal({
         );
       }
 
-      // Optional: load metadata fields UI from parsed.metadata
       if (parsed.metadata && typeof parsed.metadata === "object") {
         const next: MetadataField[] = Object.entries(parsed.metadata).map(
           ([key, value]) => {
@@ -400,6 +395,24 @@ export function AddRequirementModal({
     } finally {
       setParsing(false);
     }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-muted-foreground">
+          Please sign in to manage requirements
+        </p>
+      </div>
+    );
   }
 
   return (

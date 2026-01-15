@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,28 +39,27 @@ interface AutomationPageProps {
 
 export function AutomationPage({ suiteId }: AutomationPageProps) {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+
   const [suite, setSuite] = useState<TestSuite | null>(null);
   const [testCases, setTestCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
-    if (suiteId) {
+    if (suiteId && user) {
       loadSuiteData();
     }
-  }, [suiteId]);
+  }, [suiteId, user]);
 
   async function loadSuiteData() {
+    if (!user) {
+      console.error("No user available");
+      return;
+    }
+
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/login");
-        return;
-      }
 
       // Load suite
       const { data: suiteData, error: suiteError } = await supabase
@@ -130,6 +130,22 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    router.push("/login");
+    return null;
   }
 
   if (loading) {

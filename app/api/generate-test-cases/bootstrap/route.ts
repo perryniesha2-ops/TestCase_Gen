@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,16 +18,11 @@ function jsonError(message: string, status = 500, details?: unknown) {
 }
 
 export async function GET(req: Request) {
+  const { user, response } = await requireAuth();
+  if (response) return response;
+
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabase.auth.getUser();
-
-    if (authErr || !user) {
-      return jsonError("Unauthorized", 401);
-    }
 
     const url = new URL(req.url);
 
@@ -88,12 +84,6 @@ export async function GET(req: Request) {
 
     return NextResponse.json(
       {
-        user: {
-          id: user.id,
-          email: user.email ?? "",
-          full_name: user.user_metadata?.full_name ?? "",
-          avatar_url: user.user_metadata?.avatar_url ?? "",
-        },
         projects: projectsRes.data ?? [],
         requirements: requirementsRes.data ?? [],
         templates: templatesRes.data ?? [], // ✅ IMPORTANT (missing before)

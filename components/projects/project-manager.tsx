@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -158,6 +159,7 @@ const colorClasses: Record<
 };
 
 export function ProjectManager() {
+  const { user, loading: authLoading } = useAuth();
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<ProjectWithStats[]>(
     []
@@ -184,14 +186,21 @@ export function ProjectManager() {
   });
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    if (user) fetchProjects();
+  }, [user]);
 
   useEffect(() => {
-    filterProjects();
-  }, [projects, searchQuery, statusFilter, activeTab]);
+    if (user) {
+      filterProjects();
+    }
+  }, [projects, searchQuery, statusFilter, activeTab, user]);
 
   async function fetchProjects() {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch("/api/projects/overview", { cache: "no-store" });
@@ -237,6 +246,8 @@ export function ProjectManager() {
   }
 
   async function saveProject() {
+    if (!user) return;
+
     if (!formData.name.trim()) {
       toast.error("Please enter a project name");
       return;
@@ -245,14 +256,6 @@ export function ProjectManager() {
     setLoading(true);
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please sign in to manage projects");
-        return;
-      }
 
       const projectData = {
         user_id: user.id,
@@ -294,9 +297,13 @@ export function ProjectManager() {
   }
 
   async function deleteProject(id: string) {
-    if (
-      !confirm("Delete this project? Associated items will become unassigned.")
-    )
+    if (!user) {
+      // ✅ ADD guard clause
+      toast.error("Please sign in to delete projects");
+      return;
+    }
+
+    if (!confirm("Delete this project? Linked items will become unassigned."))
       return;
 
     try {
@@ -313,6 +320,10 @@ export function ProjectManager() {
   }
 
   async function archiveProject(id: string, currentStatus: ProjectStatus) {
+    if (!user) {
+      toast.error("Please sign in to update projects");
+      return;
+    }
     const newStatus = currentStatus === "archived" ? "active" : "archived";
 
     try {
@@ -372,6 +383,24 @@ export function ProjectManager() {
       sum + p.test_suites_count + p.requirements_count + p.templates_count,
     0
   );
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-muted-foreground">
+          Please sign in to manage projects
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

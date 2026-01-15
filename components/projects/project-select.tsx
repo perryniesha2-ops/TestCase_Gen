@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -114,6 +115,7 @@ export function ProjectSelect({
   projects: projectsProp,
   disableFetch,
 }: ProjectSelectProps) {
+  const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>(projectsProp ?? []);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
@@ -127,10 +129,11 @@ export function ProjectSelect({
   // legacy fetch only if needed
   useEffect(() => {
     if (disableFetch) return;
-    if (projectsProp) return; // already have data
-    void fetchProjects();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disableFetch, projectsProp]);
+    if (projectsProp) return;
+    if (user) {
+      void fetchProjects();
+    }
+  }, [disableFetch, projectsProp, user]);
 
   useEffect(() => {
     if (value) {
@@ -142,15 +145,12 @@ export function ProjectSelect({
   }, [value, projects]);
 
   async function fetchProjects() {
+    if (!user) return;
+
     setLoading(true);
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
 
-      // IMPORTANT: filter by user_id, and DO NOT do per-project count queries here
       const { data, error } = await supabase
         .from("projects")
         .select("id, name, description, status, color, icon")

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -71,18 +72,11 @@ interface TemplateSelectProps {
   onSelect: (template: Template | null) => void;
   disabled?: boolean;
 
-  /** NEW: provide templates from bootstrap to avoid any fetch */
   templates?: Template[];
-  /** NEW: if true, never fetch internally */
   disableFetch?: boolean;
 
-  /** Optional: when set, filter templates by project */
   projectId?: string | null;
 
-  /**
-   * NEW: optional callback to record "used" without client-side Supabase calls.
-   * If not provided, component will do its legacy supabase update (only when not disableFetch).
-   */
   onTemplateUsed?: (templateId: string) => Promise<void>;
 }
 
@@ -133,8 +127,8 @@ export function TemplateSelect({
   );
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
 
-  // Keep state in sync with prop (bootstrap path)
   useEffect(() => {
     if (templatesProp) setTemplates(templatesProp);
   }, [templatesProp]);
@@ -150,13 +144,13 @@ export function TemplateSelect({
     [visibleTemplates]
   );
 
-  // Legacy fetch only if not provided by bootstrap
   useEffect(() => {
     if (disableFetch) return;
-    if (templatesProp) return; // already have data
-    void fetchTemplates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disableFetch, templatesProp]);
+    if (templatesProp) return;
+    if (user) {
+      void fetchTemplates();
+    }
+  }, [disableFetch, templatesProp, user]);
 
   useEffect(() => {
     if (value) {
@@ -168,13 +162,11 @@ export function TemplateSelect({
   }, [value, visibleTemplates]);
 
   async function fetchTemplates() {
+    if (!user) return;
+
     setLoading(true);
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
 
       const { data, error } = await supabase
         .from("test_case_templates")
@@ -201,12 +193,10 @@ export function TemplateSelect({
       return;
     }
 
-    // Record usage without forcing more GETs
     try {
       if (onTemplateUsed) {
         await onTemplateUsed(templateId);
       } else if (!disableFetch) {
-        // Legacy: update via Supabase client
         const supabase = createClient();
         await supabase
           .from("test_case_templates")
