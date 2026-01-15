@@ -60,58 +60,54 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
     [defaultRow]
   );
 
-  const hydrateExecutions = useCallback(
-    async ({ testCaseIds, crossPlatformIds }: HydrateArgs) => {
-      if (testCaseIds.length === 0 && crossPlatformIds.length === 0) return;
-
+  const hydrateOne = useCallback(
+    async (testCaseId: string) => {
       const supabase = createClient();
-      const ids = [...testCaseIds, ...crossPlatformIds];
 
       let query = supabase
         .from("test_executions")
         .select("*")
-        .in("test_case_id", ids)
-        .order("created_at", { ascending: false });
+        .eq("test_case_id", testCaseId)
+        .order("created_at", { ascending: false })
+        .limit(1);
 
       if (sessionId) query = query.eq("session_id", sessionId);
 
       const { data, error } = await query;
       if (error) throw error;
 
-      const executionMap: TestExecution = {};
-
-      data?.forEach((row) => {
-        if (!executionMap[row.test_case_id]) {
-          executionMap[row.test_case_id] = {
-            id: row.id,
-            status: row.execution_status,
-            completedSteps: row.completed_steps || [],
-            failedSteps: row.failed_steps || [],
-            notes: row.execution_notes,
-            failure_reason: row.failure_reason,
-            started_at: row.started_at,
-            completed_at: row.completed_at,
-            duration_minutes: row.duration_minutes,
-            test_environment: row.test_environment,
-            browser: row.browser,
-            os_version: row.os_version,
-            attachments: row.attachments || [],
-          };
-        }
-      });
-
-      ids.forEach((id) => {
-        if (!executionMap[id]) {
-          executionMap[id] = {
+      const row = data?.[0];
+      if (!row) {
+        // ensure row exists in local state
+        setExecution((prev) => ({
+          ...prev,
+          [testCaseId]: prev[testCaseId] ?? {
             status: "not_run",
             completedSteps: [],
             failedSteps: [],
-          };
-        }
-      });
+          },
+        }));
+        return;
+      }
 
-      // Replace is fine because hydrate is authoritative for this session filter.
-      setExecution(executionMap);
+      setExecution((prev) => ({
+        ...prev,
+        [testCaseId]: {
+          id: row.id,
+          status: row.execution_status,
+          completedSteps: row.completed_steps || [],
+          failedSteps: row.failed_steps || [],
+          notes: row.execution_notes,
+          failure_reason: row.failure_reason,
+          started_at: row.started_at,
+          completed_at: row.completed_at,
+          duration_minutes: row.duration_minutes,
+          test_environment: row.test_environment,
+          browser: row.browser,
+          os_version: row.os_version,
+          attachments: row.attachments || [],
+        },
+      }));
     },
     [sessionId]
   );
@@ -300,11 +296,11 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
 
   return {
     execution,
-    setExecution, // keep for your delete-local behavior
-    hydrateExecutions,
+    setExecution,
+    hydrateOne,
     toggleStep,
-    saveProgress, // <-- for TestRunnerDialog incremental persistence
-    saveResult, // <-- finalize
-    reset, // <-- reset
+    saveProgress,
+    saveResult,
+    reset,
   };
 }

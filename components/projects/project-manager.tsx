@@ -194,56 +194,13 @@ export function ProjectManager() {
   async function fetchProjects() {
     setLoading(true);
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const res = await fetch("/api/projects/overview", { cache: "no-store" });
+      const raw = await res.text().catch(() => "");
+      const payload = raw ? JSON.parse(raw) : null;
 
-      if (!user) {
-        toast.error("Please sign in to view projects");
-        return;
-      }
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
 
-      const { data, error } = await supabase
-        .from("projects")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      // Get counts for each project
-      const projectsWithCounts = await Promise.all(
-        (data || []).map(async (project) => {
-          const [
-            { count: suitesCount },
-            { count: reqCount },
-            { count: templatesCount },
-          ] = await Promise.all([
-            supabase
-              .from("test_suites")
-              .select("*", { count: "exact", head: true })
-              .eq("project_id", project.id),
-            supabase
-              .from("requirements")
-              .select("*", { count: "exact", head: true })
-              .eq("project_id", project.id),
-            supabase
-              .from("test_case_templates")
-              .select("*", { count: "exact", head: true })
-              .eq("project_id", project.id),
-          ]);
-
-          return {
-            ...project,
-            test_suites_count: suitesCount || 0,
-            requirements_count: reqCount || 0,
-            templates_count: templatesCount || 0,
-            test_cases_count: 0, // Can be calculated if needed
-          } as ProjectWithStats;
-        })
-      );
-
-      setProjects(projectsWithCounts);
+      setProjects(payload.projects ?? []);
     } catch (error) {
       console.error("Error fetching projects:", error);
       toast.error("Failed to load projects");

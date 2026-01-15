@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -53,13 +52,15 @@ type ProjectColor =
   | "yellow"
   | "gray";
 
-interface Project {
+export interface Project {
   id: string;
   name: string;
   description?: string | null;
   status: ProjectStatus;
   color: ProjectColor;
   icon: string;
+
+  // Optional counts (but do NOT fetch them per project)
   test_suites_count?: number;
   requirements_count?: number;
   templates_count?: number;
@@ -71,6 +72,11 @@ interface ProjectSelectProps {
   disabled?: boolean;
   placeholder?: string;
   allowEmpty?: boolean;
+
+  /** NEW: provide projects from bootstrap to avoid any fetch */
+  projects?: Project[];
+  /** NEW: if true, never fetch internally */
+  disableFetch?: boolean;
 }
 
 const projectIcons: Record<
@@ -89,24 +95,47 @@ const projectIcons: Record<
   terminal: Terminal,
 };
 
+const colorDotClass: Record<ProjectColor, string> = {
+  blue: "bg-blue-500",
+  green: "bg-green-500",
+  purple: "bg-purple-500",
+  orange: "bg-orange-500",
+  red: "bg-red-500",
+  pink: "bg-pink-500",
+  indigo: "bg-indigo-500",
+  yellow: "bg-yellow-500",
+  gray: "bg-gray-500",
+};
+
 export function ProjectSelect({
   value,
   onSelect,
   disabled,
+  projects: projectsProp,
+  disableFetch,
 }: ProjectSelectProps) {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<Project[]>(projectsProp ?? []);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // keep state in sync when provided by bootstrap
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    if (projectsProp) setProjects(projectsProp);
+  }, [projectsProp]);
+
+  // legacy fetch only if needed
+  useEffect(() => {
+    if (disableFetch) return;
+    if (projectsProp) return; // already have data
+    void fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disableFetch, projectsProp]);
 
   useEffect(() => {
     if (value) {
-      const project = projects.find((p) => p.id === value);
-      setSelectedProject(project || null);
+      const p = projects.find((x) => x.id === value) ?? null;
+      setSelectedProject(p);
     } else {
       setSelectedProject(null);
     }
@@ -119,49 +148,18 @@ export function ProjectSelect({
       const {
         data: { user },
       } = await supabase.auth.getUser();
-
       if (!user) return;
 
+      // IMPORTANT: filter by user_id, and DO NOT do per-project count queries here
       const { data, error } = await supabase
         .from("projects")
-        .select("*")
+        .select("id, name, description, status, color, icon")
+        .eq("user_id", user.id)
         .eq("status", "active")
         .order("name");
 
       if (error) throw error;
-
-      // Get counts for each project
-      const projectsWithCounts = await Promise.all(
-        (data || []).map(async (project) => {
-          const [
-            { count: suitesCount },
-            { count: reqCount },
-            { count: templatesCount },
-          ] = await Promise.all([
-            supabase
-              .from("test_suites")
-              .select("*", { count: "exact", head: true })
-              .eq("project_id", project.id),
-            supabase
-              .from("requirements")
-              .select("*", { count: "exact", head: true })
-              .eq("project_id", project.id),
-            supabase
-              .from("test_case_templates")
-              .select("*", { count: "exact", head: true })
-              .eq("project_id", project.id),
-          ]);
-
-          return {
-            ...project,
-            test_suites_count: suitesCount || 0,
-            requirements_count: reqCount || 0,
-            templates_count: templatesCount || 0,
-          } as Project;
-        })
-      );
-
-      setProjects(projectsWithCounts);
+      setProjects((data || []) as Project[]);
     } catch (error) {
       console.error("Error fetching projects:", error);
     } finally {
@@ -170,18 +168,21 @@ export function ProjectSelect({
   }
 
   function handleProjectSelect(projectId: string) {
-    const project = projects.find((p) => p.id === projectId);
-    if (!project) return;
-
+    const project = projects.find((p) => p.id === projectId) ?? null;
     setSelectedProject(project);
     onSelect(project);
-    toast.success(`Assigned to project "${project.name}"`);
+    if (project) toast.success(`Assigned to project "${project.name}"`);
   }
 
   function clearProject() {
     setSelectedProject(null);
     onSelect(null);
   }
+
+  const emptyState = useMemo(
+    () => projects.length === 0 && !loading,
+    [projects.length, loading]
+  );
 
   return (
     <div className="space-y-3">
@@ -206,19 +207,17 @@ export function ProjectSelect({
       {selectedProject ? (
         <Card className="border-2 border-primary">
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {(() => {
-                  const Icon = projectIcons[selectedProject.icon] || Folder;
-                  return <Icon className="h-4 w-4 text-primary" />;
-                })()}
-                <CardTitle className="text-base">
-                  {selectedProject.name}
-                </CardTitle>
-                <Badge variant="outline" className="text-xs">
-                  {selectedProject.status}
-                </Badge>
-              </div>
+            <div className="flex items-center gap-2">
+              {(() => {
+                const Icon = projectIcons[selectedProject.icon] || Folder;
+                return <Icon className="h-4 w-4 text-primary" />;
+              })()}
+              <CardTitle className="text-base">
+                {selectedProject.name}
+              </CardTitle>
+              <Badge variant="outline" className="text-xs">
+                {selectedProject.status}
+              </Badge>
             </div>
             {selectedProject.description && (
               <CardDescription className="text-xs">
@@ -226,37 +225,6 @@ export function ProjectSelect({
               </CardDescription>
             )}
           </CardHeader>
-          <CardContent className="pb-3">
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div className="text-center">
-                <div className="font-bold text-blue-600">
-                  {selectedProject.test_suites_count || 0}
-                </div>
-                <div className="text-muted-foreground">Suites</div>
-              </div>
-              <div className="text-center">
-                <div className="font-bold text-purple-600">
-                  {selectedProject.requirements_count || 0}
-                </div>
-                <div className="text-muted-foreground">Reqs</div>
-              </div>
-              <div className="text-center">
-                <div className="font-bold text-green-600">
-                  {selectedProject.templates_count || 0}
-                </div>
-                <div className="text-muted-foreground">Templates</div>
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="w-full mt-3"
-              onClick={() => setShowDetailsDialog(true)}
-            >
-              View Details
-            </Button>
-          </CardContent>
         </Card>
       ) : (
         <>
@@ -288,7 +256,7 @@ export function ProjectSelect({
                 );
               })}
 
-              {projects.length === 0 && !loading && (
+              {emptyState && (
                 <div className="px-2 py-6 text-center text-sm text-muted-foreground">
                   No active projects. Create one first!
                 </div>
@@ -323,33 +291,44 @@ export function ProjectSelect({
               <div className="flex items-center gap-2">
                 <Badge>{selectedProject.status}</Badge>
                 <div
-                  className={`w-3 h-3 rounded-full bg-${selectedProject.color}-500`}
+                  className={`w-3 h-3 rounded-full ${
+                    colorDotClass[selectedProject.color] ?? "bg-gray-500"
+                  }`}
                 />
               </div>
 
-              <div className="space-y-3">
-                <h4 className="font-medium text-sm">Project Contents</h4>
-                <div className="grid gap-2 text-sm">
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-muted-foreground">Test Suites:</span>
-                    <span className="font-medium">
-                      {selectedProject.test_suites_count || 0}
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-muted-foreground">Requirements:</span>
-                    <span className="font-medium">
-                      {selectedProject.requirements_count || 0}
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-2">
-                    <span className="text-muted-foreground">Templates:</span>
-                    <span className="font-medium">
-                      {selectedProject.templates_count || 0}
-                    </span>
+              {/* Counts are optional — display only if provided */}
+              {(selectedProject.test_suites_count != null ||
+                selectedProject.requirements_count != null ||
+                selectedProject.templates_count != null) && (
+                <div className="space-y-3">
+                  <h4 className="font-medium text-sm">Project Contents</h4>
+                  <div className="grid gap-2 text-sm">
+                    <div className="flex justify-between py-2 border-b">
+                      <span className="text-muted-foreground">
+                        Test Suites:
+                      </span>
+                      <span className="font-medium">
+                        {selectedProject.test_suites_count ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b">
+                      <span className="text-muted-foreground">
+                        Requirements:
+                      </span>
+                      <span className="font-medium">
+                        {selectedProject.requirements_count ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2">
+                      <span className="text-muted-foreground">Templates:</span>
+                      <span className="font-medium">
+                        {selectedProject.templates_count ?? 0}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </DialogContent>
         </Dialog>

@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { ToastProvider } from "../components/providers/toast-providers";
 import { Providers } from "../providers";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SessionTimeoutProvider } from "@/components/providers/session-timeout-provider";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -28,7 +28,7 @@ export default function RootLayout({
           <Providers>
             <SessionTimeoutProvider timeoutMinutes={60} warnMinutesBefore={5}>
               {children}
-              <ToastProvider />
+              <Toaster />
             </SessionTimeoutProvider>
           </Providers>
         </ThemeProvider>
