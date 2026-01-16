@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -239,6 +240,7 @@ function runStatusBadge(s: RunStatus) {
 }
 
 export function ExecutionHistory() {
+  const { user, loading: authLoading } = useAuth();
   const supabase = useMemo(() => createClient(), []);
 
   // shared filters
@@ -291,45 +293,18 @@ export function ExecutionHistory() {
     "skipped",
   ];
 
-  useEffect(() => {
-    void fetchSuites();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Runs fetch
-  useEffect(() => {
-    void fetchRuns();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suiteId, dateFilter, debouncedRunsSearch, showAborted]);
-
-  // Executions fetch
-  useEffect(() => {
-    void fetchHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    status,
-    hasEvidence,
-    debouncedSearch,
-    suiteId,
-    dateFilter,
-    currentPage,
-    pageSize,
-  ]);
-
   // Reset to page 1 when execution filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [status, hasEvidence, debouncedSearch, suiteId, dateFilter, pageSize]);
 
-  async function fetchSuites() {
+  const fetchSuites = useCallback(async () => {
+    if (!user) return;
     try {
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) return;
-
       const { data, error } = await supabase
         .from("test_suites")
         .select("id, name")
-        .eq("user_id", auth.user.id)
+        .eq("user_id", user.id)
         .order("name");
 
       if (error) throw error;
@@ -338,7 +313,7 @@ export function ExecutionHistory() {
       console.error(err);
       setAvailableSuites([]);
     }
-  }
+  }, [user, supabase]);
 
   function computeStartDate(dateFilterValue: string) {
     let startDate: string | null = null;
@@ -363,15 +338,11 @@ export function ExecutionHistory() {
     return startDate;
   }
 
-  async function fetchRuns() {
+  const fetchRuns = useCallback(async () => {
+    if (!user) return;
+
     setRunsLoading(true);
     try {
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) {
-        setRuns([]);
-        return;
-      }
-
       const startDate = computeStartDate(dateFilter);
 
       let q = supabase
@@ -402,7 +373,7 @@ export function ExecutionHistory() {
         test_suites:suite_id ( id, name )
       `
         )
-        .eq("user_id", auth.user.id)
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(200);
 
@@ -537,23 +508,20 @@ export function ExecutionHistory() {
     } finally {
       setRunsLoading(false);
     }
-  }
+  }, [user, supabase, dateFilter, suiteId, debouncedRunsSearch, showAborted]);
 
-  async function fetchHistory() {
+  const fetchHistory = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
-    try {
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) {
-        setRows([]);
-        return;
-      }
+    const abortController = new AbortController();
 
+    try {
       const startDate = computeStartDate(dateFilter);
 
       let countQuery = supabase
         .from("test_executions")
         .select("id", { count: "exact", head: true })
-        .eq("executed_by", auth.user.id)
+        .eq("executed_by", user.id)
         .in("execution_status", INCLUDED_STATUSES);
 
       let dataQuery = supabase
@@ -578,7 +546,7 @@ export function ExecutionHistory() {
           test_cases:test_case_id ( id, title, description )
         `
         )
-        .eq("executed_by", auth.user.id)
+        .eq("executed_by", user.id)
         .in("execution_status", INCLUDED_STATUSES)
         .order("created_at", { ascending: false });
 
@@ -687,7 +655,17 @@ export function ExecutionHistory() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [
+    user,
+    supabase,
+    status,
+    hasEvidence,
+    debouncedSearch,
+    suiteId,
+    dateFilter,
+    currentPage,
+    pageSize,
+  ]);
 
   function toggleRowExpansion(executionId: string) {
     setExpandedRows((prev) => {
@@ -902,15 +880,14 @@ export function ExecutionHistory() {
   // ========= Post-run review =========
 
   async function openRunReview(run: RunWithStats) {
+    if (!user) return;
+
     setActiveRun(run);
     setIsRunReviewOpen(true);
     setRunRows([]);
     setRunRowsLoading(true);
 
     try {
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) return;
-
       // Load executions for that session (all statuses you care about)
       const { data: execsRaw, error } = await supabase
         .from("test_executions")
@@ -934,7 +911,7 @@ export function ExecutionHistory() {
           test_cases:test_case_id ( id, title, description )
         `
         )
-        .eq("executed_by", auth.user.id)
+        .eq("executed_by", user.id)
         .eq("session_id", run.id)
         .in("execution_status", INCLUDED_STATUSES)
         .order("created_at", { ascending: true });
@@ -1085,6 +1062,27 @@ export function ExecutionHistory() {
     const reviewed = runs.filter((r) => r.review_done).length;
     return { totalRuns, completed, withFailures, reviewed };
   }, [runs]);
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin" />
+        <p className="ml-3 text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  useEffect(() => {
+    fetchSuites();
+  }, [fetchSuites]);
+
+  useEffect(() => {
+    fetchRuns();
+  }, [fetchRuns]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
 
   return (
     <div className="space-y-4 text-sm">

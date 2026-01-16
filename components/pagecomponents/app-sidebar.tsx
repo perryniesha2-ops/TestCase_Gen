@@ -4,11 +4,9 @@ import Image from "next/image";
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/lib/auth/auth-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Logo, Icon } from "@/components/pagecomponents/brandlogo";
 import {
   Tooltip,
   TooltipContent,
@@ -85,17 +83,8 @@ export function AppSidebar({
   className,
   initialCollapsed = false,
 }: SidebarProps) {
-  const [setLoading] = useState(true);
-  const { user: authUser, loading, signOut } = useAuth();
-  const user: UserProfile | null = authUser
-    ? {
-        id: authUser.id,
-        email: authUser.email || "",
-        full_name: authUser.user_metadata?.full_name || "",
-        avatar_url: authUser.user_metadata?.avatar_url || "",
-      }
-    : null;
-
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   // Persist collapsed state in localStorage
@@ -110,6 +99,26 @@ export function AppSidebar({
   const router = useRouter();
   const pathname = usePathname();
   const supabase = createClient();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          setUser({
+            id: user.id,
+            email: user.email || "",
+            full_name: user.user_metadata?.full_name || "",
+            avatar_url: user.user_metadata?.avatar_url || "",
+          });
+        }
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [supabase]);
 
   // Save collapsed state to localStorage
   useEffect(() => {
@@ -131,7 +140,9 @@ export function AppSidebar({
 
   async function handleSignOut() {
     try {
-      await signOut();
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      router.push("/beta-login");
       toast.success("Signed out successfully");
     } catch (error) {
       console.error("Error signing out:", error);
@@ -210,22 +221,48 @@ export function AppSidebar({
             collapsed ? "h-20 flex-col justify-center gap-1 px-0" : "h-16 px-4"
           )}
         >
-          {collapsed ? (
-            // Collapsed icon - centered and larger
-            <div
-              className={cn(
-                "flex items-center border-b",
-                collapsed ? "h-20 justify-center gap-2 px-0" : "h-16 px-4"
-              )}
-            >
-              {" "}
-              <Icon size="md" />
-            </div>
-          ) : (
-            <>
-              <Logo size="lg" />
-            </>
-          )}
+          <Link href="/dashboard" className="flex items-center justify-center">
+            {collapsed ? (
+              // Collapsed icon - centered and larger
+              <div className="h-10 w-10 rounded-lg flex items-center justify-center">
+                <Image
+                  src="/logo-icon-dark.svg"
+                  alt="SQ"
+                  width={32}
+                  height={32}
+                  className="hidden dark:inline-block h-15 w-15"
+                />
+                <Image
+                  src="/logo-icon-light.svg"
+                  alt="SQ"
+                  width={32}
+                  height={32}
+                  className="inline-block dark:hidden h-15 w-15"
+                />
+              </div>
+            ) : (
+              <>
+                <Image
+                  src="/logo-sq-dark.svg"
+                  alt="SynthQA Logo"
+                  width={300}
+                  height={48}
+                  className="hidden dark:inline-block h-15 w-auto"
+                  loading="eager"
+                  priority
+                />
+                <Image
+                  src="/logo-sq-light.svg"
+                  alt="SynthQA Logo"
+                  width={120}
+                  height={48}
+                  className="inline-block dark:hidden h-15 w-auto"
+                  loading="eager"
+                  priority
+                />
+              </>
+            )}
+          </Link>
 
           {/* Collapse button */}
           <Button
@@ -234,7 +271,7 @@ export function AppSidebar({
             variant="ghost"
             className={cn(
               "hidden lg:inline-flex h-6 w-6",
-              collapsed ? "" : "ml-auto"
+              collapsed ? "p-0" : "ml-auto"
             )}
             onClick={() => setCollapsed((c: boolean) => !c)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}

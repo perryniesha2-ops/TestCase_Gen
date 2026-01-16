@@ -17,10 +17,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const supabase = createClient();
 
   useEffect(() => {
-    // Get initial user - ONLY ONCE on mount
+    const supabase = createClient();
     const initializeAuth = async () => {
       try {
         const {
@@ -57,10 +56,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.unsubscribe();
     };
-  }, [router, supabase]);
+  }, [router]);
 
   const signOut = async () => {
     try {
+      const supabase = createClient();
+
       await supabase.auth.signOut();
       setUser(null);
       router.push("/login");
