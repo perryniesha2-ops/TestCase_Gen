@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,6 +70,7 @@ type SuiteEditForm = {
 };
 
 export function TestSuitesPage() {
+  const { user } = useAuth();
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -169,12 +171,9 @@ export function TestSuitesPage() {
   // Projects (can remain Supabase, separate optimization later)
   // ============================
   async function fetchProjects() {
+    if (!user) return;
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
 
       const { data, error } = await supabase
         .from("projects")
@@ -193,16 +192,12 @@ export function TestSuitesPage() {
   // Create suite (kept as-is; you can later convert to an API route)
   // ============================
   async function createTestSuite() {
+    if (!user) {
+      toast.error("Please log in again.");
+      return;
+    }
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please log in again.");
-        return;
-      }
 
       const { data, error } = await supabase
         .from("test_suites")

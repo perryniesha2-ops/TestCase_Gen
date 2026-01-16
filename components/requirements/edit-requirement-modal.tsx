@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,7 @@ export function EditRequirementModal({
   onOpenChange,
   onSuccess,
 }: EditRequirementModalProps) {
+  const { user, loading: authLoading } = useAuth();
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
 
@@ -82,11 +84,10 @@ export function EditRequirementModal({
   }, []);
 
   async function fetchProjects() {
+    if (!user) return;
+
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      const supabase = createClient();
 
       const { data, error } = await supabase
         .from("projects")
@@ -125,7 +126,7 @@ export function EditRequirementModal({
     );
 
     setNewCriterion("");
-  }, [open, requirement.id]); // important: requirement.id, not the whole object
+  }, [open, requirement.id]);
 
   function handleAddCriterion() {
     const trimmed = newCriterion.trim();
@@ -140,6 +141,10 @@ export function EditRequirementModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!user) {
+      toast.error("Please log in to update requirements");
+      return;
+    }
 
     if (!formData.title.trim()) {
       toast.error("Title is required");
@@ -152,15 +157,6 @@ export function EditRequirementModal({
 
     try {
       setLoading(true);
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please log in to update requirements");
-        return;
-      }
 
       const { error } = await supabase
         .from("requirements")

@@ -42,20 +42,6 @@ import {
   Search,
 } from "lucide-react";
 
-/**
- * This refactor focuses on:
- * - isolating data fetching (projects + requirements) into stable callbacks
- * - debounced search to avoid refetch on every keystroke
- * - consistent query param building (only send meaningful filters)
- * - avoiding “loading screen” for tiny refreshes by using a lightweight inline loading state
- * - removing unused imports (createClient, useRequirements temp delete, etc.)
- *
- * Assumes:
- * - GET /api/projects/list returns { projects: Project[] }
- * - GET /api/requirements/list supports: page, pageSize, projectId, q, status, priority
- * - DELETE is handled by /api/requirements/[id]/delete
- */
-
 interface RequirementsListProps {
   onRequirementSelected?: (requirement: Requirement) => void;
   selectable?: boolean;

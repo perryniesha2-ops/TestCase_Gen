@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,12 +57,16 @@ export function LinkTestCasesDialog({
     new Set()
   );
 
+  const { user } = useAuth();
+
   useEffect(() => {
-    if (open) {
-      fetchLinkedTestCases();
-      fetchAllTestCases();
+    if (user) {
+      if (open) {
+        fetchLinkedTestCases();
+        fetchAllTestCases();
+      }
     }
-  }, [open, requirement.id]);
+  }, [open, requirement.id, user]);
 
   async function fetchLinkedTestCases() {
     try {
@@ -84,13 +89,10 @@ export function LinkTestCasesDialog({
   }
 
   async function fetchAllTestCases() {
+    if (!user) return;
+
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
 
       const { data, error } = await supabase
         .from("test_cases")

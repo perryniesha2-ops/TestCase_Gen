@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-
+import { useAuth } from "@/lib/auth/auth-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -120,7 +120,7 @@ export function TestSuiteDetailsDialog({
   defaultTab = "assigned",
 }: TestSuiteDetailsDialogProps) {
   const NONE = "none";
-
+  const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<string>(defaultTab);
 
   const [suiteTestCases, setSuiteTestCases] = useState<SuiteTestCase[]>([]);
@@ -131,7 +131,6 @@ export function TestSuiteDetailsDialog({
   const [searchTerm, setSearchTerm] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
 
-  // merged edit form
   const [editForm, setEditForm] = useState<SuiteEditForm>({
     name: "",
     description: "",
@@ -142,13 +141,10 @@ export function TestSuiteDetailsDialog({
 
   const [savingSuite, setSavingSuite] = useState(false);
 
-  // Fetch projects on mount
   useEffect(() => {
     void fetchProjects();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reset local state when dialog opens / suite changes
   useEffect(() => {
     if (!open) return;
 
@@ -173,12 +169,9 @@ export function TestSuiteDetailsDialog({
   }, [open, suite.id]);
 
   async function fetchProjects() {
+    if (!user) return;
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
 
       const { data, error } = await supabase
         .from("projects")
@@ -194,6 +187,7 @@ export function TestSuiteDetailsDialog({
   }
 
   async function fetchSuiteTestCases() {
+    if (!user) return;
     try {
       const supabase = createClient();
 
@@ -243,13 +237,10 @@ export function TestSuiteDetailsDialog({
   }
 
   async function fetchAvailableTestCases() {
+    if (!user) return;
+
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
 
       const { data, error } = await supabase
         .from("test_cases")

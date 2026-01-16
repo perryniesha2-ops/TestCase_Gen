@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,7 @@ export function QuickTemplateSave({
   onTemplateSaved,
   children,
 }: QuickTemplateSaveProps) {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -58,22 +60,20 @@ export function QuickTemplateSave({
   });
 
   async function handleSave() {
+    if (!user) {
+      toast.error("Please sign in to save templates");
+      return;
+    }
+
     if (!formData.name.trim()) {
       toast.error("Please enter a template name");
       return;
     }
 
     setLoading(true);
+
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please sign in to save templates");
-        return;
-      }
 
       const templateContent = {
         model: currentSettings.model,
