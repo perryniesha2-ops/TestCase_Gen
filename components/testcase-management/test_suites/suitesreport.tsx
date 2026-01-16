@@ -86,7 +86,7 @@ export function SuiteReports({
   suiteId,
   showAllSuites = false,
 }: SuiteReportsProps) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [suiteStats, setSuiteStats] = useState<SuiteExecutionStats[]>([]);
   const [testCasePerformance, setTestCasePerformance] = useState<
     TestCasePerformance[]
@@ -105,8 +105,10 @@ export function SuiteReports({
   }, [suiteId]);
 
   useEffect(() => {
-    fetchReportsData();
-  }, [timeRange, selectedSuite]);
+    if (!authLoading && user) {
+      fetchReportsData();
+    }
+  }, [timeRange, selectedSuite, user, authLoading]);
 
   async function fetchReportsData() {
     if (!user) {
@@ -625,9 +627,43 @@ export function SuiteReports({
     testCasePerformance.length > 0 ||
     executionTrends.length > 0;
 
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-muted-foreground">
+            Please sign in to view reports
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading reports...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Header with Controls */}
       <div className="flex items-center justify-between">
         <div></div>
         <div className="flex items-center gap-4">
