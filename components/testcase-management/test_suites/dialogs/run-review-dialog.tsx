@@ -14,6 +14,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 import { Loader2, Eye, X } from "lucide-react";
 
 export type AllowedStatus = "passed" | "failed" | "skipped" | "blocked";
@@ -45,6 +53,9 @@ export type ExecutionHistoryRow = {
   review_create_issue: boolean;
   review_note: string | null;
   reviewed_at: string | null;
+
+  jira_issue_key: string | null;
+  testrail_defect_id: string | null;
 };
 
 export type RunWithStats = {
@@ -72,12 +83,26 @@ function formatDuration(ms: number | null) {
   return `${seconds}s`;
 }
 
+type IntegrationRow = {
+  id: string;
+  integration_type: "jira" | "testrail";
+  project_id?: string | null;
+  sync_enabled: boolean;
+};
+
 export function RunReviewDialog({
   open,
   onOpenChange,
   activeRun,
   rows,
   loading,
+
+  integrations,
+  integrationLoading,
+  selectedIntegrationId,
+  onSelectedIntegrationIdChange,
+  onCreateIssues,
+  creatingIssues,
 
   onMarkFailuresNeedsUpdate,
   onClearFailuresNeedsUpdate,
@@ -95,6 +120,13 @@ export function RunReviewDialog({
   activeRun: RunWithStats | null;
   rows: ExecutionHistoryRow[];
   loading: boolean;
+
+  integrations: IntegrationRow[];
+  integrationLoading: boolean;
+  selectedIntegrationId: string; // "none" | integration.id
+  onSelectedIntegrationIdChange: (id: string) => void;
+  onCreateIssues: () => void;
+  creatingIssues: boolean;
 
   onMarkFailuresNeedsUpdate: () => void;
   onClearFailuresNeedsUpdate: () => void;
@@ -191,6 +223,61 @@ export function RunReviewDialog({
             </CardContent>
           </Card>
         </div>
+        <div className="px-6 pt-3">
+          <Card>
+            <CardContent className="p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="text-xs text-muted-foreground">
+                Select an integration and create issues for rows marked “Create
+                issue”.
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={selectedIntegrationId}
+                  onValueChange={onSelectedIntegrationIdChange}
+                  disabled={integrationLoading || creatingIssues}
+                >
+                  <SelectTrigger className="w-[240px]">
+                    <SelectValue
+                      placeholder={
+                        integrationLoading ? "Loading…" : "Select integration"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No integration</SelectItem>
+                    {integrations.map((i) => (
+                      <SelectItem key={i.id} value={i.id}>
+                        {i.integration_type.toUpperCase()}{" "}
+                        {i.sync_enabled ? "" : "(disabled)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  size="sm"
+                  onClick={onCreateIssues}
+                  disabled={
+                    loading ||
+                    rows.length === 0 ||
+                    creatingIssues ||
+                    integrationLoading ||
+                    selectedIntegrationId === "none" ||
+                    !rows.some(
+                      (r) =>
+                        r.review_create_issue &&
+                        !r.jira_issue_key &&
+                        !r.testrail_defect_id
+                    )
+                  }
+                >
+                  {creatingIssues ? "Creating…" : "Create issues"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Table body */}
         <div className="flex-1 overflow-auto px-6 py-4">
@@ -208,12 +295,14 @@ export function RunReviewDialog({
           ) : (
             <div className="border rounded-md overflow-hidden">
               <div className="grid grid-cols-12 gap-0 bg-muted/40 text-xs font-medium">
-                <div className="col-span-4 p-3">Test</div>
+                <div className="col-span-3 p-3">Test</div>
                 <div className="col-span-1 p-3">Status</div>
                 <div className="col-span-1 p-3">Ev</div>
                 <div className="col-span-2 p-3">Failure</div>
                 <div className="col-span-1 p-3">Update</div>
                 <div className="col-span-1 p-3">Issue</div>
+
+                <div className="col-span-1 p-3">Linked</div>
                 <div className="col-span-2 p-3">Review note</div>
               </div>
 
@@ -222,7 +311,7 @@ export function RunReviewDialog({
                   key={r.execution_id}
                   className="grid grid-cols-12 gap-0 border-t"
                 >
-                  <div className="col-span-4 p-3">
+                  <div className="col-span-3 p-3">
                     <div className="font-medium">{r.test_title}</div>
                     <div className="text-xs text-muted-foreground mt-1">
                       {new Date(r.created_at).toLocaleString()} •{" "}
@@ -279,6 +368,19 @@ export function RunReviewDialog({
                         })
                       }
                     />
+                  </div>
+                  <div className="col-span-1 p-3 text-xs">
+                    {r.jira_issue_key ? (
+                      <Badge variant="secondary" className="text-[10px]">
+                        {r.jira_issue_key}
+                      </Badge>
+                    ) : r.testrail_defect_id ? (
+                      <Badge variant="secondary" className="text-[10px]">
+                        {r.testrail_defect_id}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </div>
 
                   <div className="col-span-2 p-3">

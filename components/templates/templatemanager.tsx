@@ -406,24 +406,6 @@ export function TemplateManager() {
     (a, b) => b.usage_count - a.usage_count
   )[0];
 
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-muted-foreground">
-          Please sign in to manage templates
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-3">
       {/* Header */}

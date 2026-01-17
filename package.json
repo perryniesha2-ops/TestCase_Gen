@@ -43,6 +43,7 @@
     "cron-parser": "^4.9.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.23.24",
+    "jira.js": "^5.2.2",
     "jszip": "^3.10.1",
     "lucide-react": "^0.552.0",
     "next": "^16.1.1",

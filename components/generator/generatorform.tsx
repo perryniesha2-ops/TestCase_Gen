@@ -809,10 +809,6 @@ export function GeneratorForm() {
       </div>
     );
   }
-  if (!user) {
-    router.push("/login");
-    return null;
-  }
 
   const pageBusy = bootstrapping || submitting;
   return (

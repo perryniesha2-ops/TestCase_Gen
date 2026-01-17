@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
@@ -298,7 +299,6 @@ export function ProjectManager() {
 
   async function deleteProject(id: string) {
     if (!user) {
-      // ✅ ADD guard clause
       toast.error("Please sign in to delete projects");
       return;
     }
@@ -383,24 +383,6 @@ export function ProjectManager() {
       sum + p.test_suites_count + p.requirements_count + p.templates_count,
     0
   );
-
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-muted-foreground">
-          Please sign in to manage projects
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -551,8 +533,14 @@ export function ProjectManager() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <CardTitle className="text-lg truncate">
-                              {project.name}
+                              <Link
+                                href={`/projects/${project.id}`}
+                                className="hover:underline"
+                              >
+                                {project.name}
+                              </Link>
                             </CardTitle>
+
                             <Badge variant="outline" className="mt-1 text-xs">
                               {project.status}
                             </Badge>
@@ -652,6 +640,19 @@ export function ProjectManager() {
                         </div>
                       )}
                     </CardContent>
+                    <CardFooter className="flex items-center justify-between gap-2">
+                      <Button asChild size="sm">
+                        <Link href={`/projects/${project.id}`}>Open</Link>
+                      </Button>
+
+                      <Button asChild size="sm" variant="outline">
+                        <Link
+                          href={`/projects/${project.id}/settings/integrations`}
+                        >
+                          Integrations
+                        </Link>
+                      </Button>
+                    </CardFooter>
                   </Card>
                 );
               })}
