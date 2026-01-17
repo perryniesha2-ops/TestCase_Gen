@@ -5,11 +5,6 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
-
-import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
-import { SiteHeader } from "@/components/pagecomponents/site-header";
-import { SiteFooter } from "@/components/pagecomponents/site-footer";
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Settings, FolderOpen, ArrowRight } from "lucide-react";
@@ -36,7 +31,6 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (!user) return;
     void loadProject();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, projectId]);
 
   async function loadProject() {
@@ -52,7 +46,6 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
 
       if (error) throw error;
 
-      // Optional safety check (in case RLS is permissive or service role is used somewhere)
       if (data?.user_id !== user?.id) {
         toast.error("You do not have access to this project.");
         setProject(null);
@@ -165,20 +158,6 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                           )}`}
                         >
                           Test cases <ArrowRight className="h-4 w-4" />
-                        </Link>
-                      </Button>
-                      <Button
-                        asChild
-                        size="sm"
-                        variant="outline"
-                        className="gap-2"
-                      >
-                        <Link
-                          href={`/test-suites?project=${encodeURIComponent(
-                            projectId
-                          )}`}
-                        >
-                          Suites <ArrowRight className="h-4 w-4" />
                         </Link>
                       </Button>
                     </div>

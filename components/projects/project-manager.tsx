@@ -197,11 +197,6 @@ export function ProjectManager() {
   }, [projects, searchQuery, statusFilter, activeTab, user]);
 
   async function fetchProjects() {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     try {
       const res = await fetch("/api/projects/overview", { cache: "no-store" });
