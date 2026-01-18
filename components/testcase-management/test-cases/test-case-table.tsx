@@ -35,6 +35,7 @@ import { TestRunnerDialog } from "./dialogs/test-runner-dialog";
 import { useBulkActions } from "@/hooks/useBulkActions";
 import { useTestCaseData } from "@/hooks/useTestCaseData";
 import { useExecutions } from "@/hooks/useExecutions";
+import { ExportButton } from "@/components/testcase-management/export-button";
 
 const platformIcons = {
   web: Monitor,
@@ -390,7 +391,12 @@ export function TabbedTestCaseTable() {
         selectedProjectName={selectedProjectName}
         onProjectChange={handleProjectChange}
         onCreate={openCreate}
-        onExport={() => toast.message("Export coming soon")}
+        exportButton={
+          <ExportButton
+            testCases={filteredTestCases}
+            generationTitle="Test Cases"
+          />
+        }
         getProjectColor={getProjectColor}
       />
 

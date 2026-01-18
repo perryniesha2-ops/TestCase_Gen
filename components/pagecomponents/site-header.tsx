@@ -1,9 +1,8 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useTheme } from "next-themes";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,17 +13,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { LogoutButton } from "@/components/auth/logout-button";
-import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
-
-type UserProfile = {
-  id: string;
-  email: string;
-  full_name?: string;
-  avatar_url?: string;
-};
 
 type SiteHeaderProps = {
   className?: string;
@@ -34,7 +26,7 @@ type SiteHeaderProps = {
 
 function initials(name?: string, email?: string) {
   const n = (name ?? "").trim();
-  if (n)
+  if (n) {
     return (
       n
         .split(/\s+/)
@@ -42,14 +34,25 @@ function initials(name?: string, email?: string) {
         .map((p) => p[0]?.toUpperCase() ?? "")
         .join("") || "U"
     );
+  }
   return (email?.[0] ?? "U").toUpperCase();
 }
 
 export function SiteHeader({ className, title, subtitle }: SiteHeaderProps) {
   const { theme, setTheme } = useTheme();
   const { user, loading } = useAuth();
+  const [mounted, setMounted] = React.useState(false);
 
-  const avatarText = initials(user?.user_metadata?.full_name, user?.email);
+  // ✅ Fix hydration mismatch for theme toggle
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // ✅ Memoize avatar text to prevent recalculation on every render
+  const avatarText = React.useMemo(
+    () => initials(user?.user_metadata?.full_name, user?.email),
+    [user?.user_metadata?.full_name, user?.email]
+  );
 
   return (
     <header
@@ -71,54 +74,68 @@ export function SiteHeader({ className, title, subtitle }: SiteHeaderProps) {
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label="Toggle theme"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >
-            <Sun className="h-4 w-4 rotate-0 scale-100 transition dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition dark:rotate-0 dark:scale-100" />
-          </Button>
+          {/* ✅ Prevent hydration mismatch on theme toggle */}
+          {!mounted ? (
+            <Skeleton className="h-9 w-9 rounded-md" />
+          ) : (
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Toggle theme"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              suppressHydrationWarning
+            >
+              <Sun className="h-4 w-4 rotate-0 scale-100 transition dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition dark:rotate-0 dark:scale-100" />
+            </Button>
+          )}
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                <Avatar className="h-8 w-8">
-                  {user?.user_metadata?.avatar_url ? (
-                    <AvatarImage
-                      src={user.user_metadata.avatar_url}
-                      alt={
-                        user.user_metadata?.full_name || user.email || "User"
-                      }
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display =
-                          "none";
-                      }}
-                    />
-                  ) : null}
-                  <AvatarFallback>{avatarText}</AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
+          {/* ✅ Better loading state for auth */}
+          {loading ? (
+            <Skeleton className="h-8 w-8 rounded-full" />
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="relative h-8 w-8 rounded-full"
+                >
+                  <Avatar className="h-8 w-8">
+                    {user?.user_metadata?.avatar_url ? (
+                      <AvatarImage
+                        src={user.user_metadata.avatar_url}
+                        alt={
+                          user.user_metadata?.full_name || user.email || "User"
+                        }
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display =
+                            "none";
+                        }}
+                      />
+                    ) : null}
+                    <AvatarFallback>{avatarText}</AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">
-                    {user?.user_metadata?.full_name || user?.email || "User"}
-                  </p>
-                  <p className="text-xs leading-none text-muted-foreground">
-                    {loading ? "" : user?.email || ""}
-                  </p>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <LogoutButton showConfirmation />
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">
+                      {user?.user_metadata?.full_name || user?.email || "User"}
+                    </p>
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {user?.email || ""}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <LogoutButton showConfirmation />
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
     </header>

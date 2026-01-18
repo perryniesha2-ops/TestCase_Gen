@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { TestTypeMultiselect } from "@/components/generator/testtype-multiselect";
 
 import {
   Loader2,
@@ -43,6 +44,7 @@ import {
   Eye,
   Zap,
   Save,
+  Download,
 } from "lucide-react";
 
 import { TemplateSelect } from "@/components/templates/template-select";
@@ -395,6 +397,15 @@ export function GeneratorForm() {
   const [model, setModel] = useState("claude-sonnet-4-5");
   const [testCaseCount, setTestCaseCount] = useState("10");
   const [coverage, setCoverage] = useState<Coverage>("comprehensive");
+  const [includeNegativeTests, setIncludeNegativeTests] = useState(true);
+  const [includeSecurityTests, setIncludeSecurityTests] = useState(false);
+  const [includeBoundaryTests, setIncludeBoundaryTests] = useState(true);
+  const [exportFormat, setExportFormat] = useState<string>("standard");
+  const [selectedTestTypes, setSelectedTestTypes] = useState<string[]>([
+    "happy-path",
+    "negative",
+    "boundary",
+  ]);
 
   // Cross-platform state
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
@@ -600,6 +611,10 @@ export function GeneratorForm() {
         title: generationTitle.trim(),
         description: generationDescription?.trim() || null,
         project_id: selectedProject || null,
+        includeNegativeTests,
+        includeSecurityTests,
+        includeBoundaryTests,
+        exportFormat,
       };
 
       const response = await fetch("/api/generate-test-cases", {
@@ -1156,24 +1171,25 @@ export function GeneratorForm() {
 
                   {/* Coverage */}
                   <div className="space-y-2">
-                    <Label htmlFor="coverage">Coverage Level</Label>
-                    <Select
-                      name="coverage"
-                      value={coverage}
-                      onValueChange={(value) => setCoverage(value as Coverage)}
-                      disabled={pageBusy}
+                    <Label
+                      htmlFor="test-types"
+                      className="text-base font-medium"
                     >
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Select coverage" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="standard">Standard</SelectItem>
-                        <SelectItem value="comprehensive">
-                          Comprehensive
-                        </SelectItem>
-                        <SelectItem value="exhaustive">Exhaustive</SelectItem>
-                      </SelectContent>
-                    </Select>
+                      Test Types
+                      <span className="text-destructive ml-1">*</span>
+                    </Label>
+
+                    <TestTypeMultiselect
+                      value={selectedTestTypes}
+                      onChange={setSelectedTestTypes}
+                      disabled={pageBusy}
+                      placeholder="Select test types to generate..."
+                    />
+
+                    <p className="text-xs text-muted-foreground">
+                      Select which types of test cases to generate. More types =
+                      more comprehensive coverage.
+                    </p>
                   </div>
                 </div>
               )}

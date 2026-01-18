@@ -636,11 +636,11 @@ export function ProjectManager() {
                       )}
                     </CardContent>
                     <CardFooter className="flex items-center justify-between gap-2">
-                      <Button asChild size="sm">
+                      <Button asChild size="lg" variant="outline">
                         <Link href={`/projects/${project.id}`}>Open</Link>
                       </Button>
 
-                      <Button asChild size="sm" variant="outline">
+                      <Button asChild size="lg" variant="default">
                         <Link
                           href={`/projects/${project.id}/settings/integrations`}
                         >

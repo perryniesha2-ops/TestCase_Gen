@@ -41,6 +41,9 @@ export interface TestCase {
   project_id?: string | null;
   projects?: Project;
   updated_at: string;
+  is_negative_test: boolean;
+  is_security_test: boolean;
+  is_boundary_test: boolean;
 }
 
 export interface CrossPlatformTestCase {
