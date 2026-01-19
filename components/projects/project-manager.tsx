@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/lib/auth/auth-context";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth/auth-context";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -159,20 +160,33 @@ const colorClasses: Record<
   gray: { bg: "bg-gray-100", border: "border-gray-300", text: "text-gray-700" },
 };
 
+async function safeJson(res: Response) {
+  const text = await res.text().catch(() => "");
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function ProjectManager() {
+  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<ProjectWithStats[]>(
-    []
+    [],
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+
   const [showDialog, setShowDialog] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectWithStats | null>(
-    null
+    null,
   );
+
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "all">(
-    "all"
+    "all",
   );
   const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
 
@@ -187,27 +201,34 @@ export function ProjectManager() {
   });
 
   useEffect(() => {
-    if (user) fetchProjects();
-  }, [user]);
+    if (authLoading) return;
+    if (!user) return;
+    void fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user?.id]);
 
   useEffect(() => {
-    if (user) {
-      filterProjects();
-    }
-  }, [projects, searchQuery, statusFilter, activeTab, user]);
+    filterProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, searchQuery, statusFilter, activeTab]);
 
   async function fetchProjects() {
     setLoading(true);
     try {
       const res = await fetch("/api/projects/overview", { cache: "no-store" });
-      const raw = await res.text().catch(() => "");
-      const payload = raw ? JSON.parse(raw) : null;
 
+      if (res.status === 401) {
+        toast.error("Your session has expired. Please sign in again.");
+        router.replace("/login");
+        return;
+      }
+
+      const payload = await safeJson(res);
       if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
 
-      setProjects(payload.projects ?? []);
-    } catch (error) {
-      console.error("Error fetching projects:", error);
+      setProjects(payload?.projects ?? []);
+    } catch (e) {
+      console.error("Error fetching projects:", e);
       toast.error("Failed to load projects");
     } finally {
       setLoading(false);
@@ -217,126 +238,24 @@ export function ProjectManager() {
   function filterProjects() {
     let filtered = projects;
 
-    // Filter by tab
     filtered =
       activeTab === "active"
         ? filtered.filter((p) => p.status !== "archived")
         : filtered.filter((p) => p.status === "archived");
 
-    // Filter by status
-    if (statusFilter !== "all") {
+    if (statusFilter !== "all")
       filtered = filtered.filter((p) => p.status === statusFilter);
-    }
 
-    // Filter by search query
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.description?.toLowerCase().includes(query)
+          p.name.toLowerCase().includes(q) ||
+          p.description?.toLowerCase().includes(q),
       );
     }
 
     setFilteredProjects(filtered);
-  }
-
-  async function saveProject() {
-    if (!user) return;
-
-    if (!formData.name.trim()) {
-      toast.error("Please enter a project name");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const supabase = createClient();
-
-      const projectData = {
-        user_id: user.id,
-        name: formData.name.trim(),
-        description: formData.description.trim() || null,
-        status: formData.status,
-        color: formData.color,
-        icon: formData.icon,
-        start_date: formData.start_date || null,
-        target_end_date: formData.target_end_date || null,
-        tags: [],
-      };
-
-      if (editingProject) {
-        const { error } = await supabase
-          .from("projects")
-          .update(projectData)
-          .eq("id", editingProject.id);
-
-        if (error) throw error;
-        toast.success("Project updated successfully");
-      } else {
-        const { error } = await supabase.from("projects").insert(projectData);
-
-        if (error) throw error;
-        toast.success("Project created successfully");
-      }
-
-      setShowDialog(false);
-      setEditingProject(null);
-      resetForm();
-      await fetchProjects();
-    } catch (error) {
-      console.error("Error saving project:", error);
-      toast.error("Failed to save project");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function deleteProject(id: string) {
-    if (!user) {
-      toast.error("Please sign in to delete projects");
-      return;
-    }
-
-    if (!confirm("Delete this project? Linked items will become unassigned."))
-      return;
-
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from("projects").delete().eq("id", id);
-
-      if (error) throw error;
-      toast.success("Project deleted");
-      await fetchProjects();
-    } catch (error) {
-      console.error("Error deleting project:", error);
-      toast.error("Failed to delete project");
-    }
-  }
-
-  async function archiveProject(id: string, currentStatus: ProjectStatus) {
-    if (!user) {
-      toast.error("Please sign in to update projects");
-      return;
-    }
-    const newStatus = currentStatus === "archived" ? "active" : "archived";
-
-    try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("projects")
-        .update({ status: newStatus })
-        .eq("id", id);
-
-      if (error) throw error;
-      toast.success(
-        `Project ${newStatus === "archived" ? "archived" : "unarchived"}`
-      );
-      await fetchProjects();
-    } catch (error) {
-      console.error("Error updating project:", error);
-      toast.error("Failed to update project");
-    }
   }
 
   function resetForm() {
@@ -371,26 +290,192 @@ export function ProjectManager() {
     setShowDialog(true);
   }
 
-  const activeProjects = projects.filter((p) => p.status === "active");
-  const completedProjects = projects.filter((p) => p.status === "completed");
-  const totalItems = projects.reduce(
-    (sum, p) =>
-      sum + p.test_suites_count + p.requirements_count + p.templates_count,
-    0
+  async function saveProject() {
+    if (!user) {
+      toast.error("Please sign in to create or edit projects.");
+      router.replace("/login");
+      return;
+    }
+
+    if (!formData.name.trim()) {
+      toast.error("Please enter a project name");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const body = {
+        name: formData.name.trim(),
+        description: formData.description.trim() || null,
+        status: formData.status,
+        color: formData.color,
+        icon: formData.icon,
+        start_date: formData.start_date || null,
+        target_end_date: formData.target_end_date || null,
+      };
+
+      const res = await fetch(
+        editingProject ? `/api/projects/${editingProject.id}` : `/api/projects`,
+        {
+          method: editingProject ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+
+      if (res.status === 401) {
+        toast.error("Your session has expired. Please sign in again.");
+        router.replace("/login");
+        return;
+      }
+
+      const payload = await safeJson(res);
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+
+      toast.success(editingProject ? "Project updated" : "Project created");
+      setShowDialog(false);
+      setEditingProject(null);
+      resetForm();
+      await fetchProjects();
+    } catch (e) {
+      console.error("Error saving project:", e);
+      toast.error("Failed to save project");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deleteProject(id: string) {
+    if (!user) {
+      toast.error("Please sign in to delete projects.");
+      router.replace("/login");
+      return;
+    }
+
+    if (!confirm("Delete this project? Linked items will become unassigned."))
+      return;
+
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+
+      if (res.status === 401) {
+        toast.error("Your session has expired. Please sign in again.");
+        router.replace("/login");
+        return;
+      }
+
+      const payload = await safeJson(res);
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+
+      toast.success("Project deleted");
+      await fetchProjects();
+    } catch (e) {
+      console.error("Error deleting project:", e);
+      toast.error("Failed to delete project");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function toggleArchiveProject(
+    id: string,
+    currentStatus: ProjectStatus,
+  ) {
+    if (!user) {
+      toast.error("Please sign in to update projects.");
+      router.replace("/login");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const newStatus: ProjectStatus =
+        currentStatus === "archived" ? "active" : "archived";
+
+      const res = await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (res.status === 401) {
+        toast.error("Your session has expired. Please sign in again.");
+        router.replace("/login");
+        return;
+      }
+
+      const payload = await safeJson(res);
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+
+      toast.success(
+        newStatus === "archived" ? "Project archived" : "Project unarchived",
+      );
+      await fetchProjects();
+    } catch (e) {
+      console.error("Error updating project:", e);
+      toast.error("Failed to update project");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const activeProjects = useMemo(
+    () => projects.filter((p) => p.status === "active"),
+    [projects],
+  );
+  const completedProjects = useMemo(
+    () => projects.filter((p) => p.status === "completed"),
+    [projects],
   );
 
+  const totalItems = useMemo(
+    () =>
+      projects.reduce(
+        (sum, p) =>
+          sum + p.test_suites_count + p.requirements_count + p.templates_count,
+        0,
+      ),
+    [projects],
+  );
+
+  // ---------- Render gates ----------
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+          <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Sign in required</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Please sign in to view and manage projects.
+          </p>
+          <Button asChild>
+            <Link href="/login">Go to Login</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // ---------- Main UI ----------
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
-        <div></div>
+        <div />
         <Button onClick={openNewDialog} size="lg">
           <Plus className="h-5 w-5 mr-2" />
           New Project
         </Button>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -435,11 +520,10 @@ export function ProjectManager() {
         </Card>
       </div>
 
-      {/* Filters and Search */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search projects..."
               value={searchQuery}
@@ -448,11 +532,10 @@ export function ProjectManager() {
             />
           </div>
         </div>
+
         <Select
           value={statusFilter}
-          onValueChange={(value) =>
-            setStatusFilter(value as ProjectStatus | "all")
-          }
+          onValueChange={(v) => setStatusFilter(v as any)}
         >
           <SelectTrigger className="w-full sm:w-[200px]">
             <Filter className="h-4 w-4 mr-2" />
@@ -468,11 +551,7 @@ export function ProjectManager() {
         </Select>
       </div>
 
-      {/* Tabs */}
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as "active" | "archived")}
-      >
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <TabsList>
           <TabsTrigger value="active">Active Projects</TabsTrigger>
           <TabsTrigger value="archived">Archived</TabsTrigger>
@@ -514,9 +593,8 @@ export function ProjectManager() {
                     key={project.id}
                     className="relative overflow-hidden hover:shadow-lg transition-shadow"
                   >
-                    <div
-                      className={`absolute top-0 left-0 w-full h-1 bg-${project.color}-500`}
-                    />
+                    {/* NOTE: prefer a safe mapping over dynamic Tailwind class names */}
+                    <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
 
                     <CardHeader className="pt-6">
                       <div className="flex items-start justify-between">
@@ -541,6 +619,7 @@ export function ProjectManager() {
                             </Badge>
                           </div>
                         </div>
+
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -558,9 +637,10 @@ export function ProjectManager() {
                               <Edit className="h-4 w-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
+
                             <DropdownMenuItem
                               onClick={() =>
-                                archiveProject(project.id, project.status)
+                                toggleArchiveProject(project.id, project.status)
                               }
                             >
                               <Archive className="h-4 w-4 mr-2" />
@@ -568,7 +648,9 @@ export function ProjectManager() {
                                 ? "Unarchive"
                                 : "Archive"}
                             </DropdownMenuItem>
+
                             <DropdownMenuSeparator />
+
                             <DropdownMenuItem
                               onClick={() => deleteProject(project.id)}
                               className="text-destructive"
@@ -579,6 +661,7 @@ export function ProjectManager() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
+
                       {project.description && (
                         <CardDescription className="line-clamp-2 mt-2">
                           {project.description}
@@ -589,7 +672,7 @@ export function ProjectManager() {
                     <CardContent className="space-y-3">
                       <div className="grid grid-cols-3 gap-2 text-sm">
                         <div className="text-center">
-                          <div className="font-bold text-blue-600">
+                          <div className="font-bold">
                             {project.test_suites_count}
                           </div>
                           <div className="text-xs text-muted-foreground">
@@ -597,7 +680,7 @@ export function ProjectManager() {
                           </div>
                         </div>
                         <div className="text-center">
-                          <div className="font-bold text-purple-600">
+                          <div className="font-bold">
                             {project.requirements_count}
                           </div>
                           <div className="text-xs text-muted-foreground">
@@ -605,7 +688,7 @@ export function ProjectManager() {
                           </div>
                         </div>
                         <div className="text-center">
-                          <div className="font-bold text-green-600">
+                          <div className="font-bold">
                             {project.templates_count}
                           </div>
                           <div className="text-xs text-muted-foreground">
@@ -613,33 +696,12 @@ export function ProjectManager() {
                           </div>
                         </div>
                       </div>
-
-                      {(project.start_date || project.target_end_date) && (
-                        <div className="text-xs text-muted-foreground border-t pt-2">
-                          {project.start_date && (
-                            <div>
-                              Started:{" "}
-                              {new Date(
-                                project.start_date
-                              ).toLocaleDateString()}
-                            </div>
-                          )}
-                          {project.target_end_date && (
-                            <div>
-                              Target:{" "}
-                              {new Date(
-                                project.target_end_date
-                              ).toLocaleDateString()}
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </CardContent>
+
                     <CardFooter className="flex items-center justify-between gap-2">
                       <Button asChild size="lg" variant="outline">
                         <Link href={`/projects/${project.id}`}>Open</Link>
                       </Button>
-
                       <Button asChild size="lg" variant="default">
                         <Link
                           href={`/projects/${project.id}/settings/integrations`}
@@ -656,7 +718,6 @@ export function ProjectManager() {
         </TabsContent>
 
         <TabsContent value="archived" className="mt-6">
-          {/* Same structure as active tab */}
           {filteredProjects.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
@@ -688,7 +749,7 @@ export function ProjectManager() {
                           variant="ghost"
                           size="sm"
                           onClick={() =>
-                            archiveProject(project.id, project.status)
+                            toggleArchiveProject(project.id, project.status)
                           }
                         >
                           Restore
@@ -701,11 +762,8 @@ export function ProjectManager() {
             </div>
           )}
         </TabsContent>
-        <div className="h-2" />
       </Tabs>
-      <div className="h-2" />
 
-      {/* Create/Edit Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -801,7 +859,7 @@ export function ProjectManager() {
                     key={color}
                     type="button"
                     onClick={() => setFormData({ ...formData, color })}
-                    className={`w-10 h-10 rounded-full bg-${color}-500 ${
+                    className={`w-10 h-10 rounded-full ${colorClasses[color].bg} ${
                       formData.color === color
                         ? "ring-2 ring-offset-2 ring-primary"
                         : ""
@@ -841,7 +899,6 @@ export function ProjectManager() {
               </div>
             </div>
           </div>
-          <div className="h-2" />
 
           <DialogFooter>
             <Button

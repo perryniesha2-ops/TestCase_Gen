@@ -1,43 +1,32 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
+// middleware.ts
+import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  });
+  const pathname = request.nextUrl.pathname;
+
+  // Start with a pass-through response we can attach cookies to
+  const response = NextResponse.next();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value;
+        getAll() {
+          return request.cookies.getAll();
         },
-        set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({ name, value, ...options });
-          response = NextResponse.next({
-            request: { headers: request.headers },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
           });
-          response.cookies.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          request.cookies.set({ name, value: "", ...options });
-          response = NextResponse.next({
-            request: { headers: request.headers },
-          });
-          response.cookies.set({ name, value: "", ...options });
         },
       },
-    }
+    },
   );
 
-  const pathname = request.nextUrl.pathname;
   const hasBetaAccess = request.cookies.get("beta_auth")?.value === "true";
 
-  // Public routes
   const publicRoutes = [
     "/",
     "/login",
@@ -70,37 +59,37 @@ export async function middleware(request: NextRequest) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (user) {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
-    }
+    if (user) return NextResponse.redirect(new URL("/dashboard", request.url));
+
     return response;
   }
 
-  // Get user session
+  // Get user session (and error) ONCE
   const {
     data: { user },
     error,
   } = await supabase.auth.getUser();
 
-  // Handle auth errors on protected routes
+  // Only handle auth errors on protected routes
   if (error && !isPublicRoute) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set(
       "message",
-      "Session expired. Please log in again."
+      "Session expired. Please log in again.",
     );
 
-    const clearedResponse = NextResponse.redirect(loginUrl);
+    const cleared = NextResponse.redirect(loginUrl);
 
-    // Clear auth cookies
+    // Clear cookies if you want, but note: cookie names vary by Supabase version.
+    // If you keep this, it won't hurt, but it's not always necessary.
     [
       "sb-access-token",
       "sb-refresh-token",
       "supabase-auth-token",
       "supabase.auth.token",
-    ].forEach((name) => clearedResponse.cookies.delete(name));
+    ].forEach((name) => cleared.cookies.delete(name));
 
-    return clearedResponse;
+    return cleared;
   }
 
   // Redirect unauthenticated users from protected routes
@@ -110,8 +99,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Redirect authenticated users from auth pages
-  if (user && ["/login", "/beta-login"].includes(pathname)) {
+  // Redirect authenticated users away from auth pages
+  if (user && (pathname === "/login" || pathname === "/beta-login")) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

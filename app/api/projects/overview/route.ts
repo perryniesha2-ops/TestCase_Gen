@@ -30,7 +30,9 @@ export async function GET() {
     // 1) Base projects
     const { data: projects, error: projErr } = await supabase
       .from("projects")
-      .select("*")
+      .select(
+        "id, user_id, name, description, status, color, icon, start_date, target_end_date, actual_end_date, tags, created_at, updated_at",
+      )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
@@ -89,7 +91,7 @@ export async function GET() {
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message ?? "Unexpected error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -17,6 +17,7 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/lib/auth/auth-context";
 
 const COOLDOWN_SECONDS = 3;
 
@@ -31,6 +32,7 @@ export function LoginForm() {
   });
 
   const disabled = loading || cooldown > 0;
+  const { refreshAuth } = useAuth();
 
   useEffect(() => {
     return () => {
@@ -79,7 +81,10 @@ export function LoginForm() {
     }
 
     toast.success("Welcome back!");
-    router.push("/dashboard");
+    await refreshAuth();
+
+    router.replace("/dashboard");
+    router.refresh();
   }
 
   return (
@@ -138,8 +143,8 @@ export function LoginForm() {
                   {loading
                     ? "Signing in..."
                     : cooldown > 0
-                    ? `Please wait ${cooldown}s...`
-                    : "Sign in"}
+                      ? `Please wait ${cooldown}s...`
+                      : "Sign in"}
                 </Button>
 
                 <FieldDescription className="text-center">
