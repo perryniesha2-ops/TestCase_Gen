@@ -1,65 +1,97 @@
-// lib/integrations/jira-client.ts
+// lib/integration/jira-client.ts
 import { Version3Client } from "jira.js";
 
-interface JiraConfig {
-  url: string;
+export interface JiraConfig {
+  url: string; // base site url, e.g. https://your-domain.atlassian.net
   email: string;
   apiToken: string;
+  projectKey?: string;
+}
+
+function normalizeBaseUrl(input: string) {
+  const trimmed = String(input ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!trimmed) throw new Error("Jira URL is required");
+  return trimmed;
+}
+
+function toHost(baseUrl: string) {
+  const cleaned = normalizeBaseUrl(baseUrl);
+
+  // Ensure URL is parseable
+  const withProto = /^https?:\/\//i.test(cleaned)
+    ? cleaned
+    : `https://${cleaned}`;
+
+  let u: URL;
+  try {
+    u = new URL(withProto);
+  } catch {
+    throw new Error(
+      "Invalid Jira URL. Use the base site URL like https://your-domain.atlassian.net",
+    );
+  }
+
+  // Must be root site only (no /jira/... etc)
+  if (u.pathname && u.pathname !== "/") {
+    throw new Error(
+      "Jira URL must be the base site URL only (no /jira/... path). Example: https://your-domain.atlassian.net",
+    );
+  }
+
+  if (!u.host) {
+    throw new Error(
+      "Invalid Jira URL host. Use the base site URL like https://your-domain.atlassian.net",
+    );
+  }
+
+  return { host: u.host, baseUrl: `${u.protocol}//${u.host}` };
 }
 
 export class JiraIntegration {
   private client: Version3Client;
-  private jiraHost: string;
+  private baseUrl: string;
 
   constructor(config: JiraConfig) {
-    const host = config.url.replace(/^https?:\/\//, "");
-    this.jiraHost = config.url;
+    if (!config?.url || !config?.email || !config?.apiToken) {
+      throw new Error(
+        "Missing Jira config (url, email, apiToken are required)",
+      );
+    }
+
+    const { baseUrl } = toHost(config.url);
+    this.baseUrl = baseUrl;
 
     this.client = new Version3Client({
-      host,
+      host: baseUrl, // ✅ CORRECT: Full URL with protocol
       authentication: {
         basic: {
-          email: config.email,
-          apiToken: config.apiToken,
+          email: String(config.email).trim(),
+          apiToken: String(config.apiToken).trim(),
         },
       },
     });
   }
 
-  // Import Jira issues as requirements
-  async importIssues(
-    projectKey: string,
-    options?: {
-      issueTypes?: string[];
-      jql?: string;
-    }
-  ) {
-    const jql =
-      options?.jql || `project = ${projectKey} AND type IN (Story, Task, Bug)`;
+  getBaseUrl() {
+    return this.baseUrl;
+  }
 
-    const issues = await this.client.issueSearch.searchForIssuesUsingJql({
-      jql,
-      maxResults: 100,
-      fields: ["summary", "description", "status", "priority", "labels"],
-    });
+  async testConnection() {
+    const anyClient = this.client as any;
 
-    return (
-      issues.issues?.map((issue) => ({
-        external_id: issue.key,
-        title: issue.fields.summary,
-        description: issue.fields.description,
-        status: this.mapJiraStatus(issue.fields.status?.name || "To Do"),
-        priority: this.mapJiraPriority(issue.fields.priority?.name),
-        metadata: {
-          issue_type: issue.fields.issuetype?.name || "Unknown",
-          labels: issue.fields.labels,
-          jira_url: `${this.jiraHost}/browse/${issue.key}`,
-        },
-      })) || []
+    if (anyClient?.myself?.getCurrentUser)
+      return await anyClient.myself.getCurrentUser();
+    if (anyClient?.myself?.getMyself) return await anyClient.myself.getMyself();
+    if (anyClient?.serverInfo?.getServerInfo)
+      return await anyClient.serverInfo.getServerInfo();
+
+    throw new Error(
+      "Unable to test Jira connection (myself/serverInfo methods not found on jira.js client).",
     );
   }
 
-  // Create Jira issue from test failure
   async createIssueFromFailure(
     failure: {
       test_title: string;
@@ -67,8 +99,10 @@ export class JiraIntegration {
       suite_name: string;
       evidence_urls?: string[];
     },
-    projectKey: string
+    projectKey: string,
   ) {
+    if (!projectKey) throw new Error("Jira projectKey is required");
+
     const description = `
 *Test Case:* ${failure.test_title}
 *Test Suite:* ${failure.suite_name}
@@ -80,74 +114,21 @@ ${failure.failure_reason}
 
 ${
   failure.evidence_urls?.length
-    ? `h3. Evidence\n${failure.evidence_urls
-        .map((url) => `!${url}!`)
-        .join("\n")}`
+    ? `h3. Evidence\n${failure.evidence_urls.map((url) => `!${url}!`).join("\n")}`
     : ""
 }
-    `.trim();
+`.trim();
 
-    const issue = await this.client.issues.createIssue({
+    const issue = await (this.client as any).issues.createIssue({
       fields: {
         project: { key: projectKey },
         summary: `Test Failure: ${failure.test_title}`,
         description,
         issuetype: { name: "Bug" },
-        labels: ["automated-test-failure"],
+        labels: ["synthqa-test-failure"],
       },
     });
 
     return issue;
-  }
-
-  // Link test case to Jira issue
-  async linkTestCase(issueKey: string, testCaseUrl: string) {
-    await this.client.issueRemoteLinks.createOrUpdateRemoteIssueLink({
-      issueIdOrKey: issueKey,
-      object: {
-        url: testCaseUrl,
-        title: "Test Case",
-      },
-    });
-  }
-
-  // Update issue status based on test results
-  async updateIssueStatus(issueKey: string, allTestsPassed: boolean) {
-    const transitions = await this.client.issues.getTransitions({
-      issueIdOrKey: issueKey,
-    });
-
-    const targetStatus = allTestsPassed ? "Done" : "In Progress";
-    const transition = transitions.transitions?.find(
-      (t) => t.name === targetStatus
-    );
-
-    if (transition) {
-      await this.client.issues.doTransition({
-        issueIdOrKey: issueKey,
-        transition: { id: transition.id },
-      });
-    }
-  }
-
-  private mapJiraStatus(jiraStatus?: string): string {
-    const mapping: Record<string, string> = {
-      "To Do": "draft",
-      "In Progress": "approved",
-      Done: "implemented",
-      Closed: "tested",
-    };
-    return mapping[jiraStatus || "To Do"] || "draft";
-  }
-
-  private mapJiraPriority(jiraPriority?: string): string {
-    const mapping: Record<string, string> = {
-      Highest: "critical",
-      High: "high",
-      Medium: "medium",
-      Low: "low",
-      Lowest: "low",
-    };
-    return mapping[jiraPriority || "Medium"] || "medium";
   }
 }

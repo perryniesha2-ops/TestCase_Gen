@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
 type IntegrationType = "jira" | "testrail";
+
+function normalizeJiraBaseUrl(input: string) {
+  return String(input ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+}
+
+function isLikelyJiraBaseUrl(url: string) {
+  try {
+    const withProto = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    const u = new URL(withProto);
+    return u.pathname === "/" && Boolean(u.host);
+  } catch {
+    return false;
+  }
+}
 
 export function IntegrationSetup({ projectId }: { projectId: string }) {
   const [activeType, setActiveType] = useState<IntegrationType>("jira");
@@ -32,6 +48,12 @@ export function IntegrationSetup({ projectId }: { projectId: string }) {
           <TabsContent value="jira">
             <JiraSetup projectId={projectId} />
           </TabsContent>
+
+          <TabsContent value="testrail">
+            <div className="pt-4 text-sm text-muted-foreground">
+              TestRail setup coming next.
+            </div>
+          </TabsContent>
         </Tabs>
       </CardContent>
     </Card>
@@ -39,6 +61,11 @@ export function IntegrationSetup({ projectId }: { projectId: string }) {
 }
 
 function JiraSetup({ projectId }: { projectId: string }) {
+  const [integrationId, setIntegrationId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [loading, setLoading] = useState(true);
+
   const [config, setConfig] = useState({
     url: "",
     email: "",
@@ -47,42 +74,169 @@ function JiraSetup({ projectId }: { projectId: string }) {
     autoSync: false,
   });
 
-  async function testConnection() {
-    try {
-      const response = await fetch("/api/integrations/jira/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
-      });
+  useEffect(() => {
+    async function loadIntegration() {
+      if (!projectId) return;
 
-      if (!response.ok) throw new Error("Connection failed");
-      toast.success("Connection successful!");
-    } catch {
-      toast.error("Failed to connect to Jira");
+      setLoading(true);
+      try {
+        const url = `/api/integrations?project_id=${projectId}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error("Failed to load integrations");
+        }
+
+        const json = await response.json();
+        const integrations = json?.integrations || [];
+        const jiraIntegration = integrations.find(
+          (i: any) => i.integration_type === "jira",
+        );
+
+        if (jiraIntegration) {
+          setIntegrationId(jiraIntegration.id);
+          setConfig({
+            url: jiraIntegration.config?.url || "",
+            email: jiraIntegration.config?.email || "",
+            apiToken: jiraIntegration.config?.apiToken || "",
+            projectKey: jiraIntegration.config?.projectKey || "",
+            autoSync: jiraIntegration.sync_enabled || false,
+          });
+        } else {
+          setIntegrationId(null);
+          setConfig({
+            url: "",
+            email: "",
+            apiToken: "",
+            projectKey: "",
+            autoSync: false,
+          });
+        }
+      } catch (err) {
+        setIntegrationId(null);
+      } finally {
+        setLoading(false);
+      }
     }
-  }
+
+    loadIntegration();
+  }, [projectId]);
+
+  const normalizedUrl = useMemo(
+    () => normalizeJiraBaseUrl(config.url),
+    [config.url],
+  );
+  const urlLooksValid = useMemo(() => {
+    if (!normalizedUrl) return false;
+    return isLikelyJiraBaseUrl(normalizedUrl);
+  }, [normalizedUrl]);
 
   async function saveIntegration() {
+    if (!projectId) {
+      toast.error("Missing project id");
+      return;
+    }
+    if (!config.url || !config.email || !config.apiToken) {
+      toast.error("URL, Email, and API Token are required");
+      return;
+    }
+    if (!urlLooksValid) {
+      toast.error("Use the base Jira site URL only (no /jira/... path).");
+      return;
+    }
+
+    setSaving(true);
     try {
+      const payload = {
+        integration_id: integrationId,
+        integration_type: "jira",
+        project_id: projectId,
+        config: {
+          url: normalizedUrl,
+          email: config.email.trim(),
+          apiToken: config.apiToken.trim(),
+          projectKey: config.projectKey.trim(),
+        },
+        auto_sync: config.autoSync,
+      };
+
       const response = await fetch("/api/integrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          integration_type: "jira",
-          project_id: projectId,
-          config,
-        }),
+        body: JSON.stringify(payload),
       });
 
-      const json = await response.json();
-      if (!response.ok) throw new Error(json?.error ?? "Failed to save");
+      const json = await response.json().catch(() => ({}));
 
-      toast.success("Jira integration configured!");
+      if (!response.ok)
+        throw new Error(json?.error ?? "Failed to save integration");
+
+      const id = json?.integration?.id ?? null;
+      if (!id) throw new Error("Saved, but API did not return integration id");
+
+      setIntegrationId(id);
+      toast.success(
+        integrationId ? "Integration updated" : "Integration saved",
+      );
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to save integration"
+        err instanceof Error ? err.message : "Failed to save integration",
       );
+    } finally {
+      setSaving(false);
     }
+  }
+
+  async function testConnection() {
+    if (!config.url || !config.email || !config.apiToken) {
+      toast.error("URL, Email, and API Token are required");
+      return;
+    }
+    if (!urlLooksValid) {
+      toast.error("Use the base Jira site URL only (no /jira/... path).");
+      return;
+    }
+
+    setTesting(true);
+    try {
+      const payload = {
+        url: normalizedUrl,
+        email: config.email.trim(),
+        apiToken: config.apiToken.trim(),
+      };
+
+      const response = await fetch("/api/integrations/jira/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(json?.error ?? `HTTP ${response.status}`);
+      }
+
+      toast.success(
+        `Connection successful! Connected as ${json?.me?.displayName ?? "user"}`,
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to connect to Jira",
+      );
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-4 pt-4">
+        <div className="text-sm text-muted-foreground">
+          Loading integration settings...
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -94,6 +248,12 @@ function JiraSetup({ projectId }: { projectId: string }) {
           value={config.url}
           onChange={(e) => setConfig({ ...config, url: e.target.value })}
         />
+        {config.url && !urlLooksValid ? (
+          <div className="text-xs text-muted-foreground">
+            Use the base site URL only (example:
+            https://your-domain.atlassian.net). Do not paste board URLs.
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-2">
@@ -109,7 +269,7 @@ function JiraSetup({ projectId }: { projectId: string }) {
         <Label>API Token</Label>
         <Input
           type="password"
-          placeholder="Get from Jira account settings"
+          placeholder="Create in Atlassian Account → Security → API tokens"
           value={config.apiToken}
           onChange={(e) => setConfig({ ...config, apiToken: e.target.value })}
         />
@@ -118,7 +278,7 @@ function JiraSetup({ projectId }: { projectId: string }) {
       <div className="space-y-2">
         <Label>Project Key</Label>
         <Input
-          placeholder="PROJ"
+          placeholder="SCRUM"
           value={config.projectKey}
           onChange={(e) => setConfig({ ...config, projectKey: e.target.value })}
         />
@@ -132,12 +292,30 @@ function JiraSetup({ projectId }: { projectId: string }) {
         />
       </div>
 
-      <div className="flex gap-2">
-        <Button variant="outline" onClick={testConnection}>
-          Test Connection
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          onClick={testConnection}
+          disabled={
+            testing ||
+            !config.url ||
+            !config.email ||
+            !config.apiToken ||
+            !urlLooksValid
+          }
+        >
+          {testing ? "Testing..." : "Test Connection"}
         </Button>
-        <Button onClick={saveIntegration}>Save Configuration</Button>
+        <Button onClick={saveIntegration} disabled={saving || !urlLooksValid}>
+          {saving ? "Saving..." : "Save Configuration"}
+        </Button>
       </div>
+
+      {integrationId ? (
+        <div className="text-xs text-muted-foreground">
+          Saved integration id: {integrationId}
+        </div>
+      ) : null}
     </div>
   );
 }

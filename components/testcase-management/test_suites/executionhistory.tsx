@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -316,6 +317,7 @@ function IssueLink({
 
 export function ExecutionHistory() {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
 
   // shared filters
   const [availableSuites, setAvailableSuites] = useState<
@@ -364,6 +366,13 @@ export function ExecutionHistory() {
   const [integrationLoading, setIntegrationLoading] = useState(false);
   const [selectedIntegrationId, setSelectedIntegrationId] = useState("none");
   const [creatingIssues, setCreatingIssues] = useState(false);
+
+  //jira
+
+  const [jiraBaseUrl, setJiraBaseUrl] = useState<string | null>(null);
+  const onSelectedIntegrationIdChange = (id: string) => {
+    setSelectedIntegrationId(id);
+  };
 
   const INCLUDED_STATUSES: AllowedStatus[] = [
     "passed",
@@ -453,7 +462,8 @@ export function ExecutionHistory() {
 
     // only rows checked for "Create issue" and not already linked
     const targets = runRows.filter(
-      (r) => r.review_create_issue && !r.jira_issue_key && !r.testrail_defect_id
+      (r) =>
+        r.review_create_issue && !r.jira_issue_key && !r.testrail_defect_id,
     );
 
     if (targets.length === 0) {
@@ -493,7 +503,7 @@ export function ExecutionHistory() {
       setRunRows((prev) =>
         prev.map((r) => {
           const match = results.find(
-            (x) => x.execution_id === r.execution_id && x.success
+            (x) => x.execution_id === r.execution_id && x.success,
           );
           if (!match) return r;
 
@@ -508,11 +518,11 @@ export function ExecutionHistory() {
           }
 
           return r;
-        })
+        }),
       );
 
       toast.success(
-        `Created ${json.created ?? 0} of ${json.total ?? targets.length} issues`
+        `Created ${json.created ?? 0} of ${json.total ?? targets.length} issues`,
       );
       void fetchHistory();
       void fetchRuns();
@@ -561,7 +571,7 @@ export function ExecutionHistory() {
           paused_at,
           auto_advance,
 test_suites:suite_id ( id, name, project_id)
-        `
+        `,
         )
         .eq("user_id", auth.user.id)
         .order("created_at", { ascending: false })
@@ -608,7 +618,7 @@ test_suites:suite_id ( id, name, project_id)
       const { data: execRaw, error: execErr } = await supabase
         .from("test_executions")
         .select(
-          "id, session_id, reviewed_at, jira_issue_key, testrail_defect_id"
+          "id, session_id, reviewed_at, jira_issue_key, testrail_defect_id",
         )
         .in("session_id", sessionIds);
 
@@ -636,7 +646,7 @@ test_suites:suite_id ( id, name, project_id)
         for (const a of (attsRaw ?? []) as Array<{ execution_id: string }>) {
           evidenceCountByExecution.set(
             a.execution_id,
-            (evidenceCountByExecution.get(a.execution_id) ?? 0) + 1
+            (evidenceCountByExecution.get(a.execution_id) ?? 0) + 1,
           );
         }
       }
@@ -653,14 +663,14 @@ test_suites:suite_id ( id, name, project_id)
         const ev = evidenceCountByExecution.get(e.id) ?? 0;
         evidenceBySession.set(
           e.session_id,
-          (evidenceBySession.get(e.session_id) ?? 0) + ev
+          (evidenceBySession.get(e.session_id) ?? 0) + ev,
         );
 
         const hasIssue = Boolean(e.jira_issue_key || e.testrail_defect_id);
         if (hasIssue) {
           issuesBySession.set(
             e.session_id,
-            (issuesBySession.get(e.session_id) ?? 0) + 1
+            (issuesBySession.get(e.session_id) ?? 0) + 1,
           );
         }
       }
@@ -752,7 +762,7 @@ test_suites:suite_id ( id, name, project_id)
           testrail_defect_id,
           test_suites:suite_id ( id, name, project_id),
           test_cases:test_case_id ( id, title, description )
-        `
+        `,
         )
         .eq("executed_by", auth.user.id)
         .in("execution_status", INCLUDED_STATUSES)
@@ -858,7 +868,7 @@ test_suites:suite_id ( id, name, project_id)
       setRows(
         hasEvidence
           ? withCounts.filter((r) => r.evidence_count > 0)
-          : withCounts
+          : withCounts,
       );
     } catch (err) {
       console.error(err);
@@ -889,14 +899,19 @@ test_suites:suite_id ( id, name, project_id)
       if (!res.ok)
         throw new Error(json?.error ?? "Failed to load integrations");
 
-      // Filter to Jira only for now
       const list = (json.integrations ?? []).filter(
-        (i: any) => i.integration_type === "jira"
+        (i: any) => i.integration_type === "jira",
       );
       setIntegrations(list);
 
       const firstEnabled = list.find((i: any) => i.sync_enabled) ?? list[0];
       setSelectedIntegrationId(firstEnabled?.id ?? "none");
+
+      if (firstEnabled?.config?.url) {
+        setJiraBaseUrl(firstEnabled.config.url);
+      } else {
+        setJiraBaseUrl(null);
+      }
     } finally {
       setIntegrationLoading(false);
     }
@@ -904,7 +919,7 @@ test_suites:suite_id ( id, name, project_id)
 
   async function createSignedUrl(
     filePath: string,
-    expiresInSeconds: number
+    expiresInSeconds: number,
   ): Promise<string> {
     try {
       const { data, error } = await supabase.storage
@@ -929,7 +944,7 @@ test_suites:suite_id ( id, name, project_id)
       const { data, error } = await supabase
         .from("test_attachments")
         .select(
-          "id, execution_id, file_name, file_path, file_type, file_size, created_at, step_number, description"
+          "id, execution_id, file_name, file_path, file_type, file_size, created_at, step_number, description",
         )
         .eq("execution_id", execution.execution_id)
         .order("step_number", { ascending: true, nullsFirst: false })
@@ -1144,7 +1159,7 @@ test_suites:suite_id ( id, name, project_id)
         testrail_defect_id,
         test_suites:suite_id ( id, name, project_id ),
         test_cases:test_case_id ( id, title, description )
-      `
+      `,
         )
         .eq("executed_by", auth.user.id)
         .eq("session_id", run.id)
@@ -1154,6 +1169,11 @@ test_suites:suite_id ( id, name, project_id)
       if (error) throw error;
 
       const execs = (execsRaw ?? []) as unknown as SupabaseExecutionRow[];
+
+      const projectId = execs[0]?.test_suites?.project_id ?? null;
+      if (projectId) {
+        await loadIntegrationsForProject(projectId);
+      }
 
       // Evidence counts for this run
       const execIds = execs.map((e) => e.id);
@@ -1219,10 +1239,12 @@ test_suites:suite_id ( id, name, project_id)
 
   function patchRunRow(
     executionId: string,
-    patch: Partial<ExecutionHistoryRow>
+    patch: Partial<ExecutionHistoryRow>,
   ) {
     setRunRows((prev) =>
-      prev.map((r) => (r.execution_id === executionId ? { ...r, ...patch } : r))
+      prev.map((r) =>
+        r.execution_id === executionId ? { ...r, ...patch } : r,
+      ),
     );
   }
 
@@ -1231,16 +1253,29 @@ test_suites:suite_id ( id, name, project_id)
       prev.map((r) =>
         r.execution_status === "failed"
           ? { ...r, review_needs_update: value }
-          : r
-      )
+          : r,
+      ),
     );
   }
 
   function bulkMarkAllCreateIssue(value: boolean) {
     setRunRows((prev) =>
-      prev.map((r) => ({ ...r, review_create_issue: value }))
+      prev.map((r) => ({ ...r, review_create_issue: value })),
     );
   }
+
+  // ✅ ADD THIS FUNCTION
+  const handleIntegrationChange = (id: string) => {
+    setSelectedIntegrationId(id);
+
+    // Update Jira base URL when integration changes
+    const selected = integrations.find((i) => i.id === id);
+    if (selected?.config?.url) {
+      setJiraBaseUrl(selected.config.url);
+    } else {
+      setJiraBaseUrl(null);
+    }
+  };
 
   async function saveRunReview() {
     if (!activeRun) return;
@@ -1353,8 +1388,6 @@ test_suites:suite_id ( id, name, project_id)
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
-              <CardTitle>Run History</CardTitle>
-
               <div className="flex flex-wrap items-center gap-3">
                 <Input
                   value={runsSearch}
@@ -1415,122 +1448,142 @@ test_suites:suite_id ( id, name, project_id)
                   No runs match your filters.
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {/* ✅ keep the spacer column because your header has it */}
-                      <TableHead className="w-[40px]"></TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Suite</TableHead>
-                      <TableHead className="max-w-[360px] w-[360px]">
-                        Run
-                      </TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Summary</TableHead>
-                      <TableHead>Evidence</TableHead>
-                      <TableHead>Issues</TableHead>
-                      <TableHead className="w-[90px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
+                <div className="space-y-3">
+                  {runs.map((r) => {
+                    const created = new Date(r.created_at);
+                    const passRate = r.test_cases_total
+                      ? Math.round((r.passed_cases / r.test_cases_total) * 100)
+                      : 0;
 
-                  <TableBody>
-                    {runs.map((r) => {
-                      const created = new Date(r.created_at);
-                      const passRate = r.test_cases_total
-                        ? Math.round(
-                            (r.passed_cases / r.test_cases_total) * 100
-                          )
-                        : 0;
-
-                      return (
-                        <TableRow key={r.id}>
-                          {/* ✅ NEW: spacer cell to match header */}
-                          <TableCell className="w-[40px]" />
-
-                          <TableCell className="text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                              <Calendar className="h-4 w-4" />
-                              {created.toLocaleDateString()}
+                    return (
+                      <Card
+                        key={r.id}
+                        className="hover:bg-muted/50 transition-colors"
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            {/* Left: Date */}
+                            <div className="flex items-center gap-3 min-w-[140px]">
+                              <Calendar className="h-5 w-5 text-muted-foreground" />
+                              <div>
+                                <div className="font-medium text-sm">
+                                  {created.toLocaleDateString()}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {created.toLocaleTimeString()}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-xs">
-                              {created.toLocaleTimeString()}
+
+                            {/* Middle: Run Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-sm font-medium text-muted-foreground">
+                                  {r.suite_name}
+                                </span>
+                                {runStatusBadge(r.status)}
+                              </div>
+                              <div className="font-semibold mb-2">
+                                {r.name || `Run ${r.id.slice(0, 8)}…`}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {r.test_cases_completed ?? 0}/
+                                {r.test_cases_total ?? 0} complete •{" "}
+                                {r.progress_percentage ?? passRate}%
+                              </div>
                             </div>
-                          </TableCell>
 
-                          <TableCell className="font-medium">
-                            {r.suite_name}
-                          </TableCell>
+                            {/* Right: Stats */}
+                            <div className="flex items-center gap-6">
+                              {/* Test Results */}
+                              <div className="space-y-1.5">
+                                <div className="text-xs font-medium text-muted-foreground mb-2">
+                                  Results
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-100"
+                                  >
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                    {r.passed_cases}
+                                  </Badge>
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-100"
+                                  >
+                                    <XCircle className="h-3 w-3 mr-1" />
+                                    {r.failed_cases}
+                                  </Badge>
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-100"
+                                  >
+                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                    {r.blocked_cases}
+                                  </Badge>
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                                  >
+                                    <MinusCircle className="h-3 w-3 mr-1" />
+                                    {r.skipped_cases}
+                                  </Badge>
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-2">
+                                  Pass rate: {passRate}%
+                                </div>
+                              </div>
 
-                          <TableCell>
-                            <div className="font-medium">
-                              {r.name || `Run ${r.id.slice(0, 8)}…`}
+                              {/* Evidence & Issues */}
+                              <div className="space-y-2 min-w-[100px]">
+                                <div className="flex items-center gap-2 text-sm">
+                                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium">
+                                    {r.evidence_total}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    evidence
+                                  </span>
+                                </div>
+                                {r.linked_issue_count > 0 ? (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <FileText className="h-4 w-4 text-muted-foreground" />
+                                    <span className="font-medium">
+                                      {r.linked_issue_count}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      issues
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground">
+                                    No issues
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Action */}
+                              <div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-2"
+                                  onClick={() =>
+                                    router.push(`/test-runs/${r.id}/review`)
+                                  }
+                                >
+                                  <Eye className="h-4 w-4" />
+                                  Review
+                                </Button>
+                              </div>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              {r.test_cases_completed ?? 0}/
-                              {r.test_cases_total ?? 0} complete •{" "}
-                              {r.progress_percentage ?? passRate}%
-                            </div>
-                          </TableCell>
-
-                          <TableCell>{runStatusBadge(r.status)}</TableCell>
-
-                          <TableCell className="text-xs">
-                            <div className="flex flex-wrap gap-2">
-                              <Badge variant="secondary">
-                                P {r.passed_cases}
-                              </Badge>
-                              <Badge variant="secondary">
-                                F {r.failed_cases}
-                              </Badge>
-                              <Badge variant="secondary">
-                                B {r.blocked_cases}
-                              </Badge>
-                              <Badge variant="secondary">
-                                S {r.skipped_cases}
-                              </Badge>
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              Pass rate: {passRate}%
-                            </div>
-                          </TableCell>
-
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm font-medium">
-                                {r.evidence_total}
-                              </span>
-                            </div>
-                          </TableCell>
-
-                          <TableCell>
-                            {r.linked_issue_count > 0 ? (
-                              <Badge variant="secondary" className="text-xs">
-                                {r.linked_issue_count} linked
-                              </Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                —
-                              </span>
-                            )}
-                          </TableCell>
-
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1"
-                              onClick={() => void openRunReview(r)}
-                            >
-                              <Eye className="h-4 w-4" />
-                              Review
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
               )}
             </CardContent>
           </Card>
@@ -1544,6 +1597,7 @@ test_suites:suite_id ( id, name, project_id)
                 setRunRows([]);
                 setIntegrations([]);
                 setSelectedIntegrationId("none");
+                setJiraBaseUrl(null); // ✅ ADD THIS
               }
             }}
             activeRun={activeRun}
@@ -1552,7 +1606,7 @@ test_suites:suite_id ( id, name, project_id)
             integrations={integrations}
             integrationLoading={integrationLoading}
             selectedIntegrationId={selectedIntegrationId}
-            onSelectedIntegrationIdChange={setSelectedIntegrationId}
+            onSelectedIntegrationIdChange={handleIntegrationChange} // ✅ CHANGE THIS (was setSelectedIntegrationId)
             onCreateIssues={createIssuesFromReview}
             creatingIssues={creatingIssues}
             saving={runSaveBusy}
@@ -1791,16 +1845,14 @@ test_suites:suite_id ( id, name, project_id)
                                   jiraKey={r.jira_issue_key}
                                   testrailId={r.testrail_defect_id}
                                   jiraUrl={
-                                    r.jira_issue_key
-                                      ? `https://your-jira.atlassian.net/browse/${encodeURIComponent(
-                                          r.jira_issue_key
-                                        )}`
+                                    r.jira_issue_key && jiraBaseUrl
+                                      ? `${jiraBaseUrl}/browse/${encodeURIComponent(r.jira_issue_key)}`
                                       : undefined
                                   }
                                   testrailUrl={
                                     r.testrail_defect_id
                                       ? `https://your-testrail.com/index.php?/defects/view/${encodeURIComponent(
-                                          r.testrail_defect_id
+                                          r.testrail_defect_id,
                                         )}`
                                       : undefined
                                   }
@@ -1858,16 +1910,14 @@ test_suites:suite_id ( id, name, project_id)
                                           jiraKey={r.jira_issue_key}
                                           testrailId={r.testrail_defect_id}
                                           jiraUrl={
-                                            r.jira_issue_key
-                                              ? `https://your-jira.atlassian.net/browse/${encodeURIComponent(
-                                                  r.jira_issue_key
-                                                )}`
+                                            r.jira_issue_key && jiraBaseUrl
+                                              ? `${jiraBaseUrl}/browse/${encodeURIComponent(r.jira_issue_key)}`
                                               : undefined
                                           }
                                           testrailUrl={
                                             r.testrail_defect_id
                                               ? `https://your-testrail.com/index.php?/defects/view/${encodeURIComponent(
-                                                  r.testrail_defect_id
+                                                  r.testrail_defect_id,
                                                 )}`
                                               : undefined
                                           }
@@ -1882,7 +1932,7 @@ test_suites:suite_id ( id, name, project_id)
                                         </span>{" "}
                                         {r.started_at
                                           ? new Date(
-                                              r.started_at
+                                              r.started_at,
                                             ).toLocaleString()
                                           : "-"}
                                       </div>
@@ -1892,7 +1942,7 @@ test_suites:suite_id ( id, name, project_id)
                                         </span>{" "}
                                         {r.completed_at
                                           ? new Date(
-                                              r.completed_at
+                                              r.completed_at,
                                             ).toLocaleString()
                                           : "-"}
                                       </div>
@@ -1902,7 +1952,7 @@ test_suites:suite_id ( id, name, project_id)
                                         </span>{" "}
                                         {r.reviewed_at
                                           ? new Date(
-                                              r.reviewed_at
+                                              r.reviewed_at,
                                             ).toLocaleString()
                                           : "-"}
                                       </div>
@@ -1928,80 +1978,71 @@ test_suites:suite_id ( id, name, project_id)
                   </Table>
 
                   <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                    <div className="flex items-center gap-4">
-                      <div className="text-sm text-muted-foreground">
-                        Showing{" "}
-                        {Math.min((currentPage - 1) * pageSize + 1, totalCount)}{" "}
-                        to {Math.min(currentPage * pageSize, totalCount)} of{" "}
-                        {totalCount} results
-                      </div>
-
-                      <Select
-                        value={String(pageSize)}
-                        onValueChange={(v) => setPageSize(Number(v))}
-                      >
-                        <SelectTrigger className="w-[120px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="10">10 per page</SelectItem>
-                          <SelectItem value="20">20 per page</SelectItem>
-                          <SelectItem value="50">50 per page</SelectItem>
-                          <SelectItem value="100">100 per page</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="text-sm text-muted-foreground">
+                      Showing{" "}
+                      {Math.min((currentPage - 1) * pageSize + 1, totalCount)}{" "}
+                      to {Math.min(currentPage * pageSize, totalCount)} of{" "}
+                      {totalCount} results
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(1)}
-                        disabled={currentPage === 1}
-                      >
-                        First
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setCurrentPage((p) => Math.max(1, p - 1))
-                        }
-                        disabled={currentPage === 1}
-                      >
-                        Previous
-                      </Button>
+                    <Select
+                      value={String(pageSize)}
+                      onValueChange={(v) => setPageSize(Number(v))}
+                    >
+                      <SelectTrigger className="w-[120px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10 per page</SelectItem>
+                        <SelectItem value="20">20 per page</SelectItem>
+                        <SelectItem value="50">50 per page</SelectItem>
+                        <SelectItem value="100">100 per page</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                      <div className="flex items-center gap-2 px-3">
-                        <span className="text-sm">
-                          Page {currentPage} of{" "}
-                          {Math.ceil(totalCount / pageSize)}
-                        </span>
-                      </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                    >
+                      First
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </Button>
 
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage((p) => p + 1)}
-                        disabled={
-                          currentPage >= Math.ceil(totalCount / pageSize)
-                        }
-                      >
-                        Next
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setCurrentPage(Math.ceil(totalCount / pageSize))
-                        }
-                        disabled={
-                          currentPage >= Math.ceil(totalCount / pageSize)
-                        }
-                      >
-                        Last
-                      </Button>
+                    <div className="flex items-center gap-2 px-3">
+                      <span className="text-sm">
+                        Page {currentPage} of {Math.ceil(totalCount / pageSize)}
+                      </span>
                     </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => p + 1)}
+                      disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                    >
+                      Next
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setCurrentPage(Math.ceil(totalCount / pageSize))
+                      }
+                      disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                    >
+                      Last
+                    </Button>
                   </div>
                 </>
               )}
@@ -2096,7 +2137,7 @@ test_suites:suite_id ( id, name, project_id)
                           <div className="font-medium mt-1">
                             {activeExecution.started_at
                               ? new Date(
-                                  activeExecution.started_at
+                                  activeExecution.started_at,
                                 ).toLocaleString()
                               : "-"}
                           </div>
@@ -2108,7 +2149,7 @@ test_suites:suite_id ( id, name, project_id)
                           <div className="font-medium mt-1">
                             {activeExecution.completed_at
                               ? new Date(
-                                  activeExecution.completed_at
+                                  activeExecution.completed_at,
                                 ).toLocaleString()
                               : "-"}
                           </div>
@@ -2239,7 +2280,7 @@ function AttachmentCardWithSignedUrl({
       a.download = attachment.file_name;
       a.click();
     },
-    [attachment.file_path, attachment.file_name, getSignedUrl]
+    [attachment.file_path, attachment.file_name, getSignedUrl],
   );
 
   return (

@@ -6,9 +6,9 @@ export const dynamic = "force-dynamic";
 
 export async function PATCH(
   req: Request,
-  ctx: { params: Promise<{ id: string }> },
+  { params }: { params: { id: string } },
 ) {
-  const { id } = await ctx.params;
+  const { id } = params;
 
   const supabase = await createClient();
   const {
@@ -53,10 +53,10 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _: Request,
-  ctx: { params: Promise<{ id: string }> },
+  req: Request,
+  { params }: { params: { id: string } },
 ) {
-  const { id } = await ctx.params;
+  const { id } = params;
 
   const supabase = await createClient();
   const {

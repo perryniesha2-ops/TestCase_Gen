@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AuthTokenService, type UserMetadata } from "@/lib/password-reset";
 import { createEmailService } from "@/lib/email-service";
+import { NextResponse } from "next/server";
 
 type AuthResult =
   | { success: true; message?: string; requiresConfirmation?: boolean }
@@ -211,7 +212,7 @@ export async function customSignup(formData: FormData) {
     const tokenResult = await AuthTokenService.createConfirmationToken(
       data.email,
       authData.user.id,
-      { full_name: data.name }
+      { full_name: data.name },
     );
 
     if (!tokenResult.success) {
@@ -269,7 +270,7 @@ export async function confirmEmail(formData: FormData) {
     const supabase = await createClient();
     const { error: updateError } = await supabase.auth.admin.updateUserById(
       tokenResult.userId!,
-      { email_confirm: true }
+      { email_confirm: true },
     );
 
     if (updateError) {
@@ -328,7 +329,7 @@ export async function resendConfirmationEmail(formData: FormData) {
     const tokenResult = await AuthTokenService.createConfirmationToken(
       email,
       user.id,
-      user.user_metadata
+      user.user_metadata,
     );
 
     if (!tokenResult.success) {
@@ -431,7 +432,7 @@ export async function customUpdatePassword(formData: FormData) {
     const supabase = await createClient();
     const { error: updateError } = await supabase.auth.admin.updateUserById(
       tokenResult.userId!,
-      { password }
+      { password },
     );
 
     if (updateError) {

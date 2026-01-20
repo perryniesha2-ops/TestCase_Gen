@@ -605,10 +605,11 @@ export function ProjectManager() {
                             <Icon className={`h-5 w-5 ${colors.text}`} />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <CardTitle className="text-lg truncate">
+                            <CardTitle className="text-lg leading-snug break-words line-clamp-2">
                               <Link
                                 href={`/projects/${project.id}`}
                                 className="hover:underline"
+                                title={project.name}
                               >
                                 {project.name}
                               </Link>

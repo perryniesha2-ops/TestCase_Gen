@@ -105,11 +105,11 @@ export function TestSessionExecution({
   const [suiteTestCases, setSuiteTestCases] = useState<SuiteTestCase[]>([]);
   const [currentTestIndex, setCurrentTestIndex] = useState(0);
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(
-    null
+    null,
   );
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentSession, setCurrentSession] = useState<TestSession | null>(
-    null
+    null,
   );
 
   const [executionNotes, setExecutionNotes] = useState("");
@@ -243,7 +243,7 @@ export function TestSessionExecution({
       const { data: suiteLinks, error: linksError } = await supabase
         .from("test_suite_cases")
         .select(
-          "id, test_case_id, sequence_order, priority, estimated_duration_minutes"
+          "id, test_case_id, sequence_order, priority, estimated_duration_minutes",
         )
         .eq("suite_id", suite.id)
         .order("sequence_order");
@@ -265,7 +265,7 @@ export function TestSessionExecution({
       const { data: testCases, error: testCasesError } = await supabase
         .from("test_cases")
         .select(
-          "id, title, description, test_type, test_steps, expected_result"
+          "id, title, description, test_type, test_steps, expected_result",
         )
         .in("id", testCaseIds);
 
@@ -424,7 +424,7 @@ export function TestSessionExecution({
 
   async function startTestExecution(
     index: number,
-    currentSessionId: string | null
+    currentSessionId: string | null,
   ) {
     const testCase = suiteTestCases[index];
     if (!testCase || !currentSessionId) {
@@ -442,7 +442,7 @@ export function TestSessionExecution({
 
   async function startTestExecutionWithTestCase(
     testCase: SuiteTestCase,
-    currentSessionId: string
+    currentSessionId: string,
   ) {
     try {
       const supabase = createClient();
@@ -457,7 +457,7 @@ export function TestSessionExecution({
       const { data: existing, error: existingError } = await supabase
         .from("test_executions")
         .select(
-          "id, execution_status, execution_notes, failure_reason, completed_steps"
+          "id, execution_status, execution_notes, failure_reason, completed_steps",
         )
         .eq("session_id", currentSessionId)
         .eq("test_case_id", testCase.test_case_id)
@@ -478,12 +478,12 @@ export function TestSessionExecution({
           new Set<number>(
             Array.isArray(existing.completed_steps)
               ? existing.completed_steps
-              : []
-          )
+              : [],
+          ),
         );
         setCurrentExecutionStatus(existing.execution_status as ExecutionStatus);
         setIsCurrentExecutionReadOnly(
-          existing.execution_status !== "in_progress"
+          existing.execution_status !== "in_progress",
         );
         return;
       }
@@ -567,6 +567,14 @@ export function TestSessionExecution({
       const newCompleted = completedCount + 1;
       const newProgress = Math.round((newCompleted / totalTests) * 100);
 
+      // ✅ Calculate new stats FIRST
+      const newStats: SessionStats = { ...stats };
+      if (status === "passed") newStats.passed++;
+      if (status === "failed") newStats.failed++;
+      if (status === "blocked") newStats.blocked++;
+      if (status === "skipped") newStats.skipped++;
+
+      // ✅ Save stats to database
       await supabase
         .from("test_run_sessions")
         .update({
@@ -574,14 +582,13 @@ export function TestSessionExecution({
           progress_percentage: newProgress,
           status: newProgress === 100 ? "completed" : "in_progress",
           actual_end: newProgress === 100 ? new Date().toISOString() : null,
+          // ✅ ADD THESE LINES:
+          passed_cases: newStats.passed,
+          failed_cases: newStats.failed,
+          blocked_cases: newStats.blocked,
+          skipped_cases: newStats.skipped,
         })
         .eq("id", currentSession.id);
-
-      const newStats: SessionStats = { ...stats };
-      if (status === "passed") newStats.passed++;
-      if (status === "failed") newStats.failed++;
-      if (status === "blocked") newStats.blocked++;
-      if (status === "skipped") newStats.skipped++;
 
       const updatedSession: TestSession = {
         ...currentSession,
@@ -843,7 +850,7 @@ export function TestSessionExecution({
                                     setCompletedSteps(new Set());
                                   } else {
                                     setCompletedSteps(
-                                      new Set(allSteps.map((_, idx) => idx))
+                                      new Set(allSteps.map((_, idx) => idx)),
                                     );
                                   }
                                 }}
@@ -910,7 +917,7 @@ export function TestSessionExecution({
                                           </div>
                                         </div>
                                       );
-                                    }
+                                    },
                                   )}
                                 </div>
                               </>
@@ -1108,7 +1115,7 @@ export function TestSessionExecution({
                                         setCurrentTestIndex(index);
                                         await startTestExecution(
                                           index,
-                                          currentSession.id
+                                          currentSession.id,
                                         );
                                       }
                                     }}
@@ -1118,8 +1125,8 @@ export function TestSessionExecution({
                       isCurrent
                         ? "bg-primary/10 border-primary/70"
                         : isCompleted
-                        ? "bg-emerald-500/10 border-emerald-500/60"
-                        : "bg-muted/40 border-border/60 hover:bg-muted/60"
+                          ? "bg-emerald-500/10 border-emerald-500/60"
+                          : "bg-muted/40 border-border/60 hover:bg-muted/60"
                     }
                   `}
                                   >
@@ -1160,7 +1167,7 @@ export function TestSessionExecution({
                                 placeholder="https://app.example.com/login"
                                 value={targetUrl}
                                 onChange={(
-                                  e: React.ChangeEvent<HTMLInputElement>
+                                  e: React.ChangeEvent<HTMLInputElement>,
                                 ) => setTargetUrl(e.target.value)}
                               />
                             </div>
@@ -1185,7 +1192,7 @@ export function TestSessionExecution({
                               }
                               onDeleteAttachment={(attachmentId) =>
                                 setAttachments((prev) =>
-                                  prev.filter((a) => a.id !== attachmentId)
+                                  prev.filter((a) => a.id !== attachmentId),
                                 )
                               }
                             />
