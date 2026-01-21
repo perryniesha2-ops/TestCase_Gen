@@ -351,9 +351,23 @@ export function RunReviewPage({ runId }: { runId: string }) {
       });
 
       const json = await res.json();
+
+      console.log("Create issues response:", json); // ← ADD THIS
+
       if (!res.ok) throw new Error(json?.error ?? "Failed to create issues");
 
       const results = json.results ?? [];
+
+      // ← ADD THIS: Log failed results
+      const failures = results.filter((r: any) => !r.success);
+      if (failures.length > 0) {
+        console.error("Failed to create issues:", failures);
+        failures.forEach((f: any) => {
+          console.error(`- ${f.execution_id}: ${f.error}`);
+        });
+      }
+
+      // Update local state
       setRows((prev) =>
         prev.map((r) => {
           const match = results.find(
@@ -367,9 +381,20 @@ export function RunReviewPage({ runId }: { runId: string }) {
         }),
       );
 
-      toast.success(`Created ${json.created ?? 0} of ${json.total} issues`);
+      // ← IMPROVED: Show detailed feedback
+      if (json.created > 0) {
+        toast.success(`Created ${json.created} of ${json.total} issues`);
+      }
+
+      if (json.failed > 0) {
+        // Show first error as an example
+        const firstError = failures[0]?.error ?? "Unknown error";
+        toast.error(
+          `Failed to create ${json.failed} issues. First error: ${firstError}`,
+        );
+      }
     } catch (error) {
-      console.error(error);
+      console.error("Create issues error:", error);
       toast.error(
         error instanceof Error ? error.message : "Failed to create issues",
       );
@@ -377,7 +402,6 @@ export function RunReviewPage({ runId }: { runId: string }) {
       setCreatingIssues(false);
     }
   }
-
   const filteredRows = useMemo(() => {
     let filtered = rows;
 

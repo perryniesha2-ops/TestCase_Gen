@@ -104,14 +104,28 @@ export async function POST(request: Request) {
     error?: string;
   }> = [];
 
+  // Find the main loop in your POST function and update it:
+
   let created = 0;
 
   try {
     // Initialize Jira client
-    const jira = new JiraIntegration(config);
+    const jira = new JiraIntegration({
+      url: integration.config.url,
+      email: integration.config.email,
+      apiToken: integration.config.apiToken,
+      projectKey: integration.config.projectKey,
+    });
+
+    console.log("✅ Jira client initialized for:", integration.config.url);
 
     // Process executions
     for (const exec of executions) {
+      console.log(`\n📝 Processing execution ${exec.execution_id}:`, {
+        test_title: exec.test_title,
+        suite_name: exec.suite_name,
+      });
+
       try {
         // Fetch attachments for this execution
         const { data: attachments, error: attError } = await supabase
@@ -120,8 +134,11 @@ export async function POST(request: Request) {
           .eq("execution_id", exec.execution_id);
 
         if (attError) {
+          console.error("❌ Attachment fetch error:", attError);
           throw new Error(`Failed to fetch attachments: ${attError.message}`);
         }
+
+        console.log(`📎 Found ${attachments?.length ?? 0} attachments`);
 
         // Generate signed URLs for evidence
         const evidenceUrls: string[] = [];
@@ -129,21 +146,24 @@ export async function POST(request: Request) {
           try {
             const { data } = await supabase.storage
               .from("test-attachments")
-              .createSignedUrl(att.file_path, 60 * 60 * 24 * 7); // 7 days
+              .createSignedUrl(att.file_path, 60 * 60 * 24 * 7);
 
             if (data?.signedUrl) {
               evidenceUrls.push(data.signedUrl);
+              console.log(`✅ Created signed URL for: ${att.file_path}`);
             }
           } catch (err) {
-            // Log but don't fail - continue without this evidence
             console.error(
-              `Failed to create signed URL for ${att.file_path}:`,
+              `⚠️ Failed to create signed URL for ${att.file_path}:`,
               err,
             );
           }
         }
 
+        console.log(`🔗 Total evidence URLs: ${evidenceUrls.length}`);
+
         // Create Jira issue
+        console.log("📤 Creating Jira issue...");
         const issue = await jira.createIssueFromFailure(
           {
             test_title: exec.test_title,
@@ -151,13 +171,18 @@ export async function POST(request: Request) {
             suite_name: exec.suite_name,
             evidence_urls: evidenceUrls,
           },
-          config.projectKey,
+          integration.config.projectKey,
         );
+
+        console.log("✅ Jira issue created:", issue);
 
         const issueKey = issue?.key;
         if (!issueKey) {
+          console.error("❌ No issue key returned from Jira");
           throw new Error("Jira did not return an issue key");
         }
+
+        console.log(`✅ Issue key: ${issueKey}`);
 
         // Store in integration_issues table
         const { error: issueInsertError } = await supabase
@@ -166,17 +191,19 @@ export async function POST(request: Request) {
             integration_id: integration.id,
             execution_id: exec.execution_id,
             external_issue_id: issueKey,
-            external_issue_url: `${config.url}/browse/${issueKey}`,
+            external_issue_url: `${integration.config.url}/browse/${issueKey}`,
             issue_type: "bug",
             status: "open",
           });
 
         if (issueInsertError) {
           console.error(
-            "Failed to insert integration_issue:",
+            "⚠️ Failed to insert integration_issue:",
             issueInsertError,
           );
           // Continue anyway - the issue was created in Jira
+        } else {
+          console.log("✅ Saved to integration_issues table");
         }
 
         // Update test execution with Jira issue key
@@ -186,8 +213,11 @@ export async function POST(request: Request) {
           .eq("id", exec.execution_id);
 
         if (updateError) {
+          console.error("❌ Failed to update execution:", updateError);
           throw new Error(`Failed to update execution: ${updateError.message}`);
         }
+
+        console.log("✅ Updated test_executions with issue key");
 
         results.push({
           success: true,
@@ -195,9 +225,16 @@ export async function POST(request: Request) {
           issue_key: issueKey,
         });
         created++;
+        console.log(
+          `✅ Successfully created issue ${created}/${executions.length}`,
+        );
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
+        console.error(`❌ Failed to create issue for ${exec.execution_id}:`, {
+          error: errorMessage,
+          stack: error instanceof Error ? error.stack : undefined,
+        });
         results.push({
           success: false,
           execution_id: exec.execution_id,
@@ -206,7 +243,10 @@ export async function POST(request: Request) {
       }
     }
 
-    // ✅ CRITICAL: Return the results
+    console.log(
+      `\n📊 Final results: Created ${created} of ${executions.length} issues`,
+    );
+
     return NextResponse.json({
       total: executions.length,
       created,
@@ -214,8 +254,7 @@ export async function POST(request: Request) {
       results,
     });
   } catch (error) {
-    // Catch-all for initialization errors
-    console.error("Error creating issues:", error);
+    console.error("❌ Fatal error in create-issues:", error);
     return NextResponse.json(
       {
         error:

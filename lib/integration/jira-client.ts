@@ -77,7 +77,7 @@ export class JiraIntegration {
     this.baseUrl = baseUrl;
 
     this.client = new Version3Client({
-      host: baseUrl, // ✅ CORRECT: Full URL with protocol
+      host: baseUrl,
       authentication: {
         basic: {
           email: String(config.email).trim(),
@@ -116,33 +116,100 @@ export class JiraIntegration {
   ) {
     if (!projectKey) throw new Error("Jira projectKey is required");
 
-    const description = `
-*Test Case:* ${failure.test_title}
-*Test Suite:* ${failure.suite_name}
-
-h3. Failure Details
-{code}
-${failure.failure_reason}
-{code}
-
-${
-  failure.evidence_urls?.length
-    ? `h3. Evidence\n${failure.evidence_urls.map((url) => `!${url}!`).join("\n")}`
-    : ""
-}
-`.trim();
-
-    const issue = await (this.client as any).issues.createIssue({
-      fields: {
-        project: { key: projectKey },
-        summary: `Test Failure: ${failure.test_title}`,
-        description,
-        issuetype: { name: "Bug" },
-        labels: ["synthqa-test-failure"],
+    // Build ADF (Atlassian Document Format) description
+    // This is the JSON format that Jira Cloud requires
+    const descriptionContent: any[] = [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Test Case: ", marks: [{ type: "strong" }] },
+          { type: "text", text: failure.test_title },
+        ],
       },
-    });
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Test Suite: ", marks: [{ type: "strong" }] },
+          { type: "text", text: failure.suite_name },
+        ],
+      },
+      {
+        type: "heading",
+        attrs: { level: 3 },
+        content: [{ type: "text", text: "Failure Details" }],
+      },
+      {
+        type: "codeBlock",
+        content: [{ type: "text", text: failure.failure_reason }],
+      },
+    ];
 
-    return issue;
+    // Add evidence section if URLs are present
+    if (failure.evidence_urls && failure.evidence_urls.length > 0) {
+      descriptionContent.push({
+        type: "heading",
+        attrs: { level: 3 },
+        content: [{ type: "text", text: "Evidence" }],
+      });
+
+      for (const url of failure.evidence_urls) {
+        descriptionContent.push({
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: url,
+              marks: [{ type: "link", attrs: { href: url } }],
+            },
+          ],
+        });
+      }
+    }
+
+    const description = {
+      type: "doc",
+      version: 1,
+      content: descriptionContent,
+    };
+
+    console.log(
+      "📦 Creating Jira issue with payload:",
+      JSON.stringify(
+        {
+          fields: {
+            project: { key: projectKey },
+            summary: `Test Failure: ${failure.test_title}`,
+            description,
+            issuetype: { name: "Bug" },
+            labels: ["synthqa-test-failure"],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    try {
+      const issue = await (this.client as any).issues.createIssue({
+        fields: {
+          project: { key: projectKey },
+          summary: `Test Failure: ${failure.test_title}`,
+          description,
+          issuetype: { name: "Bug" },
+          labels: ["synthqa-test-failure"],
+        },
+      });
+
+      console.log("✅ Jira issue created successfully:", issue);
+      return issue;
+    } catch (error: any) {
+      console.error("❌ Jira API Error:", {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: JSON.stringify(error.response?.data, null, 2),
+      });
+      throw error;
+    }
   }
 
   async importIssues(projectKey: string): Promise<ImportedJiraIssue[]> {
