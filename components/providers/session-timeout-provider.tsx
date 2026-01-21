@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth/auth-context";
+import { SessionManager } from "@/lib/session-manager";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,10 +31,10 @@ type SessionTimeoutProviderProps = {
  */
 export function SessionTimeoutProvider({
   children,
-  timeoutMinutes = 5,
-  warnMinutesBefore = 2,
+  timeoutMinutes = 60,
+  warnMinutesBefore = 5,
 }: SessionTimeoutProviderProps) {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
 
   const [showWarning, setShowWarning] = useState(false);
@@ -63,11 +65,11 @@ export function SessionTimeoutProvider({
     try {
       clearTimers();
       setShowWarning(false);
-      await signOut();
+      await SessionManager.logout();
       toast.error("You have been signed out due to inactivity.", {
         duration: 5000,
       });
-      router.push("/login?reason=timeout");
+      SessionManager.forceReload();
     } catch (err) {
       console.error("Error during auto sign-out:", err);
       router.push("/login?reason=timeout");

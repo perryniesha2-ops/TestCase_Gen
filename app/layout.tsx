@@ -26,7 +26,7 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <Providers>
-            <SessionTimeoutProvider timeoutMinutes={60} warnMinutesBefore={5}>
+            <SessionTimeoutProvider timeoutMinutes={60} warnMinutesBefore={2}>
               {children}
               <Toaster />
             </SessionTimeoutProvider>
