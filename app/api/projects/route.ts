@@ -26,7 +26,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Optional fields (mirror your PATCH logic)
   const insert = {
     user_id: user.id,
     name,

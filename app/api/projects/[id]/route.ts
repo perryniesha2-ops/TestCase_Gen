@@ -1,26 +1,28 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } },
+  req: NextRequest,
+  ctx: { params: Promise<{ id: string }> },
 ) {
-  const { id } = params;
+  const { id } = await ctx.params;
 
   const supabase = await createClient();
   const {
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr || !user)
+
+  if (authErr || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const body = await req.json().catch(() => ({}));
 
-  // Only allow fields you intend to update
   const update: Record<string, any> = {};
   if (body.name !== undefined) update.name = String(body.name).trim();
   if (body.description !== undefined)
@@ -46,34 +48,64 @@ export async function PATCH(
     .eq("id", id)
     .eq("user_id", user.id);
 
-  if (error)
+  if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json({ success: true });
 }
 
 export async function DELETE(
-  req: Request,
-  { params }: { params: { id: string } },
+  _req: NextRequest,
+  ctx: { params: Promise<{ id: string }> },
 ) {
-  const { id } = params;
+  const { id } = await ctx.params;
 
   const supabase = await createClient();
   const {
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr || !user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  if (authErr || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // 1) Verify the project belongs to the user (optional but clearer errors)
+  const { data: project, error: projErr } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (projErr) {
+    return NextResponse.json({ error: projErr.message }, { status: 500 });
+  }
+  if (!project) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // 2) Delete integrations that reference this project (prevents FK violation)
+  const { error: integErr } = await supabase
+    .from("integrations")
+    .delete()
+    .eq("project_id", id);
+
+  if (integErr) {
+    return NextResponse.json({ error: integErr.message }, { status: 500 });
+  }
+
+  // 3) Delete the project
   const { error } = await supabase
     .from("projects")
     .delete()
     .eq("id", id)
     .eq("user_id", user.id);
 
-  if (error)
+  if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json({ success: true });
 }
