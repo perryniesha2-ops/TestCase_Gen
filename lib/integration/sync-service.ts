@@ -12,9 +12,9 @@ type SyncResult = {
 export async function syncIntegration(
   integrationId: string,
   direction: "import" | "export" | "bidirectional",
-  userId: string
+  userId: string,
 ): Promise<SyncResult> {
-  const supabase = await createClient(); // ✅ Add await here
+  const supabase = await createClient();
 
   // Create sync log
   const { data: syncLog } = await supabase
@@ -49,7 +49,7 @@ export async function syncIntegration(
       result = await syncTestRail(supabase, integration, direction);
     } else {
       throw new Error(
-        `Unsupported integration type: ${integration.integration_type}`
+        `Unsupported integration type: ${integration.integration_type}`,
       );
     }
 
@@ -91,7 +91,7 @@ export async function syncIntegration(
 async function syncJira(
   supabase: Awaited<ReturnType<typeof createClient>>, // ✅ Update type
   integration: any,
-  direction: string
+  direction: string,
 ): Promise<SyncResult> {
   const jira = new JiraIntegration(integration.config);
 
@@ -170,7 +170,7 @@ async function syncJira(
 async function syncTestRail(
   supabase: Awaited<ReturnType<typeof createClient>>, // ✅ Update type
   integration: any,
-  direction: string
+  direction: string,
 ): Promise<SyncResult> {
   return { processed: 0, succeeded: 0, failed: 0 };
 }

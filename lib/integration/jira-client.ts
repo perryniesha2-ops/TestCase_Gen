@@ -8,6 +8,19 @@ export interface JiraConfig {
   projectKey?: string;
 }
 
+export type ImportedJiraIssue = {
+  external_id: string; // Jira issue key, e.g. "ABC-123"
+  title: string;
+  description: string | null;
+  status: string | null;
+  priority: string | null;
+  metadata: {
+    jira_key: string;
+    jira_url: string;
+    raw?: unknown;
+  };
+};
+
 function normalizeBaseUrl(input: string) {
   const trimmed = String(input ?? "")
     .trim()
@@ -130,5 +143,53 @@ ${
     });
 
     return issue;
+  }
+
+  async importIssues(projectKey: string): Promise<ImportedJiraIssue[]> {
+    if (!projectKey) throw new Error("Jira projectKey is required");
+
+    // Pull most recently updated issues first
+    const jql = `project=${projectKey} ORDER BY updated DESC`;
+
+    // jira.js typing can vary by version; use `as any` like the rest of your file
+    const res = await (this.client as any).issueSearch.searchForIssuesUsingJql({
+      jql,
+      maxResults: 100,
+      fields: ["summary", "description", "status", "priority"],
+    });
+
+    const issues = Array.isArray(res?.issues) ? res.issues : [];
+
+    return issues.map((issue: any) => {
+      const key = String(issue?.key ?? "");
+      const fields = issue?.fields ?? {};
+
+      const summary = String(fields?.summary ?? "");
+
+      // Jira Cloud descriptions are often Atlassian Document Format (ADF).
+      // Store as string for now (either plain or JSON string).
+      const description =
+        typeof fields?.description === "string"
+          ? fields.description
+          : fields?.description
+            ? JSON.stringify(fields.description)
+            : null;
+
+      const status = fields?.status?.name ?? null;
+      const priority = fields?.priority?.name ?? null;
+
+      return {
+        external_id: key,
+        title: summary,
+        description,
+        status,
+        priority,
+        metadata: {
+          jira_key: key,
+          jira_url: `${this.baseUrl}/browse/${encodeURIComponent(key)}`,
+          raw: issue, // optional; remove if you don't want raw payload stored
+        },
+      };
+    });
   }
 }
