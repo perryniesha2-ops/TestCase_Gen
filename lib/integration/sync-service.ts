@@ -89,7 +89,7 @@ export async function syncIntegration(
 }
 
 async function syncJira(
-  supabase: Awaited<ReturnType<typeof createClient>>, // ✅ Update type
+  supabase: Awaited<ReturnType<typeof createClient>>,
   integration: any,
   direction: string,
 ): Promise<SyncResult> {
@@ -168,7 +168,7 @@ async function syncJira(
 }
 
 async function syncTestRail(
-  supabase: Awaited<ReturnType<typeof createClient>>, // ✅ Update type
+  supabase: Awaited<ReturnType<typeof createClient>>,
   integration: any,
   direction: string,
 ): Promise<SyncResult> {

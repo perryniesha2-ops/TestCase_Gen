@@ -169,10 +169,8 @@ export function TestSessionExecution({
     }
   }, [currentExecutionId]);
 
-  // ✅ FIX: Improved keyboard shortcuts
   useEffect(() => {
     function handleKeyPress(e: KeyboardEvent) {
-      // Ignore if typing in input/textarea
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement
@@ -521,7 +519,6 @@ export function TestSessionExecution({
     }
   }
 
-  // ✅ FIX: Improved completeTestExecution with better state management
   async function completeTestExecution(status: ExecutionStatus) {
     // Validate all required state
     if (!currentExecutionId || !currentSession || !currentTest) {
@@ -567,14 +564,14 @@ export function TestSessionExecution({
       const newCompleted = completedCount + 1;
       const newProgress = Math.round((newCompleted / totalTests) * 100);
 
-      // ✅ Calculate new stats FIRST
+      // Recalcalate the stats
       const newStats: SessionStats = { ...stats };
       if (status === "passed") newStats.passed++;
       if (status === "failed") newStats.failed++;
       if (status === "blocked") newStats.blocked++;
       if (status === "skipped") newStats.skipped++;
 
-      // ✅ Save stats to database
+      // save stats
       await supabase
         .from("test_run_sessions")
         .update({
@@ -582,7 +579,6 @@ export function TestSessionExecution({
           progress_percentage: newProgress,
           status: newProgress === 100 ? "completed" : "in_progress",
           actual_end: newProgress === 100 ? new Date().toISOString() : null,
-          // ✅ ADD THESE LINES:
           passed_cases: newStats.passed,
           failed_cases: newStats.failed,
           blocked_cases: newStats.blocked,
@@ -712,7 +708,6 @@ export function TestSessionExecution({
             overflow-hidden
           "
         >
-          {/* ✅ FIX: Fixed header */}
           <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
             <DialogTitle className="flex items-center gap-2 text-xl">
               <Play className="h-5 w-5" />
@@ -724,7 +719,6 @@ export function TestSessionExecution({
             </DialogDescription>
           </DialogHeader>
 
-          {/* ✅ FIX: Scrollable body with proper padding */}
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
             {testsLoading && suiteTestCases.length === 0 ? (
               <div className="flex items-center justify-center py-12">
@@ -787,7 +781,6 @@ export function TestSessionExecution({
                   </CardContent>
                 </Card>
 
-                {/* ✅ FIX: Two-column layout with proper overflow */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Current Test (2/3 width) */}
                   <div className="lg:col-span-2">
@@ -836,7 +829,6 @@ export function TestSessionExecution({
                             </p>
                           </div>
 
-                          {/* ✅ FIX: Test Steps with proper overflow */}
                           <div>
                             <div className="flex items-center justify-between mb-3">
                               <h4 className="font-medium">Test Steps</h4>
@@ -936,7 +928,6 @@ export function TestSessionExecution({
                             </div>
                           </div>
 
-                          {/* ✅ FIX: Notes with proper height constraints */}
                           <div className="space-y-2">
                             <Label htmlFor="execution-notes">
                               Execution Notes
@@ -954,7 +945,6 @@ export function TestSessionExecution({
                             />
                           </div>
 
-                          {/* ✅ FIX: Action Buttons with loading states */}
                           <div className="space-y-3">
                             <Label>Test Result</Label>
                             <div className="flex flex-wrap gap-2">
@@ -1206,7 +1196,6 @@ export function TestSessionExecution({
             )}
           </div>
 
-          {/* ✅ FIX: Fixed footer */}
           <DialogFooter className="px-6 py-4 border-t flex-shrink-0 flex justify-between">
             <Button variant="outline" onClick={() => setShowPauseDialog(true)}>
               <Pause className="h-4 w-4 mr-2" />

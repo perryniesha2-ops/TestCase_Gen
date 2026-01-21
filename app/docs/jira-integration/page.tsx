@@ -11,6 +11,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Logo } from "@/components/pagecomponents/brandlogo";
+import { GuideMenu } from "@/components/pagecomponents/guide-menu";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 type TocItem = {
   id: string;
@@ -29,17 +32,16 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="scroll-mt-24 space-y-3">
-      <div className="space-y-1">
+    <section id={id} className="scroll-mt-24">
+      <div className="mb-4">
         {kicker ? (
-          <p className="text-xs font-medium text-muted-foreground">{kicker}</p>
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            {kicker}
+          </div>
         ) : null}
         <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
       </div>
-      <div className="prose prose-sm max-w-none dark:prose-invert">
-        {children}
-      </div>
-      <Separator className="my-6" />
+      <div className="space-y-4">{children}</div>
     </section>
   );
 }
@@ -58,19 +60,24 @@ export default function JiraIntegrationDocsPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-10">
-      <header className="mb-8 space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">Docs</Badge>
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-2">
+          <Logo size="xl" />
+
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Jira Integration
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Connect Jira so you can validate connectivity, map projects, and
+            enable future sync workflows.
+          </p>
+
+          <Badge variant="secondary">Guide</Badge>
           <Badge variant="outline">Integrations</Badge>
         </div>
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Jira Integration
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Connect Jira so you can validate connectivity, map projects, and
-          enable future sync workflows.
-        </p>
-      </header>
+        <GuideMenu />
+      </div>
+      <Separator className="my-8" />
 
       <div className="grid gap-8 lg:grid-cols-[260px_1fr]">
         {/* TOC */}
@@ -203,7 +210,10 @@ export default function JiraIntegrationDocsPage() {
             Last updated: {new Date().toISOString().slice(0, 10)}
           </div>
         </main>
+        <div className="h-2" />
       </div>
+
+      <SiteFooter />
     </div>
   );
 }

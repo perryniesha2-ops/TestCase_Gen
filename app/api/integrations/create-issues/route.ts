@@ -117,15 +117,8 @@ export async function POST(request: Request) {
       projectKey: integration.config.projectKey,
     });
 
-    console.log("✅ Jira client initialized for:", integration.config.url);
-
     // Process executions
     for (const exec of executions) {
-      console.log(`\n📝 Processing execution ${exec.execution_id}:`, {
-        test_title: exec.test_title,
-        suite_name: exec.suite_name,
-      });
-
       try {
         // Fetch attachments for this execution
         const { data: attachments, error: attError } = await supabase
@@ -138,8 +131,6 @@ export async function POST(request: Request) {
           throw new Error(`Failed to fetch attachments: ${attError.message}`);
         }
 
-        console.log(`📎 Found ${attachments?.length ?? 0} attachments`);
-
         // Generate signed URLs for evidence
         const evidenceUrls: string[] = [];
         for (const att of attachments || []) {
@@ -150,17 +141,11 @@ export async function POST(request: Request) {
 
             if (data?.signedUrl) {
               evidenceUrls.push(data.signedUrl);
-              console.log(`✅ Created signed URL for: ${att.file_path}`);
             }
           } catch (err) {
-            console.error(
-              `⚠️ Failed to create signed URL for ${att.file_path}:`,
-              err,
-            );
+            console.error(err);
           }
         }
-
-        console.log(`🔗 Total evidence URLs: ${evidenceUrls.length}`);
 
         // Create Jira issue
         console.log("📤 Creating Jira issue...");
@@ -174,15 +159,11 @@ export async function POST(request: Request) {
           integration.config.projectKey,
         );
 
-        console.log("✅ Jira issue created:", issue);
-
         const issueKey = issue?.key;
         if (!issueKey) {
           console.error("❌ No issue key returned from Jira");
           throw new Error("Jira did not return an issue key");
         }
-
-        console.log(`✅ Issue key: ${issueKey}`);
 
         // Store in integration_issues table
         const { error: issueInsertError } = await supabase
@@ -201,9 +182,8 @@ export async function POST(request: Request) {
             "⚠️ Failed to insert integration_issue:",
             issueInsertError,
           );
-          // Continue anyway - the issue was created in Jira
         } else {
-          console.log("✅ Saved to integration_issues table");
+          console.log("Saved to integration_issues table");
         }
 
         // Update test execution with Jira issue key
@@ -217,7 +197,7 @@ export async function POST(request: Request) {
           throw new Error(`Failed to update execution: ${updateError.message}`);
         }
 
-        console.log("✅ Updated test_executions with issue key");
+        console.log("Updated test_executions with issue key");
 
         results.push({
           success: true,
@@ -225,9 +205,6 @@ export async function POST(request: Request) {
           issue_key: issueKey,
         });
         created++;
-        console.log(
-          `✅ Successfully created issue ${created}/${executions.length}`,
-        );
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
@@ -242,10 +219,6 @@ export async function POST(request: Request) {
         });
       }
     }
-
-    console.log(
-      `\n📊 Final results: Created ${created} of ${executions.length} issues`,
-    );
 
     return NextResponse.json({
       total: executions.length,

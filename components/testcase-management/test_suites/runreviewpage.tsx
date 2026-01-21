@@ -352,8 +352,6 @@ export function RunReviewPage({ runId }: { runId: string }) {
 
       const json = await res.json();
 
-      console.log("Create issues response:", json); // ← ADD THIS
-
       if (!res.ok) throw new Error(json?.error ?? "Failed to create issues");
 
       const results = json.results ?? [];
@@ -361,10 +359,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
       // ← ADD THIS: Log failed results
       const failures = results.filter((r: any) => !r.success);
       if (failures.length > 0) {
-        console.error("Failed to create issues:", failures);
-        failures.forEach((f: any) => {
-          console.error(`- ${f.execution_id}: ${f.error}`);
-        });
+        failures.forEach((f: any) => {});
       }
 
       // Update local state

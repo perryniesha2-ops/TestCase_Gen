@@ -1264,11 +1264,9 @@ test_suites:suite_id ( id, name, project_id)
     );
   }
 
-  // ✅ ADD THIS FUNCTION
   const handleIntegrationChange = (id: string) => {
     setSelectedIntegrationId(id);
 
-    // Update Jira base URL when integration changes
     const selected = integrations.find((i) => i.id === id);
     if (selected?.config?.url) {
       setJiraBaseUrl(selected.config.url);
@@ -1597,7 +1595,7 @@ test_suites:suite_id ( id, name, project_id)
                 setRunRows([]);
                 setIntegrations([]);
                 setSelectedIntegrationId("none");
-                setJiraBaseUrl(null); // ✅ ADD THIS
+                setJiraBaseUrl(null);
               }
             }}
             activeRun={activeRun}
@@ -1606,7 +1604,7 @@ test_suites:suite_id ( id, name, project_id)
             integrations={integrations}
             integrationLoading={integrationLoading}
             selectedIntegrationId={selectedIntegrationId}
-            onSelectedIntegrationIdChange={handleIntegrationChange} // ✅ CHANGE THIS (was setSelectedIntegrationId)
+            onSelectedIntegrationIdChange={handleIntegrationChange}
             onCreateIssues={createIssuesFromReview}
             creatingIssues={creatingIssues}
             saving={runSaveBusy}
@@ -1874,7 +1872,6 @@ test_suites:suite_id ( id, name, project_id)
 
                             {isExpanded && (
                               <TableRow>
-                                {/* ✅ header has 9 columns now */}
                                 <TableCell colSpan={9} className="bg-muted/30">
                                   <div className="p-4 space-y-3">
                                     {r.execution_notes && (

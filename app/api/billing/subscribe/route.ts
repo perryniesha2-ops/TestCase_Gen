@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     if (!planId || !userId) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     if (planId === "free" || planId === "enterprise" || planId === "team") {
       return NextResponse.json(
         { error: "Invalid plan for checkout" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -57,15 +57,14 @@ export async function POST(request: NextRequest) {
     const priceId = priceIds[priceKey];
 
     if (!priceId) {
-      console.error("❌ No price ID for:", priceKey);
       console.error("Available prices:", priceIds);
       return NextResponse.json(
         { error: "Invalid plan configuration. Please contact support." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    console.log("✅ Price ID:", priceId);
+    console.log("Price ID:", priceId);
 
     // Check for existing profile
     const { data: existingProfile } = await supabase
@@ -78,7 +77,7 @@ export async function POST(request: NextRequest) {
     if (existingProfile?.subscription_id) {
       try {
         const existingSubscription = await stripe.subscriptions.retrieve(
-          existingProfile.subscription_id
+          existingProfile.subscription_id,
         );
 
         if (
@@ -91,7 +90,7 @@ export async function POST(request: NextRequest) {
               error:
                 "You already have an active subscription. Use 'Manage Subscription' to make changes.",
             },
-            { status: 400 }
+            { status: 400 },
           );
         }
       } catch (error: any) {
@@ -204,7 +203,7 @@ export async function POST(request: NextRequest) {
         error: "Failed to create subscription",
         details: error.message || "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -212,7 +212,7 @@ export default function PlaywrightAutomationGuidePage() {
                   key={item.id}
                   href={`#${item.id}`}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   {item.icon}
@@ -1236,9 +1236,7 @@ jobs:
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="p-4 rounded-lg border">
-                    <div className="font-medium text-foreground mb-2 text-sm">
-                      ❌ Without metadata
-                    </div>
+                    <div className="font-medium text-foreground mb-2 text-sm"></div>
                     <div className="p-2 rounded bg-muted/50 font-mono text-xs">
                       <pre className="whitespace-pre-wrap text-muted-foreground">
                         {`// TODO: Navigate to login page

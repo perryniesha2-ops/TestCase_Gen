@@ -29,10 +29,10 @@ type SessionTimeoutProviderProps = {
  */
 export function SessionTimeoutProvider({
   children,
-  timeoutMinutes = 60,
-  warnMinutesBefore = 5,
+  timeoutMinutes = 5,
+  warnMinutesBefore = 2,
 }: SessionTimeoutProviderProps) {
-  const { user, signOut } = useAuth(); // ✅ Use auth context
+  const { user, signOut } = useAuth();
   const router = useRouter();
 
   const [showWarning, setShowWarning] = useState(false);
@@ -63,7 +63,7 @@ export function SessionTimeoutProvider({
     try {
       clearTimers();
       setShowWarning(false);
-      await signOut(); // ✅ Use centralized signOut
+      await signOut();
       toast.error("You have been signed out due to inactivity.", {
         duration: 5000,
       });
@@ -76,7 +76,7 @@ export function SessionTimeoutProvider({
 
   const handleStayLoggedIn = () => {
     setShowWarning(false);
-    scheduleTimers(); // Reset timers
+    scheduleTimers();
   };
 
   const scheduleTimers = () => {
@@ -136,7 +136,7 @@ export function SessionTimeoutProvider({
 
     return () => {
       events.forEach((event) =>
-        window.removeEventListener(event, handleActivity)
+        window.removeEventListener(event, handleActivity),
       );
       clearTimers();
     };

@@ -19,7 +19,7 @@ const supabaseAdmin = createClient(
       autoRefreshToken: false,
       persistSession: false,
     },
-  }
+  },
 );
 
 export async function POST(request: NextRequest) {
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
         if (session.subscription) {
           const subscription = await stripe.subscriptions.retrieve(
-            session.subscription as string
+            session.subscription as string,
           );
           await handleSubscriptionCreated(subscription, session);
         } else {
@@ -98,19 +98,18 @@ export async function POST(request: NextRequest) {
     console.error("❌ Webhook error:", error);
     return NextResponse.json(
       { error: "Webhook processing failed", details: error.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 async function handleSubscriptionCreated(
   subscription: Stripe.Subscription,
-  session?: Stripe.Checkout.Session
+  session?: Stripe.Checkout.Session,
 ) {
   const userId = subscription.metadata?.user_id;
 
   if (!userId) {
-    console.error("❌ No user_id in subscription metadata");
     return;
   }
 
@@ -118,8 +117,7 @@ async function handleSubscriptionCreated(
     const planId = subscription.metadata?.plan_id || "pro";
     const mappedStatus = mapSubscriptionStatus(subscription.status);
 
-    // FIXED: Type-safe access to subscription properties
-    const subscriptionData = subscription as any; // Type assertion for properties not in types
+    const subscriptionData = subscription as any;
 
     // Update user profile
     const { error: profileError } = await supabaseAdmin
@@ -176,7 +174,6 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   const userId = subscription.metadata?.user_id;
 
   if (!userId) {
-    console.error("❌ No user_id in subscription metadata");
     return;
   }
 

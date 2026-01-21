@@ -172,23 +172,6 @@ export class JiraIntegration {
       content: descriptionContent,
     };
 
-    console.log(
-      "📦 Creating Jira issue with payload:",
-      JSON.stringify(
-        {
-          fields: {
-            project: { key: projectKey },
-            summary: `Test Failure: ${failure.test_title}`,
-            description,
-            issuetype: { name: "Bug" },
-            labels: ["synthqa-test-failure"],
-          },
-        },
-        null,
-        2,
-      ),
-    );
-
     try {
       const issue = await (this.client as any).issues.createIssue({
         fields: {
@@ -200,7 +183,6 @@ export class JiraIntegration {
         },
       });
 
-      console.log("✅ Jira issue created successfully:", issue);
       return issue;
     } catch (error: any) {
       console.error("❌ Jira API Error:", {

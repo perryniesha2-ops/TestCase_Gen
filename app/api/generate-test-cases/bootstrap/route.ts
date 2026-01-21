@@ -13,7 +13,7 @@ function toInt(v: string | null, fallback: number) {
 function jsonError(message: string, status = 500, details?: unknown) {
   return NextResponse.json(
     { error: message, details: details ?? null },
-    { status, headers: { "Cache-Control": "no-store" } }
+    { status, headers: { "Cache-Control": "no-store" } },
   );
 }
 
@@ -28,7 +28,7 @@ export async function GET(req: Request) {
 
     const requirementsLimit = toInt(
       url.searchParams.get("requirementsLimit"),
-      200
+      200,
     );
     const templatesLimit = toInt(url.searchParams.get("templatesLimit"), 200);
 
@@ -65,7 +65,7 @@ export async function GET(req: Request) {
       supabase
         .from("test_case_templates")
         .select(
-          "id, name, description, category, template_content, is_favorite, usage_count, project_id, last_used_at"
+          "id, name, description, category, template_content, is_favorite, usage_count, project_id, last_used_at",
         )
         .eq("user_id", user.id)
         .order("is_favorite", { ascending: false })
@@ -86,10 +86,10 @@ export async function GET(req: Request) {
       {
         projects: projectsRes.data ?? [],
         requirements: requirementsRes.data ?? [],
-        templates: templatesRes.data ?? [], // ✅ IMPORTANT (missing before)
-        defaults, // { model, count, coverage } if present
+        templates: templatesRes.data ?? [],
+        defaults,
       },
-      { headers: { "Cache-Control": "no-store" } }
+      { headers: { "Cache-Control": "no-store" } },
     );
   } catch (e: any) {
     return jsonError(e?.message ?? "Unexpected error", 500);

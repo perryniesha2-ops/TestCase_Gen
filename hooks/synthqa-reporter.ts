@@ -39,13 +39,13 @@ class SynthQAReporter implements Reporter {
 
   async onEnd(result: FullResult) {
     const passed = this.testResults.filter(
-      (t) => t.execution_status === "passed"
+      (t) => t.execution_status === "passed",
     ).length;
     const failed = this.testResults.filter(
-      (t) => t.execution_status === "failed"
+      (t) => t.execution_status === "failed",
     ).length;
     const skipped = this.testResults.filter(
-      (t) => t.execution_status === "skipped"
+      (t) => t.execution_status === "skipped",
     ).length;
 
     await this.sendToWebhook({

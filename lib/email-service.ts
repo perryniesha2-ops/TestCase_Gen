@@ -252,7 +252,6 @@ export function createEmailService(): EmailService | null {
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {
-    console.error("RESEND_API_KEY environment variable is not set");
     return null;
   }
 
