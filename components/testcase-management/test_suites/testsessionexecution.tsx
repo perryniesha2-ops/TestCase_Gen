@@ -1,10 +1,8 @@
 // components/test-management/TestSessionExecution.tsx
-// FIXED VERSION - All UI issues resolved
 "use client";
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -50,6 +48,7 @@ import type {
 import { ScreenshotUpload } from "../ScreenshotUpload";
 import { ExtensionRequiredCallout } from "@/components/extensions/extensionrequiredcallout";
 import { detectExtensionInstalled } from "@/lib/extensions/detectExtension";
+import { toastSuccess, toastError, toastInfo } from "@/lib/utils/toast-utils";
 
 interface TestCase {
   id: string;
@@ -120,6 +119,7 @@ export function TestSessionExecution({
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [testsLoading, setTestsLoading] = useState(false);
+  const [isStartingSession, setIsStartingSession] = useState(false);
 
   const [currentExecutionStatus, setCurrentExecutionStatus] =
     useState<ExecutionStatus | null>(null);
@@ -131,8 +131,11 @@ export function TestSessionExecution({
   const [attachments, setAttachments] = useState<TestAttachment[]>([]);
   const [targetUrl, setTargetUrl] = useState<string>("");
 
+  const [extensionInstalled, setExtensionInstalled] = useState<boolean>(true);
+
   // Refs
   const dialogRef = useRef<HTMLDivElement>(null);
+  const sessionStartedRef = useRef(false);
 
   const currentTest = suiteTestCases[currentTestIndex] ?? null;
   const totalTests = suiteTestCases.length;
@@ -145,12 +148,6 @@ export function TestSessionExecution({
     skipped: 0,
   };
 
-  const [extensionInstalled, setExtensionInstalled] = useState<boolean>(true);
-  <ExtensionRequiredCallout
-    docHref="/guides/browser-extension"
-    onDetected={(ok) => setExtensionInstalled(ok)}
-  />;
-
   // Fetch test cases when suite changes
   useEffect(() => {
     if (!suite.id) return;
@@ -159,9 +156,28 @@ export function TestSessionExecution({
 
   // When parent sets open=true, start session
   useEffect(() => {
-    if (!open) return;
-    void startNewSession();
+    if (!open) {
+      // Reset when dialog closes
+      sessionStartedRef.current = false;
+      return;
+    }
+
+    // Only start if we haven't already started a session
+    if (!sessionStartedRef.current) {
+      sessionStartedRef.current = true;
+      void startNewSession();
+    }
   }, [open]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      setSessionId(null);
+      setCurrentSession(null);
+      setIsStartingSession(false);
+      sessionStartedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (currentExecutionId) {
@@ -178,13 +194,8 @@ export function TestSessionExecution({
         return;
       }
 
-      // Only work when execution dialog is open
       if (!showExecutionDialog) return;
-
-      // Check required state
       if (!currentTest || !currentSession || !currentExecutionId) return;
-
-      // Don't allow on read-only executions
       if (isCurrentExecutionReadOnly || actionLoading) return;
 
       switch (e.key.toLowerCase()) {
@@ -195,7 +206,7 @@ export function TestSessionExecution({
         case "f":
           e.preventDefault();
           if (!failureReason.trim()) {
-            toast.error("Please provide a failure reason first");
+            toastError("Please provide a failure reason first");
             return;
           }
           void completeTestExecution("failed");
@@ -225,7 +236,6 @@ export function TestSessionExecution({
     failureReason,
   ]);
 
-  // Focus dialog when opened
   useEffect(() => {
     if (showExecutionDialog && dialogRef.current) {
       dialogRef.current.focus();
@@ -237,7 +247,6 @@ export function TestSessionExecution({
     try {
       const supabase = createClient();
 
-      // First, get the test_suite_cases
       const { data: suiteLinks, error: linksError } = await supabase
         .from("test_suite_cases")
         .select(
@@ -257,7 +266,6 @@ export function TestSessionExecution({
         return [];
       }
 
-      // Now fetch each test case individually with its steps
       const testCaseIds = suiteLinks.map((link) => link.test_case_id);
 
       const { data: testCases, error: testCasesError } = await supabase
@@ -272,12 +280,10 @@ export function TestSessionExecution({
         throw testCasesError;
       }
 
-      // Create a map of test cases by ID for quick lookup
       const testCaseMap = new Map((testCases || []).map((tc) => [tc.id, tc]));
 
-      // Combine suite links with test case data
       const transformed: SuiteTestCase[] = suiteLinks
-        .map((link, mapIndex) => {
+        .map((link) => {
           const testCase = testCaseMap.get(link.test_case_id);
 
           if (!testCase) {
@@ -292,23 +298,17 @@ export function TestSessionExecution({
           }> = [];
 
           if (testCase?.test_steps) {
-            // If it's a string (JSON), parse it
             if (typeof testCase.test_steps === "string") {
               try {
                 normalizedSteps = JSON.parse(testCase.test_steps);
               } catch (e) {
                 normalizedSteps = [];
               }
-            }
-            // If it's already an array, use it
-            else if (Array.isArray(testCase.test_steps)) {
+            } else if (Array.isArray(testCase.test_steps)) {
               normalizedSteps = testCase.test_steps;
-            }
-            // If it's an object (PostgreSQL array format), convert to array
-            else if (typeof testCase.test_steps === "object") {
+            } else if (typeof testCase.test_steps === "object") {
               normalizedSteps = Object.values(testCase.test_steps);
             }
-          } else {
           }
 
           return {
@@ -329,7 +329,7 @@ export function TestSessionExecution({
       return transformed;
     } catch (error) {
       console.error("Error fetching suite test cases:", error);
-      toast.error("Failed to load test cases for execution");
+      toastError("Failed to load test cases for execution");
       setSuiteTestCases([]);
       return [];
     } finally {
@@ -346,22 +346,38 @@ export function TestSessionExecution({
       .order("created_at", { ascending: false });
 
     if (!error && data) {
-      setAttachments(data);
+      setAttachments(data as TestAttachment[]);
+    } else {
+      setAttachments([]);
     }
-
-    setAttachments((data ?? []) as TestAttachment[]);
   }
 
   async function startNewSession() {
+    // Prevent duplicate session creation
+    if (isStartingSession) {
+      console.log("⚠️ Session start already in progress, skipping...");
+      return;
+    }
+
+    // If we already have an active session, don't create another
+    if (sessionId) {
+      console.log("⚠️ Session already exists:", sessionId);
+      setShowExecutionDialog(true);
+      return;
+    }
+
     try {
+      setIsStartingSession(true);
       setLoading(true);
+
       const supabase = createClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
       if (!user) {
         console.error("❌ No user found");
-        toast.error("Please log in to start a test session");
+        toastError("Please log in to start a test session");
         return;
       }
 
@@ -371,6 +387,8 @@ export function TestSessionExecution({
         onOpenChange(false);
         return;
       }
+
+      console.log("✅ Creating new session for suite:", suite.id);
 
       const { data, error } = await supabase
         .from("test_run_sessions")
@@ -394,6 +412,8 @@ export function TestSessionExecution({
         throw error;
       }
 
+      console.log("✅ Session created:", data.id);
+
       const session: TestSession = {
         ...data,
         stats: { passed: 0, failed: 0, blocked: 0, skipped: 0 },
@@ -411,12 +431,15 @@ export function TestSessionExecution({
 
       await startTestExecutionWithTestCase(tests[0], session.id);
 
-      toast.success("Test session started");
+      toastSuccess("Test session started");
     } catch (error) {
-      toast.error("Failed to start test session");
+      console.error("❌ Error in startNewSession:", error);
+      toastError("Failed to start test session");
       onOpenChange(false);
+      sessionStartedRef.current = false;
     } finally {
       setLoading(false);
+      setIsStartingSession(false);
     }
   }
 
@@ -451,7 +474,6 @@ export function TestSessionExecution({
         return;
       }
 
-      // Check if execution already exists for this session + test case
       const { data: existing, error: existingError } = await supabase
         .from("test_executions")
         .select(
@@ -515,12 +537,11 @@ export function TestSessionExecution({
       setCurrentExecutionStatus("in_progress");
       setIsCurrentExecutionReadOnly(false);
     } catch (error) {
-      toast.error("Failed to start test execution");
+      toastError("Failed to start test execution");
     }
   }
 
   async function completeTestExecution(status: ExecutionStatus) {
-    // Validate all required state
     if (!currentExecutionId || !currentSession || !currentTest) {
       return;
     }
@@ -537,9 +558,8 @@ export function TestSessionExecution({
       return;
     }
 
-    // Validate failure reason for failed tests
     if (status === "failed" && !failureReason.trim()) {
-      toast.error("Please provide a failure reason");
+      toastError("Please provide a failure reason");
       return;
     }
 
@@ -564,14 +584,12 @@ export function TestSessionExecution({
       const newCompleted = completedCount + 1;
       const newProgress = Math.round((newCompleted / totalTests) * 100);
 
-      // Recalcalate the stats
       const newStats: SessionStats = { ...stats };
       if (status === "passed") newStats.passed++;
       if (status === "failed") newStats.failed++;
       if (status === "blocked") newStats.blocked++;
       if (status === "skipped") newStats.skipped++;
 
-      // save stats
       await supabase
         .from("test_run_sessions")
         .update({
@@ -597,9 +615,8 @@ export function TestSessionExecution({
       setCurrentExecutionStatus(status);
       setIsCurrentExecutionReadOnly(true);
 
-      toast.success(`Test ${status}`);
+      toastSuccess(`Test ${status}`);
 
-      // Reset form
       setExecutionNotes("");
       setFailureReason("");
       setCompletedSteps(new Set());
@@ -613,7 +630,7 @@ export function TestSessionExecution({
       }
     } catch (error) {
       console.error("Error completing test execution:", error);
-      toast.error("Failed to complete test execution");
+      toastError("Failed to complete test execution");
     } finally {
       setActionLoading(false);
     }
@@ -624,6 +641,8 @@ export function TestSessionExecution({
     try {
       const supabase = createClient();
 
+      console.log("✅ Completing session:", currentSession.id);
+
       await supabase
         .from("test_run_sessions")
         .update({
@@ -632,13 +651,44 @@ export function TestSessionExecution({
         })
         .eq("id", currentSession.id);
 
-      toast.success("Test session completed!");
+      toastSuccess("Test session completed!");
       setShowExecutionDialog(false);
+      setSessionId(null);
+      setCurrentSession(null);
+      sessionStartedRef.current = false;
       onSessionComplete();
       onOpenChange(false);
     } catch (error) {
       console.error("Error completing session:", error);
-      toast.error("Failed to complete session");
+      toastError("Failed to complete session");
+    }
+  }
+
+  async function abortSession() {
+    if (!currentSession) return;
+    try {
+      const supabase = createClient();
+
+      console.log("🚫 Aborting session:", currentSession.id);
+
+      await supabase
+        .from("test_run_sessions")
+        .update({
+          status: "aborted",
+          actual_end: new Date().toISOString(),
+        })
+        .eq("id", currentSession.id);
+
+      toastSuccess("Test session aborted");
+      setShowExecutionDialog(false);
+      setSessionId(null);
+      setCurrentSession(null);
+      sessionStartedRef.current = false;
+      onSessionComplete();
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error aborting session:", error);
+      toastError("Failed to abort session");
     }
   }
 
@@ -651,12 +701,31 @@ export function TestSessionExecution({
         .update({ status: "paused" })
         .eq("id", currentSession.id);
 
-      toast.success("Session paused");
+      toastSuccess("Session paused");
       setShowExecutionDialog(false);
+      sessionStartedRef.current = false;
       onOpenChange(false);
     } catch (error) {
       console.error("Error pausing session:", error);
-      toast.error("Failed to pause session");
+      toastError("Failed to pause session");
+    }
+  }
+
+  async function endSession() {
+    if (!currentSession) return;
+
+    console.log(
+      "🛑 Ending session:",
+      currentSession.id,
+      "Progress:",
+      currentSession.progress_percentage,
+    );
+
+    // Only mark as completed if truly 100% done
+    if (currentSession.progress_percentage === 100) {
+      await completeSession();
+    } else {
+      await abortSession();
     }
   }
 
@@ -803,7 +872,6 @@ export function TestSessionExecution({
                           </div>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                          {/* Read-only warning */}
                           {isCurrentExecutionReadOnly &&
                             currentExecutionStatus !== "in_progress" && (
                               <Alert className="border-amber-300 bg-amber-50">
@@ -821,7 +889,6 @@ export function TestSessionExecution({
                               </Alert>
                             )}
 
-                          {/* Description */}
                           <div>
                             <h4 className="font-medium mb-2">Description</h4>
                             <p className="text-sm text-muted-foreground break-words">
@@ -858,65 +925,60 @@ export function TestSessionExecution({
                                 No test steps defined for this test case.
                               </div>
                             ) : (
-                              <>
-                                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-                                  {currentTest.test_cases.test_steps.map(
-                                    (step, index) => {
-                                      return (
-                                        <div
-                                          key={index}
-                                          className="flex items-start gap-3 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                                        >
-                                          <Checkbox
-                                            checked={completedSteps.has(index)}
-                                            onCheckedChange={() =>
-                                              toggleStep(index)
-                                            }
-                                            disabled={
-                                              isCurrentExecutionReadOnly
-                                            }
-                                            className="mt-1"
-                                          />
-                                          <div className="flex-1 min-w-0 space-y-2">
-                                            <div className="flex items-start gap-2">
-                                              <Badge
-                                                variant="outline"
-                                                className="text-xs font-mono shrink-0"
+                              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+                                {currentTest.test_cases.test_steps.map(
+                                  (step, index) => {
+                                    return (
+                                      <div
+                                        key={index}
+                                        className="flex items-start gap-3 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                                      >
+                                        <Checkbox
+                                          checked={completedSteps.has(index)}
+                                          onCheckedChange={() =>
+                                            toggleStep(index)
+                                          }
+                                          disabled={isCurrentExecutionReadOnly}
+                                          className="mt-1"
+                                        />
+                                        <div className="flex-1 min-w-0 space-y-2">
+                                          <div className="flex items-start gap-2">
+                                            <Badge
+                                              variant="outline"
+                                              className="text-xs font-mono shrink-0"
+                                            >
+                                              Step{" "}
+                                              {step.step_number || index + 1}
+                                            </Badge>
+                                            <div className="flex-1 min-w-0">
+                                              <p
+                                                className={`text-sm font-medium break-words ${
+                                                  completedSteps.has(index)
+                                                    ? "line-through text-muted-foreground"
+                                                    : ""
+                                                }`}
                                               >
-                                                Step{" "}
-                                                {step.step_number || index + 1}
-                                              </Badge>
-                                              <div className="flex-1 min-w-0">
-                                                <p
-                                                  className={`text-sm font-medium break-words ${
-                                                    completedSteps.has(index)
-                                                      ? "line-through text-muted-foreground"
-                                                      : ""
-                                                  }`}
-                                                >
-                                                  {step.action}
-                                                </p>
-                                              </div>
-                                            </div>
-                                            <div className="pl-0">
-                                              <p className="text-xs text-muted-foreground break-words">
-                                                <span className="font-semibold">
-                                                  Expected:{" "}
-                                                </span>
-                                                {step.expected}
+                                                {step.action}
                                               </p>
                                             </div>
                                           </div>
+                                          <div className="pl-0">
+                                            <p className="text-xs text-muted-foreground break-words">
+                                              <span className="font-semibold">
+                                                Expected:{" "}
+                                              </span>
+                                              {step.expected}
+                                            </p>
+                                          </div>
                                         </div>
-                                      );
-                                    },
-                                  )}
-                                </div>
-                              </>
+                                      </div>
+                                    );
+                                  },
+                                )}
+                              </div>
                             )}
                           </div>
 
-                          {/* Expected Result */}
                           <div>
                             <h4 className="font-medium mb-2">
                               Expected Result
@@ -1085,7 +1147,6 @@ export function TestSessionExecution({
                         </CardHeader>
                         <CardContent className="flex-1 overflow-hidden p-0">
                           <div className="h-full overflow-y-auto px-4 pb-4">
-                            {/* keep your existing queue map here */}
                             <div className="space-y-2">
                               {suiteTestCases.map((testCase, index) => {
                                 const isCurrent = index === currentTestIndex;
@@ -1110,21 +1171,20 @@ export function TestSessionExecution({
                                       }
                                     }}
                                     className={`
-                    w-full text-left p-3 rounded-lg border transition-colors
-                    ${
-                      isCurrent
-                        ? "bg-primary/10 border-primary/70"
-                        : isCompleted
-                          ? "bg-emerald-500/10 border-emerald-500/60"
-                          : "bg-muted/40 border-border/60 hover:bg-muted/60"
-                    }
-                  `}
+                                      w-full text-left p-3 rounded-lg border transition-colors
+                                      ${
+                                        isCurrent
+                                          ? "bg-primary/10 border-primary/70"
+                                          : isCompleted
+                                            ? "bg-emerald-500/10 border-emerald-500/60"
+                                            : "bg-muted/40 border-border/60 hover:bg-muted/60"
+                                      }
+                                    `}
                                   >
                                     <div className="flex items-center gap-2">
                                       <span className="font-mono text-xs text-muted-foreground">
                                         {index + 1}
                                       </span>
-                                      {/* ...existing icon/title... */}
                                       <div className="flex-1 min-w-0">
                                         <p className="text-xs font-medium truncate">
                                           {testCase.test_cases.title}
@@ -1156,9 +1216,7 @@ export function TestSessionExecution({
                                 id="target-url"
                                 placeholder="https://app.example.com/login"
                                 value={targetUrl}
-                                onChange={(
-                                  e: React.ChangeEvent<HTMLInputElement>,
-                                ) => setTargetUrl(e.target.value)}
+                                onChange={(e) => setTargetUrl(e.target.value)}
                               />
                             </div>
                             <div className="mt-2" />
@@ -1170,7 +1228,6 @@ export function TestSessionExecution({
                             </CardDescription>
                           </CardHeader>
 
-                          {/* key part: keep evidence usable without growing the dialog */}
                           <CardContent className="flex-1 overflow-y-auto">
                             <ScreenshotUpload
                               executionId={currentExecutionId}
@@ -1229,10 +1286,8 @@ export function TestSessionExecution({
                 Next
                 <ChevronRight className="h-4 w-4 ml-2" />
               </Button>
-              <Button
-                variant="destructive"
-                onClick={() => void completeSession()}
-              >
+              <Button variant="destructive" onClick={() => void endSession()}>
+                <XCircle className="h-4 w-4 mr-2" />
                 End Session
               </Button>
             </div>
@@ -1244,16 +1299,18 @@ export function TestSessionExecution({
       <Dialog open={showPauseDialog} onOpenChange={setShowPauseDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Pause Test Session?</DialogTitle>
+            <DialogTitle>End Test Session?</DialogTitle>
             <DialogDescription>
-              Your progress will be saved and you can resume anytime.
+              You can pause to resume later, or abort to end the session
+              permanently.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="flex gap-2">
             <Button variant="outline" onClick={() => setShowPauseDialog(false)}>
               Cancel
             </Button>
             <Button
+              variant="outline"
               onClick={() => {
                 void pauseSession();
                 setShowPauseDialog(false);
@@ -1261,6 +1318,16 @@ export function TestSessionExecution({
             >
               <Pause className="h-4 w-4 mr-2" />
               Pause Session
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                void abortSession();
+                setShowPauseDialog(false);
+              }}
+            >
+              <XCircle className="h-4 w-4 mr-2" />
+              Abort Session
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { toast } from "sonner";
+import { toastSuccess, toastError } from "@/lib/utils/toast-utils";
 
 type IntegrationType = "jira" | "testrail";
 
@@ -133,15 +133,15 @@ function JiraSetup({ projectId }: { projectId: string }) {
 
   async function saveIntegration() {
     if (!projectId) {
-      toast.error("Missing project id");
+      toastError("Missing project id");
       return;
     }
     if (!config.url || !config.email || !config.apiToken) {
-      toast.error("URL, Email, and API Token are required");
+      toastError("URL, Email, and API Token are required");
       return;
     }
     if (!urlLooksValid) {
-      toast.error("Use the base Jira site URL only (no /jira/... path).");
+      toastError("Use the base Jira site URL only (no /jira/... path).");
       return;
     }
 
@@ -175,11 +175,9 @@ function JiraSetup({ projectId }: { projectId: string }) {
       if (!id) throw new Error("Saved, but API did not return integration id");
 
       setIntegrationId(id);
-      toast.success(
-        integrationId ? "Integration updated" : "Integration saved",
-      );
+      toastSuccess(integrationId ? "Integration updated" : "Integration saved");
     } catch (err) {
-      toast.error(
+      toastError(
         err instanceof Error ? err.message : "Failed to save integration",
       );
     } finally {
@@ -189,11 +187,11 @@ function JiraSetup({ projectId }: { projectId: string }) {
 
   async function testConnection() {
     if (!config.url || !config.email || !config.apiToken) {
-      toast.error("URL, Email, and API Token are required");
+      toastError("URL, Email, and API Token are required");
       return;
     }
     if (!urlLooksValid) {
-      toast.error("Use the base Jira site URL only (no /jira/... path).");
+      toastError("Use the base Jira site URL only (no /jira/... path).");
       return;
     }
 
@@ -217,11 +215,11 @@ function JiraSetup({ projectId }: { projectId: string }) {
         throw new Error(json?.error ?? `HTTP ${response.status}`);
       }
 
-      toast.success(
+      toastSuccess(
         `Connection successful! Connected as ${json?.me?.displayName ?? "user"}`,
       );
     } catch (err) {
-      toast.error(
+      toastError(
         err instanceof Error ? err.message : "Failed to connect to Jira",
       );
     } finally {

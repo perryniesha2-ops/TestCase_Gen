@@ -229,7 +229,7 @@ export function TestSuitesPage() {
 
   async function deleteTestSuite(suiteId: string) {
     const ok = window.confirm(
-      "Delete this test suite? Executions will be kept in history."
+      "Delete this test suite? Executions will be kept in history.",
     );
     if (!ok) return;
 
@@ -246,7 +246,7 @@ export function TestSuitesPage() {
     if (!res.ok) {
       console.error("Delete suite failed:", res.status, payload ?? raw);
       throw new Error(
-        payload?.error ? `${payload.error}` : `Delete failed (${res.status})`
+        payload?.error ? `${payload.error}` : `Delete failed (${res.status})`,
       );
     }
 
@@ -582,7 +582,7 @@ export function TestSuitesPage() {
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {formData.planned_start_date ? (
                         new Date(
-                          formData.planned_start_date
+                          formData.planned_start_date,
                         ).toLocaleDateString()
                       ) : (
                         <span>Pick a date</span>
