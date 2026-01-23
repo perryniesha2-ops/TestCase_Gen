@@ -361,7 +361,6 @@ export function TestSessionExecution({
 
     // If we already have an active session, don't create another
     if (sessionId) {
-      console.log("⚠️ Session already exists:", sessionId);
       setShowExecutionDialog(true);
       return;
     }
@@ -388,8 +387,6 @@ export function TestSessionExecution({
         return;
       }
 
-      console.log("✅ Creating new session for suite:", suite.id);
-
       const { data, error } = await supabase
         .from("test_run_sessions")
         .insert({
@@ -411,8 +408,6 @@ export function TestSessionExecution({
         console.error("❌ Error creating session:", error);
         throw error;
       }
-
-      console.log("✅ Session created:", data.id);
 
       const session: TestSession = {
         ...data,
@@ -641,8 +636,6 @@ export function TestSessionExecution({
     try {
       const supabase = createClient();
 
-      console.log("✅ Completing session:", currentSession.id);
-
       await supabase
         .from("test_run_sessions")
         .update({
@@ -668,8 +661,6 @@ export function TestSessionExecution({
     if (!currentSession) return;
     try {
       const supabase = createClient();
-
-      console.log("🚫 Aborting session:", currentSession.id);
 
       await supabase
         .from("test_run_sessions")
