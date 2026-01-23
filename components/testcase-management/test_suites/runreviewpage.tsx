@@ -123,7 +123,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) {
         toast.error("You must be signed in");
-        router.push("/execution-history");
+        router.push("/executionhistory");
         return;
       }
 
@@ -253,7 +253,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
     } catch (error) {
       console.error(error);
       toast.error("Failed to load run data");
-      router.push("/execution-history");
+      router.push("/executionhistory");
     } finally {
       setLoading(false);
     }
@@ -453,7 +453,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => router.push("/execution-history")}
+          onClick={() => router.push("/executionhistory")}
           className="gap-2"
         >
           <ArrowLeft className="h-4 w-4" />

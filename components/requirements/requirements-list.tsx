@@ -350,14 +350,12 @@ export function RequirementsList({
             Import
           </Button>
         </ImportRequirementsDialog>
-
         {/* Create (single) */}
-        <AddRequirementModal>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            New Requirement
-          </Button>
-        </AddRequirementModal>
+        <AddRequirementModal
+          onRequirementAdded={(newReq) => {
+            setRequirements((prev) => [newReq, ...prev]);
+          }}
+        />{" "}
       </div>
 
       {/* Filters */}

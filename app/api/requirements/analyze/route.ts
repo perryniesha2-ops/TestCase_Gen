@@ -1,4 +1,4 @@
-// app/api/requirements/analyze/route.ts - REQUIREMENT QUALITY ANALYSIS
+// app/api/requirements/analyze/route.ts - REQUIREMENT QUALITY ANALYSIS (FIXED)
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import OpenAI from "openai";
@@ -10,16 +10,23 @@ interface AnalysisRequest {
   title: string;
   description: string;
   acceptance_criteria: string[];
-  requirement_type?: string;
+  type?: string;
 }
 
 interface QualityIssue {
-  type: "ambiguity" | "missing_criteria" | "gap" | "incomplete" | "vague";
-  severity: "critical" | "high" | "medium" | "low";
-  category: string;
-  message: string;
+  type:
+    | "ambiguity"
+    | "missing_criteria"
+    | "gap"
+    | "testability"
+    | "completeness"
+    | "clarity";
+  level: "critical" | "high" | "medium" | "low" | "info";
+  title: string;
+  description: string;
+  location: "title" | "description" | "criteria" | "overall";
   suggestion: string;
-  location?: string;
+  examples?: string[];
 }
 
 interface AnalysisResult {
@@ -28,10 +35,11 @@ interface AnalysisResult {
   clarity_score: number;
   testability_score: number;
   issues: QualityIssue[];
-  suggestions: string[];
-  missing_criteria: string[];
-  ambiguous_terms: string[];
-  recommended_actions: string[];
+  strengths: string[];
+  improvements: string[];
+  suggested_criteria: string[];
+  missing_aspects: string[];
+  summary: string;
 }
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -94,7 +102,7 @@ CRITICAL ANALYSIS AREAS:
    - Security considerations
    - Accessibility requirements
 
-Return your analysis as JSON only.`;
+Return your analysis as JSON only, no markdown formatting.`;
 
     const userPrompt = `Analyze this requirement:
 
@@ -103,12 +111,12 @@ TITLE: ${body.title}
 DESCRIPTION:
 ${body.description}
 
-TYPE: ${body.requirement_type || "unknown"}
+TYPE: ${body.type || "unknown"}
 
 ACCEPTANCE CRITERIA:
-${body.acceptance_criteria.length > 0 ? body.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n") : "NONE PROVIDED"}
+${body.acceptance_criteria && body.acceptance_criteria.length > 0 ? body.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n") : "NONE PROVIDED"}
 
-Provide a comprehensive analysis in this JSON format:
+Provide a comprehensive analysis in this EXACT JSON format:
 {
   "quality_score": number (0-100, overall quality),
   "completeness_score": number (0-100, how complete),
@@ -117,31 +125,35 @@ Provide a comprehensive analysis in this JSON format:
   
   "issues": [
     {
-      "type": "ambiguity" | "missing_criteria" | "gap" | "incomplete" | "vague",
-      "severity": "critical" | "high" | "medium" | "low",
-      "category": string (e.g., "Vague Terms", "Missing Error Handling"),
-      "message": string (what's wrong),
-      "suggestion": string (how to fix),
-      "location": string (where in the requirement)
+      "type": "ambiguity" | "missing_criteria" | "gap" | "testability" | "completeness" | "clarity",
+      "level": "critical" | "high" | "medium" | "low" | "info",
+      "title": string (brief issue title),
+      "description": string (what's wrong in detail),
+      "location": "title" | "description" | "criteria" | "overall",
+      "suggestion": string (how to fix it),
+      "examples": [string] (optional examples)
     }
   ],
   
-  "suggestions": [string] (general improvements),
+  "strengths": [string] (what's good about this requirement),
   
-  "missing_criteria": [string] (specific missing acceptance criteria),
+  "improvements": [string] (general improvement suggestions),
   
-  "ambiguous_terms": [string] (terms that need clarification),
+  "suggested_criteria": [string] (specific missing acceptance criteria to add),
   
-  "recommended_actions": [string] (prioritized actions to take)
+  "missing_aspects": [string] (missing requirement aspects like error handling, security, etc),
+  
+  "summary": string (2-3 sentence overall assessment)
 }
 
 IMPORTANT:
+- Return ONLY valid JSON, no markdown code blocks
 - Be strict but constructive
 - Prioritize testability
 - Flag ALL ambiguous terms
 - Identify ALL missing error scenarios
-- Score generously only if requirement is truly high quality
-- Provide actionable suggestions`;
+- Provide actionable suggestions
+- Always include at least empty arrays for issues, strengths, improvements, suggested_criteria, missing_aspects`;
 
     const model = process.env.OPENAI_ANALYZE_MODEL || "gpt-4o";
 
@@ -159,10 +171,31 @@ IMPORTANT:
     let analysis: AnalysisResult;
 
     try {
-      analysis = JSON.parse(text);
-    } catch {
+      const parsed = JSON.parse(text);
+
+      // Ensure all required fields exist with defaults
+      analysis = {
+        quality_score: parsed.quality_score || 0,
+        completeness_score: parsed.completeness_score || 0,
+        clarity_score: parsed.clarity_score || 0,
+        testability_score: parsed.testability_score || 0,
+        issues: Array.isArray(parsed.issues) ? parsed.issues : [],
+        strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
+        improvements: Array.isArray(parsed.improvements)
+          ? parsed.improvements
+          : [],
+        suggested_criteria: Array.isArray(parsed.suggested_criteria)
+          ? parsed.suggested_criteria
+          : [],
+        missing_aspects: Array.isArray(parsed.missing_aspects)
+          ? parsed.missing_aspects
+          : [],
+        summary: parsed.summary || "Analysis completed.",
+      };
+    } catch (parseError) {
+      console.error("Failed to parse analysis:", parseError);
       return NextResponse.json(
-        { error: "Failed to parse analysis" },
+        { error: "Failed to parse analysis response" },
         { status: 500 },
       );
     }
@@ -184,10 +217,7 @@ IMPORTANT:
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      analysis,
-    });
+    return NextResponse.json(analysis);
   } catch (e: any) {
     console.error("Requirement analysis error:", e);
     return NextResponse.json(

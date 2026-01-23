@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,6 +49,12 @@ import {
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { Requirement } from "@/types/requirements";
+import {
+  toastSuccess,
+  toastError,
+  toastInfo,
+  toastWarning,
+} from "@/lib/utils/toast-utils";
 
 interface Project {
   id: string;
@@ -250,7 +255,7 @@ export function AddRequirementModal({
 
       const { generation_id, test_cases_count } = await response.json();
 
-      toast.success(`Generated ${test_cases_count} test cases!`, {
+      toastSuccess(`Generated ${test_cases_count} test cases!`, {
         action: {
           label: "View Tests",
           onClick: () => router.push(`/test-cases?generation=${generation_id}`),
@@ -258,7 +263,7 @@ export function AddRequirementModal({
       });
     } catch (error) {
       console.error("Error generating tests:", error);
-      toast.error("Failed to generate test cases");
+      toastError("Failed to generate test cases");
     } finally {
       setGeneratingTests(false);
     }
@@ -267,7 +272,7 @@ export function AddRequirementModal({
   // NEW: Quality Analysis Function
   async function analyzeQuality() {
     if (!formData.title.trim() || !formData.description.trim()) {
-      toast.error("Please fill in title and description first");
+      toastError("Please fill in title and description first");
       return;
     }
 
@@ -290,27 +295,54 @@ export function AddRequirementModal({
       }
 
       const data = await response.json();
-      setAnalysis(data);
+
+      // DEFENSIVE: Ensure data has required structure
+      if (!data || typeof data !== "object") {
+        throw new Error("Invalid analysis response");
+      }
+
+      // Set defaults for missing fields
+      const safeAnalysis: AnalysisResult = {
+        quality_score: data.quality_score || 0,
+        testability_score: data.testability_score || 0,
+        completeness_score: data.completeness_score || 0,
+        clarity_score: data.clarity_score || 0,
+        issues: Array.isArray(data.issues) ? data.issues : [],
+        strengths: Array.isArray(data.strengths) ? data.strengths : [],
+        improvements: Array.isArray(data.improvements) ? data.improvements : [],
+        suggested_criteria: Array.isArray(data.suggested_criteria)
+          ? data.suggested_criteria
+          : [],
+        missing_aspects: Array.isArray(data.missing_aspects)
+          ? data.missing_aspects
+          : [],
+        summary: data.summary || "Analysis completed.",
+      };
+
+      setAnalysis(safeAnalysis);
       setShowAnalysis(true);
 
-      if (data.quality_score >= 80) {
-        toast.success("Excellent requirement quality!", {
-          description: `Quality score: ${data.quality_score}/100`,
+      if (safeAnalysis.quality_score >= 80) {
+        toastSuccess("Excellent requirement quality!", {
+          description: `Quality score: ${safeAnalysis.quality_score}/100`,
         });
-      } else if (data.quality_score >= 60) {
-        toast.message("Good requirement with room for improvement", {
-          description: `Quality score: ${data.quality_score}/100`,
+      } else if (safeAnalysis.quality_score >= 60) {
+        toastInfo("Good requirement with room for improvement", {
+          description: `Quality score: ${safeAnalysis.quality_score}/100`,
         });
       } else {
-        toast.warning("Requirement needs improvement", {
-          description: `Quality score: ${data.quality_score}/100`,
+        toastWarning("Requirement needs improvement", {
+          description: `Quality score: ${safeAnalysis.quality_score}/100`,
         });
       }
     } catch (error) {
       console.error("Analysis error:", error);
-      toast.error("Analysis failed", {
+      toastError("Analysis failed", {
         description: error instanceof Error ? error.message : "Unknown error",
       });
+      // Reset analysis on error
+      setAnalysis(null);
+      setShowAnalysis(false);
     } finally {
       setAnalyzing(false);
     }
@@ -320,17 +352,37 @@ export function AddRequirementModal({
   function applySuggestedCriteria() {
     if (
       analysis?.suggested_criteria &&
+      Array.isArray(analysis.suggested_criteria) &&
       analysis.suggested_criteria.length > 0
     ) {
-      setAcceptanceCriteria(analysis.suggested_criteria);
-      toast.success("Applied suggested acceptance criteria");
+      setAcceptanceCriteria((prev) => {
+        // Keep existing non-empty criteria
+        const existing = prev.filter((c) => c.trim() !== "");
+
+        // Combine with suggested criteria
+        const combined = [...existing, ...analysis.suggested_criteria];
+
+        // Remove duplicates
+        const unique = combined.filter(
+          (item, index, self) =>
+            index ===
+            self.findIndex((t) => t.toLowerCase() === item.toLowerCase()),
+        );
+
+        return unique;
+      });
+
+      toastSuccess(
+        `Added ${analysis.suggested_criteria.length} suggested criteria to existing list`,
+      );
+    } else {
+      toastError("No suggested criteria available");
     }
   }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!user) {
-      toast.error("Please log in to add requirements");
+      toastError("Please log in to add requirements");
       return;
     }
     setLoading(true);
@@ -365,7 +417,7 @@ export function AddRequirementModal({
 
       if (error) throw error;
 
-      toast.success("Requirement created successfully");
+      toastSuccess("Requirement created successfully");
 
       // Auto-generate tests if enabled
       if (autoGenerateTests && requirement.id) {
@@ -377,7 +429,7 @@ export function AddRequirementModal({
       await onRequirementAdded?.(requirement as Requirement);
     } catch (error) {
       console.error("Error creating requirement:", error);
-      toast.error("Failed to create requirement");
+      toastError("Failed to create requirement");
     } finally {
       setLoading(false);
     }
@@ -418,7 +470,7 @@ export function AddRequirementModal({
 
   async function parseRequirementWithAI() {
     if (!rawRequirement.trim()) {
-      toast.error("Paste a requirement first.");
+      toastError("Paste a requirement first.");
       return;
     }
 
@@ -443,6 +495,7 @@ export function AddRequirementModal({
 
       const parsed = await response.json();
 
+      // Update title and description
       setFormData((prev) => ({
         ...prev,
         title: prev.title?.trim() ? prev.title : parsed.title || prev.title,
@@ -451,17 +504,47 @@ export function AddRequirementModal({
           : parsed.description || prev.description,
       }));
 
+      // Handle acceptance criteria
       if (
         Array.isArray(parsed.acceptance_criteria) &&
         parsed.acceptance_criteria.length > 0
       ) {
-        setAcceptanceCriteria(parsed.acceptance_criteria);
+        // ✅ Store the result for later use
+        let finalCriteria: string[] = [];
+
+        setAcceptanceCriteria((prev) => {
+          // Keep existing non-empty criteria
+          const existing = prev.filter((c) => c.trim() !== "");
+
+          // Combine with new parsed criteria
+          const combined = [...existing, ...parsed.acceptance_criteria];
+
+          // Remove duplicates (case-insensitive)
+          const unique = combined.filter(
+            (item, index, self) =>
+              index ===
+              self.findIndex((t) => t.toLowerCase() === item.toLowerCase()),
+          );
+
+          // ✅ Store for toast message
+          finalCriteria = unique;
+
+          return unique;
+        });
+
+        // ✅ Use setTimeout to let state update, then show toast
+        setTimeout(() => {
+          toastSuccess(
+            `Added ${parsed.acceptance_criteria.length} new criteria.`,
+          );
+        }, 0);
       } else {
-        toast.message(
+        toastInfo(
           "Parsed requirement, but no acceptance criteria were detected.",
         );
       }
 
+      // Handle metadata
       if (parsed.metadata && typeof parsed.metadata === "object") {
         const next: MetadataField[] = Object.entries(parsed.metadata).map(
           ([key, value]) => {
@@ -475,9 +558,9 @@ export function AddRequirementModal({
         setMetadataFields(next);
       }
 
-      toast.success("Requirement parsed. Review the fields before saving.");
+      toastSuccess("Requirement parsed. Review the fields before saving.");
     } catch (e: any) {
-      toast.error(e?.message ? `Parse failed: ${e.message}` : "Parse failed");
+      toastError(e?.message ? `Parse failed: ${e.message}` : "Parse failed");
     } finally {
       setParsing(false);
     }
@@ -853,7 +936,7 @@ export function AddRequirementModal({
                             ...p,
                             description: rawRequirement.trim(),
                           }));
-                        toast.message(
+                        toastInfo(
                           "Copied raw text into Description. You can still Extract Criteria.",
                         );
                       }}
@@ -1001,68 +1084,73 @@ export function AddRequirementModal({
                           </div>
 
                           {/* Critical Issues Only */}
-                          {analysis.issues.filter(
-                            (i) => i.level === "critical" || i.level === "high",
-                          ).length > 0 && (
-                            <div className="space-y-2">
-                              <div className="text-sm font-medium">
-                                Critical Issues:
-                              </div>
-                              {analysis.issues
-                                .filter(
-                                  (i) =>
-                                    i.level === "critical" ||
-                                    i.level === "high",
-                                )
-                                .slice(0, 3)
-                                .map((issue, i) => (
-                                  <div key={i} className="flex gap-2 text-xs">
-                                    {getLevelIcon(issue.level)}
-                                    <div className="flex-1">
-                                      <div className="font-medium">
-                                        {issue.title}
-                                      </div>
-                                      <div className="text-muted-foreground">
-                                        💡 {issue.suggestion}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                            </div>
-                          )}
-
-                          {/* Suggested Criteria */}
-                          {analysis.suggested_criteria.length > 0 && (
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
+                          {analysis?.issues &&
+                            Array.isArray(analysis.issues) &&
+                            analysis.issues.filter(
+                              (i) =>
+                                i.level === "critical" || i.level === "high",
+                            ).length > 0 && (
+                              <div className="space-y-2">
                                 <div className="text-sm font-medium">
-                                  Suggested Criteria (
-                                  {analysis.suggested_criteria.length}):
+                                  Critical Issues:
                                 </div>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={applySuggestedCriteria}
-                                >
-                                  <Lightbulb className="h-3 w-3 mr-1" />
-                                  Apply All
-                                </Button>
-                              </div>
-                              <div className="max-h-32 overflow-y-auto space-y-1">
-                                {analysis.suggested_criteria
-                                  .slice(0, 5)
-                                  .map((c, i) => (
-                                    <div
-                                      key={i}
-                                      className="text-xs text-muted-foreground"
-                                    >
-                                      {i + 1}. {c}
+                                {analysis.issues
+                                  .filter(
+                                    (i) =>
+                                      i.level === "critical" ||
+                                      i.level === "high",
+                                  )
+                                  .slice(0, 3)
+                                  .map((issue, i) => (
+                                    <div key={i} className="flex gap-2 text-xs">
+                                      {getLevelIcon(issue.level)}
+                                      <div className="flex-1">
+                                        <div className="font-medium">
+                                          {issue.title}
+                                        </div>
+                                        <div className="text-muted-foreground">
+                                          💡 {issue.suggestion}
+                                        </div>
+                                      </div>
                                     </div>
                                   ))}
                               </div>
-                            </div>
-                          )}
+                            )}
+
+                          {/* Suggested Criteria */}
+                          {analysis?.suggested_criteria &&
+                            Array.isArray(analysis.suggested_criteria) &&
+                            analysis.suggested_criteria.length > 0 && (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="text-sm font-medium">
+                                    Suggested Criteria (
+                                    {analysis.suggested_criteria.length}):
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={applySuggestedCriteria}
+                                  >
+                                    <Lightbulb className="h-3 w-3 mr-1" />
+                                    Apply All
+                                  </Button>
+                                </div>
+                                <div className="max-h-32 overflow-y-auto space-y-1">
+                                  {analysis.suggested_criteria
+                                    .slice(0, 5)
+                                    .map((c, i) => (
+                                      <div
+                                        key={i}
+                                        className="text-xs text-muted-foreground"
+                                      >
+                                        {i + 1}. {c}
+                                      </div>
+                                    ))}
+                                </div>
+                              </div>
+                            )}
                         </CollapsibleContent>
                       </div>
                     </Collapsible>

@@ -102,7 +102,7 @@ export function EditRequirementModal({
     }
   }
 
-  // Re-hydrate form when modal opens (and when switching to a different requirement)
+  // 🔧 FIX: Re-hydrate form when modal opens (and when requirement data changes)
   useEffect(() => {
     if (!open) return;
 
@@ -119,14 +119,27 @@ export function EditRequirementModal({
       source: requirement.source ?? "",
     });
 
+    // 🔧 FIX: This should now properly update when acceptance_criteria loads
     setAcceptanceCriteria(
       Array.isArray(requirement.acceptance_criteria)
         ? requirement.acceptance_criteria
-        : []
+        : [],
     );
 
     setNewCriterion("");
-  }, [open, requirement.id]);
+
+    const criteria = parseAcceptanceCriteria(requirement.acceptance_criteria);
+
+    console.log("🔍 Parsed acceptance criteria:", {
+      raw: requirement.acceptance_criteria,
+      rawType: typeof requirement.acceptance_criteria,
+      parsed: criteria,
+      parsedLength: criteria.length,
+    });
+
+    setAcceptanceCriteria(criteria);
+    setNewCriterion("");
+  }, [open, requirement]);
 
   function handleAddCriterion() {
     const trimmed = newCriterion.trim();
@@ -158,6 +171,12 @@ export function EditRequirementModal({
     try {
       setLoading(true);
 
+      // 🔧 Convert array to JSON string for TEXT column
+      const criteriaToSave =
+        acceptanceCriteria.length > 0
+          ? JSON.stringify(acceptanceCriteria) // Store as JSON string
+          : null;
+
       const { error } = await supabase
         .from("requirements")
         .update({
@@ -169,8 +188,7 @@ export function EditRequirementModal({
           external_id: formData.external_id.trim() || null,
           project_id: formData.project_id || null,
           source: formData.source,
-          acceptance_criteria:
-            acceptanceCriteria.length > 0 ? acceptanceCriteria : null,
+          acceptance_criteria: criteriaToSave, // JSON string, not array
           updated_at: new Date().toISOString(),
         })
         .eq("id", requirement.id);
@@ -188,9 +206,35 @@ export function EditRequirementModal({
     }
   }
 
+  function parseAcceptanceCriteria(data: any): string[] {
+    if (!data) return [];
+
+    // If it's already an array (shouldn't happen with TEXT, but be defensive)
+    if (Array.isArray(data)) {
+      return data;
+    }
+
+    // If it's a string, try to parse it as JSON
+    if (typeof data === "string") {
+      // Handle empty string
+      if (data.trim() === "") return [];
+
+      try {
+        const parsed = JSON.parse(data);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        console.error("Failed to parse acceptance_criteria:", e);
+        return [];
+      }
+    }
+
+    return [];
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        key={requirement.id}
         className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
         onInteractOutside={(e) => e.preventDefault()}
       >
@@ -337,9 +381,6 @@ export function EditRequirementModal({
                     ))}
                   </SelectContent>
                 </Select>
-
-                {/* Optional: debug hint if data mismatches */}
-                {/* <p className="text-xs text-muted-foreground">Selected: {formData.project_id || "none"}</p> */}
               </div>
             </div>
 

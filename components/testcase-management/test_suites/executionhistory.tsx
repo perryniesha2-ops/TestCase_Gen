@@ -1047,7 +1047,7 @@ test_suites:suite_id ( id, name, project_id)
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    const filename = `execution-history-${dateFilter}-${
+    const filename = `executionhistory-${dateFilter}-${
       new Date().toISOString().split("T")[0]
     }.csv`;
     link.download = filename;
