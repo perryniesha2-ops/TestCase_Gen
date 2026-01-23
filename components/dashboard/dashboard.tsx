@@ -157,10 +157,10 @@ export function TestManagementDashboard() {
       const aKey = a[0].toLowerCase();
       const bKey = b[0].toLowerCase();
       const aIdx = PRIORITY_ORDER.indexOf(
-        aKey as (typeof PRIORITY_ORDER)[number]
+        aKey as (typeof PRIORITY_ORDER)[number],
       );
       const bIdx = PRIORITY_ORDER.indexOf(
-        bKey as (typeof PRIORITY_ORDER)[number]
+        bKey as (typeof PRIORITY_ORDER)[number],
       );
       const safeA = aIdx === -1 ? 999 : aIdx;
       const safeB = bIdx === -1 ? 999 : bIdx;
@@ -185,22 +185,6 @@ export function TestManagementDashboard() {
       {/* Header + Team Switcher Space */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1"></div>
-
-        {/* Team switcher placeholder */}
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="gap-2"
-            onClick={() =>
-              setSelectedTeamId((v) => (v === "personal" ? "team" : "personal"))
-            }
-            title="Team switcher placeholder"
-          >
-            <Users className="h-4 w-4" />
-            Team: {selectedTeamLabel}
-          </Button>
-        </div>
       </div>
 
       {/* Key Metrics Cards */}
@@ -230,7 +214,7 @@ export function TestManagementDashboard() {
           <CardContent className="space-y-1">
             <div
               className={`text-2xl font-semibold ${getPassRateColor(
-                metrics.test_cases.pass_rate
+                metrics.test_cases.pass_rate,
               )}`}
             >
               {metrics.test_cases.pass_rate}%
@@ -369,10 +353,10 @@ export function TestManagementDashboard() {
                         priority === "critical"
                           ? "text-red-600"
                           : priority === "high"
-                          ? "text-orange-600"
-                          : priority === "medium"
-                          ? "text-yellow-600"
-                          : "text-blue-600"
+                            ? "text-orange-600"
+                            : priority === "medium"
+                              ? "text-yellow-600"
+                              : "text-blue-600"
                       }`}
                     >
                       {priority}
