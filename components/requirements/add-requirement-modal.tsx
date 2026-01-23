@@ -412,7 +412,18 @@ export function AddRequirementModal({
       const { data: requirement, error } = await supabase
         .from("requirements")
         .insert(requirementData)
-        .select()
+        .select(
+          `
+    *,
+    projects:project_id (
+      id,
+      name,
+      color,
+      icon,
+      status
+    )
+  `,
+        )
         .single();
 
       if (error) throw error;
