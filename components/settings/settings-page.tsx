@@ -50,9 +50,9 @@ import {
 } from "@/components/ui/dialog";
 
 import type { ModelKey } from "@/lib/ai-models/config";
+import { TestTypeMultiselect } from "../generator/testtype-multiselect";
 
 type ThemeOption = "light" | "dark" | "system";
-type CoverageKey = "standard" | "comprehensive" | "exhaustive";
 
 type Preferences = {
   theme: ThemeOption;
@@ -63,8 +63,8 @@ type Preferences = {
   };
   test_case_defaults: {
     model: ModelKey;
-    coverage: CoverageKey;
     count: number;
+    test_types: string[];
   };
 };
 
@@ -82,7 +82,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   notifications: { email: true, push: true, marketing: false },
   test_case_defaults: {
     model: "claude-sonnet-4-5",
-    coverage: "comprehensive",
+    test_types: ["happy-path", "negative", "boundary"],
     count: 10,
   },
 };
@@ -145,22 +145,20 @@ function safePreferences(input: unknown): Preferences {
       : DEFAULT_PREFERENCES.theme;
 
   const email = Boolean(
-    p.notifications?.email ?? DEFAULT_PREFERENCES.notifications.email
+    p.notifications?.email ?? DEFAULT_PREFERENCES.notifications.email,
   );
   const push = Boolean(
-    p.notifications?.push ?? DEFAULT_PREFERENCES.notifications.push
+    p.notifications?.push ?? DEFAULT_PREFERENCES.notifications.push,
   );
   const marketing = Boolean(
-    p.notifications?.marketing ?? DEFAULT_PREFERENCES.notifications.marketing
+    p.notifications?.marketing ?? DEFAULT_PREFERENCES.notifications.marketing,
   );
 
-  const coverageRaw = p.test_case_defaults?.coverage;
-  const coverage: CoverageKey =
-    coverageRaw === "standard" ||
-    coverageRaw === "comprehensive" ||
-    coverageRaw === "exhaustive"
-      ? coverageRaw
-      : DEFAULT_PREFERENCES.test_case_defaults.coverage;
+  const rawTypes = (p.test_case_defaults as any)?.test_types;
+  const test_types =
+    Array.isArray(rawTypes) && rawTypes.every((x) => typeof x === "string")
+      ? rawTypes
+      : DEFAULT_PREFERENCES.test_case_defaults.test_types;
 
   const countRaw = p.test_case_defaults?.count;
   const count =
@@ -173,7 +171,7 @@ function safePreferences(input: unknown): Preferences {
   return {
     theme,
     notifications: { email, push, marketing },
-    test_case_defaults: { model, coverage, count },
+    test_case_defaults: { model, count, test_types },
   };
 }
 
@@ -206,9 +204,14 @@ export default function SettingsPage() {
 
   const [defaultModel, setDefaultModel] =
     useState<ModelKey>("claude-sonnet-4-5");
-  const [defaultCoverage, setDefaultCoverage] =
-    useState<CoverageKey>("comprehensive");
+
   const [defaultCount, setDefaultCount] = useState(10);
+
+  const [defaultTestTypes, setDefaultTestTypes] = useState<string[]>([
+    "happy-path",
+    "negative",
+    "boundary",
+  ]);
 
   useEffect(() => {
     void fetchUserProfile();
@@ -240,7 +243,7 @@ export default function SettingsPage() {
 
       if (!finalProfile) {
         const initialPrefs = safePreferences(
-          authUser.user_metadata?.preferences ?? DEFAULT_PREFERENCES
+          authUser.user_metadata?.preferences ?? DEFAULT_PREFERENCES,
         );
 
         const { data: newProfile, error: upsertError } = await supabase
@@ -253,7 +256,7 @@ export default function SettingsPage() {
               avatar_url: authUser.user_metadata?.avatar_url ?? null,
               preferences: initialPrefs,
             },
-            { onConflict: "id" }
+            { onConflict: "id" },
           )
           .select("*")
           .single();
@@ -270,7 +273,7 @@ export default function SettingsPage() {
       const prefs = safePreferences(
         finalProfile.preferences ??
           authUser.user_metadata?.preferences ??
-          DEFAULT_PREFERENCES
+          DEFAULT_PREFERENCES,
       );
 
       const userProfile: UserProfile = {
@@ -298,8 +301,8 @@ export default function SettingsPage() {
       setPushNotifications(prefs.notifications.push);
       setMarketingEmails(prefs.notifications.marketing);
       setDefaultModel(prefs.test_case_defaults.model);
-      setDefaultCoverage(prefs.test_case_defaults.coverage);
       setDefaultCount(prefs.test_case_defaults.count);
+      setDefaultTestTypes(prefs.test_case_defaults.test_types ?? []);
 
       setNextTheme(prefs.theme);
     } catch (err) {
@@ -311,7 +314,7 @@ export default function SettingsPage() {
   }
 
   async function handleAvatarUpload(
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) {
     const file = event.target.files?.[0];
     if (!file || !user) return;
@@ -346,7 +349,7 @@ export default function SettingsPage() {
       if (updateError) throw updateError;
 
       setUser((prev) =>
-        prev ? { ...prev, avatar_url: data.publicUrl } : prev
+        prev ? { ...prev, avatar_url: data.publicUrl } : prev,
       );
       toast.success("Avatar updated successfully!");
     } catch (err) {
@@ -387,8 +390,8 @@ export default function SettingsPage() {
         },
         test_case_defaults: {
           model: defaultModel,
-          coverage: defaultCoverage,
           count: defaultCount,
+          test_types: defaultTestTypes,
         },
       };
 
@@ -412,7 +415,7 @@ export default function SettingsPage() {
       if (profileError) throw profileError;
 
       setUser((prev) =>
-        prev ? { ...prev, full_name: fullName, preferences } : prev
+        prev ? { ...prev, full_name: fullName, preferences } : prev,
       );
 
       // 3) apply theme
@@ -683,23 +686,17 @@ export default function SettingsPage() {
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="defaultCoverage">Default Coverage</Label>
-                  <Select
-                    value={defaultCoverage}
-                    onValueChange={(v) => setDefaultCoverage(v as CoverageKey)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select coverage" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="standard">Standard</SelectItem>
-                      <SelectItem value="comprehensive">
-                        Comprehensive
-                      </SelectItem>
-                      <SelectItem value="exhaustive">Exhaustive</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-2 md:col-span-3">
+                  <Label>Default Test Types</Label>
+                  <TestTypeMultiselect
+                    value={defaultTestTypes}
+                    onChange={(value: string[]) => setDefaultTestTypes(value)}
+                    placeholder="Select default test types..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    These will be preselected in the generator. You can still
+                    override per run.
+                  </p>
                 </div>
 
                 <div className="space-y-2">

@@ -41,6 +41,9 @@ export interface TestCase {
   project_id?: string | null;
   projects?: Project;
   updated_at: string;
+  is_negative_test: boolean;
+  is_security_test: boolean;
+  is_boundary_test: boolean;
 }
 
 export interface CrossPlatformTestCase {
@@ -178,10 +181,11 @@ export interface TestSuite {
     skipped: number;
     blocked: number;
   };
-  automation?: {
-    eligible_count: number;
-    scripted_count: number;
-    mode: AutomationMode;
+  automation_stats?: {
+    total: number;
+    with_steps: number;
+    with_automation: number;
+    ready: number;
   };
 }
 
@@ -276,4 +280,24 @@ export type AutomationScript = {
   script_content: string | null;
   updated_at?: string | null;
   created_at?: string | null;
+};
+
+export type ExecutionByCaseId = Record<
+  string,
+  { status: ExecutionStatus; executed_at?: string | null }
+>;
+
+export type TestCasesOverviewResponse = {
+  projects: Project[];
+  testCases: TestCase[];
+  crossPlatformCases: CrossPlatformTestCase[];
+  currentSession: Pick<
+    TestSession,
+    "id" | "name" | "environment" | "status"
+  > | null;
+  executionByCaseId: ExecutionByCaseId;
+
+  // optional compatibility fields
+  generations: Generation[];
+  crossPlatformSuites: CrossPlatformSuite[];
 };

@@ -21,6 +21,8 @@ import {
   Settings,
   Chrome,
   CheckCircle2,
+  Code2,
+  Activity,
 } from "lucide-react";
 import { Footer } from "react-day-picker";
 
@@ -75,6 +77,24 @@ export default function GuidesIndexPage() {
       href: "/docs/extension-guide",
       icon: Chrome,
       color: "text-red-500",
+    },
+
+    {
+      title: "Playwright Automation",
+      description:
+        "Transform your manual test cases into executable Playwright automation",
+      href: "/docs/playwright-automation",
+      icon: Code2,
+      color: "text-blue-800",
+    },
+
+    {
+      title: "Jira Integration",
+      description:
+        "Connect Jira so you can validate connectivity, map projects, and enable future sync workflows",
+      href: "/docs/jira-integration",
+      icon: Activity,
+      color: "text-orange-200",
     },
   ];
 

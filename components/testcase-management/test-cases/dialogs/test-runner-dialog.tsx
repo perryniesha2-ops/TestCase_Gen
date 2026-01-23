@@ -1,12 +1,12 @@
-"use client"
+"use client";
 
-import { useEffect, useMemo, useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -14,14 +14,14 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   CheckCircle2,
   XCircle,
@@ -30,40 +30,47 @@ import {
   Clock,
   RotateCcw,
   Play,
-} from "lucide-react"
+} from "lucide-react";
 import type {
   TestCase,
   CrossPlatformTestCase,
   TestExecution,
   ExecutionStatus,
   ExecutionDetails,
-} from "@/types/test-cases"
+} from "@/types/test-cases";
 
-type CaseType = "regular" | "cross-platform"
+type CaseType = "regular" | "cross-platform";
 
-type ExecutionRow = TestExecution[string] | undefined
+type ExecutionRow = TestExecution[string] | undefined;
 
 interface TestRunnerDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 
-  testCase: TestCase | CrossPlatformTestCase   // ✅ remove null
-  caseType: CaseType
+  testCase: TestCase | CrossPlatformTestCase;
+  caseType: CaseType;
 
-  executionRow: ExecutionRow
+  executionRow: ExecutionRow;
 
-  onSaveProgress: (testCaseId: string, updates: Partial<TestExecution[string]>) => Promise<void> | void
-  onFinalize: (testCaseId: string, status: ExecutionStatus, details: ExecutionDetails) => Promise<void> | void
-  onReset: (testCaseId: string) => Promise<void> | void
-  onToggleStep?: (testCaseId: string, stepNumber: number) => void
+  onSaveProgress: (
+    testCaseId: string,
+    updates: Partial<TestExecution[string]>
+  ) => Promise<void> | void;
+  onFinalize: (
+    testCaseId: string,
+    status: ExecutionStatus,
+    details: ExecutionDetails
+  ) => Promise<void> | void;
+  onReset: (testCaseId: string) => Promise<void> | void;
+  onToggleStep?: (testCaseId: string, stepNumber: number) => void;
 }
 
 function formatDurationMinutes(startedAt?: string | null) {
-  if (!startedAt) return "—"
-  const start = new Date(startedAt).getTime()
-  const now = Date.now()
-  const mins = Math.max(0, Math.round((now - start) / 60000))
-  return `${mins}m`
+  if (!startedAt) return "—";
+  const start = new Date(startedAt).getTime();
+  const now = Date.now();
+  const mins = Math.max(0, Math.round((now - start) / 60000));
+  return `${mins}m`;
 }
 
 export function TestRunnerDialog(props: TestRunnerDialogProps) {
@@ -77,66 +84,64 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
     onFinalize,
     onReset,
     onToggleStep,
-  } = props
+  } = props;
 
-  const [environment, setEnvironment] = useState<string>("staging")
-  const [browser, setBrowser] = useState<string>("")
-  const [osVersion, setOsVersion] = useState<string>("")
-  const [notes, setNotes] = useState<string>("")
+  const [environment, setEnvironment] = useState<string>("staging");
+  const [browser, setBrowser] = useState<string>("");
+  const [osVersion, setOsVersion] = useState<string>("");
+  const [notes, setNotes] = useState<string>("");
 
   // Finalization flow
-  const [finalStatus, setFinalStatus] = useState<ExecutionStatus | null>(null)
-  const [finalReason, setFinalReason] = useState<string>("")
+  const [finalStatus, setFinalStatus] = useState<ExecutionStatus | null>(null);
+  const [finalReason, setFinalReason] = useState<string>("");
 
   // Fail-step flow (optional)
-  const [failStepNumber, setFailStepNumber] = useState<number | null>(null)
-  const [failStepReason, setFailStepReason] = useState<string>("")
+  const [failStepNumber, setFailStepNumber] = useState<number | null>(null);
+  const [failStepReason, setFailStepReason] = useState<string>("");
 
   // Tick for duration display (lightweight)
-  const [tick, setTick] = useState(0)
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (!open) return
-    const t = setInterval(() => setTick((x) => x + 1), 15000)
-    return () => clearInterval(t)
-  }, [open])
+    if (!open) return;
+    const t = setInterval(() => setTick((x) => x + 1), 15000);
+    return () => clearInterval(t);
+  }, [open]);
 
-
-const steps = useMemo(() => {
+  const steps = useMemo(() => {
     if (caseType === "regular") {
-      const tc = testCase as TestCase
+      const tc = testCase as TestCase;
       return tc.test_steps.map((s) => ({
         stepNumber: s.step_number,
         action: s.action,
         expected: s.expected,
-      }))
+      }));
     }
-    const cp = testCase as CrossPlatformTestCase
+    const cp = testCase as CrossPlatformTestCase;
     return (cp.steps || []).map((s, idx) => ({
       stepNumber: idx + 1,
       action: s,
       expected: cp.expected_results?.[idx] || "Expected result defined",
-    }))
-  }, [testCase, caseType])
+    }));
+  }, [testCase, caseType]);
 
-  const completed = executionRow?.completedSteps || []
-  const failedSteps = executionRow?.failedSteps || []
-  const status = executionRow?.status || "not_run"
+  const completed = executionRow?.completedSteps || [];
+  const failedSteps = executionRow?.failedSteps || [];
+  const status = executionRow?.status || "not_run";
 
   useEffect(() => {
-    if (!open || !testCase) return
+    if (!open || !testCase) return;
 
-    setEnvironment(executionRow?.test_environment || "staging")
-    setBrowser(executionRow?.browser || "")
-    setOsVersion(executionRow?.os_version || "")
-    setNotes(executionRow?.notes || "")
+    setEnvironment(executionRow?.test_environment || "staging");
+    setBrowser(executionRow?.browser || "");
+    setOsVersion(executionRow?.os_version || "");
+    setNotes(executionRow?.notes || "");
 
-    setFinalStatus(null)
-    setFinalReason("")
-    setFailStepNumber(null)
-    setFailStepReason("")
+    setFinalStatus(null);
+    setFinalReason("");
+    setFailStepNumber(null);
+    setFailStepReason("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, testCase?.id])
-
+  }, [open, testCase?.id]);
 
   async function startOrResume() {
     await onSaveProgress(testCase.id, {
@@ -145,7 +150,7 @@ const steps = useMemo(() => {
       browser,
       os_version: osVersion,
       notes,
-    })
+    });
   }
 
   async function saveMetaOnly() {
@@ -154,33 +159,38 @@ const steps = useMemo(() => {
       browser,
       os_version: osVersion,
       notes,
-    })
+    });
   }
 
   async function toggleStep(stepNumber: number) {
     // If parent wants to own toggle logic, use it:
     if (onToggleStep) {
-      onToggleStep(testCase.id, stepNumber)
-      return
+      onToggleStep(testCase.id, stepNumber);
+      return;
     }
 
     // Otherwise do it locally with onSaveProgress:
-    const isCompleted = completed.includes(stepNumber)
-    const updated = isCompleted ? completed.filter((n) => n !== stepNumber) : [...completed, stepNumber]
+    const isCompleted = completed.includes(stepNumber);
+    const updated = isCompleted
+      ? completed.filter((n) => n !== stepNumber)
+      : [...completed, stepNumber];
 
     await onSaveProgress(testCase.id, {
       completedSteps: updated,
       status: status === "not_run" ? "in_progress" : status,
-    })
+    });
   }
 
   async function commitFailStep() {
-    if (!failStepNumber) return
+    if (!failStepNumber) return;
 
     const nextFailed = [
       ...failedSteps.filter((fs) => fs.step_number !== failStepNumber),
-      { step_number: failStepNumber, failure_reason: failStepReason || "Step failed" },
-    ]
+      {
+        step_number: failStepNumber,
+        failure_reason: failStepReason || "Step failed",
+      },
+    ];
 
     await onSaveProgress(testCase.id, {
       failedSteps: nextFailed,
@@ -189,65 +199,81 @@ const steps = useMemo(() => {
       browser,
       os_version: osVersion,
       notes,
-    })
+    });
 
-    setFailStepNumber(null)
-    setFailStepReason("")
+    setFailStepNumber(null);
+    setFailStepReason("");
   }
 
   async function finalize(statusToSet: ExecutionStatus) {
-    const needsReason = statusToSet === "failed" || statusToSet === "blocked" || statusToSet === "skipped"
+    const needsReason =
+      statusToSet === "failed" ||
+      statusToSet === "blocked" ||
+      statusToSet === "skipped";
     const details: ExecutionDetails = {
       notes,
       failure_reason: needsReason ? finalReason : "",
       environment,
       browser,
       os_version: osVersion,
-    }
+    };
 
-    await onFinalize(testCase.id, statusToSet, details)
-    onOpenChange(false)
+    await onFinalize(testCase.id, statusToSet, details);
+    onOpenChange(false);
   }
 
   function statusIcon(s: ExecutionStatus) {
     switch (s) {
       case "passed":
-        return <CheckCircle2 className="h-4 w-4 text-green-600" />
+        return <CheckCircle2 className="h-4 w-4 text-green-600" />;
       case "failed":
-        return <XCircle className="h-4 w-4 text-red-600" />
+        return <XCircle className="h-4 w-4 text-red-600" />;
       case "blocked":
-        return <AlertTriangle className="h-4 w-4 text-orange-600" />
+        return <AlertTriangle className="h-4 w-4 text-orange-600" />;
       case "skipped":
-        return <Circle className="h-4 w-4 text-gray-400" />
+        return <Circle className="h-4 w-4 text-gray-400" />;
       case "in_progress":
-        return <Clock className="h-4 w-4 text-blue-600" />
+        return <Clock className="h-4 w-4 text-blue-600" />;
       default:
-        return <Circle className="h-4 w-4 text-gray-400" />
+        return <Circle className="h-4 w-4 text-gray-400" />;
     }
   }
 
-  const progressText = `${completed.length}/${steps.length}`
+  const progressText = `${completed.length}/${steps.length}`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
- <DialogContent
-      className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
-      onInteractOutside={(e) => e.preventDefault()}
-    >        <DialogHeader className="p-6 border-b">
+      <DialogContent
+        className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
+        onInteractOutside={(e) => e.preventDefault()}
+      >
+        {" "}
+        <DialogHeader className="p-6 border-b">
           <DialogTitle className="flex items-center gap-2 min-w-0">
             {statusIcon(status)}
             <span className="truncate">Run Test: {testCase.title}</span>
           </DialogTitle>
           <DialogDescription className="flex flex-wrap items-center gap-3">
-            <Badge variant="secondary">{caseType === "regular" ? "Regular" : "Cross-Platform"}</Badge>
-            {"test_type" in testCase ? <Badge variant="outline">{testCase.test_type}</Badge> : null}
-            {"platform" in testCase ? <Badge variant="outline">{testCase.platform}</Badge> : null}
-            <span className="text-xs text-muted-foreground">Progress: {progressText}</span>
-            <span className="text-xs text-muted-foreground">Duration: {formatDurationMinutes(executionRow?.started_at)}</span>
-            <span className="text-xs text-muted-foreground">Status: {status}</span>
+            <Badge variant="secondary">
+              {caseType === "regular" ? "Regular" : "Cross-Platform"}
+            </Badge>
+            {"test_type" in testCase ? (
+              <Badge variant="outline">{testCase.test_type}</Badge>
+            ) : null}
+            {"platform" in testCase ? (
+              <Badge variant="outline">{testCase.platform}</Badge>
+            ) : null}
+            <span className="text-xs text-muted-foreground">
+              Progress: {progressText}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Duration: {formatDurationMinutes(executionRow?.started_at)}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Status: {status}
+            </span>
           </DialogDescription>
         </DialogHeader>
-
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Meta */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -268,18 +294,31 @@ const steps = useMemo(() => {
 
             <div className="space-y-2">
               <Label>Browser</Label>
-              <Input value={browser} onChange={(e) => setBrowser(e.target.value)} placeholder="e.g., Chrome 119" />
+              <Input
+                value={browser}
+                onChange={(e) => setBrowser(e.target.value)}
+                placeholder="e.g., Chrome 119"
+              />
             </div>
 
             <div className="space-y-2">
               <Label>OS Version</Label>
-              <Input value={osVersion} onChange={(e) => setOsVersion(e.target.value)} placeholder="e.g., Windows 11" />
+              <Input
+                value={osVersion}
+                onChange={(e) => setOsVersion(e.target.value)}
+                placeholder="e.g., Windows 11"
+              />
             </div>
           </div>
 
           <div className="space-y-2">
             <Label>Execution Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Notes while running..." />
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Notes while running..."
+            />
           </div>
 
           {/* Steps */}
@@ -292,8 +331,10 @@ const steps = useMemo(() => {
             </div>
 
             {steps.map((s) => {
-              const isCompleted = completed.includes(s.stepNumber)
-              const failed = failedSteps.find((fs) => fs.step_number === s.stepNumber)
+              const isCompleted = completed.includes(s.stepNumber);
+              const failed = failedSteps.find(
+                (fs) => fs.step_number === s.stepNumber
+              );
 
               return (
                 <div
@@ -314,17 +355,25 @@ const steps = useMemo(() => {
                         <span className="font-mono text-xs bg-muted px-2 py-1 rounded">
                           Step {s.stepNumber}
                         </span>
-                        <span className={isCompleted ? "line-through text-muted-foreground" : ""}>
+                        <span
+                          className={
+                            isCompleted
+                              ? "line-through text-muted-foreground"
+                              : ""
+                          }
+                        >
                           {s.action}
                         </span>
                       </div>
                       <div className="text-sm text-muted-foreground mt-2 pl-16">
-                        <span className="font-semibold">Expected:</span> {s.expected}
+                        <span className="font-semibold">Expected:</span>{" "}
+                        {s.expected}
                       </div>
 
                       {failed ? (
                         <div className="mt-2 ml-16 text-sm text-red-700 bg-red-100 p-2 rounded">
-                          <span className="font-semibold">Failed:</span> {failed.failure_reason}
+                          <span className="font-semibold">Failed:</span>{" "}
+                          {failed.failure_reason}
                         </div>
                       ) : null}
                     </div>
@@ -334,8 +383,8 @@ const steps = useMemo(() => {
                       size="sm"
                       className="shrink-0"
                       onClick={() => {
-                        setFailStepNumber(s.stepNumber)
-                        setFailStepReason(failed?.failure_reason || "")
+                        setFailStepNumber(s.stepNumber);
+                        setFailStepReason(failed?.failure_reason || "");
                       }}
                     >
                       Fail step
@@ -359,8 +408,8 @@ const steps = useMemo(() => {
                           size="sm"
                           variant="ghost"
                           onClick={() => {
-                            setFailStepNumber(null)
-                            setFailStepReason("")
+                            setFailStepNumber(null);
+                            setFailStepReason("");
                           }}
                         >
                           Cancel
@@ -369,11 +418,10 @@ const steps = useMemo(() => {
                     </div>
                   ) : null}
                 </div>
-              )
+              );
             })}
           </div>
         </div>
-
         {/* Footer */}
         <DialogFooter className="p-6 border-t flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-2">
@@ -390,7 +438,7 @@ const steps = useMemo(() => {
             <Button
               variant="ghost"
               onClick={async () => {
-                await onReset(testCase.id)
+                await onReset(testCase.id);
               }}
               className="gap-2"
             >
@@ -400,10 +448,17 @@ const steps = useMemo(() => {
           </div>
 
           <div className="flex flex-col gap-2 sm:items-end">
-            {finalStatus && (finalStatus === "failed" || finalStatus === "blocked" || finalStatus === "skipped") ? (
+            {finalStatus &&
+            (finalStatus === "failed" ||
+              finalStatus === "blocked" ||
+              finalStatus === "skipped") ? (
               <div className="w-full sm:w-[420px] space-y-2">
                 <Label>
-                  {finalStatus === "failed" ? "Failure reason" : finalStatus === "blocked" ? "Blocked reason" : "Skipped reason"}
+                  {finalStatus === "failed"
+                    ? "Failure reason"
+                    : finalStatus === "blocked"
+                    ? "Blocked reason"
+                    : "Skipped reason"}
                 </Label>
                 <Textarea
                   value={finalReason}
@@ -424,7 +479,13 @@ const steps = useMemo(() => {
                   >
                     Save {finalStatus}
                   </Button>
-                  <Button variant="ghost" onClick={() => { setFinalStatus(null); setFinalReason("") }}>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setFinalStatus(null);
+                      setFinalReason("");
+                    }}
+                  >
                     Cancel
                   </Button>
                 </div>
@@ -472,5 +533,5 @@ const steps = useMemo(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

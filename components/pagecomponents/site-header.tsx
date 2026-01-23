@@ -6,8 +6,12 @@ import { useTheme } from "next-themes";
 import { Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -22,15 +26,21 @@ type UserProfile = {
 };
 
 type SiteHeaderProps = {
-  className?: string
-  title?: string
-  subtitle?: string
-}
-
+  className?: string;
+  title?: string;
+  subtitle?: string;
+};
 
 function initials(name?: string, email?: string) {
   const n = (name ?? "").trim();
-  if (n) return n.split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? "").join("") || "U";
+  if (n)
+    return (
+      n
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((p) => p[0]?.toUpperCase() ?? "")
+        .join("") || "U"
+    );
   return (email?.[0] ?? "U").toUpperCase();
 }
 
@@ -40,47 +50,59 @@ export function SiteHeader({ className, title, subtitle }: SiteHeaderProps) {
   const [loading, setLoading] = React.useState(true);
   const supabase = React.useMemo(() => createClient(), []);
 
-
   React.useEffect(() => {
-    (async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          setUser({
-            id: user.id,
-            email: user.email || "",
-            full_name: (user.user_metadata?.full_name as string) || "",
-            avatar_url: (user.user_metadata?.avatar_url as string) || "",
-          });
-        } else {
-          setUser(null);
-        }
-      } catch {
-        // swallow errors; header should never break the page
-        setUser(null);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    let mounted = true;
+
+    async function load() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!mounted) return;
+      setUser(
+        user
+          ? {
+              id: user.id,
+              email: user.email || "",
+              full_name: (user.user_metadata?.full_name as string) || "",
+              avatar_url: (user.user_metadata?.avatar_url as string) || "",
+            }
+          : null,
+      );
+      setLoading(false);
+    }
+
+    load();
+
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      load();
+    });
+
+    return () => {
+      mounted = false;
+      sub?.subscription?.unsubscribe();
+    };
   }, [supabase]);
 
   const avatarText = initials(user?.full_name, user?.email);
 
   return (
-    <header className={cn("sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur", className)}>
+    <header
+      className={cn(
+        "sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur",
+        className,
+      )}
+    >
       <div className="mx-auto flex h-20 max-w-screen-2xl items-center gap-2 px-3">
-         {title && (
-      <div className="flex flex-col">
-        <h1 className="text-lg font-semibold leading-tight">
-          {title}
-        </h1>
-        {subtitle && (
-          <p className="text-sm text-muted-foreground leading-tight">
-            {subtitle}
-          </p>
+        {title && (
+          <div className="flex flex-col">
+            <h1 className="text-lg font-semibold leading-tight">{title}</h1>
+            {subtitle && (
+              <p className="text-sm text-muted-foreground leading-tight">
+                {subtitle}
+              </p>
+            )}
+          </div>
         )}
-      </div>
-    )}
 
         <div className="ml-auto flex items-center gap-2">
           <Button
@@ -101,7 +123,10 @@ export function SiteHeader({ className, title, subtitle }: SiteHeaderProps) {
                     <AvatarImage
                       src={user.avatar_url}
                       alt={user.full_name || user.email || "User"}
-                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display =
+                          "none";
+                      }}
                     />
                   ) : null}
                   <AvatarFallback>{avatarText}</AvatarFallback>

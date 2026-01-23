@@ -1,13 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -23,12 +29,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { TestTypeMultiselect } from "@/components/generator/testtype-multiselect";
+
 import {
   Loader2,
   Sparkles,
   Info,
   FileText,
-  Plus,
   FlaskConical,
   Layers,
   Monitor,
@@ -37,12 +44,11 @@ import {
   Eye,
   Zap,
   Save,
+  Download,
 } from "lucide-react";
-import { AddRequirementModal } from "@/components/requirements/add-requirement-modal";
-import Link from "next/link";
-import { checkAndRecordUsage } from "@/lib/usage-tracker";
+
 import { TemplateSelect } from "@/components/templates/template-select";
-import { QuickTemplateSave } from "@/components/templates/quick-templates";
+import { ProjectSelect } from "@/components/projects/project-select";
 
 type TemplateCategory =
   | "functional"
@@ -53,39 +59,9 @@ type TemplateCategory =
   | "accessibility"
   | "other";
 
-interface DatabaseRequirement {
-  id: string;
-  title: string;
-  description: string;
-  type: string;
-  priority: string;
-}
+type GenerationType = "regular" | "cross-platform";
 
-interface RequirementOption {
-  id: string;
-  label: string;
-  title: string;
-  description: string;
-  type: string;
-  priority: string;
-  value: string;
-}
-
-interface TemplateContent {
-  model: string;
-  testCaseCount: number;
-  coverage: "standard" | "comprehensive" | "exhaustive";
-  includeEdgeCases?: boolean;
-  includeNegativeTests?: boolean;
-}
-
-interface TemplateFromSelect {
-  id: string;
-  name: string;
-  description?: string | null;
-  category: TemplateCategory;
-  template_content: TemplateContent;
-}
+type Coverage = "standard" | "comprehensive" | "exhaustive";
 
 type UserProfile = {
   id: string;
@@ -94,13 +70,69 @@ type UserProfile = {
   avatar_url?: string;
 };
 
-interface GenerationResult {
+type TemplateContent = {
+  model: string;
+  testCaseCount: number;
+  coverage: Coverage;
+  includeEdgeCases?: boolean;
+  includeNegativeTests?: boolean;
+};
+
+type TemplateFromSelect = {
+  id: string;
+  name: string;
+  description?: string | null;
+  category: TemplateCategory;
+  template_content: TemplateContent;
+};
+
+type RequirementRow = {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  priority: string;
+  status?: string;
+  project_id?: string | null;
+};
+
+type RequirementOption = {
+  id: string;
+  label: string;
+  title: string;
+  description: string;
+  type: string;
+  priority: string;
+  value: string;
+  project_id?: string | null;
+};
+
+type ProjectRowLite = {
+  id: string;
+  name: string;
+  color?: string | null;
+  icon?: string | null;
+};
+
+type BootstrapDefaults = {
+  model?: string;
+  count?: number;
+  test_types?: string[];
+} | null;
+
+type BootstrapResponse = {
+  projects: ProjectRowLite[];
+  requirements: RequirementRow[];
+  defaults: BootstrapDefaults;
+};
+
+type GenerationResult = {
   platform: string;
   count: number;
   error?: string;
-}
+};
 
-interface CrossPlatformResponse {
+type CrossPlatformResponse = {
   success?: boolean;
   suite_id?: string;
   total_test_cases?: number;
@@ -115,26 +147,7 @@ interface CrossPlatformResponse {
     limit: number;
     remaining: number;
   };
-}
-
-interface Template {
-  id: string;
-  name: string;
-  description?: string | null;
-  category: string;
-  template_content: TemplateContent;
-}
-
-export interface Project {
-  id: string;
-  user_id: string;
-  name: string;
-  description?: string;
-  status: "active" | "archived" | "completed";
-  color?: string;
-  created_at: string;
-  updated_at: string;
-}
+};
 
 const PLACEHOLDER_REQUIREMENTS: RequirementOption[] = [
   {
@@ -220,9 +233,9 @@ const platformOptions = [
     icon: Zap,
     description: "Load & speed testing",
   },
-];
+] as const;
 
-const frameworkOptions = {
+const frameworkOptions: Record<string, string[]> = {
   web: ["React", "Vue", "Angular", "Vanilla JS", "Next.js", "Nuxt.js"],
   mobile: [
     "React Native",
@@ -247,184 +260,339 @@ const frameworkOptions = {
   ],
 };
 
-type GenerationType = "regular" | "cross-platform";
+function mapRequirementsToOptions(rows: RequirementRow[]): RequirementOption[] {
+  return (rows ?? []).map((req) => ({
+    id: req.id,
+    label: `${req.title} (${req.type})`,
+    title: req.title,
+    description: req.description,
+    type: req.type,
+    priority: req.priority,
+    value: req.description,
+    project_id: req.project_id ?? null,
+  }));
+}
+
+function clampTestCount(n: number, min = 1, max = 100) {
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+function coerceTestTypes(v: unknown, fallback: string[] = []) {
+  if (!Array.isArray(v)) return fallback;
+
+  return v.filter((x): x is string => {
+    return typeof x === "string" && x.trim().length > 0;
+  });
+}
+
+/**
+ * Single bootstrap loader: user + projects + requirements + defaults
+ */
+function useGeneratorBootstrap(userId: string | undefined) {
+  const router = useRouter();
+  const [bootstrapping, setBootstrapping] = useState(true);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [projects, setProjects] = useState<ProjectRowLite[]>([]);
+  const [requirements, setRequirements] = useState<RequirementOption[]>([]);
+  const [defaults, setDefaults] = useState<BootstrapDefaults>(null);
+
+  const abortRef = useRef<AbortController | null>(null);
+  const load = useCallback(async () => {
+    if (!userId) {
+      setBootstrapping(false);
+      return;
+    }
+
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setBootstrapping(true);
+
+    try {
+      const res = await fetch(
+        "/api/generate-test-cases/bootstrap?requirementsLimit=200&templatesLimit=200",
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          signal: ac.signal,
+          cache: "no-store",
+        },
+      );
+
+      const data = (await res.json()) as Partial<BootstrapResponse> & {
+        error?: string;
+        details?: string;
+      };
+
+      if (res.status === 401) {
+        toast.error("Please sign in to continue");
+        router.push("/login");
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(
+          data?.error ||
+            data?.details ||
+            `Bootstrap failed (HTTP ${res.status})`,
+        );
+      }
+
+      setProjects(data.projects ?? []);
+      setRequirements(mapRequirementsToOptions(data.requirements ?? []));
+      setDefaults(data.defaults ?? null);
+    } catch (e) {
+      if ((e as any)?.name === "AbortError") return;
+
+      console.error("❌ Bootstrap load error:", e);
+      toast.error("Unable to load generator data", {
+        description: e instanceof Error ? e.message : "Please try again.",
+        duration: 7000,
+      });
+
+      setRequirements([]); // fallback to placeholders via useMemo
+    } finally {
+      setBootstrapping(false);
+    }
+  }, [userId, router]);
+
+  useEffect(() => {
+    void load();
+    return () => abortRef.current?.abort();
+  }, [load, userId]);
+
+  return {
+    bootstrapping,
+    projects,
+    requirements,
+    defaults,
+    reload: load,
+  };
+}
 
 export function GeneratorForm() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+
+  // Bootstrap
+  const {
+    bootstrapping,
+    projects,
+    requirements: bootReqs,
+    defaults,
+  } = useGeneratorBootstrap(user?.id);
+
+  // UI state
   const [generationType, setGenerationType] =
     useState<GenerationType>("regular");
-  const [loading, setLoading] = useState(false);
-  const [savedRequirements, setSavedRequirements] = useState<
-    RequirementOption[]
-  >([]);
+  const [submitting, setSubmitting] = useState(false);
+
   const [mode, setMode] = useState<"quick" | "saved">("quick");
   const [selectedRequirement, setSelectedRequirement] = useState("");
   const [customRequirements, setCustomRequirements] = useState("");
-  const [fetchingRequirements, setFetchingRequirements] = useState(true);
+  const [loading, setLoading] = useState(false);
+
   const [selectedTemplate, setSelectedTemplate] =
     useState<TemplateFromSelect | null>(null);
 
-  // Updated to use latest Claude 4.5 Sonnet as default
+  // Regular defaults
   const [model, setModel] = useState("claude-sonnet-4-5");
   const [testCaseCount, setTestCaseCount] = useState("10");
-  const [selectedProject, setSelectedProject] = useState<string>("");
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [coverage, setCoverage] = useState<
-    "standard" | "comprehensive" | "exhaustive"
-  >("comprehensive");
+  const [coverage, setCoverage] = useState<Coverage>("comprehensive");
+  const [includeNegativeTests, setIncludeNegativeTests] = useState(true);
+  const [includeSecurityTests, setIncludeSecurityTests] = useState(false);
+  const [includeBoundaryTests, setIncludeBoundaryTests] = useState(true);
+  const [exportFormat, setExportFormat] = useState<string>("standard");
+  const [selectedTestTypes, setSelectedTestTypes] = useState<string[]>([
+    "happy-path",
+    "negative",
+    "boundary",
+  ]);
 
-  // Cross-platform specific state
+  // Cross-platform state
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [selectedFrameworks, setSelectedFrameworks] = useState<
     Record<string, string>
   >({});
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const supabase = createClient();
-  const [generationTitle, setGenerationTitle] = useState("");
-  const [generationDescription, setGenerationDescription] = useState("");
-  // Cross-platform enhanced state
   const [crossPlatformTestCount, setCrossPlatformTestCount] = useState("10");
-  const [crossPlatformCoverage, setCrossPlatformCoverage] = useState<
-    "standard" | "comprehensive" | "exhaustive"
-  >("comprehensive");
+  const [crossPlatformCoverage, setCrossPlatformCoverage] =
+    useState<Coverage>("comprehensive");
   const [crossPlatformModel, setCrossPlatformModel] =
     useState("claude-sonnet-4-5");
   const [crossPlatformTemplate, setCrossPlatformTemplate] =
     useState<TemplateFromSelect | null>(null);
 
-  const router = useRouter();
-
-  async function fetchRequirements() {
-    setFetchingRequirements(true);
-    try {
-      const supabase = createClient();
-
-      const { data, error } = await supabase
-        .from("requirements")
-        .select("id, title, description, type, priority, status")
-        .order("title", { ascending: true });
-
-      if (error) throw error;
-
-      const dbRequirements: RequirementOption[] = (data || []).map((req) => ({
-        id: req.id,
-        label: `${req.title} (${req.type})`,
-        title: req.title,
-        description: req.description,
-        type: req.type,
-        priority: req.priority,
-        value: req.description,
-      }));
-
-      setSavedRequirements(dbRequirements);
-
-      if (
-        dbRequirements.length > 0 &&
-        mode === "saved" &&
-        !selectedRequirement
-      ) {
-        setSelectedRequirement(dbRequirements[0].id);
-      }
-    } catch (error) {
-      console.error("❌ Error fetching requirements:", error);
-      setSavedRequirements([]);
-    } finally {
-      setFetchingRequirements(false);
-    }
-  }
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          setUser({
-            id: user.id,
-            email: user.email || "",
-            full_name: user.user_metadata?.full_name || "",
-            avatar_url: user.user_metadata?.avatar_url || "",
-          });
-        }
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [supabase]);
-
-  useEffect(() => {
-    fetchRequirements();
-    fetchProjects();
-  }, []);
-
-  const availableRequirements =
-    savedRequirements.length > 0 ? savedRequirements : PLACEHOLDER_REQUIREMENTS;
-
-  function switchMode(nextMode: "quick" | "saved") {
-    setMode(nextMode);
-    if (nextMode === "saved") {
-      if (!selectedRequirement && availableRequirements.length > 0) {
-        setSelectedRequirement(availableRequirements[0].id);
-      }
-    }
-  }
-
-  const selectedReqData = availableRequirements.find(
-    (r) => r.id === selectedRequirement
+  // Title/description + project
+  const [generationTitle, setGenerationTitle] = useState("");
+  const [generationDescription, setGenerationDescription] = useState("");
+  const [selectedProject, setSelectedProject] = useState<string>("");
+  const [projectSource, setProjectSource] = useState<"none" | "requirement">(
+    "none",
   );
+  const [crossPlatformTestTypes, setCrossPlatformTestTypes] = useState<
+    string[]
+  >(["happy-path", "negative", "boundary"]);
+
+  // Apply defaults from bootstrap once
+  const defaultsAppliedRef = useRef(false);
+  useEffect(() => {
+    if (defaultsAppliedRef.current) return;
+    if (!defaults) return;
+
+    // Only apply if user hasn't started editing (conservative)
+    setModel(defaults.model || "claude-sonnet-4-5");
+    setTestCaseCount(String(clampTestCount(defaults.count ?? 10, 1, 100)));
+    setSelectedTestTypes(
+      coerceTestTypes(defaults.test_types, [
+        "happy-path",
+        "negative",
+        "boundary",
+      ]),
+    );
+    // Cross-platform defaults can mirror regular defaults (optional)
+    setCrossPlatformModel(defaults.model || "claude-sonnet-4-5");
+    setCrossPlatformTestCount(
+      String(clampTestCount(defaults.count ?? 10, 1, 100)),
+    );
+    setCrossPlatformTestTypes(
+      coerceTestTypes(defaults.test_types, [
+        "happy-path",
+        "negative",
+        "boundary",
+      ]),
+    );
+
+    defaultsAppliedRef.current = true;
+  }, [defaults]);
+
+  const availableRequirements = useMemo(() => {
+    return bootReqs.length > 0 ? bootReqs : PLACEHOLDER_REQUIREMENTS;
+  }, [bootReqs]);
+
+  // Ensure selectedRequirement has a value when in saved mode
+  useEffect(() => {
+    if (mode !== "saved") return;
+    if (selectedRequirement) return;
+    if (availableRequirements.length === 0) return;
+    setSelectedRequirement(availableRequirements[0].id);
+  }, [mode, selectedRequirement, availableRequirements]);
+
+  const selectedReqData = useMemo(() => {
+    return availableRequirements.find((r) => r.id === selectedRequirement);
+  }, [availableRequirements, selectedRequirement]);
+
   const savedRequirementsText = selectedReqData?.value || "";
   const finalRequirementsText =
     mode === "quick" ? customRequirements : savedRequirementsText;
-  const templateApplied = !!selectedTemplate;
 
+  // Auto-fill title/description when a saved requirement is selected
   useEffect(() => {
     if (mode !== "saved") return;
     if (!selectedReqData) return;
 
     setGenerationTitle(`${selectedReqData.title} Test Cases`);
     setGenerationDescription(selectedReqData.description || "");
-  }, [mode, selectedRequirement]);
+  }, [mode, selectedReqData?.id]);
 
-  const togglePlatform = (platformId: string) => {
+  // Auto-apply project from requirement if present
+  useEffect(() => {
+    if (mode !== "saved") return;
+    if (!selectedReqData) return;
+
+    const reqProjectId = selectedReqData.project_id ?? null;
+
+    if (reqProjectId) {
+      setSelectedProject(reqProjectId);
+      setProjectSource("requirement");
+      return;
+    }
+
+    if (projectSource === "requirement") {
+      setSelectedProject("");
+      setProjectSource("none");
+    }
+  }, [mode, selectedReqData?.project_id, projectSource, selectedReqData]);
+
+  const templateApplied = !!selectedTemplate;
+
+  const switchMode = useCallback(
+    (nextMode: "quick" | "saved") => {
+      setMode(nextMode);
+      if (nextMode === "saved") {
+        if (!selectedRequirement && availableRequirements.length > 0) {
+          setSelectedRequirement(availableRequirements[0].id);
+        }
+      }
+    },
+    [availableRequirements, selectedRequirement],
+  );
+
+  const handleTemplateSelect = useCallback(
+    (template: TemplateFromSelect | null) => {
+      setSelectedTemplate(template);
+      if (!template) return;
+
+      const settings = template.template_content;
+      setModel(settings.model);
+      setTestCaseCount(String(settings.testCaseCount));
+      setCoverage(settings.coverage);
+    },
+    [],
+  );
+
+  const handleCrossPlatformTemplateSelect = useCallback(
+    (template: TemplateFromSelect | null) => {
+      setCrossPlatformTemplate(template);
+      if (!template) return;
+
+      const settings = template.template_content;
+      setCrossPlatformModel(settings.model);
+      setCrossPlatformTestCount(String(settings.testCaseCount));
+      setCrossPlatformCoverage(settings.coverage);
+
+      toast.success(`Template "${template.name}" applied to all platforms`);
+    },
+    [],
+  );
+
+  const togglePlatform = useCallback((platformId: string) => {
     setSelectedPlatforms((prev) => {
       if (prev.includes(platformId)) {
-        const newFrameworks = { ...selectedFrameworks };
-        delete newFrameworks[platformId];
-        setSelectedFrameworks(newFrameworks);
+        setSelectedFrameworks((fwPrev) => {
+          const next = { ...fwPrev };
+          delete next[platformId];
+          return next;
+        });
         return prev.filter((id) => id !== platformId);
-      } else {
-        return [...prev, platformId];
       }
+      return [...prev, platformId];
     });
-  };
+  }, []);
 
-  const setFrameworkForPlatform = (platformId: string, framework: string) => {
-    setSelectedFrameworks((prev) => ({
-      ...prev,
-      [platformId]: framework,
-    }));
-  };
+  const setFrameworkForPlatform = useCallback(
+    (platformId: string, framework: string) => {
+      setSelectedFrameworks((prev) => ({ ...prev, [platformId]: framework }));
+    },
+    [],
+  );
 
   async function handleRegularSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setLoading(true);
+    setSubmitting(true);
 
     if (!user) {
       toast.error("Please sign in to generate test cases");
       router.push("/login");
+      setSubmitting(false);
       return;
     }
 
     try {
-      const title = generationTitle;
-      const description = generationDescription;
-
-      const modelToUse = model;
       const testCaseCountNum = parseInt(testCaseCount, 10);
-      const coverageToUse = coverage;
 
       if (
-        isNaN(testCaseCountNum) ||
+        Number.isNaN(testCaseCountNum) ||
         testCaseCountNum < 1 ||
         testCaseCountNum > 100
       ) {
@@ -442,7 +610,7 @@ export function GeneratorForm() {
         return;
       }
 
-      if (!title?.trim()) {
+      if (!generationTitle.trim()) {
         toast.error("Please enter a generation title.");
         return;
       }
@@ -450,16 +618,18 @@ export function GeneratorForm() {
       const requestPayload = {
         requirements: finalRequirementsText.trim(),
         requirement_id:
-          mode === "saved" &&
-          savedRequirements.find((r) => r.id === selectedRequirement)
-            ? selectedRequirement
-            : null,
+          mode === "saved" && selectedReqData ? selectedRequirement : null,
         model: model.trim(),
-        testCaseCount: testCaseCount,
-        coverage: coverage.trim(),
+        testCaseCount: testCaseCountNum,
+        coverage: coverage,
         template: selectedTemplate?.id || null,
-        title: title.trim(),
-        description: description?.trim() || null,
+        title: generationTitle.trim(),
+        description: generationDescription?.trim() || null,
+        project_id: selectedProject || null,
+        includeNegativeTests,
+        includeSecurityTests,
+        includeBoundaryTests,
+        exportFormat,
       };
 
       const response = await fetch("/api/generate-test-cases", {
@@ -488,7 +658,7 @@ export function GeneratorForm() {
         throw new Error(
           data.error ||
             data.details ||
-            `HTTP ${response.status}: Failed to generate test cases`
+            `HTTP ${response.status}: Failed to generate test cases`,
         );
       }
 
@@ -505,43 +675,28 @@ export function GeneratorForm() {
         duration: 7000,
       });
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
-  function handleCrossPlatformTemplateSelect(
-    template: TemplateFromSelect | null
-  ) {
-    setCrossPlatformTemplate(template);
-
-    if (!template) return;
-
-    const settings = template.template_content;
-    setCrossPlatformModel(settings.model);
-    setCrossPlatformTestCount(String(settings.testCaseCount));
-    setCrossPlatformCoverage(settings.coverage);
-
-    toast.success(`Template "${template.name}" applied to all platforms`);
-  }
-
   async function handleCrossPlatformSubmit(
-    e: React.FormEvent<HTMLFormElement>
+    e: React.FormEvent<HTMLFormElement>,
   ) {
     e.preventDefault();
-    setLoading(true);
+    setSubmitting(true);
 
     if (!user) {
       toast.error("Please sign in to generate test cases");
       router.push("/login");
+      setSubmitting(false);
       return;
     }
 
     try {
       const formData = new FormData(e.currentTarget);
-      const requirement = formData.get("requirement") as string;
-      const model = formData.get("model") as string;
+      const requirement = (formData.get("requirement") as string) || "";
 
-      if (!requirement?.trim()) {
+      if (!requirement.trim()) {
         toast.error("Please enter the requirement description.");
         return;
       }
@@ -569,9 +724,14 @@ export function GeneratorForm() {
         requirement: requirement.trim(),
         platforms: platformsData,
         model: crossPlatformModel,
-        testCaseCount: parseInt(crossPlatformTestCount, 10),
+        testCaseCount: clampTestCount(
+          parseInt(crossPlatformTestCount, 10),
+          1,
+          100,
+        ),
         coverage: crossPlatformCoverage,
         template: crossPlatformTemplate?.id || null,
+        project_id: selectedProject || null,
       };
 
       const response = await fetch("/api/cross-platform-testing", {
@@ -590,7 +750,7 @@ export function GeneratorForm() {
           duration: 8000,
           action: {
             label: "Upgrade",
-            onClick: () => router.push("/platform/billing"),
+            onClick: () => router.push("/billing"),
           },
         });
         return;
@@ -614,21 +774,21 @@ export function GeneratorForm() {
             });
             router.push(`/test-cases`);
             return;
-          } else {
-            toast.error("Failed to generate test cases", {
-              description:
-                data.error || "All platforms failed. Please try again.",
-              duration: 7000,
-            });
           }
-        } else {
-          throw new Error(
-            data.error ||
-              data.details ||
-              `Failed to generate cross-platform tests`
-          );
+
+          toast.error("Failed to generate test cases", {
+            description:
+              data.error || "All platforms failed. Please try again.",
+            duration: 7000,
+          });
+          return;
         }
-        return;
+
+        throw new Error(
+          data.error ||
+            data.details ||
+            `Failed to generate cross-platform tests`,
+        );
       }
 
       if (data.quota_reached) {
@@ -640,22 +800,18 @@ export function GeneratorForm() {
             onClick: () => router.push("/billing"),
           },
         });
-      }
-      // ✅ IMPROVED: Success with low remaining warning
-      else if (
+      } else if (
         data.usage &&
         data.usage.remaining >= 0 &&
         data.usage.remaining <= 5
       ) {
         toast.success(`Generated ${data.total_test_cases} test cases!`, {
           duration: 6000,
-          description: `⚠️ Only ${data.usage.remaining} test case${
+          description: `Only ${data.usage.remaining} test case${
             data.usage.remaining === 1 ? "" : "s"
           } remaining this month`,
         });
-      }
-      // ✅ Normal success
-      else {
+      } else {
         toast.success("Cross-platform tests generated!", {
           description: `Created ${data.total_test_cases} test cases across ${selectedPlatforms.length} platform(s)`,
         });
@@ -670,86 +826,21 @@ export function GeneratorForm() {
         duration: 7000,
       });
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
-
-  const estimatedTotal =
-    selectedPlatforms.length * parseInt(crossPlatformTestCount || "5", 10);
-
-  function handleTemplateSelect(template: TemplateFromSelect | null) {
-    setSelectedTemplate(template);
-
-    if (!template) return;
-
-    const settings = template.template_content;
-    setModel(settings.model);
-    setTestCaseCount(String(settings.testCaseCount));
-    setCoverage(settings.coverage);
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="flex items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <span className="text-muted-foreground">Loading...</span>
+        </div>
+      </div>
+    );
   }
 
-  async function fetchProjects() {
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("projects")
-        .select("*")
-        .eq("status", "active")
-        .order("name");
-
-      if (error) throw error;
-      setProjects(data || []);
-    } catch (error) {
-      console.error("Error fetching projects:", error);
-    }
-  }
-
-  function getModelDisplayName(modelKey: string): string {
-    if (modelKey === "claude-sonnet-4-5") return "Claude Sonnet 4.5";
-    if (modelKey === "claude-haiku-4-5") return "Claude Haiku 4.5";
-    if (modelKey === "claude-opus-4-5") return "Claude Opus 4.5";
-    if (modelKey === "gpt-5-mini") return "GPT-5 Mini";
-    if (modelKey === "gpt-5.2") return "GPT-5.2";
-    if (modelKey === "gpt-4o") return "GPT-4o";
-    if (modelKey === "gpt-4o-mini") return "GPT-4o Mini";
-    if (modelKey.includes("claude-3-5-sonnet")) return "Claude 3.5 Sonnet";
-    if (modelKey.includes("claude-3-5-haiku")) return "Claude 3.5 Haiku";
-    return modelKey;
-  }
-
-  async function loadUserPreferences() {
-    try {
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-      if (!authUser) return;
-
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("preferences")
-        .eq("id", authUser.id)
-        .maybeSingle();
-
-      if (profile?.preferences?.test_case_defaults) {
-        const defaults = profile.preferences.test_case_defaults;
-
-        setModel(defaults.model || "claude-sonnet-4-5");
-        setTestCaseCount(String(defaults.count || 10));
-        setCoverage(defaults.coverage || "comprehensive");
-
-        console.log("✅ Loaded user preferences:", defaults);
-      }
-    } catch (error) {
-      console.error("Error loading preferences:", error);
-    }
-  }
-
-  useEffect(() => {
-    fetchRequirements();
-    fetchProjects();
-    loadUserPreferences();
-  }, []);
-
+  const pageBusy = bootstrapping || submitting;
   return (
     <div className="space-y-10 px-1 md:px-2">
       <Card className="mx-auto w-full max-w-7xl">
@@ -765,6 +856,16 @@ export function GeneratorForm() {
         </CardHeader>
 
         <CardContent>
+          {/* Bootstrap loading banner */}
+          {bootstrapping && (
+            <div className="mb-6 flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Loading your projects, requirements, and defaults…
+              </p>
+            </div>
+          )}
+
           {/* Generation Type Toggle */}
           <div className="mb-6">
             <Label className="text-base font-medium mb-3 block">
@@ -777,7 +878,7 @@ export function GeneratorForm() {
                 size="sm"
                 className="flex-1 h-10"
                 onClick={() => setGenerationType("regular")}
-                disabled={loading}
+                disabled={pageBusy}
               >
                 <FlaskConical className="h-4 w-4 mr-2" />
                 Regular Test Cases
@@ -790,7 +891,7 @@ export function GeneratorForm() {
                 size="sm"
                 className="flex-1 h-10"
                 onClick={() => setGenerationType("cross-platform")}
-                disabled={loading}
+                disabled={pageBusy}
               >
                 <Layers className="h-4 w-4 mr-2" />
                 Cross-Platform Testing
@@ -803,7 +904,7 @@ export function GeneratorForm() {
             </p>
           </div>
 
-          {/* Regular Test Case Generation Form */}
+          {/* Regular */}
           {generationType === "regular" && (
             <form onSubmit={handleRegularSubmit} className="space-y-6">
               {/* Title / Description */}
@@ -817,7 +918,7 @@ export function GeneratorForm() {
                     onChange={(e) => setGenerationTitle(e.target.value)}
                     placeholder="e.g., User Login Test Cases"
                     required
-                    disabled={loading}
+                    disabled={pageBusy}
                     className="h-10"
                   />
                 </div>
@@ -829,13 +930,13 @@ export function GeneratorForm() {
                     value={generationDescription}
                     onChange={(e) => setGenerationDescription(e.target.value)}
                     placeholder="Brief description..."
-                    disabled={loading}
+                    disabled={pageBusy}
                     className="h-10"
                   />
                 </div>
               </div>
 
-              {/* Requirements Section */}
+              {/* Requirements */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label className="text-base font-medium">Requirements</Label>
@@ -855,7 +956,7 @@ export function GeneratorForm() {
                     size="sm"
                     className="flex-1 h-8"
                     onClick={() => switchMode("quick")}
-                    disabled={loading}
+                    disabled={pageBusy}
                   >
                     Quick Entry
                   </Button>
@@ -865,9 +966,9 @@ export function GeneratorForm() {
                     size="sm"
                     className="flex-1 h-8"
                     onClick={() => switchMode("saved")}
-                    disabled={loading}
+                    disabled={pageBusy}
                   >
-                    {savedRequirements.length > 0
+                    {bootReqs.length > 0
                       ? "Saved Requirements"
                       : "Example Requirements"}
                   </Button>
@@ -883,18 +984,10 @@ export function GeneratorForm() {
                     <textarea
                       id="custom-requirements"
                       className="w-full min-h-[200px] p-3 text-sm border rounded-md font-mono resize-y focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="Describe what you want to test. Be as detailed as possible.
-
-Example:
-- User login functionality
-- Must support email and password
-- Password must be at least 8 characters
-- Should show error messages for invalid credentials
-- Remember me functionality
-- Password reset via email"
+                      placeholder="Describe what you want to test. Be as detailed as possible."
                       value={customRequirements}
                       onChange={(e) => setCustomRequirements(e.target.value)}
-                      disabled={loading}
+                      disabled={pageBusy}
                       required
                     />
 
@@ -906,7 +999,7 @@ Example:
                           </div>
                           <div className="flex-1">
                             <p className="text-sm font-medium text-blue-900 mb-2">
-                              💡 Want to save this for later?
+                              Want to save this for later?
                             </p>
                             <p className="text-xs text-blue-700 mb-3">
                               Save as a requirement to reuse it and build your
@@ -922,83 +1015,88 @@ Example:
                 {/* Saved Requirements Mode */}
                 {mode === "saved" && (
                   <div className="space-y-3">
-                    {fetchingRequirements ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        <span className="ml-2 text-sm text-muted-foreground">
-                          Loading requirements...
-                        </span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <Label className="text-sm flex-1">
-                            {savedRequirements.length > 0
-                              ? "Select a saved requirement"
-                              : "Example requirements (create your own to save them)"}
-                            <span className="text-destructive">*</span>
-                          </Label>
-                        </div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm flex-1">
+                        {bootReqs.length > 0
+                          ? "Select a saved requirement"
+                          : "Example requirements (create your own to save them)"}
+                        <span className="text-destructive">*</span>
+                      </Label>
+                    </div>
 
-                        <Select
-                          value={selectedRequirement}
-                          onValueChange={setSelectedRequirement}
-                          disabled={loading}
-                        >
-                          <SelectTrigger className="h-10">
-                            <SelectValue placeholder="Select a requirement" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableRequirements.map((req) => (
-                              <SelectItem key={req.id} value={req.id}>
-                                <div className="flex items-center gap-2">
-                                  <div
-                                    className={`w-2 h-2 rounded-full ${
-                                      savedRequirements.length > 0
-                                        ? "bg-blue-500"
-                                        : "bg-gray-400"
-                                    }`}
-                                  ></div>
-                                  {req.label}
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                    <Select
+                      value={selectedRequirement}
+                      onValueChange={setSelectedRequirement}
+                      disabled={pageBusy}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Select a requirement" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableRequirements.map((req) => (
+                          <SelectItem key={req.id} value={req.id}>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={`w-2 h-2 rounded-full ${
+                                  bootReqs.length > 0
+                                    ? "bg-blue-500"
+                                    : "bg-gray-400"
+                                }`}
+                              />
+                              {req.label}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
-                        {selectedReqData && (
-                          <div className="border rounded-md bg-muted/20">
-                            <div className="flex items-center justify-between p-3 border-b bg-muted/40">
-                              <div className="flex items-center gap-2">
-                                <h4 className="font-medium text-sm">
-                                  {selectedReqData.title ||
-                                    selectedReqData.label}
-                                </h4>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setCustomRequirements(savedRequirementsText);
-                                  switchMode("quick");
-                                }}
-                                disabled={loading}
-                              >
-                                ✏️ Customize
-                              </Button>
-                            </div>
-                            <div className="p-3">
-                              <pre className="text-sm whitespace-pre-wrap font-mono text-muted-foreground">
-                                {savedRequirementsText}
-                              </pre>
-                            </div>
+                    {selectedReqData && (
+                      <div className="border rounded-md bg-muted/20">
+                        <div className="flex items-center justify-between p-3 border-b bg-muted/40">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium text-sm">
+                              {selectedReqData.title || selectedReqData.label}
+                            </h4>
                           </div>
-                        )}
-                      </>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setCustomRequirements(savedRequirementsText);
+                              switchMode("quick");
+                            }}
+                            disabled={pageBusy}
+                          >
+                            Customize
+                          </Button>
+                        </div>
+                        <div className="p-3">
+                          <pre className="text-sm whitespace-pre-wrap font-mono text-muted-foreground">
+                            {savedRequirementsText}
+                          </pre>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Project Selection */}
+              <div className="mt-4 space-y-3 border rounded-lg p-4 bg-muted/30">
+                <div>
+                  <Label className="text-sm font-medium">Project</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Optional, but recommended for organizing generations and
+                    linking assets.
+                  </p>
+                </div>
+
+                <ProjectSelect
+                  value={selectedProject || undefined}
+                  disabled={pageBusy}
+                  onSelect={(p) => setSelectedProject(p?.id ?? "")}
+                />
               </div>
 
               {/* Template Selection */}
@@ -1008,31 +1106,9 @@ Example:
                     <TemplateSelect
                       value={selectedTemplate?.id}
                       onSelect={handleTemplateSelect}
-                      disabled={loading}
+                      disabled={pageBusy}
                     />
                   </div>
-
-                  <QuickTemplateSave
-                    currentSettings={{
-                      model,
-                      testCaseCount: parseInt(testCaseCount, 10) || 10,
-                      coverage,
-                    }}
-                    onTemplateSaved={() => {
-                      toast.success("Template saved from current settings");
-                    }}
-                  >
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="whitespace-nowrap"
-                      disabled={loading}
-                    >
-                      <Save className="h-4 w-4 mr-2" />
-                      Save settings
-                    </Button>
-                  </QuickTemplateSave>
                 </div>
 
                 {selectedTemplate && (
@@ -1048,100 +1124,93 @@ Example:
 
               {/* Settings row */}
               {!templateApplied && (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* AI Model */}
-                    <div className="space-y-2">
-                      <Label htmlFor="model">AI Model</Label>
-                      <Select
-                        name="model"
-                        value={model}
-                        onValueChange={setModel}
-                        disabled={loading}
-                      >
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select model" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="claude-sonnet-4-5">
-                            Claude Sonnet 4.5
-                          </SelectItem>
-                          <SelectItem value="claude-haiku-4-5">
-                            Claude Haiku 4.5 (Fast)
-                          </SelectItem>
-                          <SelectItem value="claude-opus-4-5">
-                            Claude Opus 4.5 (Max Quality)
-                          </SelectItem>
-                          <SelectItem value="gpt-5-mini">
-                            GPT-5 Mini (Balanced)
-                          </SelectItem>
-                          <SelectItem value="gpt-5.2">
-                            GPT-5.2 (Premium)
-                          </SelectItem>
-                          <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                          <SelectItem value="gpt-4o-mini">
-                            GPT-4o Mini (Economical)
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Test Case Count */}
-                    <div className="space-y-2">
-                      <Label htmlFor="testCaseCount">
-                        Number of Test Cases
-                      </Label>
-                      <Select
-                        name="testCaseCount"
-                        value={testCaseCount}
-                        onValueChange={setTestCaseCount}
-                        disabled={loading}
-                      >
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select count" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="5">5 test cases</SelectItem>
-                          <SelectItem value="10">10 test cases</SelectItem>
-                          <SelectItem value="15">15 test cases</SelectItem>
-                          <SelectItem value="20">20 test cases</SelectItem>
-                          <SelectItem value="30">30 test cases</SelectItem>
-                          <SelectItem value="50">50 test cases</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Coverage */}
-                    <div className="space-y-2">
-                      <Label htmlFor="coverage">Coverage Level</Label>
-                      <Select
-                        name="coverage"
-                        value={coverage}
-                        onValueChange={(value) =>
-                          setCoverage(
-                            value as "standard" | "comprehensive" | "exhaustive"
-                          )
-                        }
-                        disabled={loading}
-                      >
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select coverage" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="standard">Standard</SelectItem>
-                          <SelectItem value="comprehensive">
-                            Comprehensive
-                          </SelectItem>
-                          <SelectItem value="exhaustive">Exhaustive</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* AI Model */}
+                  <div className="space-y-2">
+                    <Label htmlFor="model">AI Model</Label>
+                    <Select
+                      name="model"
+                      value={model}
+                      onValueChange={setModel}
+                      disabled={pageBusy}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Select model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="claude-sonnet-4-5">
+                          Claude Sonnet 4.5
+                        </SelectItem>
+                        <SelectItem value="claude-haiku-4-5">
+                          Claude Haiku 4.5 (Fast)
+                        </SelectItem>
+                        <SelectItem value="claude-opus-4-5">
+                          Claude Opus 4.5 (Max Quality)
+                        </SelectItem>
+                        <SelectItem value="gpt-5-mini">
+                          GPT-5 Mini (Balanced)
+                        </SelectItem>
+                        <SelectItem value="gpt-5.2">
+                          GPT-5.2 (Premium)
+                        </SelectItem>
+                        <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+                        <SelectItem value="gpt-4o-mini">
+                          GPT-4o Mini (Economical)
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                </>
+
+                  {/* Test Case Count */}
+                  <div className="space-y-2">
+                    <Label htmlFor="testCaseCount">Number of Test Cases</Label>
+                    <Select
+                      name="testCaseCount"
+                      value={testCaseCount}
+                      onValueChange={setTestCaseCount}
+                      disabled={pageBusy}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Select count" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5 test cases</SelectItem>
+                        <SelectItem value="10">10 test cases</SelectItem>
+                        <SelectItem value="15">15 test cases</SelectItem>
+                        <SelectItem value="20">20 test cases</SelectItem>
+                        <SelectItem value="30">30 test cases</SelectItem>
+                        <SelectItem value="50">50 test cases</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Coverage */}
+                  <div className="space-y-2 md:col-span-3">
+                    <Label
+                      htmlFor="test-types"
+                      className="text-base font-medium"
+                    >
+                      Test Types
+                      <span className="text-destructive ml-1">*</span>
+                    </Label>
+
+                    <TestTypeMultiselect
+                      value={selectedTestTypes}
+                      onChange={setSelectedTestTypes}
+                      disabled={pageBusy}
+                      placeholder="Select test types to generate..."
+                    />
+
+                    <p className="text-xs text-muted-foreground">
+                      Select which types of test cases to generate. More types =
+                      more comprehensive coverage.
+                    </p>
+                  </div>
+                </div>
               )}
 
-              <Button type="submit" className="w-full h-11" disabled={loading}>
-                {loading ? (
+              <Button type="submit" className="w-full h-11" disabled={pageBusy}>
+                {pageBusy ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     Generating test cases…
@@ -1156,7 +1225,7 @@ Example:
             </form>
           )}
 
-          {/* Cross-Platform Test Generation Form */}
+          {/* Cross-Platform */}
           {generationType === "cross-platform" && (
             <form onSubmit={handleCrossPlatformSubmit} className="space-y-6">
               <div className="space-y-3">
@@ -1167,11 +1236,8 @@ Example:
                   id="requirement"
                   name="requirement"
                   className="w-full min-h-[120px] p-3 text-sm border rounded-md resize-y focus-visible:ring-2 focus-visible:ring-primary"
-                  placeholder="Describe the requirement you want to test across platforms.
-
-Example:
-User authentication functionality that works consistently across web and mobile platforms, including login, logout, password reset, and session management."
-                  disabled={loading}
+                  placeholder="Describe the requirement you want to test across platforms."
+                  disabled={pageBusy}
                   required
                 />
                 <p className="text-xs text-muted-foreground">
@@ -1180,40 +1246,16 @@ User authentication functionality that works consistently across web and mobile 
                 </p>
               </div>
 
-              {/* ✅ NEW: Template Selection for Cross-Platform */}
+              {/* Template Selection for Cross-Platform */}
               <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex-1">
-                    <Label className="text-sm font-medium mb-2 block">
-                      Template (Optional)
-                    </Label>
                     <TemplateSelect
                       value={crossPlatformTemplate?.id}
                       onSelect={handleCrossPlatformTemplateSelect}
-                      disabled={loading}
+                      disabled={pageBusy}
                     />
                   </div>
-                  <QuickTemplateSave
-                    currentSettings={{
-                      model: crossPlatformModel,
-                      testCaseCount: parseInt(crossPlatformTestCount, 10) || 10,
-                      coverage: crossPlatformCoverage,
-                    }}
-                    onTemplateSaved={() => {
-                      toast.success("Cross-platform template saved");
-                    }}
-                  >
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="whitespace-nowrap mt-6"
-                      disabled={loading}
-                    >
-                      <Save className="h-4 w-4 mr-2" />
-                      Save settings
-                    </Button>
-                  </QuickTemplateSave>
                 </div>
 
                 {crossPlatformTemplate && (
@@ -1227,14 +1269,15 @@ User authentication functionality that works consistently across web and mobile 
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* IMPORTANT: wire these to crossPlatform* state (bugfix) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="crossPlatformModel">AI Model</Label>
                   <Select
-                    name="model"
-                    value={model}
-                    onValueChange={setModel}
-                    disabled={loading}
+                    name="crossPlatformModel"
+                    value={crossPlatformModel}
+                    onValueChange={setCrossPlatformModel}
+                    disabled={pageBusy}
                   >
                     <SelectTrigger className="h-10">
                       <SelectValue placeholder="Select model" />
@@ -1266,10 +1309,10 @@ User authentication functionality that works consistently across web and mobile 
                     Test Cases per Platform
                   </Label>
                   <Select
-                    name="testCaseCount"
-                    value={testCaseCount}
-                    onValueChange={setTestCaseCount}
-                    disabled={loading}
+                    name="crossPlatformTestCount"
+                    value={crossPlatformTestCount}
+                    onValueChange={setCrossPlatformTestCount}
+                    disabled={pageBusy}
                   >
                     <SelectTrigger className="h-10">
                       <SelectValue placeholder="Select count" />
@@ -1288,29 +1331,22 @@ User authentication functionality that works consistently across web and mobile 
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="crossPlatformCoverage">Coverage Level</Label>
-                  <Select
-                    name="coverage"
-                    value={coverage}
-                    onValueChange={(value) =>
-                      setCoverage(
-                        value as "standard" | "comprehensive" | "exhaustive"
-                      )
-                    }
-                    disabled={loading}
-                  >
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select coverage" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="standard">Standard</SelectItem>
-                      <SelectItem value="comprehensive">
-                        Comprehensive
-                      </SelectItem>
-                      <SelectItem value="exhaustive">Exhaustive</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-2 md:col-span-3">
+                  <Label className="text-base font-medium">
+                    Test Types <span className="text-destructive">*</span>
+                  </Label>
+
+                  <TestTypeMultiselect
+                    value={crossPlatformTestTypes}
+                    onChange={setCrossPlatformTestTypes}
+                    disabled={pageBusy}
+                    placeholder="Select test types to generate..."
+                  />
+
+                  <p className="text-xs text-muted-foreground">
+                    Select which types of test cases to generate. Applies to all
+                    selected platforms.
+                  </p>
                 </div>
               </div>
 
@@ -1343,7 +1379,7 @@ User authentication functionality that works consistently across web and mobile 
                             id={platform.id}
                             checked={isSelected}
                             onCheckedChange={() => togglePlatform(platform.id)}
-                            disabled={loading}
+                            disabled={pageBusy}
                             className="mt-1"
                           />
                           <div className="flex-1 space-y-3">
@@ -1372,7 +1408,7 @@ User authentication functionality that works consistently across web and mobile 
                                   onValueChange={(value) =>
                                     setFrameworkForPlatform(platform.id, value)
                                   }
-                                  disabled={loading}
+                                  disabled={pageBusy}
                                 >
                                   <SelectTrigger className="h-9">
                                     <SelectValue
@@ -1380,16 +1416,16 @@ User authentication functionality that works consistently across web and mobile 
                                     />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {frameworkOptions[
-                                      platform.id as keyof typeof frameworkOptions
-                                    ]?.map((framework) => (
-                                      <SelectItem
-                                        key={framework}
-                                        value={framework}
-                                      >
-                                        {framework}
-                                      </SelectItem>
-                                    ))}
+                                    {(frameworkOptions[platform.id] || []).map(
+                                      (framework) => (
+                                        <SelectItem
+                                          key={framework}
+                                          value={framework}
+                                        >
+                                          {framework}
+                                        </SelectItem>
+                                      ),
+                                    )}
                                   </SelectContent>
                                 </Select>
                               </div>
@@ -1412,9 +1448,9 @@ User authentication functionality that works consistently across web and mobile 
               <Button
                 type="submit"
                 className="w-full h-11"
-                disabled={loading || selectedPlatforms.length === 0}
+                disabled={pageBusy || selectedPlatforms.length === 0}
               >
-                {loading ? (
+                {pageBusy ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     Generating cross-platform tests…
@@ -1430,6 +1466,7 @@ User authentication functionality that works consistently across web and mobile 
           )}
         </CardContent>
       </Card>
+
       <div className="h-2" />
     </div>
   );

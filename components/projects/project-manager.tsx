@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth/auth-context";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,6 +65,7 @@ import {
   Package,
   Terminal,
 } from "lucide-react";
+import { ProjectEditorDialog } from "@/components/projects/projecteditor";
 
 // Types
 type ProjectStatus = "active" | "archived" | "completed" | "on_hold";
@@ -124,52 +128,91 @@ const projectIcons: Record<
 
 const colorClasses: Record<
   ProjectColor,
-  { bg: string; border: string; text: string }
+  { bg: string; border: string; text: string; accent: string }
 > = {
-  blue: { bg: "bg-blue-100", border: "border-blue-300", text: "text-blue-700" },
+  blue: {
+    bg: "bg-blue-950/30",
+    border: "border-blue-700/40",
+    text: "text-blue-200",
+    accent: "bg-blue-500",
+  },
   green: {
-    bg: "bg-green-100",
-    border: "border-green-300",
-    text: "text-green-700",
+    bg: "bg-emerald-950/30",
+    border: "border-emerald-700/40",
+    text: "text-emerald-200",
+    accent: "bg-emerald-500",
   },
   purple: {
-    bg: "bg-purple-100",
-    border: "border-purple-300",
-    text: "text-purple-700",
+    bg: "bg-purple-950/30",
+    border: "border-purple-700/40",
+    text: "text-purple-200",
+    accent: "bg-purple-500",
   },
   orange: {
-    bg: "bg-orange-100",
-    border: "border-orange-300",
-    text: "text-orange-700",
+    bg: "bg-orange-950/30",
+    border: "border-orange-700/40",
+    text: "text-orange-200",
+    accent: "bg-orange-500",
   },
-  red: { bg: "bg-red-100", border: "border-red-300", text: "text-red-700" },
-  pink: { bg: "bg-pink-100", border: "border-pink-300", text: "text-pink-700" },
+  red: {
+    bg: "bg-red-950/30",
+    border: "border-red-700/40",
+    text: "text-red-200",
+    accent: "bg-red-500",
+  },
+  pink: {
+    bg: "bg-pink-950/30",
+    border: "border-pink-700/40",
+    text: "text-pink-200",
+    accent: "bg-pink-500",
+  },
   indigo: {
-    bg: "bg-indigo-100",
-    border: "border-indigo-300",
-    text: "text-indigo-700",
+    bg: "bg-indigo-950/30",
+    border: "border-indigo-700/40",
+    text: "text-indigo-200",
+    accent: "bg-indigo-500",
   },
   yellow: {
-    bg: "bg-yellow-100",
-    border: "border-yellow-300",
-    text: "text-yellow-700",
+    bg: "bg-amber-950/30",
+    border: "border-amber-700/40",
+    text: "text-amber-200",
+    accent: "bg-amber-500",
   },
-  gray: { bg: "bg-gray-100", border: "border-gray-300", text: "text-gray-700" },
+  gray: {
+    bg: "bg-slate-950/30",
+    border: "border-slate-700/40",
+    text: "text-slate-200",
+    accent: "bg-slate-500",
+  },
 };
 
+async function safeJson(res: Response) {
+  const text = await res.text().catch(() => "");
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function ProjectManager() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<ProjectWithStats[]>(
-    []
+    [],
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+
   const [showDialog, setShowDialog] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectWithStats | null>(
-    null
+    null,
   );
+
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "all">(
-    "all"
+    "all",
   );
   const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
 
@@ -184,68 +227,34 @@ export function ProjectManager() {
   });
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    if (authLoading) return;
+    if (!user) return;
+    void fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user?.id]);
 
   useEffect(() => {
     filterProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects, searchQuery, statusFilter, activeTab]);
 
   async function fetchProjects() {
     setLoading(true);
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const res = await fetch("/api/projects/overview", { cache: "no-store" });
 
-      if (!user) {
-        toast.error("Please sign in to view projects");
+      if (res.status === 401) {
+        toast.error("Your session has expired. Please sign in again.");
+        router.replace("/login");
         return;
       }
 
-      const { data, error } = await supabase
-        .from("projects")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const payload = await safeJson(res);
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
 
-      if (error) throw error;
-
-      // Get counts for each project
-      const projectsWithCounts = await Promise.all(
-        (data || []).map(async (project) => {
-          const [
-            { count: suitesCount },
-            { count: reqCount },
-            { count: templatesCount },
-          ] = await Promise.all([
-            supabase
-              .from("test_suites")
-              .select("*", { count: "exact", head: true })
-              .eq("project_id", project.id),
-            supabase
-              .from("requirements")
-              .select("*", { count: "exact", head: true })
-              .eq("project_id", project.id),
-            supabase
-              .from("test_case_templates")
-              .select("*", { count: "exact", head: true })
-              .eq("project_id", project.id),
-          ]);
-
-          return {
-            ...project,
-            test_suites_count: suitesCount || 0,
-            requirements_count: reqCount || 0,
-            templates_count: templatesCount || 0,
-            test_cases_count: 0, // Can be calculated if needed
-          } as ProjectWithStats;
-        })
-      );
-
-      setProjects(projectsWithCounts);
-    } catch (error) {
-      console.error("Error fetching projects:", error);
+      setProjects(payload?.projects ?? []);
+    } catch (e) {
+      console.error("Error fetching projects:", e);
       toast.error("Failed to load projects");
     } finally {
       setLoading(false);
@@ -255,125 +264,24 @@ export function ProjectManager() {
   function filterProjects() {
     let filtered = projects;
 
-    // Filter by tab
     filtered =
       activeTab === "active"
         ? filtered.filter((p) => p.status !== "archived")
         : filtered.filter((p) => p.status === "archived");
 
-    // Filter by status
-    if (statusFilter !== "all") {
+    if (statusFilter !== "all")
       filtered = filtered.filter((p) => p.status === statusFilter);
-    }
 
-    // Filter by search query
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.description?.toLowerCase().includes(query)
+          p.name.toLowerCase().includes(q) ||
+          p.description?.toLowerCase().includes(q),
       );
     }
 
     setFilteredProjects(filtered);
-  }
-
-  async function saveProject() {
-    if (!formData.name.trim()) {
-      toast.error("Please enter a project name");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please sign in to manage projects");
-        return;
-      }
-
-      const projectData = {
-        user_id: user.id,
-        name: formData.name.trim(),
-        description: formData.description.trim() || null,
-        status: formData.status,
-        color: formData.color,
-        icon: formData.icon,
-        start_date: formData.start_date || null,
-        target_end_date: formData.target_end_date || null,
-        tags: [],
-      };
-
-      if (editingProject) {
-        const { error } = await supabase
-          .from("projects")
-          .update(projectData)
-          .eq("id", editingProject.id);
-
-        if (error) throw error;
-        toast.success("Project updated successfully");
-      } else {
-        const { error } = await supabase.from("projects").insert(projectData);
-
-        if (error) throw error;
-        toast.success("Project created successfully");
-      }
-
-      setShowDialog(false);
-      setEditingProject(null);
-      resetForm();
-      await fetchProjects();
-    } catch (error) {
-      console.error("Error saving project:", error);
-      toast.error("Failed to save project");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function deleteProject(id: string) {
-    if (
-      !confirm("Delete this project? Associated items will become unassigned.")
-    )
-      return;
-
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from("projects").delete().eq("id", id);
-
-      if (error) throw error;
-      toast.success("Project deleted");
-      await fetchProjects();
-    } catch (error) {
-      console.error("Error deleting project:", error);
-      toast.error("Failed to delete project");
-    }
-  }
-
-  async function archiveProject(id: string, currentStatus: ProjectStatus) {
-    const newStatus = currentStatus === "archived" ? "active" : "archived";
-
-    try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("projects")
-        .update({ status: newStatus })
-        .eq("id", id);
-
-      if (error) throw error;
-      toast.success(
-        `Project ${newStatus === "archived" ? "archived" : "unarchived"}`
-      );
-      await fetchProjects();
-    } catch (error) {
-      console.error("Error updating project:", error);
-      toast.error("Failed to update project");
-    }
   }
 
   function resetForm() {
@@ -408,26 +316,192 @@ export function ProjectManager() {
     setShowDialog(true);
   }
 
-  const activeProjects = projects.filter((p) => p.status === "active");
-  const completedProjects = projects.filter((p) => p.status === "completed");
-  const totalItems = projects.reduce(
-    (sum, p) =>
-      sum + p.test_suites_count + p.requirements_count + p.templates_count,
-    0
+  async function saveProject() {
+    if (!user) {
+      toast.error("Please sign in to create or edit projects.");
+      router.replace("/login");
+      return;
+    }
+
+    if (!formData.name.trim()) {
+      toast.error("Please enter a project name");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const body = {
+        name: formData.name.trim(),
+        description: formData.description.trim() || null,
+        status: formData.status,
+        color: formData.color,
+        icon: formData.icon,
+        start_date: formData.start_date || null,
+        target_end_date: formData.target_end_date || null,
+      };
+
+      const res = await fetch(
+        editingProject ? `/api/projects/${editingProject.id}` : `/api/projects`,
+        {
+          method: editingProject ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+
+      if (res.status === 401) {
+        toast.error("Your session has expired. Please sign in again.");
+        router.replace("/login");
+        return;
+      }
+
+      const payload = await safeJson(res);
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+
+      toast.success(editingProject ? "Project updated" : "Project created");
+      setShowDialog(false);
+      setEditingProject(null);
+      resetForm();
+      await fetchProjects();
+    } catch (e) {
+      console.error("Error saving project:", e);
+      toast.error("Failed to save project");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deleteProject(id: string) {
+    if (!user) {
+      toast.error("Please sign in to delete projects.");
+      router.replace("/login");
+      return;
+    }
+
+    if (!confirm("Delete this project? Linked items will become unassigned."))
+      return;
+
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+
+      if (res.status === 401) {
+        toast.error("Your session has expired. Please sign in again.");
+        router.replace("/login");
+        return;
+      }
+
+      const payload = await safeJson(res);
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+
+      toast.success("Project deleted");
+      await fetchProjects();
+    } catch (e) {
+      console.error("Error deleting project:", e);
+      toast.error("Failed to delete project");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function toggleArchiveProject(
+    id: string,
+    currentStatus: ProjectStatus,
+  ) {
+    if (!user) {
+      toast.error("Please sign in to update projects.");
+      router.replace("/login");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const newStatus: ProjectStatus =
+        currentStatus === "archived" ? "active" : "archived";
+
+      const res = await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (res.status === 401) {
+        toast.error("Your session has expired. Please sign in again.");
+        router.replace("/login");
+        return;
+      }
+
+      const payload = await safeJson(res);
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+
+      toast.success(
+        newStatus === "archived" ? "Project archived" : "Project unarchived",
+      );
+      await fetchProjects();
+    } catch (e) {
+      console.error("Error updating project:", e);
+      toast.error("Failed to update project");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const activeProjects = useMemo(
+    () => projects.filter((p) => p.status === "active"),
+    [projects],
+  );
+  const completedProjects = useMemo(
+    () => projects.filter((p) => p.status === "completed"),
+    [projects],
   );
 
+  const totalItems = useMemo(
+    () =>
+      projects.reduce(
+        (sum, p) =>
+          sum + p.test_suites_count + p.requirements_count + p.templates_count,
+        0,
+      ),
+    [projects],
+  );
+
+  // ---------- Render gates ----------
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+          <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Sign in required</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Please sign in to view and manage projects.
+          </p>
+          <Button asChild>
+            <Link href="/login">Go to Login</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // ---------- Main UI ----------
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
-        <div></div>
+        <div />
         <Button onClick={openNewDialog} size="lg">
           <Plus className="h-5 w-5 mr-2" />
           New Project
         </Button>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -472,11 +546,10 @@ export function ProjectManager() {
         </Card>
       </div>
 
-      {/* Filters and Search */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search projects..."
               value={searchQuery}
@@ -485,11 +558,10 @@ export function ProjectManager() {
             />
           </div>
         </div>
+
         <Select
           value={statusFilter}
-          onValueChange={(value) =>
-            setStatusFilter(value as ProjectStatus | "all")
-          }
+          onValueChange={(v) => setStatusFilter(v as any)}
         >
           <SelectTrigger className="w-full sm:w-[200px]">
             <Filter className="h-4 w-4 mr-2" />
@@ -505,11 +577,7 @@ export function ProjectManager() {
         </Select>
       </div>
 
-      {/* Tabs */}
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as "active" | "archived")}
-      >
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <TabsList>
           <TabsTrigger value="active">Active Projects</TabsTrigger>
           <TabsTrigger value="archived">Archived</TabsTrigger>
@@ -552,7 +620,7 @@ export function ProjectManager() {
                     className="relative overflow-hidden hover:shadow-lg transition-shadow"
                   >
                     <div
-                      className={`absolute top-0 left-0 w-full h-1 bg-${project.color}-500`}
+                      className={`absolute top-0 left-0 w-full h-1 ${colors.accent}`}
                     />
 
                     <CardHeader className="pt-6">
@@ -564,14 +632,22 @@ export function ProjectManager() {
                             <Icon className={`h-5 w-5 ${colors.text}`} />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <CardTitle className="text-lg truncate">
-                              {project.name}
+                            <CardTitle className="text-lg leading-snug break-words line-clamp-2">
+                              <Link
+                                href={`/projects/${project.id}`}
+                                className="hover:underline"
+                                title={project.name}
+                              >
+                                {project.name}
+                              </Link>
                             </CardTitle>
+
                             <Badge variant="outline" className="mt-1 text-xs">
                               {project.status}
                             </Badge>
                           </div>
                         </div>
+
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -589,9 +665,10 @@ export function ProjectManager() {
                               <Edit className="h-4 w-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
+
                             <DropdownMenuItem
                               onClick={() =>
-                                archiveProject(project.id, project.status)
+                                toggleArchiveProject(project.id, project.status)
                               }
                             >
                               <Archive className="h-4 w-4 mr-2" />
@@ -599,7 +676,9 @@ export function ProjectManager() {
                                 ? "Unarchive"
                                 : "Archive"}
                             </DropdownMenuItem>
+
                             <DropdownMenuSeparator />
+
                             <DropdownMenuItem
                               onClick={() => deleteProject(project.id)}
                               className="text-destructive"
@@ -610,6 +689,7 @@ export function ProjectManager() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
+
                       {project.description && (
                         <CardDescription className="line-clamp-2 mt-2">
                           {project.description}
@@ -620,7 +700,7 @@ export function ProjectManager() {
                     <CardContent className="space-y-3">
                       <div className="grid grid-cols-3 gap-2 text-sm">
                         <div className="text-center">
-                          <div className="font-bold text-blue-600">
+                          <div className="font-bold">
                             {project.test_suites_count}
                           </div>
                           <div className="text-xs text-muted-foreground">
@@ -628,7 +708,7 @@ export function ProjectManager() {
                           </div>
                         </div>
                         <div className="text-center">
-                          <div className="font-bold text-purple-600">
+                          <div className="font-bold">
                             {project.requirements_count}
                           </div>
                           <div className="text-xs text-muted-foreground">
@@ -636,7 +716,7 @@ export function ProjectManager() {
                           </div>
                         </div>
                         <div className="text-center">
-                          <div className="font-bold text-green-600">
+                          <div className="font-bold">
                             {project.templates_count}
                           </div>
                           <div className="text-xs text-muted-foreground">
@@ -644,28 +724,17 @@ export function ProjectManager() {
                           </div>
                         </div>
                       </div>
-
-                      {(project.start_date || project.target_end_date) && (
-                        <div className="text-xs text-muted-foreground border-t pt-2">
-                          {project.start_date && (
-                            <div>
-                              Started:{" "}
-                              {new Date(
-                                project.start_date
-                              ).toLocaleDateString()}
-                            </div>
-                          )}
-                          {project.target_end_date && (
-                            <div>
-                              Target:{" "}
-                              {new Date(
-                                project.target_end_date
-                              ).toLocaleDateString()}
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </CardContent>
+
+                    <CardFooter className="flex items-center justify-between gap-2">
+                      <Button asChild size="lg" variant="default">
+                        <Link
+                          href={`/projects/${project.id}/settings/integrations`}
+                        >
+                          Integrations
+                        </Link>
+                      </Button>
+                    </CardFooter>
                   </Card>
                 );
               })}
@@ -674,7 +743,6 @@ export function ProjectManager() {
         </TabsContent>
 
         <TabsContent value="archived" className="mt-6">
-          {/* Same structure as active tab */}
           {filteredProjects.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
@@ -706,7 +774,7 @@ export function ProjectManager() {
                           variant="ghost"
                           size="sm"
                           onClick={() =>
-                            archiveProject(project.id, project.status)
+                            toggleArchiveProject(project.id, project.status)
                           }
                         >
                           Restore
@@ -719,177 +787,23 @@ export function ProjectManager() {
             </div>
           )}
         </TabsContent>
-        <div className="h-2" />
       </Tabs>
-      <div className="h-2" />
 
-      {/* Create/Edit Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {editingProject ? "Edit Project" : "Create New Project"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingProject
-                ? "Update your project details"
-                : "Create a new project to organize your test work"}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Project Name *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                placeholder="e.g., Mobile App v2.0"
-                maxLength={100}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-                placeholder="Describe this project..."
-                rows={3}
-                maxLength={500}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, status: value as ProjectStatus })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="on_hold">On Hold</SelectItem>
-                    <SelectItem value="archived">Archived</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="icon">Icon</Label>
-                <Select
-                  value={formData.icon}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, icon: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(projectIcons).map(([key, Icon]) => (
-                      <SelectItem key={key} value={key}>
-                        <div className="flex items-center gap-2">
-                          <Icon className="h-4 w-4" />
-                          {key}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Color</Label>
-              <div className="flex gap-2 flex-wrap">
-                {(Object.keys(colorClasses) as ProjectColor[]).map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, color })}
-                    className={`w-10 h-10 rounded-full bg-${color}-500 ${
-                      formData.color === color
-                        ? "ring-2 ring-offset-2 ring-primary"
-                        : ""
-                    }`}
-                    title={color}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="start_date">Start Date</Label>
-                <Input
-                  id="start_date"
-                  type="date"
-                  value={formData.start_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, start_date: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="target_end_date">Target End Date</Label>
-                <Input
-                  id="target_end_date"
-                  type="date"
-                  value={formData.target_end_date}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      target_end_date: e.target.value,
-                    })
-                  }
-                />
-              </div>
-            </div>
-          </div>
-          <div className="h-2" />
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowDialog(false);
-                setEditingProject(null);
-                resetForm();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={saveProject}
-              disabled={loading || !formData.name.trim()}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : editingProject ? (
-                "Update Project"
-              ) : (
-                "Create Project"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ProjectEditorDialog
+        open={showDialog}
+        mode={editingProject ? "edit" : "create"}
+        loading={loading}
+        formData={formData}
+        setFormData={setFormData}
+        onSave={saveProject}
+        onCancel={() => {
+          setShowDialog(false);
+          setEditingProject(null);
+          resetForm();
+        }}
+        projectIcons={projectIcons}
+        colorClasses={colorClasses}
+      />
     </div>
   );
 }

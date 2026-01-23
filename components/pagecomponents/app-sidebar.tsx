@@ -65,12 +65,12 @@ interface SidebarProps {
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
+  { name: "Projects", href: "/project-manager", icon: Newspaper },
   { name: "Requirements", href: "/requirements", icon: BarChart3 },
-  { name: "Generate Tests", href: "/generate", icon: FlaskConical },
   { name: "Test Cases", href: "/test-cases", icon: FileText },
+  { name: "Generate Tests", href: "/generate", icon: FlaskConical },
   { name: "Test Suites", href: "/test-library", icon: Library },
   { name: "Templates", href: "/template-manager", icon: Layout },
-  { name: "Projects", href: "/project-manager", icon: Newspaper },
 ];
 
 const secondaryNavigation = [
@@ -182,7 +182,7 @@ export function AppSidebar({
         className={cn(
           "w-full h-10 transition justify-start relative",
           collapsed ? "px-0 mx-auto w-10" : "gap-3 px-3",
-          isActive(href) && "bg-secondary font-medium"
+          isActive(href) && "bg-secondary font-medium",
         )}
         onClick={() => {
           router.push(href);
@@ -218,7 +218,7 @@ export function AppSidebar({
         <div
           className={cn(
             "flex items-center border-b",
-            collapsed ? "h-20 flex-col justify-center gap-1 px-0" : "h-16 px-4"
+            collapsed ? "h-20 flex-col justify-center gap-1 px-0" : "h-16 px-4",
           )}
         >
           <Link href="/dashboard" className="flex items-center justify-center">
@@ -271,7 +271,7 @@ export function AppSidebar({
             variant="ghost"
             className={cn(
               "hidden lg:inline-flex h-6 w-6",
-              collapsed ? "p-0" : "ml-auto"
+              collapsed ? "p-0" : "ml-auto",
             )}
             onClick={() => setCollapsed((c: boolean) => !c)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -321,7 +321,7 @@ export function AppSidebar({
             <div
               className={cn(
                 "flex items-center gap-3",
-                collapsed ? "justify-center py-2" : "px-2 py-2"
+                collapsed ? "justify-center py-2" : "px-2 py-2",
               )}
             >
               <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
@@ -339,7 +339,9 @@ export function AppSidebar({
                   variant="ghost"
                   className={cn(
                     "w-full h-auto hover:bg-muted",
-                    collapsed ? "justify-center p-2" : "justify-start gap-3 p-2"
+                    collapsed
+                      ? "justify-center p-2"
+                      : "justify-start gap-3 p-2",
                   )}
                 >
                   <Avatar className="h-8 w-8 shrink-0">
@@ -424,7 +426,7 @@ export function AppSidebar({
         className={cn(
           "hidden md:block border-r bg-background transition-[width] duration-200 ease-in-out",
           collapsed ? "w-[56px]" : "w-64",
-          className
+          className,
         )}
       >
         <SidebarContent />
@@ -510,7 +512,7 @@ function MobileSidebar({
                 variant={isActive(item.href) ? "secondary" : "ghost"}
                 className={cn(
                   "w-full justify-start gap-3 h-10",
-                  isActive(item.href) && "bg-secondary font-medium"
+                  isActive(item.href) && "bg-secondary font-medium",
                 )}
                 onClick={() => {
                   router.push(item.href);

@@ -1,30 +1,39 @@
-"use client"
+"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import type { ExecutionDetails, ExecutionStatus, TestExecution } from "@/types/test-cases"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import type {
+  ExecutionDetails,
+  ExecutionStatus,
+  TestExecution,
+} from "@/types/test-cases";
 
 type UseExecutionsArgs = {
-  sessionId: string | null
-}
+  sessionId: string | null;
+};
 
 type HydrateArgs = {
-  testCaseIds: string[]
-  crossPlatformIds: string[]
-}
+  testCaseIds: string[];
+  crossPlatformIds: string[];
+};
 
-type ExecutionRow = NonNullable<TestExecution[string]>
+type ExecutionRow = NonNullable<TestExecution[string]>;
 
-const FINAL_STATUSES: ExecutionStatus[] = ["passed", "failed", "blocked", "skipped"]
+const FINAL_STATUSES: ExecutionStatus[] = [
+  "passed",
+  "failed",
+  "blocked",
+  "skipped",
+];
 
 export function useExecutions({ sessionId }: UseExecutionsArgs) {
-  const [execution, setExecution] = useState<TestExecution>({})
+  const [execution, setExecution] = useState<TestExecution>({});
 
   // Always read the latest execution state inside async callbacks
-  const executionRef = useRef<TestExecution>({})
+  const executionRef = useRef<TestExecution>({});
   useEffect(() => {
-    executionRef.current = execution
-  }, [execution])
+    executionRef.current = execution;
+  }, [execution]);
 
   const defaultRow = useMemo<ExecutionRow>(
     () => ({
@@ -33,99 +42,103 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
       failedSteps: [],
     }),
     []
-  )
+  );
 
   const ensureRow = useCallback(
     (testCaseId: string): ExecutionRow => {
-      const current = executionRef.current[testCaseId]
-      if (current) return current as ExecutionRow
+      const current = executionRef.current[testCaseId];
+      if (current) return current as ExecutionRow;
 
       // Seed local state so UI reads are safe immediately
       setExecution((prev) => ({
         ...prev,
         [testCaseId]: defaultRow,
-      }))
+      }));
 
-      return defaultRow
+      return defaultRow;
     },
     [defaultRow]
-  )
+  );
 
-  const hydrateExecutions = useCallback(
-    async ({ testCaseIds, crossPlatformIds }: HydrateArgs) => {
-      if (testCaseIds.length === 0 && crossPlatformIds.length === 0) return
-
-      const supabase = createClient()
-      const ids = [...testCaseIds, ...crossPlatformIds]
+  const hydrateOne = useCallback(
+    async (testCaseId: string) => {
+      const supabase = createClient();
 
       let query = supabase
         .from("test_executions")
         .select("*")
-        .in("test_case_id", ids)
+        .eq("test_case_id", testCaseId)
         .order("created_at", { ascending: false })
+        .limit(1);
 
-      if (sessionId) query = query.eq("session_id", sessionId)
+      if (sessionId) query = query.eq("session_id", sessionId);
 
-      const { data, error } = await query
-      if (error) throw error
+      const { data, error } = await query;
+      if (error) throw error;
 
-      const executionMap: TestExecution = {}
+      const row = data?.[0];
+      if (!row) {
+        // ensure row exists in local state
+        setExecution((prev) => ({
+          ...prev,
+          [testCaseId]: prev[testCaseId] ?? {
+            status: "not_run",
+            completedSteps: [],
+            failedSteps: [],
+          },
+        }));
+        return;
+      }
 
-      data?.forEach((row) => {
-        if (!executionMap[row.test_case_id]) {
-          executionMap[row.test_case_id] = {
-            id: row.id,
-            status: row.execution_status,
-            completedSteps: row.completed_steps || [],
-            failedSteps: row.failed_steps || [],
-            notes: row.execution_notes,
-            failure_reason: row.failure_reason,
-            started_at: row.started_at,
-            completed_at: row.completed_at,
-            duration_minutes: row.duration_minutes,
-            test_environment: row.test_environment,
-            browser: row.browser,
-            os_version: row.os_version,
-            attachments: row.attachments || [],
-          }
-        }
-      })
-
-      ids.forEach((id) => {
-        if (!executionMap[id]) {
-          executionMap[id] = { status: "not_run", completedSteps: [], failedSteps: [] }
-        }
-      })
-
-      // Replace is fine because hydrate is authoritative for this session filter.
-      setExecution(executionMap)
+      setExecution((prev) => ({
+        ...prev,
+        [testCaseId]: {
+          id: row.id,
+          status: row.execution_status,
+          completedSteps: row.completed_steps || [],
+          failedSteps: row.failed_steps || [],
+          notes: row.execution_notes,
+          failure_reason: row.failure_reason,
+          started_at: row.started_at,
+          completed_at: row.completed_at,
+          duration_minutes: row.duration_minutes,
+          test_environment: row.test_environment,
+          browser: row.browser,
+          os_version: row.os_version,
+          attachments: row.attachments || [],
+        },
+      }));
     },
     [sessionId]
-  )
+  );
 
   const saveProgress = useCallback(
     async (testCaseId: string, updates: Partial<TestExecution[string]>) => {
-      const supabase = createClient()
+      const supabase = createClient();
       const {
         data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) return
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
-      const current = ensureRow(testCaseId)
+      const current = ensureRow(testCaseId);
 
-      const nextStatus: ExecutionStatus = (updates.status ?? current.status) as ExecutionStatus
+      const nextStatus: ExecutionStatus = (updates.status ??
+        current.status) as ExecutionStatus;
 
       // timestamps: normalize based on status
       const startedAt =
         nextStatus === "not_run"
           ? null
-          : current.started_at ?? (nextStatus === "in_progress" ? new Date().toISOString() : null)
+          : current.started_at ??
+            (nextStatus === "in_progress" ? new Date().toISOString() : null);
 
-      const completedAt =
-        FINAL_STATUSES.includes(nextStatus) ? new Date().toISOString() : null
+      const completedAt = FINAL_STATUSES.includes(nextStatus)
+        ? new Date().toISOString()
+        : null;
 
-      const completedSteps = updates.completedSteps ?? current.completedSteps ?? []
-      const failedSteps = updates.failedSteps ?? current.failedSteps ?? []
+      const completedSteps =
+        updates.completedSteps ?? current.completedSteps ?? [];
+      const failedSteps = updates.failedSteps ?? current.failedSteps ?? [];
 
       const payload = {
         test_case_id: testCaseId,
@@ -137,9 +150,11 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         failed_steps: failedSteps,
 
         execution_notes: updates.notes ?? current.notes ?? null,
-        failure_reason: updates.failure_reason ?? current.failure_reason ?? null,
+        failure_reason:
+          updates.failure_reason ?? current.failure_reason ?? null,
 
-        test_environment: updates.test_environment ?? current.test_environment ?? "staging",
+        test_environment:
+          updates.test_environment ?? current.test_environment ?? "staging",
         browser: updates.browser ?? current.browser ?? null,
         os_version: updates.os_version ?? current.os_version ?? null,
 
@@ -147,27 +162,29 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         completed_at: completedAt,
 
         // allow caller to persist duration/attachments
-        duration_minutes: updates.duration_minutes ?? current.duration_minutes ?? null,
-        attachments: (updates as any).attachments ?? (current as any).attachments ?? [],
+        duration_minutes:
+          updates.duration_minutes ?? current.duration_minutes ?? null,
+        attachments:
+          (updates as any).attachments ?? (current as any).attachments ?? [],
 
         updated_at: new Date().toISOString(),
-      }
+      };
 
       // Upsert (update if id exists, else insert)
       if (current.id) {
         const { error } = await supabase
           .from("test_executions")
           .update(payload)
-          .eq("id", current.id)
-        if (error) throw error
+          .eq("id", current.id);
+        if (error) throw error;
       } else {
         const { data, error } = await supabase
           .from("test_executions")
           .insert(payload)
           .select("id")
-          .single()
+          .single();
 
-        if (error) throw error
+        if (error) throw error;
 
         setExecution((prev) => ({
           ...prev,
@@ -175,7 +192,7 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
             ...(prev[testCaseId] || current),
             id: data.id,
           },
-        }))
+        }));
       }
 
       // Reflect updates locally (single source for UI)
@@ -196,22 +213,24 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
           duration_minutes: payload.duration_minutes ?? undefined,
           attachments: payload.attachments ?? [],
         },
-      }))
+      }));
     },
     [ensureRow, sessionId]
-  )
+  );
 
   const toggleStep = useCallback(
     async (testCaseId: string, stepNumber: number) => {
-      const current = ensureRow(testCaseId)
+      const current = ensureRow(testCaseId);
 
-      const isCompleted = (current.completedSteps || []).includes(stepNumber)
+      const isCompleted = (current.completedSteps || []).includes(stepNumber);
       const updatedSteps = isCompleted
         ? (current.completedSteps || []).filter((s) => s !== stepNumber)
-        : [...(current.completedSteps || []), stepNumber]
+        : [...(current.completedSteps || []), stepNumber];
 
       const nextStatus: ExecutionStatus =
-        current.status === "not_run" ? "in_progress" : (current.status as ExecutionStatus)
+        current.status === "not_run"
+          ? "in_progress"
+          : (current.status as ExecutionStatus);
 
       // optimistic UI
       setExecution((prev) => ({
@@ -221,20 +240,28 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
           completedSteps: updatedSteps,
           status: nextStatus,
         },
-      }))
+      }));
 
-      await saveProgress(testCaseId, { completedSteps: updatedSteps, status: nextStatus })
+      await saveProgress(testCaseId, {
+        completedSteps: updatedSteps,
+        status: nextStatus,
+      });
     },
     [ensureRow, saveProgress]
-  )
+  );
 
   const saveResult = useCallback(
-    async (testCaseId: string, status: ExecutionStatus, details: ExecutionDetails = {}) => {
-      const current = ensureRow(testCaseId)
+    async (
+      testCaseId: string,
+      status: ExecutionStatus,
+      details: ExecutionDetails = {}
+    ) => {
+      const current = ensureRow(testCaseId);
 
-      const startTime = current.started_at
-      const duration =
-        startTime ? Math.round((Date.now() - new Date(startTime).getTime()) / 60000) : undefined
+      const startTime = current.started_at;
+      const duration = startTime
+        ? Math.round((Date.now() - new Date(startTime).getTime()) / 60000)
+        : undefined;
 
       await saveProgress(testCaseId, {
         status,
@@ -244,13 +271,14 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         failure_reason: details.failure_reason,
 
         // your dialog uses "environment"; DB uses test_environment
-        test_environment: (details as any).environment ?? current.test_environment ?? "staging",
+        test_environment:
+          (details as any).environment ?? current.test_environment ?? "staging",
         browser: details.browser,
         os_version: details.os_version,
-      })
+      });
     },
     [ensureRow, saveProgress]
-  )
+  );
 
   const reset = useCallback(
     async (testCaseId: string) => {
@@ -261,18 +289,18 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         notes: "",
         failure_reason: "",
         duration_minutes: undefined,
-      })
+      });
     },
     [saveProgress]
-  )
+  );
 
   return {
     execution,
-    setExecution, // keep for your delete-local behavior
-    hydrateExecutions,
+    setExecution,
+    hydrateOne,
     toggleStep,
-    saveProgress, // <-- for TestRunnerDialog incremental persistence
-    saveResult,   // <-- finalize
-    reset,        // <-- reset
-  }
+    saveProgress,
+    saveResult,
+    reset,
+  };
 }

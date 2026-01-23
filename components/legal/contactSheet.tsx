@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,31 +20,30 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 type Props = {
- 
-  action?: string; 
- 
+  action?: string;
+
   className?: string;
- 
-  triggerLabel?: string; 
 };
 
 export function ContactSheet({
   action = "/api/send-support-emails",
   className,
-  triggerLabel = "Contact",
 }: Props) {
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
 
   async function onSubmit(form: HTMLFormElement) {
     setLoading(true);
-    const data = Object.fromEntries(new FormData(form).entries()) as Record<string, string>;
+    const data = Object.fromEntries(new FormData(form).entries()) as Record<
+      string,
+      string
+    >;
 
     const email = (data.email || "").trim().toLowerCase();
     const name = (data.name || "").trim();
     const subject = (data.subject || "").trim();
     const message = (data.message || "").trim();
-    const hp = (data.company || "").trim(); 
+    const hp = (data.company || "").trim();
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       toast.error("Please enter a valid email address.");
@@ -59,7 +65,9 @@ export function ContactSheet({
       const json = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        toast.error(json?.error || "We couldn’t send your message. Please try again.");
+        toast.error(
+          json?.error || "We couldn’t send your message. Please try again."
+        );
       } else {
         toast.success("Thanks! Your message has been sent.");
         form.reset();
@@ -83,12 +91,14 @@ export function ContactSheet({
           )}
         >
           <Mail className="h-4 w-4" />
-          <span>{triggerLabel}</span>
         </button>
       </SheetTrigger>
 
       {/* Make the sheet content a flex column and the middle area a ScrollArea */}
-      <SheetContent side="right" className="flex h-full flex-col p-0 sm:max-w-[560px]">
+      <SheetContent
+        side="right"
+        className="flex h-full flex-col p-0 sm:max-w-[560px]"
+      >
         <div className="border-b px-6 py-4">
           <SheetHeader>
             <SheetTitle>Contact Support</SheetTitle>
@@ -111,17 +121,35 @@ export function ContactSheet({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="name">Your Name</Label>
-                <Input id="name" name="name" placeholder="example: Ada Lovelace" autoComplete="name" required />
+                <Input
+                  id="name"
+                  name="name"
+                  placeholder="example: Ada Lovelace"
+                  autoComplete="name"
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Your Email</Label>
-                <Input id="email" name="email" type="email" placeholder="example: you@example.com" autoComplete="email" required />
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="example: you@example.com"
+                  autoComplete="email"
+                  required
+                />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="subject">Subject</Label>
-              <Input id="subject" name="subject" placeholder="Issue summary" required />
+              <Input
+                id="subject"
+                name="subject"
+                placeholder="Issue summary"
+                required
+              />
             </div>
 
             <div className="space-y-2">
@@ -134,7 +162,8 @@ export function ContactSheet({
                 required
               />
               <p className="text-xs text-muted-foreground">
-                Include steps to reproduce, screenshots, and your browser/device if relevant.
+                Include steps to reproduce, screenshots, and your browser/device
+                if relevant.
               </p>
             </div>
 
@@ -155,7 +184,11 @@ export function ContactSheet({
 
         <SheetFooter className="px-6 py-4">
           <div className="ml-auto flex gap-2">
-            <Button variant="ghost" onClick={() => setOpen(false)} disabled={loading}>
+            <Button
+              variant="ghost"
+              onClick={() => setOpen(false)}
+              disabled={loading}
+            >
               Cancel
             </Button>
             <Button form="contact-form" type="submit" disabled={loading}>

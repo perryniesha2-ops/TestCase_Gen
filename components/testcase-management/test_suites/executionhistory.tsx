@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -58,11 +59,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  RunReviewDialog,
-  type ExecutionHistoryRow as ReviewExecutionRow,
-  type RunWithStats as ReviewRunWithStats,
-} from "./dialogs/run-review-dialog";
+import { RunReviewDialog } from "./dialogs/run-review-dialog";
 
 type ExecutionStatus =
   | "not_run"
@@ -103,11 +100,13 @@ type SupabaseExecutionRow = {
   review_create_issue?: boolean | null;
   review_note?: string | null;
   reviewed_at?: string | null;
-  test_suites: { id: string; name: string } | null;
+  jira_issue_key: string | null;
+  testrail_defect_id: string | null;
+  test_suites: { id: string; name: string; project_id: string | null } | null;
   test_cases: { id: string; title: string; description: string | null } | null;
 };
 
-type ExecutionHistoryRow = {
+export type ExecutionHistoryRow = {
   execution_id: string;
   suite_id: string;
   suite_name: string;
@@ -129,6 +128,10 @@ type ExecutionHistoryRow = {
   review_create_issue: boolean;
   review_note: string | null;
   reviewed_at: string | null;
+
+  // integration fields
+  jira_issue_key: string | null;
+  testrail_defect_id: string | null;
 };
 
 type RunRow = {
@@ -159,6 +162,20 @@ type RunRow = {
 type RunWithStats = RunRow & {
   evidence_total: number;
   review_done: boolean;
+
+  /**
+   * Runs are aggregates; issues belong to executions.
+   * We show a summary count for the run.
+   */
+  linked_issue_count: number;
+};
+
+type IntegrationRow = {
+  id: string;
+  integration_type: "jira" | "testrail";
+  project_id: string | null;
+  sync_enabled: boolean;
+  config: any; // ideally strongly typed
 };
 
 function useDebouncedValue<T>(value: T, delayMs = 300) {
@@ -238,8 +255,69 @@ function runStatusBadge(s: RunStatus) {
   );
 }
 
+function IssueLink({
+  jiraKey,
+  testrailId,
+  jiraUrl,
+  testrailUrl,
+}: {
+  jiraKey: string | null;
+  testrailId: string | null;
+  jiraUrl?: string | null;
+  testrailUrl?: string | null;
+}) {
+  if (jiraKey) {
+    const href = jiraUrl ?? null;
+
+    return (
+      <a
+        href={href || "#"}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+        onClick={(e) => {
+          if (!href) {
+            e.preventDefault();
+            toast.error("Jira URL not configured");
+          }
+        }}
+      >
+        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V2.84a.84.84 0 0 0-.84-.84h-9.63zm-.84 7.32c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V10.16a.84.84 0 0 0-.84-.84h-9.63zm-9.63 7.32c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V17.48a.84.84 0 0 0-.84-.84H1.06z" />
+        </svg>
+        {jiraKey}
+      </a>
+    );
+  }
+
+  if (testrailId) {
+    const href = testrailUrl ?? null;
+
+    return (
+      <a
+        href={href || "#"}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:underline"
+        onClick={(e) => {
+          if (!href) {
+            e.preventDefault();
+            toast.error("TestRail URL not configured");
+          }
+        }}
+      >
+        <FileText className="h-3 w-3" />
+        {testrailId}
+      </a>
+    );
+  }
+
+  return <span className="text-xs text-muted-foreground">—</span>;
+}
+
 export function ExecutionHistory() {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
 
   // shared filters
   const [availableSuites, setAvailableSuites] = useState<
@@ -254,7 +332,7 @@ export function ExecutionHistory() {
   const [runsSearch, setRunsSearch] = useState("");
   const debouncedRunsSearch = useDebouncedValue(runsSearch, 300);
 
-  // executions tab (existing)
+  // executions tab
   const [rows, setRows] = useState<ExecutionHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -263,12 +341,12 @@ export function ExecutionHistory() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  // Pagination for executions (keep your existing behavior)
+  // pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(20);
   const [totalCount, setTotalCount] = useState(0);
 
-  // View evidence dialog (existing)
+  // evidence dialog
   const [openView, setOpenView] = useState(false);
   const [activeExecution, setActiveExecution] =
     useState<ExecutionHistoryRow | null>(null);
@@ -276,12 +354,25 @@ export function ExecutionHistory() {
   const [evidence, setEvidence] = useState<AttachmentRow[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  // Run review dialog (new)
+  // run review dialog
   const [isRunReviewOpen, setIsRunReviewOpen] = useState(false);
   const [activeRun, setActiveRun] = useState<RunWithStats | null>(null);
   const [runRows, setRunRows] = useState<ExecutionHistoryRow[]>([]);
   const [runRowsLoading, setRunRowsLoading] = useState(false);
   const [runSaveBusy, setRunSaveBusy] = useState(false);
+  const [showAborted, setShowAborted] = useState(false);
+
+  const [integrations, setIntegrations] = useState<IntegrationRow[]>([]);
+  const [integrationLoading, setIntegrationLoading] = useState(false);
+  const [selectedIntegrationId, setSelectedIntegrationId] = useState("none");
+  const [creatingIssues, setCreatingIssues] = useState(false);
+
+  //jira
+
+  const [jiraBaseUrl, setJiraBaseUrl] = useState<string | null>(null);
+  const onSelectedIntegrationIdChange = (id: string) => {
+    setSelectedIntegrationId(id);
+  };
 
   const INCLUDED_STATUSES: AllowedStatus[] = [
     "passed",
@@ -295,13 +386,11 @@ export function ExecutionHistory() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Runs fetch
   useEffect(() => {
     void fetchRuns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suiteId, dateFilter, debouncedRunsSearch]);
+  }, [suiteId, dateFilter, debouncedRunsSearch, showAborted]);
 
-  // Executions fetch
   useEffect(() => {
     void fetchHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -315,7 +404,6 @@ export function ExecutionHistory() {
     pageSize,
   ]);
 
-  // Reset to page 1 when execution filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [status, hasEvidence, debouncedSearch, suiteId, dateFilter, pageSize]);
@@ -362,6 +450,90 @@ export function ExecutionHistory() {
     return startDate;
   }
 
+  async function createIssuesFromReview() {
+    if (!activeRun) {
+      toast.error("No active run");
+      return;
+    }
+    if (selectedIntegrationId === "none") {
+      toast.error("Select an integration first");
+      return;
+    }
+
+    // only rows checked for "Create issue" and not already linked
+    const targets = runRows.filter(
+      (r) =>
+        r.review_create_issue && !r.jira_issue_key && !r.testrail_defect_id,
+    );
+
+    if (targets.length === 0) {
+      toast.info("No rows selected (or already linked).");
+      return;
+    }
+
+    setCreatingIssues(true);
+    try {
+      const res = await fetch("/api/integrations/create-issues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          integration_id: selectedIntegrationId,
+          executions: targets.map((r) => ({
+            execution_id: r.execution_id,
+            test_case_id: r.test_case_id,
+            test_title: r.test_title,
+            suite_name: r.suite_name,
+            failure_reason: r.failure_reason,
+          })),
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? "Failed to create issues");
+
+      // Patch local rows so the dialog updates immediately
+      const results = (json.results ?? []) as Array<{
+        success: boolean;
+        execution_id: string;
+        issue_key?: string; // Jira
+        run_id?: number; // TestRail
+        error?: string;
+      }>;
+
+      setRunRows((prev) =>
+        prev.map((r) => {
+          const match = results.find(
+            (x) => x.execution_id === r.execution_id && x.success,
+          );
+          if (!match) return r;
+
+          // Jira returns issue_key
+          if (match.issue_key) {
+            return { ...r, jira_issue_key: match.issue_key };
+          }
+
+          // TestRail returns run_id, store a friendly "R123" (or whatever you prefer)
+          if (match.run_id != null) {
+            return { ...r, testrail_defect_id: `R${match.run_id}` };
+          }
+
+          return r;
+        }),
+      );
+
+      toast.success(
+        `Created ${json.created ?? 0} of ${json.total ?? targets.length} issues`,
+      );
+      void fetchHistory();
+      void fetchRuns();
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Failed to create issues");
+    } finally {
+      setCreatingIssues(false);
+    }
+  }
+
   async function fetchRuns() {
     setRunsLoading(true);
     try {
@@ -377,33 +549,37 @@ export function ExecutionHistory() {
         .from("test_run_sessions")
         .select(
           `
-        id,
-        user_id,
-        suite_id,
-        name,
-        description,
-        status,
-        planned_start,
-        actual_start,
-        actual_end,
-        environment,
-        test_cases_total,
-        test_cases_completed,
-        progress_percentage,
-        passed_cases,
-        failed_cases,
-        skipped_cases,
-        blocked_cases,
-        created_at,
-        updated_at,
-        paused_at,
-        auto_advance,
-        test_suites:suite_id ( id, name )
-      `
+          id,
+          user_id,
+          suite_id,
+          name,
+          description,
+          status,
+          planned_start,
+          actual_start,
+          actual_end,
+          environment,
+          test_cases_total,
+          test_cases_completed,
+          progress_percentage,
+          passed_cases,
+          failed_cases,
+          skipped_cases,
+          blocked_cases,
+          created_at,
+          updated_at,
+          paused_at,
+          auto_advance,
+test_suites:suite_id ( id, name, project_id)
+        `,
         )
         .eq("user_id", auth.user.id)
         .order("created_at", { ascending: false })
         .limit(200);
+
+      // finished runs
+      if (showAborted) q = q.in("status", ["completed", "aborted"]);
+      else q = q.eq("status", "completed");
 
       if (suiteId !== "all") q = q.eq("suite_id", suiteId);
       if (startDate) q = q.gte("created_at", startDate);
@@ -413,7 +589,7 @@ export function ExecutionHistory() {
 
       const sessions = (sessionsRaw ?? []) as Array<any>;
 
-      // Client-side search (name, suite, description, environment, id)
+      // client-side search
       const s = debouncedRunsSearch.trim().toLowerCase();
       const filtered = s
         ? sessions.filter((r) => {
@@ -431,17 +607,19 @@ export function ExecutionHistory() {
           })
         : sessions;
 
-      if (filtered.length === 0) {
+      const sessionIds = filtered.map((x) => x.id);
+
+      if (sessionIds.length === 0) {
         setRuns([]);
         return;
       }
 
-      const sessionIds = filtered.map((x) => x.id);
-
-      // Pull executions just to compute review_done and evidence_total
+      // Pull executions to compute review_done, evidence_total, and issue summary
       const { data: execRaw, error: execErr } = await supabase
         .from("test_executions")
-        .select("id, session_id, reviewed_at")
+        .select(
+          "id, session_id, reviewed_at, jira_issue_key, testrail_defect_id",
+        )
         .in("session_id", sessionIds);
 
       if (execErr) throw execErr;
@@ -450,6 +628,8 @@ export function ExecutionHistory() {
         id: string;
         session_id: string | null;
         reviewed_at: string | null;
+        jira_issue_key: string | null;
+        testrail_defect_id: string | null;
       }>;
 
       const execIds = execs.map((e) => e.id);
@@ -466,23 +646,33 @@ export function ExecutionHistory() {
         for (const a of (attsRaw ?? []) as Array<{ execution_id: string }>) {
           evidenceCountByExecution.set(
             a.execution_id,
-            (evidenceCountByExecution.get(a.execution_id) ?? 0) + 1
+            (evidenceCountByExecution.get(a.execution_id) ?? 0) + 1,
           );
         }
       }
 
       const evidenceBySession = new Map<string, number>();
       const reviewedBySession = new Map<string, boolean>();
+      const issuesBySession = new Map<string, number>();
 
       for (const e of execs) {
         if (!e.session_id) continue;
+
         if (e.reviewed_at) reviewedBySession.set(e.session_id, true);
 
         const ev = evidenceCountByExecution.get(e.id) ?? 0;
         evidenceBySession.set(
           e.session_id,
-          (evidenceBySession.get(e.session_id) ?? 0) + ev
+          (evidenceBySession.get(e.session_id) ?? 0) + ev,
         );
+
+        const hasIssue = Boolean(e.jira_issue_key || e.testrail_defect_id);
+        if (hasIssue) {
+          issuesBySession.set(
+            e.session_id,
+            (issuesBySession.get(e.session_id) ?? 0) + 1,
+          );
+        }
       }
 
       const mapped: RunWithStats[] = filtered.map((r) => {
@@ -519,6 +709,7 @@ export function ExecutionHistory() {
 
           evidence_total: evidenceBySession.get(r.id) ?? 0,
           review_done: Boolean(reviewedBySession.get(r.id) ?? false),
+          linked_issue_count: issuesBySession.get(r.id) ?? 0,
         };
       });
 
@@ -567,9 +758,11 @@ export function ExecutionHistory() {
           review_create_issue,
           review_note,
           reviewed_at,
-          test_suites:suite_id ( id, name ),
+          jira_issue_key,
+          testrail_defect_id,
+          test_suites:suite_id ( id, name, project_id),
           test_cases:test_case_id ( id, title, description )
-        `
+        `,
         )
         .eq("executed_by", auth.user.id)
         .in("execution_status", INCLUDED_STATUSES)
@@ -600,6 +793,8 @@ export function ExecutionHistory() {
       if (error) throw error;
 
       const execs = (execsRaw ?? []) as unknown as SupabaseExecutionRow[];
+      const projectId = execs[0]?.test_suites?.project_id ?? null;
+      await loadIntegrationsForProject(projectId);
 
       const base: ExecutionHistoryRow[] = execs.map((e) => {
         let duration: number | null = null;
@@ -608,7 +803,6 @@ export function ExecutionHistory() {
             new Date(e.completed_at).getTime() -
             new Date(e.started_at).getTime();
         }
-
         return {
           execution_id: e.id,
           suite_id: e.suite_id,
@@ -630,6 +824,9 @@ export function ExecutionHistory() {
           review_create_issue: Boolean(e.review_create_issue ?? false),
           review_note: (e.review_note ?? null) as string | null,
           reviewed_at: (e.reviewed_at ?? null) as string | null,
+
+          jira_issue_key: e.jira_issue_key ?? null,
+          testrail_defect_id: e.testrail_defect_id ?? null,
         };
       });
 
@@ -671,7 +868,7 @@ export function ExecutionHistory() {
       setRows(
         hasEvidence
           ? withCounts.filter((r) => r.evidence_count > 0)
-          : withCounts
+          : withCounts,
       );
     } catch (err) {
       console.error(err);
@@ -691,9 +888,38 @@ export function ExecutionHistory() {
     });
   }
 
+  async function loadIntegrationsForProject(projectId: string | null) {
+    setIntegrationLoading(true);
+    try {
+      const qs = projectId
+        ? `?project_id=${encodeURIComponent(projectId)}`
+        : "";
+      const res = await fetch(`/api/integrations${qs}`);
+      const json = await res.json();
+      if (!res.ok)
+        throw new Error(json?.error ?? "Failed to load integrations");
+
+      const list = (json.integrations ?? []).filter(
+        (i: any) => i.integration_type === "jira",
+      );
+      setIntegrations(list);
+
+      const firstEnabled = list.find((i: any) => i.sync_enabled) ?? list[0];
+      setSelectedIntegrationId(firstEnabled?.id ?? "none");
+
+      if (firstEnabled?.config?.url) {
+        setJiraBaseUrl(firstEnabled.config.url);
+      } else {
+        setJiraBaseUrl(null);
+      }
+    } finally {
+      setIntegrationLoading(false);
+    }
+  }
+
   async function createSignedUrl(
     filePath: string,
-    expiresInSeconds: number
+    expiresInSeconds: number,
   ): Promise<string> {
     try {
       const { data, error } = await supabase.storage
@@ -718,7 +944,7 @@ export function ExecutionHistory() {
       const { data, error } = await supabase
         .from("test_attachments")
         .select(
-          "id, execution_id, file_name, file_path, file_type, file_size, created_at, step_number, description"
+          "id, execution_id, file_name, file_path, file_type, file_size, created_at, step_number, description",
         )
         .eq("execution_id", execution.execution_id)
         .order("step_number", { ascending: true, nullsFirst: false })
@@ -774,6 +1000,8 @@ export function ExecutionHistory() {
       "Create Issue",
       "Review Note",
       "Reviewed At",
+      "Jira Issue Key",
+      "TestRail Defect ID",
     ];
 
     const csvRows = rows.map((r) => {
@@ -797,6 +1025,8 @@ export function ExecutionHistory() {
         r.review_create_issue ? "yes" : "no",
         r.review_note || "",
         r.reviewed_at ? new Date(r.reviewed_at).toLocaleString() : "",
+        r.jira_issue_key ?? "",
+        r.testrail_defect_id ?? "",
       ];
     });
 
@@ -817,7 +1047,7 @@ export function ExecutionHistory() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    const filename = `execution-history-${dateFilter}-${
+    const filename = `executionhistory-${dateFilter}-${
       new Date().toISOString().split("T")[0]
     }.csv`;
     link.download = filename;
@@ -902,30 +1132,34 @@ export function ExecutionHistory() {
 
     try {
       const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) return;
+      if (!auth.user) {
+        toast.error("You must be signed in");
+        return;
+      }
 
-      // Load executions for that session (all statuses you care about)
       const { data: execsRaw, error } = await supabase
         .from("test_executions")
         .select(
           `
-          id,
-          suite_id,
-          session_id,
-          test_case_id,
-          execution_status,
-          execution_notes,
-          failure_reason,
-          created_at,
-          started_at,
-          completed_at,
-          review_needs_update,
-          review_create_issue,
-          review_note,
-          reviewed_at,
-          test_suites:suite_id ( id, name ),
-          test_cases:test_case_id ( id, title, description )
-        `
+        id,
+        suite_id,
+        session_id,
+        test_case_id,
+        execution_status,
+        execution_notes,
+        failure_reason,
+        created_at,
+        started_at,
+        completed_at,
+        review_needs_update,
+        review_create_issue,
+        review_note,
+        reviewed_at,
+        jira_issue_key,
+        testrail_defect_id,
+        test_suites:suite_id ( id, name, project_id ),
+        test_cases:test_case_id ( id, title, description )
+      `,
         )
         .eq("executed_by", auth.user.id)
         .eq("session_id", run.id)
@@ -936,15 +1170,23 @@ export function ExecutionHistory() {
 
       const execs = (execsRaw ?? []) as unknown as SupabaseExecutionRow[];
 
+      const projectId = execs[0]?.test_suites?.project_id ?? null;
+      if (projectId) {
+        await loadIntegrationsForProject(projectId);
+      }
+
       // Evidence counts for this run
       const execIds = execs.map((e) => e.id);
-      let counts = new Map<string, number>();
+      const counts = new Map<string, number>();
+
       if (execIds.length) {
         const { data: attsRaw, error: attErr } = await supabase
           .from("test_attachments")
           .select("execution_id")
           .in("execution_id", execIds);
+
         if (attErr) throw attErr;
+
         for (const a of (attsRaw ?? []) as Array<{ execution_id: string }>) {
           counts.set(a.execution_id, (counts.get(a.execution_id) ?? 0) + 1);
         }
@@ -952,10 +1194,11 @@ export function ExecutionHistory() {
 
       const mapped: ExecutionHistoryRow[] = execs.map((e) => {
         let duration: number | null = null;
-        if (e.started_at && e.completed_at)
+        if (e.started_at && e.completed_at) {
           duration =
             new Date(e.completed_at).getTime() -
             new Date(e.started_at).getTime();
+        }
 
         return {
           execution_id: e.id,
@@ -978,6 +1221,9 @@ export function ExecutionHistory() {
           review_create_issue: Boolean(e.review_create_issue ?? false),
           review_note: (e.review_note ?? null) as string | null,
           reviewed_at: (e.reviewed_at ?? null) as string | null,
+
+          jira_issue_key: e.jira_issue_key ?? null,
+          testrail_defect_id: e.testrail_defect_id ?? null,
         };
       });
 
@@ -993,10 +1239,12 @@ export function ExecutionHistory() {
 
   function patchRunRow(
     executionId: string,
-    patch: Partial<ExecutionHistoryRow>
+    patch: Partial<ExecutionHistoryRow>,
   ) {
     setRunRows((prev) =>
-      prev.map((r) => (r.execution_id === executionId ? { ...r, ...patch } : r))
+      prev.map((r) =>
+        r.execution_id === executionId ? { ...r, ...patch } : r,
+      ),
     );
   }
 
@@ -1005,16 +1253,27 @@ export function ExecutionHistory() {
       prev.map((r) =>
         r.execution_status === "failed"
           ? { ...r, review_needs_update: value }
-          : r
-      )
+          : r,
+      ),
     );
   }
 
   function bulkMarkAllCreateIssue(value: boolean) {
     setRunRows((prev) =>
-      prev.map((r) => ({ ...r, review_create_issue: value }))
+      prev.map((r) => ({ ...r, review_create_issue: value })),
     );
   }
+
+  const handleIntegrationChange = (id: string) => {
+    setSelectedIntegrationId(id);
+
+    const selected = integrations.find((i) => i.id === id);
+    if (selected?.config?.url) {
+      setJiraBaseUrl(selected.config.url);
+    } else {
+      setJiraBaseUrl(null);
+    }
+  };
 
   async function saveRunReview() {
     if (!activeRun) return;
@@ -1025,13 +1284,10 @@ export function ExecutionHistory() {
 
     setRunSaveBusy(true);
     try {
-      // Update in small batches to avoid payload limits
       const batchSize = 50;
       for (let i = 0; i < runRows.length; i += batchSize) {
         const slice = runRows.slice(i, i + batchSize);
 
-        // Supabase update per row (safe + simple).
-        // If you want higher performance later, we can add a single RPC.
         for (const r of slice) {
           const { error } = await supabase
             .from("test_executions")
@@ -1048,10 +1304,7 @@ export function ExecutionHistory() {
       }
 
       toast.success("Run review saved");
-
-      // refresh runs list so “review done” reflects
       void fetchRuns();
-      // refresh executions list so exports include review columns
       void fetchHistory();
       setIsRunReviewOpen(false);
     } catch (err) {
@@ -1062,7 +1315,6 @@ export function ExecutionHistory() {
     }
   }
 
-  // ===== Stats for dashboard (executions tab) =====
   const execStats = useMemo(() => {
     const total = rows.length;
     const passed = rows.filter((r) => r.execution_status === "passed").length;
@@ -1095,7 +1347,6 @@ export function ExecutionHistory() {
 
         {/* ================== RUNS TAB ================== */}
         <TabsContent value="runs" className="space-y-4 mt-4">
-          {/* Run summary */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="pt-6">
@@ -1135,8 +1386,6 @@ export function ExecutionHistory() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
-              <CardTitle>Run History</CardTitle>
-
               <div className="flex flex-wrap items-center gap-3">
                 <Input
                   value={runsSearch}
@@ -1171,6 +1420,16 @@ export function ExecutionHistory() {
                     ))}
                   </SelectContent>
                 </Select>
+
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={showAborted}
+                    onCheckedChange={(v) => setShowAborted(Boolean(v))}
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    Show incomplete runs
+                  </span>
+                </div>
               </div>
             </CardHeader>
 
@@ -1187,115 +1446,145 @@ export function ExecutionHistory() {
                   No runs match your filters.
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Suite</TableHead>
-                      <TableHead>Run</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Results</TableHead>
-                      <TableHead>Evidence</TableHead>
-                      <TableHead>Review</TableHead>
-                      <TableHead className="w-[120px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {runs.map((r) => {
-                      const created = new Date(r.created_at);
-                      const passRate = r.test_cases_total
-                        ? Math.round(
-                            (r.passed_cases / r.test_cases_total) * 100
-                          )
-                        : 0;
+                <div className="space-y-3">
+                  {runs.map((r) => {
+                    const created = new Date(r.created_at);
+                    const passRate = r.test_cases_total
+                      ? Math.round((r.passed_cases / r.test_cases_total) * 100)
+                      : 0;
 
-                      return (
-                        <TableRow key={r.id}>
-                          <TableCell className="text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                              <Calendar className="h-4 w-4" />
-                              {created.toLocaleDateString()}
+                    return (
+                      <Card
+                        key={r.id}
+                        className="hover:bg-muted/50 transition-colors"
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            {/* Left: Date */}
+                            <div className="flex items-center gap-3 min-w-[140px]">
+                              <Calendar className="h-5 w-5 text-muted-foreground" />
+                              <div>
+                                <div className="font-medium text-sm">
+                                  {created.toLocaleDateString()}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {created.toLocaleTimeString()}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-xs">
-                              {created.toLocaleTimeString()}
+
+                            {/* Middle: Run Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-sm font-medium text-muted-foreground">
+                                  {r.suite_name}
+                                </span>
+                                {runStatusBadge(r.status)}
+                              </div>
+                              <div className="font-semibold mb-2">
+                                {r.name || `Run ${r.id.slice(0, 8)}…`}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {r.test_cases_completed ?? 0}/
+                                {r.test_cases_total ?? 0} complete •{" "}
+                                {r.progress_percentage ?? passRate}%
+                              </div>
                             </div>
-                          </TableCell>
 
-                          <TableCell className="font-medium">
-                            {r.suite_name}
-                          </TableCell>
+                            {/* Right: Stats */}
+                            <div className="flex items-center gap-6">
+                              {/* Test Results */}
+                              <div className="space-y-1.5">
+                                <div className="text-xs font-medium text-muted-foreground mb-2">
+                                  Results
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-100"
+                                  >
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                    {r.passed_cases}
+                                  </Badge>
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-100"
+                                  >
+                                    <XCircle className="h-3 w-3 mr-1" />
+                                    {r.failed_cases}
+                                  </Badge>
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-100"
+                                  >
+                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                    {r.blocked_cases}
+                                  </Badge>
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                                  >
+                                    <MinusCircle className="h-3 w-3 mr-1" />
+                                    {r.skipped_cases}
+                                  </Badge>
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-2">
+                                  Pass rate: {passRate}%
+                                </div>
+                              </div>
 
-                          <TableCell>
-                            <div className="font-medium">
-                              {r.name || `Run ${r.id.slice(0, 8)}…`}
+                              {/* Evidence & Issues */}
+                              <div className="space-y-2 min-w-[100px]">
+                                <div className="flex items-center gap-2 text-sm">
+                                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium">
+                                    {r.evidence_total}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    evidence
+                                  </span>
+                                </div>
+                                {r.linked_issue_count > 0 ? (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <FileText className="h-4 w-4 text-muted-foreground" />
+                                    <span className="font-medium">
+                                      {r.linked_issue_count}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      issues
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground">
+                                    No issues
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Action */}
+                              <div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-2"
+                                  onClick={() =>
+                                    router.push(`/test-runs/${r.id}/review`)
+                                  }
+                                >
+                                  <Eye className="h-4 w-4" />
+                                  Review
+                                </Button>
+                              </div>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              {r.test_cases_completed ?? 0}/
-                              {r.test_cases_total ?? r.test_cases_total}{" "}
-                              complete • {r.progress_percentage ?? passRate}%
-                            </div>
-                          </TableCell>
-
-                          <TableCell>{runStatusBadge(r.status)}</TableCell>
-
-                          <TableCell className="text-xs">
-                            <div className="flex flex-wrap gap-2">
-                              <Badge variant="secondary">
-                                P {r.passed_cases}
-                              </Badge>
-                              <Badge variant="secondary">
-                                F {r.failed_cases}
-                              </Badge>
-                              <Badge variant="secondary">
-                                B {r.blocked_cases}
-                              </Badge>
-                              <Badge variant="secondary">
-                                S {r.skipped_cases}
-                              </Badge>
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              Pass rate: {passRate}%
-                            </div>
-                          </TableCell>
-
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm font-medium">
-                                {r.evidence_total}
-                              </span>
-                            </div>
-                          </TableCell>
-
-                          <TableCell>
-                            {r.review_done ? (
-                              <Badge className="bg-emerald-600">Reviewed</Badge>
-                            ) : (
-                              <Badge variant="secondary">Not reviewed</Badge>
-                            )}
-                          </TableCell>
-
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1"
-                              onClick={() => void openRunReview(r)}
-                            >
-                              <Eye className="h-4 w-4" />
-                              Review
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
               )}
             </CardContent>
           </Card>
-
-          {/* Run Review Dialog */}
 
           <RunReviewDialog
             open={isRunReviewOpen}
@@ -1304,11 +1593,20 @@ export function ExecutionHistory() {
               if (!v) {
                 setActiveRun(null);
                 setRunRows([]);
+                setIntegrations([]);
+                setSelectedIntegrationId("none");
+                setJiraBaseUrl(null);
               }
             }}
             activeRun={activeRun}
             rows={runRows}
             loading={runRowsLoading}
+            integrations={integrations}
+            integrationLoading={integrationLoading}
+            selectedIntegrationId={selectedIntegrationId}
+            onSelectedIntegrationIdChange={handleIntegrationChange}
+            onCreateIssues={createIssuesFromReview}
+            creatingIssues={creatingIssues}
             saving={runSaveBusy}
             onMarkFailuresNeedsUpdate={() => bulkMarkFailuresNeedsUpdate(true)}
             onClearFailuresNeedsUpdate={() =>
@@ -1324,7 +1622,6 @@ export function ExecutionHistory() {
 
         {/* ================== EXECUTIONS TAB ================== */}
         <TabsContent value="executions" className="space-y-4 mt-4">
-          {/* Stats Dashboard */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="pt-6">
@@ -1360,7 +1657,6 @@ export function ExecutionHistory() {
             </Card>
           </div>
 
-          {/* Main History Table */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
               <CardTitle>Execution History</CardTitle>
@@ -1473,9 +1769,11 @@ export function ExecutionHistory() {
                         <TableHead>Status</TableHead>
                         <TableHead>Duration</TableHead>
                         <TableHead>Evidence</TableHead>
+                        <TableHead>Issue</TableHead>
                         <TableHead className="w-[90px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
+
                     <TableBody>
                       {rows.map((r) => {
                         const isExpanded = expandedRows.has(r.execution_id);
@@ -1541,6 +1839,25 @@ export function ExecutionHistory() {
                               </TableCell>
 
                               <TableCell>
+                                <IssueLink
+                                  jiraKey={r.jira_issue_key}
+                                  testrailId={r.testrail_defect_id}
+                                  jiraUrl={
+                                    r.jira_issue_key && jiraBaseUrl
+                                      ? `${jiraBaseUrl}/browse/${encodeURIComponent(r.jira_issue_key)}`
+                                      : undefined
+                                  }
+                                  testrailUrl={
+                                    r.testrail_defect_id
+                                      ? `https://your-testrail.com/index.php?/defects/view/${encodeURIComponent(
+                                          r.testrail_defect_id,
+                                        )}`
+                                      : undefined
+                                  }
+                                />
+                              </TableCell>
+
+                              <TableCell>
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -1555,7 +1872,7 @@ export function ExecutionHistory() {
 
                             {isExpanded && (
                               <TableRow>
-                                <TableCell colSpan={8} className="bg-muted/30">
+                                <TableCell colSpan={9} className="bg-muted/30">
                                   <div className="p-4 space-y-3">
                                     {r.execution_notes && (
                                       <div>
@@ -1580,14 +1897,39 @@ export function ExecutionHistory() {
                                       </div>
                                     )}
 
-                                    <div className="flex gap-4 text-xs text-muted-foreground">
+                                    {(r.jira_issue_key ||
+                                      r.testrail_defect_id) && (
+                                      <div className="flex items-center gap-2 text-xs">
+                                        <span className="font-medium">
+                                          Linked Issue:
+                                        </span>
+                                        <IssueLink
+                                          jiraKey={r.jira_issue_key}
+                                          testrailId={r.testrail_defect_id}
+                                          jiraUrl={
+                                            r.jira_issue_key && jiraBaseUrl
+                                              ? `${jiraBaseUrl}/browse/${encodeURIComponent(r.jira_issue_key)}`
+                                              : undefined
+                                          }
+                                          testrailUrl={
+                                            r.testrail_defect_id
+                                              ? `https://your-testrail.com/index.php?/defects/view/${encodeURIComponent(
+                                                  r.testrail_defect_id,
+                                                )}`
+                                              : undefined
+                                          }
+                                        />
+                                      </div>
+                                    )}
+
+                                    <div className="flex gap-4 text-xs text-muted-foreground flex-wrap">
                                       <div>
                                         <span className="font-medium">
                                           Started:
                                         </span>{" "}
                                         {r.started_at
                                           ? new Date(
-                                              r.started_at
+                                              r.started_at,
                                             ).toLocaleString()
                                           : "-"}
                                       </div>
@@ -1597,7 +1939,7 @@ export function ExecutionHistory() {
                                         </span>{" "}
                                         {r.completed_at
                                           ? new Date(
-                                              r.completed_at
+                                              r.completed_at,
                                             ).toLocaleString()
                                           : "-"}
                                       </div>
@@ -1607,7 +1949,7 @@ export function ExecutionHistory() {
                                         </span>{" "}
                                         {r.reviewed_at
                                           ? new Date(
-                                              r.reviewed_at
+                                              r.reviewed_at,
                                             ).toLocaleString()
                                           : "-"}
                                       </div>
@@ -1632,82 +1974,72 @@ export function ExecutionHistory() {
                     </TableBody>
                   </Table>
 
-                  {/* Pagination Controls */}
                   <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                    <div className="flex items-center gap-4">
-                      <div className="text-sm text-muted-foreground">
-                        Showing{" "}
-                        {Math.min((currentPage - 1) * pageSize + 1, totalCount)}{" "}
-                        to {Math.min(currentPage * pageSize, totalCount)} of{" "}
-                        {totalCount} results
-                      </div>
-
-                      <Select
-                        value={String(pageSize)}
-                        onValueChange={(v) => setPageSize(Number(v))}
-                      >
-                        <SelectTrigger className="w-[120px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="10">10 per page</SelectItem>
-                          <SelectItem value="20">20 per page</SelectItem>
-                          <SelectItem value="50">50 per page</SelectItem>
-                          <SelectItem value="100">100 per page</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="text-sm text-muted-foreground">
+                      Showing{" "}
+                      {Math.min((currentPage - 1) * pageSize + 1, totalCount)}{" "}
+                      to {Math.min(currentPage * pageSize, totalCount)} of{" "}
+                      {totalCount} results
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(1)}
-                        disabled={currentPage === 1}
-                      >
-                        First
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setCurrentPage((p) => Math.max(1, p - 1))
-                        }
-                        disabled={currentPage === 1}
-                      >
-                        Previous
-                      </Button>
+                    <Select
+                      value={String(pageSize)}
+                      onValueChange={(v) => setPageSize(Number(v))}
+                    >
+                      <SelectTrigger className="w-[120px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10 per page</SelectItem>
+                        <SelectItem value="20">20 per page</SelectItem>
+                        <SelectItem value="50">50 per page</SelectItem>
+                        <SelectItem value="100">100 per page</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                      <div className="flex items-center gap-2 px-3">
-                        <span className="text-sm">
-                          Page {currentPage} of{" "}
-                          {Math.ceil(totalCount / pageSize)}
-                        </span>
-                      </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                    >
+                      First
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </Button>
 
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage((p) => p + 1)}
-                        disabled={
-                          currentPage >= Math.ceil(totalCount / pageSize)
-                        }
-                      >
-                        Next
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setCurrentPage(Math.ceil(totalCount / pageSize))
-                        }
-                        disabled={
-                          currentPage >= Math.ceil(totalCount / pageSize)
-                        }
-                      >
-                        Last
-                      </Button>
+                    <div className="flex items-center gap-2 px-3">
+                      <span className="text-sm">
+                        Page {currentPage} of {Math.ceil(totalCount / pageSize)}
+                      </span>
                     </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => p + 1)}
+                      disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                    >
+                      Next
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setCurrentPage(Math.ceil(totalCount / pageSize))
+                      }
+                      disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                    >
+                      Last
+                    </Button>
                   </div>
                 </>
               )}
@@ -1716,7 +2048,7 @@ export function ExecutionHistory() {
         </TabsContent>
       </Tabs>
 
-      {/* View Evidence Dialog (existing) */}
+      {/* View Evidence Dialog */}
       <Dialog open={openView} onOpenChange={setOpenView}>
         <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
           <DialogHeader>
@@ -1802,7 +2134,7 @@ export function ExecutionHistory() {
                           <div className="font-medium mt-1">
                             {activeExecution.started_at
                               ? new Date(
-                                  activeExecution.started_at
+                                  activeExecution.started_at,
                                 ).toLocaleString()
                               : "-"}
                           </div>
@@ -1814,7 +2146,7 @@ export function ExecutionHistory() {
                           <div className="font-medium mt-1">
                             {activeExecution.completed_at
                               ? new Date(
-                                  activeExecution.completed_at
+                                  activeExecution.completed_at,
                                 ).toLocaleString()
                               : "-"}
                           </div>
@@ -1945,7 +2277,7 @@ function AttachmentCardWithSignedUrl({
       a.download = attachment.file_name;
       a.click();
     },
-    [attachment.file_path, attachment.file_name, getSignedUrl]
+    [attachment.file_path, attachment.file_name, getSignedUrl],
   );
 
   return (

@@ -1,4 +1,4 @@
-// app/api/generate-test-cases/route.ts - ENHANCED FOR AUTOMATION
+// app/api/generate-test-cases/route.ts - ENHANCED WITH TEST TYPES & EXPORT FORMATS
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
@@ -13,6 +13,7 @@ interface TestStep {
   action: string;
   expected: string;
 }
+
 interface GeneratedTestCase {
   title: string;
   description: string;
@@ -22,23 +23,10 @@ interface GeneratedTestCase {
   test_steps: TestStep[];
   expected_result: string;
   is_edge_case: boolean;
-}
-
-// ----- Helpers -----
-function isAnthropicTextBlock(b: unknown): b is { type: "text"; text: string } {
-  return (
-    typeof b === "object" &&
-    b !== null &&
-    "type" in b &&
-    "text" in b &&
-    (b as Record<string, unknown>).type === "text" &&
-    typeof (b as Record<string, unknown>).text === "string"
-  );
-}
-
-function anthropicTextFromContent(blocks: unknown): string {
-  if (!Array.isArray(blocks)) return "";
-  return blocks.filter(isAnthropicTextBlock).map((b) => b.text).join("\n\n").trim();
+  is_negative_test: boolean;
+  is_security_test: boolean;
+  is_boundary_test: boolean;
+  tags?: string[];
 }
 
 // ----- AI Model Configuration -----
@@ -52,113 +40,268 @@ const AI_MODELS = {
   "gpt-4o-mini": "gpt-4o-mini-2024-07-18",
 } as const;
 
-const MODEL_INFO = {
-  "claude-sonnet-4-5": {
-    name: "Claude Sonnet 4.5",
-    provider: "Anthropic",
-    description: "Latest Sonnet - Best balance of speed & quality",
-    hint: "Recommended",
-    recommended: true,
-    contextWindow: 200000,
-  },
-  "claude-haiku-4-5": {
-    name: "Claude Haiku 4.5",
-    provider: "Anthropic",
-    description: "Fastest Claude model",
-    hint: "Fast",
-    recommended: false,
-    contextWindow: 200000,
-  },
-  "claude-opus-4-5": {
-    name: "Claude Opus 4.5",
-    provider: "Anthropic",
-    description: "Most capable Claude model",
-    hint: "Max quality",
-    recommended: false,
-    contextWindow: 200000,
-  },
-  "gpt-5-mini": {
-    name: "GPT-5 Mini",
-    provider: "OpenAI",
-    description: "Balanced performance and cost",
-    hint: "Balanced",
-    recommended: false,
-    contextWindow: 128000,
-  },
-  "gpt-5.2": {
-    name: "GPT-5.2",
-    provider: "OpenAI",
-    description: "Premium GPT model",
-    hint: "Premium",
-    recommended: false,
-    contextWindow: 128000,
-  },
-  "gpt-4o": {
-    name: "GPT-4o",
-    provider: "OpenAI",
-    description: "Latest GPT-4o - Multimodal",
-    hint: "",
-    recommended: false,
-    contextWindow: 128000,
-  },
-  "gpt-4o-mini": {
-    name: "GPT-4o Mini",
-    provider: "OpenAI",
-    description: "Cost-effective GPT-4o",
-    hint: "",
-    recommended: false,
-    contextWindow: 128000,
-  },
-} as const;
-
 const DEFAULT_MODEL = "claude-sonnet-4-5";
 const FALLBACK_CLAUDE = "claude-sonnet-4-5";
 const FALLBACK_GPT = "gpt-4o";
+
+type ModelKey = keyof typeof AI_MODELS;
+type Priority = "low" | "medium" | "high" | "critical";
 
 // ----- Clients -----
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-// ✅ ENHANCED: Automation-focused coverage prompts
-const COVERAGE_PROMPTS = {
-  standard: `Generate standard test cases with AUTOMATION-READY steps. Each test case should:
-- Include specific, actionable UI steps (click button X, type Y in field Z)
-- Specify exact URLs where applicable
-- Include realistic test data (emails, names, values)
-- Define clear, verifiable expected results
-- Be executable by Playwright automation`,
+// ----- Test Type Instructions -----
+const TEST_TYPE_INSTRUCTIONS: Record<string, string> = {
+  "happy-path": `
+HAPPY PATH / POSITIVE TESTS:
+Generate tests that verify the system works correctly with valid inputs and expected user flows.
 
-  comprehensive: `Generate comprehensive, AUTOMATION-READY test cases covering:
-- Main functionality with specific UI interactions
-- Edge cases with exact boundary values
-- Error handling with specific invalid inputs
-- Validation scenarios with precise test data
+Focus on:
+- Valid user journeys from start to finish
+- Expected use cases and common scenarios
+- Successful operations with proper data
+- Normal workflow completion
 
-Each step must be:
-- Actionable (Navigate to URL, Click element, Type value, Verify result)
-- Specific (exact button text, field names, URLs, test data)
-- Verifiable (what should be visible, what URL should load, what text should appear)`,
+Example:
+  Title: Successful User Registration
+  Steps:
+    1. Navigate to https://app.example.com/register
+    2. Type "john@example.com" in input[name="email"]
+    3. Type "SecurePass123!" in input[name="password"]
+    4. Click button "Create Account"
+    5. Verify redirect to /dashboard
+    6. Verify welcome message "Welcome, John!" appears
+`,
 
-  exhaustive: `Generate exhaustive, AUTOMATION-READY test cases covering:
-- All functionality paths with complete UI workflows
-- All edge cases with specific boundary conditions
-- Error handling with exact error scenarios
-- Security considerations (authentication, authorization, XSS, CSRF)
-- Performance scenarios with measurable criteria
-- Negative tests with specific invalid inputs
+  negative: `
+NEGATIVE TESTS (UNHAPPY PATH):
+Generate tests that verify the system handles invalid inputs and error conditions correctly.
 
-CRITICAL: Every test step must be:
-1. SPECIFIC: "Click the 'Sign In' button" not "Click login"
-2. ACTIONABLE: "Type 'test@example.com' in input[name='email']" not "Enter credentials"
-3. VERIFIABLE: "Verify URL is /dashboard and 'Welcome' heading is visible" not "Check if logged in"
-4. COMPLETE: Include URLs, element selectors, test data, expected results`
-} as const;
+Focus on:
+- Empty or missing required fields
+- Invalid data formats (malformed emails, bad dates)
+- Data exceeding limits (too long, too large)
+- Wrong data types (text in number fields)
+- Unauthorized access attempts
 
-type CoverageKey = keyof typeof COVERAGE_PROMPTS;
-type ModelKey = keyof typeof AI_MODELS;
+Example:
+  Title: Login with Empty Password
+  Steps:
+    1. Navigate to https://app.example.com/login
+    2. Type "valid@email.com" in input[name="email"]
+    3. Leave password field empty
+    4. Click button "Sign In"
+    5. Verify error message "Password is required" appears
+    6. Verify URL remains at /login
+  Flags: is_negative_test = true
+`,
+
+  security: `
+SECURITY TESTS:
+Generate tests that verify security controls and protections.
+
+Focus on:
+1. AUTHENTICATION:
+   - SQL injection: ' OR '1'='1
+   - Brute force attempts
+   - Session fixation
+
+2. AUTHORIZATION:
+   - Access restricted pages without login
+   - Access other users' data (change user IDs in URL)
+   - Privilege escalation
+
+3. INPUT VALIDATION:
+   - XSS: <script>alert('XSS')</script>
+   - Path traversal: ../../etc/passwd
+   - Command injection: ; rm -rf /
+
+4. SESSION MANAGEMENT:
+   - Session timeout
+   - Concurrent sessions
+   - Logout functionality
+
+Example:
+  Title: XSS Attempt in Comment Field
+  Steps:
+    1. Navigate to https://app.example.com/posts/123
+    2. Type "<script>alert('XSS')</script>" in textarea[name="comment"]
+    3. Click button "Post Comment"
+    4. Verify comment is displayed as plain text, NOT executed
+    5. Verify page does not show alert popup
+  Flags: is_security_test = true
+`,
+
+  boundary: `
+BOUNDARY TESTS:
+Generate tests that test limits and boundaries.
+
+Focus on:
+1. NUMERIC BOUNDARIES:
+   - Minimum value (0, -1)
+   - Maximum value (max int)
+   - Just below minimum (min - 1)
+   - Just above maximum (max + 1)
+
+2. STRING LENGTH:
+   - Empty string ("")
+   - Single character
+   - Maximum length
+   - Maximum length + 1
+
+3. DATE/TIME:
+   - Past dates when future required
+   - Leap year dates (Feb 29)
+   - Invalid dates (Feb 30)
+
+4. FILE SIZE:
+   - 0 bytes
+   - Just under limit (9.99MB for 10MB limit)
+   - Exactly at limit (10MB)
+   - Just over limit (10.01MB)
+
+Example:
+  Title: Password Minimum Length Boundary
+  Steps:
+    1. Navigate to https://app.example.com/register
+    2. Type "Pass1!" (6 chars) in input[name="password"]
+    3. Click button "Register"
+    4. Verify error "Password must be at least 8 characters"
+    5. Type "Pass123!" (8 chars) in input[name="password"]
+    6. Click button "Register"
+    7. Verify registration succeeds
+  Flags: is_boundary_test = true
+`,
+
+  "edge-case": `
+EDGE CASES:
+Generate tests for unusual but valid scenarios.
+
+Focus on:
+- Rare but possible user actions
+- Uncommon data combinations
+- System limits and boundaries
+- Special characters in names/data
+- Concurrent operations
+- Network interruptions
+
+Example:
+  Title: User with Special Characters in Name
+  Steps:
+    1. Navigate to registration page
+    2. Enter name "José O'Brien-Smith" with accents and hyphens
+    3. Complete registration
+    4. Verify name displays correctly throughout app
+  Flags: is_edge_case = true
+`,
+
+  performance: `
+PERFORMANCE TESTS:
+Generate tests that verify system performance and response times.
+
+Focus on:
+- Page load times
+- API response times
+- Database query performance
+- Large data sets
+- Concurrent users
+- Resource usage
+
+Example:
+  Title: Dashboard Load Time Under 2 Seconds
+  Steps:
+    1. Navigate to https://app.example.com/dashboard
+    2. Measure page load time
+    3. Verify page loads in under 2 seconds
+    4. Verify all dashboard widgets load
+`,
+
+  integration: `
+INTEGRATION TESTS:
+Generate tests that verify component interactions.
+
+Focus on:
+- Data flow between systems
+- API integrations
+- Third-party services
+- Database transactions
+- Message queues
+
+Example:
+  Title: Payment Processing Integration
+  Steps:
+    1. Add item to cart
+    2. Proceed to checkout
+    3. Enter payment details
+    4. Submit order
+    5. Verify payment processor receives request
+    6. Verify order status updates in database
+    7. Verify confirmation email sent
+`,
+
+  regression: `
+REGRESSION TESTS:
+Generate tests that verify existing functionality still works after changes.
+
+Focus on:
+- Core user flows
+- Previously fixed bugs
+- Critical business logic
+- Common use cases
+
+Example:
+  Title: User Login Still Works After UI Update
+  Steps:
+    1. Navigate to login page
+    2. Enter valid credentials
+    3. Click login
+    4. Verify successful authentication
+    5. Verify redirect to correct page
+`,
+
+  smoke: `
+SMOKE TESTS:
+Generate critical path tests to verify basic functionality.
+
+Focus on:
+- Application starts/loads
+- Critical features accessible
+- Core functionality works
+- No blocking errors
+
+Example:
+  Title: Application Loads Successfully
+  Steps:
+    1. Navigate to https://app.example.com
+    2. Verify homepage loads
+    3. Verify navigation menu appears
+    4. Verify no JavaScript errors in console
+`,
+};
+
+// ----- Helper Functions -----
+function isAnthropicTextBlock(b: unknown): b is { type: "text"; text: string } {
+  return (
+    typeof b === "object" &&
+    b !== null &&
+    "type" in b &&
+    "text" in b &&
+    (b as Record<string, unknown>).type === "text" &&
+    typeof (b as Record<string, unknown>).text === "string"
+  );
+}
+
+function anthropicTextFromContent(blocks: unknown): string {
+  if (!Array.isArray(blocks)) return "";
+  return blocks
+    .filter(isAnthropicTextBlock)
+    .map((b) => b.text)
+    .join("\n\n")
+    .trim();
+}
 
 const ALLOWED = new Set(["low", "medium", "high", "critical"] as const);
-type Priority = "low" | "medium" | "high" | "critical";
 
 function normalizePriority(p: unknown): Priority {
   const s = (typeof p === "string" ? p : "").toLowerCase().trim();
@@ -169,7 +312,6 @@ function normalizePriority(p: unknown): Priority {
   return ALLOWED.has(s as Priority) ? (s as Priority) : "medium";
 }
 
-// ✅ ENHANCED: Automation-specific prompt template
 const AUTOMATION_GUIDELINES = `
 AUTOMATION REQUIREMENTS:
 You are creating test cases that will be AUTOMATICALLY CONVERTED to Playwright automation scripts.
@@ -193,55 +335,107 @@ Follow these rules strictly:
 
 5. TEST DATA:
    - Use realistic, specific test data
-   - Examples: "test@company.com", "John Doe", "123 Main Street", "4242424242424242"
-   - NOT: "valid email", "user name", "address", "credit card"
-
-6. ELEMENT SELECTORS:
-   - Provide hints for finding elements: button text, input names, CSS selectors
-   - Example: "Click the blue 'Add to Cart' button" or "input[name='username']"
-
-7. EXPECTED RESULTS:
-   - Be specific about what should appear/change
-   - Example: "URL changes to /checkout" not "Navigation occurs"
-   - Example: "Success message 'Order placed!' appears" not "Confirmation shown"
-
-STEP FORMAT EXAMPLES:
-
-Login Test:
-1. Navigate to https://app.example.com/login
-2. Locate the email input field (input[name="email"] or input[type="email"])
-3. Click the email input field
-4. Type "test@example.com" in the email field
-5. Locate the password input field (input[name="password"])
-6. Click the password input field  
-7. Type "SecurePass123" in the password field
-8. Locate and click the "Sign In" button (button with text "Sign In" or button[type="submit"])
-9. Wait for page redirect
-10. Verify the URL contains "/dashboard"
-11. Verify a heading with text "Dashboard" or "Welcome" is visible
-
-Form Submission Test:
-1. Navigate to https://app.example.com/contact
-2. Type "John Doe" in the name field (input[name="name"])
-3. Type "john@example.com" in the email field (input[name="email"])
-4. Type "Hello, I have a question" in the message textarea (textarea[name="message"])
-5. Click the "Send Message" button
-6. Verify success message "Message sent successfully!" appears
-7. Verify form fields are cleared
-
-E-commerce Test:
-1. Navigate to https://shop.example.com/products
-2. Click on the first product card
-3. Verify product detail page loads
-4. Click the "Add to Cart" button
-5. Verify cart icon shows quantity "1"
-6. Click the cart icon
-7. Verify product appears in cart list
-8. Click "Proceed to Checkout" button
-9. Verify checkout page loads (/checkout URL)
+   - Examples: "test@company.com", "John Doe", "123 Main Street"
+   - NOT: "valid email", "user name", "address"
 `;
 
-// ----- Handler -----
+// ----- Build Enhanced Prompt -----
+function buildPromptFromTestTypes(params: {
+  requirements: string;
+  testCaseCount: number;
+  testTypes: string[];
+  application_url?: string;
+  template?: string;
+}): string {
+  const { requirements, testCaseCount, testTypes, application_url, template } =
+    params;
+
+  const templateInstruction = template
+    ? `\n\nUse this template structure:\n${template}`
+    : "";
+  const urlContext = application_url
+    ? `\n\nAPPLICATION BASE URL: ${application_url}\nUse this as the base URL for all navigation steps.`
+    : "";
+
+  // Calculate distribution based on selected types
+  const typesCount = testTypes.length;
+  const perType = Math.floor(testCaseCount / typesCount);
+  const remainder = testCaseCount % typesCount;
+
+  let distributionText = `\nTEST CASE DISTRIBUTION (${testCaseCount} total across ${typesCount} type${
+    typesCount > 1 ? "s" : ""
+  }):\n`;
+
+  testTypes.forEach((type, index) => {
+    const count = perType + (index === 0 ? remainder : 0);
+    const label =
+      type === "happy-path"
+        ? "Happy Path"
+        : type === "negative"
+        ? "Negative"
+        : type === "security"
+        ? "Security"
+        : type === "boundary"
+        ? "Boundary"
+        : type === "edge-case"
+        ? "Edge Case"
+        : type === "performance"
+        ? "Performance"
+        : type === "integration"
+        ? "Integration"
+        : type === "regression"
+        ? "Regression"
+        : type === "smoke"
+        ? "Smoke"
+        : type;
+    distributionText += `- ${count} ${label} test${count > 1 ? "s" : ""}\n`;
+  });
+
+  // Build instructions for selected types
+  let typeInstructions = "";
+  testTypes.forEach((type) => {
+    if (TEST_TYPE_INSTRUCTIONS[type]) {
+      typeInstructions += TEST_TYPE_INSTRUCTIONS[type] + "\n\n";
+    }
+  });
+
+  return `${AUTOMATION_GUIDELINES}
+
+${distributionText}
+
+${typeInstructions}
+
+Generate test cases for the following requirements:
+
+${requirements}${urlContext}${templateInstruction}
+
+For each test case, provide:
+1. A clear, specific title describing what is being tested
+2. Detailed description of the test scenario
+3. Test type (functional, integration, e2e, security, performance, etc.)
+4. Priority level (critical, high, medium, low)
+5. Preconditions with specific setup requirements
+6. Step-by-step test steps with SPECIFIC actions and CLEAR expected results
+7. Overall expected result
+8. Flags for test categorization:
+   - is_edge_case: true/false
+   - is_negative_test: true/false (for negative/unhappy path tests)
+   - is_security_test: true/false (for security tests)
+   - is_boundary_test: true/false (for boundary/limit tests)
+9. Tags array (e.g., ["login", "authentication", "negative-test"])
+
+CRITICAL REQUIREMENTS:
+- Every step must be ACTIONABLE by Playwright automation
+- Include EXACT test data (emails, passwords, names, values)
+- Specify EXACT element selectors or button text
+- Define CLEAR, VERIFIABLE expected results
+- Use FULL URLs for navigation steps
+- Break complex actions into individual steps
+- Each step should map to a single Playwright command
+- CORRECTLY FLAG each test with appropriate boolean values based on the test type`;
+}
+
+// ----- Main Handler -----
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
@@ -259,24 +453,28 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       requirements?: string;
       requirement_id?: string;
+      project_id?: string | null;
       model?: string;
       testCaseCount?: number | string;
-      coverage?: string;
+      testTypes?: string[]; // NEW: Array of test type strings
       template?: string;
       title?: string;
       description?: string | null;
-      application_url?: string; // ✅ NEW: Base URL for the application
+      application_url?: string;
     };
 
     const requirements = (body.requirements ?? "").trim();
     const requirement_id = body.requirement_id || null;
     const modelKey = (body.model as ModelKey) || DEFAULT_MODEL;
     const testCaseCount = Number(body.testCaseCount ?? 10);
-    const coverage = body.coverage as CoverageKey;
+    const testTypes = Array.isArray(body.testTypes)
+      ? body.testTypes
+      : ["happy-path"];
     const template = body.template ?? "";
     const title = (body.title ?? "").trim();
     const description = body.description ?? null;
-    const application_url = (body.application_url ?? "").trim(); // ✅ NEW
+    const application_url = (body.application_url ?? "").trim();
+    const project_id = body.project_id || null;
 
     // Validation
     if (!requirements) {
@@ -291,33 +489,21 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    if (!Number.isFinite(testCaseCount)) {
+    if (testCaseCount <= 0 || testCaseCount > 50) {
       return NextResponse.json(
-        { error: "Test case count must be a number between 1 and 50", field: "testCaseCount" },
+        {
+          error: "Test case count must be between 1 and 50",
+          field: "testCaseCount",
+        },
         { status: 400 }
       );
     }
-    if (testCaseCount <= 0) {
+    if (testTypes.length === 0) {
       return NextResponse.json(
-        { error: "Test case count must be greater than 0", field: "testCaseCount" },
-        { status: 400 }
-      );
-    }
-    if (testCaseCount > 50) {
-      return NextResponse.json(
-        { error: "Cannot generate more than 50 test cases at once", field: "testCaseCount" },
-        { status: 400 }
-      );
-    }
-    if (!(modelKey in AI_MODELS)) {
-      return NextResponse.json(
-        { error: "Unsupported AI model", field: "model" },
-        { status: 400 }
-      );
-    }
-    if (!(coverage in COVERAGE_PROMPTS)) {
-      return NextResponse.json(
-        { error: "Invalid coverage level", field: "coverage" },
+        {
+          error: "At least one test type must be selected",
+          field: "testTypes",
+        },
         { status: 400 }
       );
     }
@@ -327,57 +513,30 @@ export async function POST(request: Request) {
       await checkAndRecordUsage(user.id, testCaseCount);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Usage limit exceeded";
-      return NextResponse.json({ error: msg, upgradeRequired: true }, { status: 429 });
+      return NextResponse.json(
+        { error: msg, upgradeRequired: true },
+        { status: 429 }
+      );
     }
 
     const model = AI_MODELS[modelKey];
 
-    // ✅ ENHANCED: Build automation-focused prompt
-    const coverageInstruction = COVERAGE_PROMPTS[coverage];
-    const templateInstruction = template ? `\n\nUse this template structure:\n${template}` : "";
-    const urlContext = application_url 
-      ? `\n\nAPPLICATION BASE URL: ${application_url}\nUse this as the base URL for all navigation steps.` 
-      : "";
-
-    const promptUsed = `${AUTOMATION_GUIDELINES}
-
-${coverageInstruction}${urlContext}
-
-Generate exactly ${testCaseCount} AUTOMATION-READY test cases for the following requirements:
-
-${requirements}${templateInstruction}
-
-For each test case, provide:
-1. A clear, specific title describing what is being tested
-2. Detailed description of the test scenario
-3. Test type (functional, integration, e2e, security, performance, etc.)
-4. Priority level (critical, high, medium, low)
-5. Preconditions - Include:
-   - Required authentication (with test credentials if needed)
-   - Required setup data
-   - Required application state
-6. Step-by-step test steps with:
-   - SPECIFIC actions (exact URLs, button text, field names, test data)
-   - CLEAR expected results (what should be visible, URL changes, text appearing)
-   - Element identifiers where possible (CSS selectors, button text, field names)
-7. Overall expected result - Be specific about the final state
-8. Whether this is an edge case (true/false)
-
-CRITICAL REQUIREMENTS:
-- Every step must be ACTIONABLE by Playwright automation
-- Include EXACT test data (emails, passwords, names, values)
-- Specify EXACT element selectors or button text
-- Define CLEAR, VERIFIABLE expected results
-- Use FULL URLs for navigation steps${application_url ? ` based on ${application_url}` : ''}
-- Break complex actions into individual steps
-- Each step should map to a single Playwright command
-
-Make the test cases executable, unambiguous, and automation-ready.`;
+    const promptUsed = buildPromptFromTestTypes({
+      requirements,
+      testCaseCount,
+      testTypes,
+      application_url,
+      template,
+    });
 
     // ---- Call LLM (primary, then fallback) ----
     const isAnthropicModel = model.startsWith("claude");
-    const primary: "anthropic" | "openai" = isAnthropicModel ? "anthropic" : "openai";
-    const fallback: "anthropic" | "openai" = isAnthropicModel ? "openai" : "anthropic";
+    const primary: "anthropic" | "openai" = isAnthropicModel
+      ? "anthropic"
+      : "openai";
+    const fallback: "anthropic" | "openai" = isAnthropicModel
+      ? "openai"
+      : "anthropic";
 
     let rawText = "";
     let usedProvider = "";
@@ -426,7 +585,10 @@ Make the test cases executable, unambiguous, and automation-ready.`;
         }
       } catch (fallbackError) {
         return NextResponse.json(
-          { error: "Generation temporarily unavailable. Please try again later." },
+          {
+            error:
+              "Generation temporarily unavailable. Please try again later.",
+          },
           { status: 503 }
         );
       }
@@ -438,7 +600,7 @@ Make the test cases executable, unambiguous, and automation-ready.`;
 {
   "title": "string",
   "description": "string",
-  "test_type": "string (functional, integration, unit, etc.)",
+  "test_type": "string (functional, integration, unit, security, etc.)",
   "priority": "string (low, medium, high, critical)",
   "preconditions": "string or null",
   "test_steps": [
@@ -446,8 +608,14 @@ Make the test cases executable, unambiguous, and automation-ready.`;
     {"step_number": 2, "action": "string", "expected": "string"}
   ],
   "expected_result": "string",
-  "is_edge_case": boolean
+  "is_edge_case": boolean,
+  "is_negative_test": boolean,
+  "is_security_test": boolean,
+  "is_boundary_test": boolean,
+  "tags": ["string"]
 }
+
+IMPORTANT: Correctly identify and flag each test based on its type.
 
 Return a JSON object with a "test_cases" key containing the array, e.g. {"test_cases": [...]}
 
@@ -512,15 +680,19 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     const rows = testCases.map((tc) => ({
       generation_id: generation.id,
       requirement_id,
+      project_id,
       user_id: user.id,
       title: tc.title,
       description: tc.description,
       test_type: tc.test_type || "functional",
       priority: normalizePriority(tc.priority),
       preconditions: tc.preconditions ?? null,
-      test_steps: tc.test_steps, 
+      test_steps: tc.test_steps,
       expected_result: tc.expected_result,
       is_edge_case: Boolean(tc.is_edge_case),
+      is_negative_test: Boolean(tc.is_negative_test),
+      is_security_test: Boolean(tc.is_security_test),
+      is_boundary_test: Boolean(tc.is_boundary_test),
       is_manual: false,
       status: "draft",
     }));
@@ -544,6 +716,13 @@ Return ONLY valid JSON, no markdown, no explanation.`;
       count: savedCases.length,
       provider_used: usedProvider,
       model_used: usedModel,
+      statistics: {
+        total: savedCases.length,
+        negative: savedCases.filter((tc) => tc.is_negative_test).length,
+        security: savedCases.filter((tc) => tc.is_security_test).length,
+        boundary: savedCases.filter((tc) => tc.is_boundary_test).length,
+        edge: savedCases.filter((tc) => tc.is_edge_case).length,
+      },
     });
   } catch (error) {
     console.error("Unexpected error:", error);
@@ -557,7 +736,7 @@ Return ONLY valid JSON, no markdown, no explanation.`;
 // ----- Export model info for frontend -----
 export async function GET() {
   return NextResponse.json({
-    models: MODEL_INFO,
+    models: AI_MODELS,
     defaultModel: DEFAULT_MODEL,
   });
 }

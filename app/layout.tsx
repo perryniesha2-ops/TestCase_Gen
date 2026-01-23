@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { ToastProvider } from "../components/providers/toast-providers";
-import { Providers } from "../providers"; 
-import { ThemeProvider } from "@/components/theme-provider"
-import { SessionTimeoutProvider } from "@/components/providers/session-timeout-provider"
-
+import { Providers } from "../providers";
+import { ThemeProvider } from "@/components/theme-provider";
+import { SessionTimeoutProvider } from "@/components/providers/session-timeout-provider";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -26,16 +25,13 @@ export default function RootLayout({
         ].join(" ")}
       >
         <ThemeProvider>
-        <Providers>
-        <SessionTimeoutProvider timeoutMinutes={60} warnMinutesBefore={5}>
-
-          {children}
-          <ToastProvider />
-        </SessionTimeoutProvider>
-
-        </Providers>
+          <Providers>
+            <SessionTimeoutProvider timeoutMinutes={60} warnMinutesBefore={2}>
+              {children}
+              <Toaster />
+            </SessionTimeoutProvider>
+          </Providers>
         </ThemeProvider>
-
       </body>
     </html>
   );

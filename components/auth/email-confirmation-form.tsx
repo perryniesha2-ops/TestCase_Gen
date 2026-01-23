@@ -46,7 +46,6 @@ export default function EmailConfirmationForm() {
           setConfirmed(true);
           toast.success(result.message || "Email confirmed successfully!");
         } else {
-          console.error("❌ Confirmation failed:", result.error);
           setError(result.error || "Email confirmation failed");
         }
       } catch (err) {
@@ -90,7 +89,6 @@ export default function EmailConfirmationForm() {
         toast.error(result.error || "Failed to resend confirmation email");
       }
     } catch (err) {
-      console.error("❌ Resend error:", err);
       toast.error("Failed to resend confirmation email");
     } finally {
       setResendLoading(false);

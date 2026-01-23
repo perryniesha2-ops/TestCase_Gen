@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import {
   Card,
   CardContent,
@@ -85,6 +86,7 @@ export function SuiteReports({
   suiteId,
   showAllSuites = false,
 }: SuiteReportsProps) {
+  const { user, loading: authLoading } = useAuth();
   const [suiteStats, setSuiteStats] = useState<SuiteExecutionStats[]>([]);
   const [testCasePerformance, setTestCasePerformance] = useState<
     TestCasePerformance[]
@@ -103,10 +105,16 @@ export function SuiteReports({
   }, [suiteId]);
 
   useEffect(() => {
-    fetchReportsData();
-  }, [timeRange, selectedSuite]);
+    if (!authLoading && user) {
+      fetchReportsData();
+    }
+  }, [timeRange, selectedSuite, user, authLoading]);
 
   async function fetchReportsData() {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -115,10 +123,6 @@ export function SuiteReports({
 
       // 2) Fetch all report data using the fresh suite list
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
 
       const days = parseInt(timeRange, 10);
       const suiteFilter = selectedSuite !== "all" ? selectedSuite : null;
@@ -193,15 +197,12 @@ export function SuiteReports({
   }
 
   async function fetchAvailableSuites(): Promise<TestSuite[]> {
+    if (!user) {
+      setAvailableSuites([]);
+      return [];
+    }
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        setAvailableSuites([]);
-        return [];
-      }
 
       const { data, error } = await supabase
         .from("test_suites")
@@ -222,17 +223,13 @@ export function SuiteReports({
   }
 
   async function fetchSuiteExecutionStats(suitesFromCaller?: TestSuite[]) {
+    if (!user) {
+      setSuiteStats([]);
+      return;
+    }
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        setSuiteStats([]);
-        return;
-      }
 
-      // Prefer suites passed from fetchReportsData, fallback to state
       let suitesToAnalyze =
         suitesFromCaller && suitesFromCaller.length > 0
           ? suitesFromCaller
@@ -362,12 +359,10 @@ export function SuiteReports({
   }
 
   async function fetchTestCasePerformance() {
+    if (!user) return;
+
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
 
       const cutoffDate = new Date(
         Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000
@@ -491,12 +486,10 @@ export function SuiteReports({
   }
 
   async function fetchExecutionTrends() {
+    if (!user) return;
+
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
 
       const cutoffDate = new Date(
         Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000
@@ -636,7 +629,6 @@ export function SuiteReports({
 
   return (
     <div className="space-y-6">
-      {/* Header with Controls */}
       <div className="flex items-center justify-between">
         <div></div>
         <div className="flex items-center gap-4">

@@ -6,13 +6,11 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { createClient } from "@/lib/supabase/client";
 
 import {
   CheckCircle2,
   XCircle,
   Loader2,
-  AlertTriangle,
   Monitor,
   Smartphone,
   Globe,
@@ -23,12 +21,7 @@ import {
   Clock,
 } from "lucide-react";
 
-import type {
-  TestCase,
-  CrossPlatformTestCase,
-  ExecutionStatus,
-  ExecutionDetails,
-} from "@/types/test-cases";
+import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
 
 import { TestCaseToolbar } from "./toolbars/TestCaseToolbar";
 import { RegularTestCaseSection } from "./RegularTestCaseSection";
@@ -42,6 +35,7 @@ import { TestRunnerDialog } from "./dialogs/test-runner-dialog";
 import { useBulkActions } from "@/hooks/useBulkActions";
 import { useTestCaseData } from "@/hooks/useTestCaseData";
 import { useExecutions } from "@/hooks/useExecutions";
+import { ExportButton } from "@/components/testcase-management/export-button";
 
 const platformIcons = {
   web: Monitor,
@@ -85,13 +79,14 @@ export function TabbedTestCaseTable() {
   const [runnerCaseType, setRunnerCaseType] = useState<CaseType>("regular");
   const [updating, setUpdating] = useState<string | null>(null);
 
-  // Data
+  // Data (NOW from overview route)
   const {
     loading,
     testCases,
     crossPlatformCases,
     projects,
     currentSession,
+    executionByCaseId,
     refresh,
   } = useTestCaseData({
     generationId,
@@ -99,17 +94,38 @@ export function TabbedTestCaseTable() {
     selectedProject,
   });
 
-  // Executions (ALL execution writes should live here)
+  // Executions write API (single source of writes)
   const {
     execution,
     setExecution,
-    hydrateExecutions,
+    hydrateOne,
     toggleStep,
-    // Rename these based on your hook API.
-    saveProgress, // <— incremental progress meta/steps/status
-    saveResult, // <— finalize passed/failed/blocked/skipped
-    reset, // <— reset to not_run
+    saveProgress,
+    saveResult,
+    reset,
   } = useExecutions({ sessionId });
+
+  // Seed execution statuses from overview route results
+  useEffect(() => {
+    if (loading) return;
+
+    setExecution((prev) => {
+      const next = { ...prev };
+
+      for (const tc of [...testCases, ...crossPlatformCases]) {
+        const status = executionByCaseId?.[tc.id]?.status ?? "not_run";
+
+        next[tc.id] = {
+          ...(next[tc.id] ?? { completedSteps: [], failedSteps: [] }),
+          status,
+          completedSteps: next[tc.id]?.completedSteps ?? [],
+          failedSteps: next[tc.id]?.failedSteps ?? [],
+        };
+      }
+
+      return next;
+    });
+  }, [loading, testCases, crossPlatformCases, executionByCaseId, setExecution]);
 
   // Bulk actions
   const crossPlatformBulkActions = useBulkActions(
@@ -144,15 +160,6 @@ export function TabbedTestCaseTable() {
     if (diffDays < 7) return `${diffDays} days ago`;
     return date.toLocaleDateString();
   }, []);
-
-  // hydrate executions when lists change
-  useEffect(() => {
-    if (loading) return;
-    void hydrateExecutions({
-      testCaseIds: testCases.map((t) => t.id),
-      crossPlatformIds: crossPlatformCases.map((c) => c.id),
-    }).catch((e) => console.error("hydrateExecutions error:", e));
-  }, [loading, testCases, crossPlatformCases, hydrateExecutions]);
 
   const itemsPerPage = 10;
 
@@ -288,6 +295,8 @@ export function TabbedTestCaseTable() {
     async (testCaseId: string, newStatus: "draft" | "active" | "archived") => {
       setUpdating(testCaseId);
       try {
+        // keep as-is (client update) OR move to API later
+        const { createClient } = await import("@/lib/supabase/client");
         const supabase = createClient();
         const { error } = await supabase
           .from("test_cases")
@@ -308,17 +317,26 @@ export function TabbedTestCaseTable() {
   );
 
   const openRunner = useCallback(
-    (tc: TestCase | CrossPlatformTestCase, type: CaseType) => {
+    async (tc: TestCase | CrossPlatformTestCase, type: CaseType) => {
       setRunnerCase(tc);
       setRunnerCaseType(type);
+
+      // Optional: hydrate detailed execution row right before showing runner
+      // This gives notes, completed steps, etc. for this one test.
+      try {
+        await hydrateOne(tc.id);
+      } catch (e) {
+        console.warn("hydrateOne failed (non-fatal):", e);
+      }
+
       setShowRunnerDialog(true);
     },
-    []
+    [hydrateOne]
   );
 
   const runTestFromSheet = useCallback(
     (tc: TestCase) => {
-      openRunner(tc, "regular");
+      void openRunner(tc, "regular");
     },
     [openRunner]
   );
@@ -330,6 +348,7 @@ export function TabbedTestCaseTable() {
       </div>
     );
   }
+
   return (
     <div className="space-y-6">
       {/* Session Info */}
@@ -372,7 +391,12 @@ export function TabbedTestCaseTable() {
         selectedProjectName={selectedProjectName}
         onProjectChange={handleProjectChange}
         onCreate={openCreate}
-        onExport={() => toast.message("Export coming soon")}
+        exportButton={
+          <ExportButton
+            testCases={filteredTestCases}
+            generationTitle="Test Cases"
+          />
+        }
         getProjectColor={getProjectColor}
       />
 
@@ -398,7 +422,7 @@ export function TabbedTestCaseTable() {
             filteredCount={filteredTestCases.length}
             execution={execution}
             updating={updating}
-            onOpenDetails={(tc) => openRunner(tc, "regular")}
+            onOpenDetails={(tc) => void openRunner(tc, "regular")}
             onUpdateStatus={updateTestCaseStatus}
             selectedIds={selectedIds}
             selectAll={selectAll}
@@ -420,9 +444,10 @@ export function TabbedTestCaseTable() {
             getProjectColor={getProjectColor}
             onOpenCreate={openCreate}
             onOpenActionSheet={openActionSheet}
-            onRun={(tc) => openRunner(tc, "regular")} // optional, only if Props includes it
+            onRun={(tc) => void openRunner(tc, "regular")}
           />
         </TabsContent>
+
         <div className="h-2" />
 
         <TabsContent value="cross-platform" className="space-y-6">
@@ -455,10 +480,11 @@ export function TabbedTestCaseTable() {
             getPriorityColor={getPriorityColor}
             getApprovalStatusBadge={getApprovalStatusBadge}
             getRelativeTime={getRelativeTime}
-            onOpenDetails={(tc) => openRunner(tc, "cross-platform")}
-            onRun={(tc) => openRunner(tc, "cross-platform")}
+            onOpenDetails={(tc) => void openRunner(tc, "cross-platform")}
+            onRun={(tc) => void openRunner(tc, "cross-platform")}
           />
         </TabsContent>
+
         <div className="h-2" />
       </Tabs>
 
@@ -521,10 +547,10 @@ export function TabbedTestCaseTable() {
         onOpenChange={setShowActionSheet}
         onEdit={openEdit}
         onDelete={openDelete}
-        onViewDetails={(tc) => {
+        onViewDetails={() => {
           /* optional */
         }}
-        onRunTest={runTestFromSheet} // ✅ opens runner only
+        onRunTest={runTestFromSheet}
         isAutomated={false}
       />
     </div>

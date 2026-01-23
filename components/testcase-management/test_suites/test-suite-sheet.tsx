@@ -100,9 +100,6 @@ export function TestSuiteSheet({
                   </Button>
 
                   <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-9 gap-2"
                     onClick={() =>
                       router.push(`/automation/suites/${suite.id}`)
                     }
@@ -127,16 +124,9 @@ export function TestSuiteSheet({
                       <Settings className="h-4 w-4" />
                       Manage Suite
                     </Button>
-
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full h-9 justify-start gap-2"
-                      onClick={() => onEdit(suite)}
-                    >
-                      <Edit3 className="h-4 w-4" />
-                      Edit suite details
-                    </Button>
+                    <p className="text-sm font-medium text-destructive">
+                      Add test cases to your suite.
+                    </p>
                   </div>
                 </div>
 

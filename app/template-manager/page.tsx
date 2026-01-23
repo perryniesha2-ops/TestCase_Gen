@@ -18,6 +18,7 @@ export default function TemplatesPage() {
         <main className="mt-6 flex-1 w-full">
           <TemplateManager />
         </main>
+
         <SiteFooter />
       </div>
     </div>

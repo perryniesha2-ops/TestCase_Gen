@@ -20,6 +20,7 @@ type Props = {
   filterType: string;
   onCreateSuite: () => void;
   onOpenDetails: (suite: TestSuite) => void;
+  onExport?: () => void;
 
   // Keep these as injected helpers so the table stays dumb/presentational
   getStatusIcon: (status: string) => React.ReactNode;

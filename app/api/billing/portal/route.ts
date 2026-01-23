@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
         {
           error: "No billing account found. Please subscribe to a plan first.",
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       console.error("❌ Customer not found in Stripe:", error);
       return NextResponse.json(
         { error: "Billing account not found. Please contact support." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -61,10 +61,6 @@ export async function POST(request: NextRequest) {
       return_url: `${origin}/billing`,
     });
 
-    console.log(
-      `✅ Portal session created for customer: ${profile.stripe_customer_id}`
-    );
-
     return NextResponse.json({
       url: session.url,
     });
@@ -75,7 +71,7 @@ export async function POST(request: NextRequest) {
         error: "Failed to create portal session",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

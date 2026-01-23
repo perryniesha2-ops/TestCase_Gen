@@ -38,6 +38,7 @@ import {
   Shield,
   Clock,
   Brain,
+  Code2,
 } from "lucide-react";
 import { Logo } from "@/components/pagecomponents/brandlogo";
 import { Footer } from "@/components/landingpage/footer";
@@ -1380,6 +1381,13 @@ export default function BestPracticesGuidePage() {
                   Projects Guide
                 </Link>
 
+                <Link
+                  href="/docs/playwright-automation"
+                  className="flex items-center gap-2 text-primary hover:underline"
+                >
+                  <Code2 className="h-4 w-4" />
+                  Playwright Automation Guide
+                </Link>
                 <Separator className="my-4" />
 
                 <div className="text-xs text-muted-foreground pt-4 border-t">

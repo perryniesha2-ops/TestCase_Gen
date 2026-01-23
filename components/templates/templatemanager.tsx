@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +61,8 @@ import {
   Eye,
   Loader2,
 } from "lucide-react";
+import { TemplateEditorDialog } from "@/components/templates/template-editor-dialog";
+import type { TemplateFormData } from "@/components/templates/template-editor-dialog";
 
 // Types
 type TemplateCategory =
@@ -74,7 +77,6 @@ type TemplateCategory =
 interface TemplateContent {
   model: string;
   testCaseCount: number;
-  coverage: "standard" | "comprehensive" | "exhaustive";
   includeEdgeCases?: boolean;
   includeNegativeTests?: boolean;
   defaultSections?: string[];
@@ -83,6 +85,7 @@ interface TemplateContent {
 interface Template {
   id: string;
   user_id: string;
+  project_id?: string | null;
   name: string;
   description?: string | null;
   category: TemplateCategory;
@@ -93,17 +96,7 @@ interface Template {
   last_used_at?: string | null;
   created_at: string;
   updated_at: string;
-}
-
-interface TemplateFormData {
-  name: string;
-  description: string;
-  category: TemplateCategory;
-  model: string;
-  testCaseCount: number;
-  coverage: "standard" | "comprehensive" | "exhaustive";
-  includeEdgeCases: boolean;
-  includeNegativeTests: boolean;
+  test_types: string[];
 }
 
 const categoryIcons: Record<
@@ -129,12 +122,7 @@ const categoryColors: Record<TemplateCategory, string> = {
   other: "bg-gray-500",
 };
 
-/**
- * Get display name for AI model
- * Handles both old and new model naming conventions
- */
 function getModelDisplayName(modelKey: string): string {
-  // Latest models (Dec 2024)
   if (modelKey === "claude-sonnet-4-5") return "Claude Sonnet 4.5";
   if (modelKey === "claude-haiku-4-5") return "Claude Haiku 4.5";
   if (modelKey === "claude-opus-4-5") return "Claude Opus 4.5";
@@ -143,7 +131,6 @@ function getModelDisplayName(modelKey: string): string {
   if (modelKey === "gpt-4o") return "GPT-4o";
   if (modelKey === "gpt-4o-mini") return "GPT-4o Mini";
 
-  // Legacy models (backwards compatibility)
   if (modelKey.includes("claude-3-5-sonnet")) return "Claude 3.5 Sonnet";
   if (modelKey.includes("claude-3-5-haiku")) return "Claude 3.5 Haiku";
   if (modelKey.includes("claude-sonnet-4")) return "Claude Sonnet 4";
@@ -151,26 +138,41 @@ function getModelDisplayName(modelKey: string): string {
   if (modelKey.includes("gpt-4-turbo")) return "GPT-4 Turbo";
   if (modelKey.includes("gpt-3.5")) return "GPT-3.5 Turbo";
 
-  // Fallback - extract readable name
   if (modelKey.includes("claude")) return "Claude";
   if (modelKey.includes("gpt")) return "GPT";
 
   return modelKey;
 }
 
+type Scope = "my" | "public";
+type Tab = "my-templates" | "public";
+
+function tabToScope(tab: Tab): Scope {
+  return tab === "public" ? "public" : "my";
+}
+
+function safeJsonParse<T>(text: string): T | null {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
 export function TemplateManager() {
+  const { user, loading: authLoading } = useAuth();
+
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [filteredTemplates, setFilteredTemplates] = useState<Template[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
+
   const [showDialog, setShowDialog] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<
     TemplateCategory | "all"
   >("all");
-  const [activeTab, setActiveTab] = useState<"my-templates" | "public">(
-    "my-templates"
-  );
+  const [activeTab, setActiveTab] = useState<Tab>("my-templates");
 
   const [formData, setFormData] = useState<TemplateFormData>({
     name: "",
@@ -178,226 +180,113 @@ export function TemplateManager() {
     category: "functional",
     model: "claude-sonnet-4-5",
     testCaseCount: 10,
-    coverage: "comprehensive",
+    test_types: ["happy-path", "negative", "boundary"],
     includeEdgeCases: true,
     includeNegativeTests: true,
+    project_id: null,
   });
 
-  useEffect(() => {
-    fetchTemplates();
+  const canQuery = !authLoading && (activeTab === "public" || !!user);
+
+  const fetchTemplates = useCallback(async (tab: Tab) => {
+    const scope = tabToScope(tab);
+
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/templates?scope=${scope}`, {
+        cache: "no-store",
+      });
+
+      const raw = await res.text().catch(() => "");
+      const payload = safeJsonParse<{ templates?: Template[]; error?: string }>(
+        raw || "{}",
+      );
+
+      if (res.status === 401) {
+        // If they’re on "public", 401 should not happen (API should allow it),
+        // but handle defensively.
+        setTemplates([]);
+        toast.error("Please sign in again.");
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(payload?.error ?? `Failed (${res.status})`);
+      }
+
+      setTemplates(payload?.templates ?? []);
+    } catch (e: any) {
+      console.error("[TemplateManager] fetchTemplates error:", e);
+      toast.error("Failed to load templates");
+      setTemplates([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    filterTemplates();
-  }, [templates, searchQuery, categoryFilter, activeTab]);
-
-  async function fetchTemplates() {
-    setLoading(true);
-    try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error("Please sign in to view templates");
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("test_case_templates")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setTemplates(data || []);
-    } catch (error) {
-      console.error("Error fetching templates:", error);
-      toast.error("Failed to load templates");
-    } finally {
+    if (!canQuery) {
       setLoading(false);
-    }
-  }
-
-  function filterTemplates() {
-    let filtered = templates;
-
-    // Filter by tab (my templates vs public)
-    const supabase = createClient();
-    supabase.auth
-      .getUser()
-      .then(({ data: { user } }) => {
-        if (user) {
-          filtered =
-            activeTab === "my-templates"
-              ? filtered.filter((t) => t.user_id === user.id)
-              : filtered.filter((t) => t.is_public && t.user_id !== user.id);
-        }
-
-        // Filter by category
-        if (categoryFilter !== "all") {
-          filtered = filtered.filter((t) => t.category === categoryFilter);
-        }
-
-        // Filter by search query
-        if (searchQuery.trim()) {
-          const query = searchQuery.toLowerCase();
-          filtered = filtered.filter(
-            (t) =>
-              t.name.toLowerCase().includes(query) ||
-              t.description?.toLowerCase().includes(query)
-          );
-        }
-
-        setFilteredTemplates(filtered);
-      })
-      .catch((err) => {
-        console.error("Error filtering templates:", err);
-      });
-  }
-
-  async function saveTemplate() {
-    if (!formData.name.trim()) {
-      toast.error("Please enter a template name");
+      setTemplates([]);
       return;
     }
+    fetchTemplates(activeTab);
+  }, [canQuery, activeTab, fetchTemplates]);
 
-    setLoading(true);
-    try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+  const filteredTemplates = useMemo(() => {
+    let filtered = templates;
 
-      if (!user) {
-        toast.error("Please sign in to save templates");
-        return;
-      }
-
-      const templateContent: TemplateContent = {
-        model: formData.model,
-        testCaseCount: formData.testCaseCount,
-        coverage: formData.coverage,
-        includeEdgeCases: formData.includeEdgeCases,
-        includeNegativeTests: formData.includeNegativeTests,
-      };
-
-      const templateData = {
-        user_id: user.id,
-        name: formData.name.trim(),
-        description: formData.description.trim() || null,
-        category: formData.category,
-        template_content: templateContent,
-        is_public: false,
-        is_favorite: false,
-      };
-
-      if (editingTemplate) {
-        const { error } = await supabase
-          .from("test_case_templates")
-          .update(templateData)
-          .eq("id", editingTemplate.id);
-
-        if (error) throw error;
-        toast.success("Template updated successfully");
-      } else {
-        const { error } = await supabase
-          .from("test_case_templates")
-          .insert(templateData);
-
-        if (error) throw error;
-        toast.success("Template created successfully");
-      }
-
-      setShowDialog(false);
-      setEditingTemplate(null);
-      resetForm();
-      await fetchTemplates();
-    } catch (error) {
-      console.error("Error saving template:", error);
-      toast.error("Failed to save template");
-    } finally {
-      setLoading(false);
+    if (categoryFilter !== "all") {
+      filtered = filtered.filter((t) => t.category === categoryFilter);
     }
-  }
 
-  async function deleteTemplate(id: string) {
-    if (!confirm("Delete this template? This action cannot be undone.")) return;
-
-    try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("test_case_templates")
-        .delete()
-        .eq("id", id);
-
-      if (error) throw error;
-      toast.success("Template deleted");
-      await fetchTemplates();
-    } catch (error) {
-      console.error("Error deleting template:", error);
-      toast.error("Failed to delete template");
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          (t.description ?? "").toLowerCase().includes(q),
+      );
     }
-  }
 
-  async function duplicateTemplate(template: Template) {
-    try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    return filtered;
+  }, [templates, searchQuery, categoryFilter]);
 
-      if (!user) {
-        toast.error("Please sign in to duplicate templates");
-        return;
-      }
+  const favoriteTemplates = useMemo(
+    () => filteredTemplates.filter((t) => t.is_favorite),
+    [filteredTemplates],
+  );
 
-      const { error } = await supabase.from("test_case_templates").insert({
-        user_id: user.id,
-        name: `${template.name} (Copy)`,
-        description: template.description,
-        category: template.category,
-        template_content: template.template_content,
-        is_public: false,
-        is_favorite: false,
-      });
+  const mostUsedTemplate = useMemo(() => {
+    if (templates.length === 0) return null;
+    return [...templates].sort((a, b) => b.usage_count - a.usage_count)[0];
+  }, [templates]);
 
-      if (error) throw error;
-      toast.success("Template duplicated");
-      await fetchTemplates();
-    } catch (error) {
-      console.error("Error duplicating template:", error);
-      toast.error("Failed to duplicate template");
-    }
-  }
-
-  async function toggleFavorite(template: Template) {
-    try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("test_case_templates")
-        .update({ is_favorite: !template.is_favorite })
-        .eq("id", template.id);
-
-      if (error) throw error;
-      await fetchTemplates();
-    } catch (error) {
-      console.error("Error toggling favorite:", error);
-      toast.error("Failed to update favorite status");
-    }
-  }
+  const createdThisWeekCount = useMemo(() => {
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    return templates.filter((t) => new Date(t.created_at) > weekAgo).length;
+  }, [templates]);
 
   function resetForm() {
     setFormData({
       name: "",
       description: "",
       category: "functional",
-      model: "claude-sonnet-4-5", // Updated to latest
+      model: "claude-sonnet-4-5",
       testCaseCount: 10,
-      coverage: "comprehensive",
+      test_types: ["happy-path", "negative", "boundary"],
       includeEdgeCases: true,
       includeNegativeTests: true,
+      project_id: null,
     });
+  }
+
+  function openNewDialog() {
+    setEditingTemplate(null);
+    resetForm();
+    setShowDialog(true);
   }
 
   function openEditDialog(template: Template) {
@@ -408,37 +297,207 @@ export function TemplateManager() {
       category: template.category,
       model: template.template_content.model,
       testCaseCount: template.template_content.testCaseCount,
-      coverage: template.template_content.coverage,
+      test_types: template.test_types ?? [],
       includeEdgeCases: template.template_content.includeEdgeCases ?? true,
       includeNegativeTests:
         template.template_content.includeNegativeTests ?? true,
+      project_id: template.project_id ?? null,
     });
     setShowDialog(true);
   }
 
-  function openNewDialog() {
-    setEditingTemplate(null);
-    resetForm();
-    setShowDialog(true);
+  async function saveTemplate() {
+    if (!user) {
+      toast.error("Please sign in to save templates.");
+      return;
+    }
+    if (!formData.name.trim()) {
+      toast.error("Please enter a template name");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const body = {
+        name: formData.name.trim(),
+        description: formData.description.trim() || null,
+        category: formData.category,
+        template_content: {
+          model: formData.model,
+          testCaseCount: formData.testCaseCount,
+          includeEdgeCases: formData.includeEdgeCases,
+          includeNegativeTests: formData.includeNegativeTests,
+        } satisfies TemplateContent,
+        test_types: formData.test_types ?? [],
+        is_public: false,
+        is_favorite: editingTemplate?.is_favorite ?? false,
+        project_id: formData.project_id || null,
+      };
+
+      const res = await fetch(
+        editingTemplate
+          ? `/api/templates/${editingTemplate.id}`
+          : "/api/templates",
+        {
+          method: editingTemplate ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+
+      const payload = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        toast.error("Session expired. Please sign in again.");
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(payload?.error ?? `Failed (${res.status})`);
+      }
+
+      toast.success(editingTemplate ? "Template updated" : "Template created");
+      setShowDialog(false);
+      setEditingTemplate(null);
+      resetForm();
+      await fetchTemplates(activeTab);
+    } catch (e) {
+      console.error("[TemplateManager] saveTemplate error:", e);
+      toast.error("Failed to save template");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  const favoriteTemplates = filteredTemplates.filter((t) => t.is_favorite);
-  const mostUsedTemplate = [...templates].sort(
-    (a, b) => b.usage_count - a.usage_count
-  )[0];
+  async function deleteTemplate(id: string) {
+    if (!user) {
+      toast.error("Please sign in to delete templates.");
+      return;
+    }
+    if (!confirm("Delete this template? This action cannot be undone.")) return;
+
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/templates/${id}`, { method: "DELETE" });
+      const payload = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        toast.error("Session expired. Please sign in again.");
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+
+      toast.success("Template deleted");
+      await fetchTemplates(activeTab);
+    } catch (e) {
+      console.error("[TemplateManager] deleteTemplate error:", e);
+      toast.error("Failed to delete template");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function duplicateTemplate(template: Template) {
+    if (!user) {
+      toast.error("Please sign in to copy templates.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `${template.name} (Copy)`,
+          description: template.description ?? null,
+          category: template.category,
+          template_content: template.template_content,
+          test_types: template.test_types ?? [],
+          is_public: false,
+          is_favorite: false,
+          project_id: template.project_id ?? null,
+        }),
+      });
+
+      const payload = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        toast.error("Session expired. Please sign in again.");
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+
+      toast.success("Template duplicated");
+      await fetchTemplates(activeTab);
+    } catch (e) {
+      console.error("[TemplateManager] duplicateTemplate error:", e);
+      toast.error("Failed to duplicate template");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function toggleFavorite(template: Template) {
+    if (!user) {
+      toast.error("Please sign in to favorite templates.");
+      return;
+    }
+
+    // optimistic update
+    setTemplates((prev) =>
+      prev.map((t) =>
+        t.id === template.id ? { ...t, is_favorite: !t.is_favorite } : t,
+      ),
+    );
+
+    try {
+      const res = await fetch(`/api/templates/${template.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_favorite: !template.is_favorite }),
+      });
+
+      const payload = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        toast.error("Session expired. Please sign in again.");
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+    } catch (e) {
+      // revert if error
+      setTemplates((prev) =>
+        prev.map((t) =>
+          t.id === template.id
+            ? { ...t, is_favorite: template.is_favorite }
+            : t,
+        ),
+      );
+      console.error("[TemplateManager] toggleFavorite error:", e);
+      toast.error("Failed to update favorite status");
+    }
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div></div>
-        <Button onClick={openNewDialog} size="lg">
+        <div />
+        <Button onClick={openNewDialog} size="lg" disabled={!user}>
           <Plus className="h-5 w-5 mr-2" />
           New Template
         </Button>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -462,10 +521,10 @@ export function TemplateManager() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {mostUsedTemplate?.usage_count || 0}
+              {mostUsedTemplate?.usage_count ?? 0}
             </div>
             <p className="text-xs text-muted-foreground mt-1 truncate">
-              {mostUsedTemplate?.name || "No templates used yet"}
+              {mostUsedTemplate?.name ?? "No templates used yet"}
             </p>
           </CardContent>
         </Card>
@@ -478,15 +537,7 @@ export function TemplateManager() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {
-                templates.filter((t) => {
-                  const weekAgo = new Date();
-                  weekAgo.setDate(weekAgo.getDate() - 7);
-                  return new Date(t.created_at) > weekAgo;
-                }).length
-              }
-            </div>
+            <div className="text-2xl font-bold">{createdThisWeekCount}</div>
             <p className="text-xs text-muted-foreground mt-1">
               Created this week
             </p>
@@ -494,11 +545,11 @@ export function TemplateManager() {
         </Card>
       </div>
 
-      {/* Filters and Search */}
+      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search templates..."
               value={searchQuery}
@@ -507,6 +558,7 @@ export function TemplateManager() {
             />
           </div>
         </div>
+
         <Select
           value={categoryFilter}
           onValueChange={(value) =>
@@ -531,19 +583,22 @@ export function TemplateManager() {
       </div>
 
       {/* Tabs */}
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) =>
-          setActiveTab(value as "my-templates" | "public")
-        }
-      >
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)}>
         <TabsList>
-          <TabsTrigger value="my-templates">My Templates</TabsTrigger>
+          <TabsTrigger value="my-templates" disabled={!user}>
+            My Templates
+          </TabsTrigger>
           <TabsTrigger value="public">Public Templates</TabsTrigger>
         </TabsList>
 
         <TabsContent value="my-templates" className="mt-6">
-          {loading ? (
+          {!user ? (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                Sign in to view and manage your templates.
+              </CardContent>
+            </Card>
+          ) : loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
@@ -576,16 +631,15 @@ export function TemplateManager() {
                 return (
                   <Card
                     key={template.id}
-                    className="relative group hover:shadow-lg transition-shadow"
+                    className="relative group hover:shadow-lg transition-shadow overflow-hidden"
                   >
-                    {/* Category indicator */}
                     <div
                       className={`absolute top-0 left-0 w-full h-1 ${categoryColor} rounded-t-lg`}
                     />
 
                     <CardHeader className="pt-6">
                       <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-2 flex-1">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
                           <CategoryIcon className="h-5 w-5 text-muted-foreground" />
                           <div className="flex-1 min-w-0">
                             <CardTitle className="text-lg truncate">
@@ -593,6 +647,7 @@ export function TemplateManager() {
                             </CardTitle>
                           </div>
                         </div>
+
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
@@ -608,6 +663,7 @@ export function TemplateManager() {
                               }`}
                             />
                           </Button>
+
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
@@ -643,6 +699,7 @@ export function TemplateManager() {
                           </DropdownMenu>
                         </div>
                       </div>
+
                       {template.description && (
                         <CardDescription className="line-clamp-2">
                           {template.description}
@@ -665,16 +722,29 @@ export function TemplateManager() {
                           <span>Model:</span>
                           <span className="font-medium">
                             {getModelDisplayName(
-                              template.template_content.model
+                              template.template_content.model,
                             )}
                           </span>
                         </div>
-                        <div className="flex justify-between">
-                          <span>Coverage:</span>
-                          <span className="capitalize">
-                            {template.template_content.coverage}
-                          </span>
-                        </div>
+                        {template.test_types?.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {template.test_types.slice(0, 3).map((tt) => (
+                              <Badge
+                                key={tt}
+                                variant="secondary"
+                                className="text-[10px]"
+                              >
+                                {tt}
+                              </Badge>
+                            ))}
+                            {template.test_types.length > 3 && (
+                              <Badge variant="outline" className="text-[10px]">
+                                +{template.test_types.length - 3}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+
                         <div className="flex justify-between">
                           <span>Used:</span>
                           <span>{template.usage_count} times</span>
@@ -687,12 +757,11 @@ export function TemplateManager() {
                         variant="outline"
                         size="sm"
                         className="w-full"
-                        onClick={() => {
-                          // This will be used when integrating with the generator
+                        onClick={() =>
                           toast.success(
-                            "Template selected (integrate with generator)"
-                          );
-                        }}
+                            "Template selected (integrate with generator)",
+                          )
+                        }
                       >
                         Use Template
                       </Button>
@@ -761,7 +830,6 @@ export function TemplateManager() {
                           {template.template_content.testCaseCount} tests
                         </Badge>
                       </div>
-
                       <div className="text-xs text-muted-foreground">
                         Used {template.usage_count} times by the community
                       </div>
@@ -773,6 +841,8 @@ export function TemplateManager() {
                         size="sm"
                         className="flex-1"
                         onClick={() => duplicateTemplate(template)}
+                        disabled={!user}
+                        title={!user ? "Sign in to copy templates" : undefined}
                       >
                         <Copy className="h-4 w-4 mr-1" />
                         Copy
@@ -780,11 +850,11 @@ export function TemplateManager() {
                       <Button
                         size="sm"
                         className="flex-1"
-                        onClick={() => {
+                        onClick={() =>
                           toast.success(
-                            "Template selected (integrate with generator)"
-                          );
-                        }}
+                            "Template selected (integrate with generator)",
+                          )
+                        }
                       >
                         Use Template
                       </Button>
@@ -796,275 +866,21 @@ export function TemplateManager() {
           )}
         </TabsContent>
       </Tabs>
+      <TemplateEditorDialog
+        open={showDialog}
+        onOpenChange={setShowDialog}
+        mode={editingTemplate ? "edit" : "create"}
+        saving={loading}
+        formData={formData}
+        setFormData={setFormData}
+        onCancel={() => {
+          setShowDialog(false);
+          setEditingTemplate(null);
+          resetForm();
+        }}
+        onSave={saveTemplate}
+      />
       <div className="h-2" />
-
-      {/* Create/Edit Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto w-[95vw] sm:max-w-3xl lg:max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>
-              {editingTemplate ? "Edit Template" : "Create New Template"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingTemplate
-                ? "Update your template settings"
-                : "Save your test generation preferences as a reusable template"}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-6 py-4">
-            {/* Basic Information */}
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Template Name *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  placeholder="e.g., API Security Tests"
-                  maxLength={100}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
-                  placeholder="Describe when to use this template..."
-                  rows={3}
-                  maxLength={500}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="category">Category *</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      category: value as TemplateCategory,
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="functional">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4" />
-                        Functional Testing
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="security">
-                      <div className="flex items-center gap-2">
-                        <Shield className="h-4 w-4" />
-                        Security Testing
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="performance">
-                      <div className="flex items-center gap-2">
-                        <Zap className="h-4 w-4" />
-                        Performance Testing
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="integration">
-                      <div className="flex items-center gap-2">
-                        <Globe className="h-4 w-4" />
-                        Integration Testing
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="regression">
-                      <div className="flex items-center gap-2">
-                        <GitBranch className="h-4 w-4" />
-                        Regression Testing
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="accessibility">
-                      <div className="flex items-center gap-2">
-                        <Eye className="h-4 w-4" />
-                        Accessibility Testing
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="other">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Other
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Generation Settings */}
-            <div className="space-y-4 pt-4 border-t">
-              <h4 className="font-medium">Generation Settings</h4>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="model">AI Model</Label>
-                  <Select
-                    value={formData.model}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, model: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="claude-sonnet-4-5">
-                        Claude Sonnet 4.5 (Recommended)
-                      </SelectItem>
-                      <SelectItem value="claude-haiku-4-5">
-                        Claude Haiku 4.5 (Fast)
-                      </SelectItem>
-                      <SelectItem value="claude-opus-4-5">
-                        Claude Opus 4.5 (Max Quality)
-                      </SelectItem>
-                      <SelectItem value="gpt-5-mini">
-                        GPT-5 Mini (Balanced)
-                      </SelectItem>
-                      <SelectItem value="gpt-5.2">GPT-5.2 (Premium)</SelectItem>
-                      <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                      <SelectItem value="gpt-4o-mini">
-                        GPT-4o Mini (Economical)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="testCaseCount">Number of Test Cases</Label>
-                  <Select
-                    value={formData.testCaseCount.toString()}
-                    onValueChange={(value) =>
-                      setFormData({
-                        ...formData,
-                        testCaseCount: parseInt(value),
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="5">5 test cases</SelectItem>
-                      <SelectItem value="10">10 test cases</SelectItem>
-                      <SelectItem value="15">15 test cases</SelectItem>
-                      <SelectItem value="20">20 test cases</SelectItem>
-                      <SelectItem value="30">30 test cases</SelectItem>
-                      <SelectItem value="50">50 test cases</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="coverage">Coverage Level</Label>
-                <Select
-                  value={formData.coverage}
-                  onValueChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      coverage: value as
-                        | "standard"
-                        | "comprehensive"
-                        | "exhaustive",
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="standard">
-                      Standard - Main functionality
-                    </SelectItem>
-                    <SelectItem value="comprehensive">
-                      Comprehensive - Includes edge cases
-                    </SelectItem>
-                    <SelectItem value="exhaustive">
-                      Exhaustive - All scenarios
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Include Edge Cases</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Generate tests for boundary conditions
-                    </p>
-                  </div>
-                  <Switch
-                    checked={formData.includeEdgeCases}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, includeEdgeCases: checked })
-                    }
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Include Negative Tests</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Generate tests for error scenarios
-                    </p>
-                  </div>
-                  <Switch
-                    checked={formData.includeNegativeTests}
-                    onCheckedChange={(checked) =>
-                      setFormData({
-                        ...formData,
-                        includeNegativeTests: checked,
-                      })
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowDialog(false);
-                setEditingTemplate(null);
-                resetForm();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={saveTemplate}
-              disabled={loading || !formData.name.trim()}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : editingTemplate ? (
-                "Update Template"
-              ) : (
-                "Create Template"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

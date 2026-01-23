@@ -22,6 +22,8 @@ import {
   Settings,
   BarChart3,
   Home,
+  Code2,
+  Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -44,7 +46,7 @@ export function GuideMenu() {
               href="/docs/guides"
               className={cn(
                 "cursor-pointer",
-                isActive("/docs/guides") && "bg-accent"
+                isActive("/docs/guides") && "bg-accent",
               )}
             >
               <BookOpen className="h-4 w-4 mr-2" />
@@ -66,7 +68,7 @@ export function GuideMenu() {
               href="/docs/generator"
               className={cn(
                 "cursor-pointer",
-                isActive("/docs/generator") && "bg-accent"
+                isActive("/docs/generator") && "bg-accent",
               )}
             >
               <Sparkles className="h-4 w-4 mr-2" />
@@ -78,7 +80,7 @@ export function GuideMenu() {
               href="/docs/templates"
               className={cn(
                 "cursor-pointer",
-                isActive("/docs/templates") && "bg-accent"
+                isActive("/docs/templates") && "bg-accent",
               )}
             >
               <Settings className="h-4 w-4 mr-2" />
@@ -100,7 +102,7 @@ export function GuideMenu() {
               href="/docs/test-management"
               className={cn(
                 "cursor-pointer",
-                isActive("/docs/test-management") && "bg-accent"
+                isActive("/docs/test-management") && "bg-accent",
               )}
             >
               <Layers className="h-4 w-4 mr-2" />
@@ -160,7 +162,7 @@ export function GuideMenu() {
               href="/docs/requirements"
               className={cn(
                 "cursor-pointer",
-                isActive("/docs/requirements") && "bg-accent"
+                isActive("/docs/requirements") && "bg-accent",
               )}
             >
               <FileText className="h-4 w-4 mr-2" />
@@ -172,7 +174,7 @@ export function GuideMenu() {
               href="/docs/projects"
               className={cn(
                 "cursor-pointer",
-                isActive("/docs/projects") && "bg-accent"
+                isActive("/docs/projects") && "bg-accent",
               )}
             >
               <FolderOpen className="h-4 w-4 mr-2" />
@@ -194,11 +196,35 @@ export function GuideMenu() {
               href="/docs/extension-guide"
               className={cn(
                 "cursor-pointer",
-                isActive("/docs/extension-guide") && "bg-accent"
+                isActive("/docs/extension-guide") && "bg-accent",
               )}
             >
               <Chrome className="h-4 w-4 mr-2" />
               Browser Extension
+            </Link>
+          </MenubarItem>
+          <MenubarItem asChild>
+            <Link
+              href="/docs/playwright-automation"
+              className={cn(
+                "cursor-pointer",
+                isActive("/docs/playwright-automation") && "bg-accent",
+              )}
+            >
+              <Code2 className="h-4 w-4 mr-2" />
+              Playwright Automation
+            </Link>
+          </MenubarItem>
+          <MenubarItem asChild>
+            <Link
+              href="/docs/jira-integration"
+              className={cn(
+                "cursor-pointer",
+                isActive("/docs/jira-integration") && "bg-accent",
+              )}
+            >
+              <Database className="h-4 w-4 mr-2" />
+              Jira Integration{" "}
             </Link>
           </MenubarItem>
           <MenubarSeparator />

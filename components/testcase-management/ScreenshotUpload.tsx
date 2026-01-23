@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,8 +17,18 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Upload, Camera, X, Loader2, Download, Eye } from "lucide-react";
+import Link from "next/link";
+import {
+  Upload,
+  Camera,
+  X,
+  Loader2,
+  Download,
+  Eye,
+  Chrome,
+} from "lucide-react";
 import { extensionRequest } from "@/lib/extensions/extensionRequest";
+import { detectExtensionInstalled } from "@/lib/extensions/detectExtension";
 
 interface TestAttachment {
   id: string;
@@ -39,6 +49,9 @@ interface ScreenshotUploadProps {
   attachments?: TestAttachment[];
   onDeleteAttachment?: (attachmentId: string) => void;
   targetUrl?: string;
+  ensureExtensionInstalled?: () => Promise<boolean>;
+  extensionInstalled?: boolean | null;
+  checkingExtension?: boolean;
 }
 
 const BUCKET = "test-attachments";
@@ -72,6 +85,9 @@ export function ScreenshotUpload({
   onUploadComplete,
   attachments = [],
   onDeleteAttachment,
+  ensureExtensionInstalled,
+  extensionInstalled: extensionInstalledProp,
+  checkingExtension,
 }: ScreenshotUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -81,28 +97,26 @@ export function ScreenshotUpload({
   const [extensionInstalled, setExtensionInstalled] = useState<boolean | null>(
     null
   );
+  const resolvedExtensionInstalled =
+    extensionInstalledProp ?? extensionInstalled;
 
-  const handleFileSelect = useCallback(
-    async (files: FileList | null) => {
-      if (!files || files.length === 0) return;
-      const file = files[0];
+  const handleFileSelect = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
 
-      if (!ALLOWED_TYPES.includes(file.type)) {
-        toast.error(
-          "Invalid file type. Please upload an image (PNG, JPEG, GIF, or WebP)."
-        );
-        return;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        toast.error("File too large. Maximum size is 10MB.");
-        return;
-      }
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      toast.error(
+        "Invalid file type. Please upload an image (PNG, JPEG, GIF, or WebP)."
+      );
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error("File too large. Maximum size is 10MB.");
+      return;
+    }
 
-      await uploadFile(file);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    },
-    [executionId, testCaseId, stepNumber, description]
-  );
+    await uploadFile(file);
+  }, []);
 
   async function uploadFile(file: File) {
     setUploading(true);
@@ -171,19 +185,6 @@ export function ScreenshotUpload({
     }
   }
 
-  async function checkExtensionInstalled() {
-    try {
-      await extensionRequest("PING");
-      setExtensionInstalled(true);
-    } catch {
-      setExtensionInstalled(false);
-    }
-  }
-
-  useEffect(() => {
-    void checkExtensionInstalled();
-  }, []);
-
   async function handleDelete(attachmentId: string, filePath: string) {
     const confirmed = window.confirm("Delete this screenshot?");
     if (!confirmed) return;
@@ -236,20 +237,35 @@ export function ScreenshotUpload({
     [handleFileSelect]
   );
 
-  async function captureScreenshotFromExtension() {
-    if (!extensionInstalled) {
+  async function captureFromExtension(mode: "full" | "region") {
+    const installed = ensureExtensionInstalled
+      ? await ensureExtensionInstalled()
+      : await detectExtensionInstalled();
+
+    setExtensionInstalled(installed);
+
+    if (!installed) {
       toast.error(
         "Please install the SynthQA browser extension to capture screenshots."
       );
       return;
     }
+
+    if (!targetUrl || !targetUrl.trim()) {
+      toast.error("Please enter a Target URL first.");
+      return;
+    }
+
     setUploading(true);
     try {
+      const command =
+        mode === "region" ? "CAPTURE_REGION" : "CAPTURE_SCREENSHOT";
+
       const resp = await extensionRequest<{
         dataUrl: string;
         mimeType?: string;
         fileName?: string;
-      }>("CAPTURE_SCREENSHOT", {
+      }>(command, {
         executionId,
         testCaseId,
         stepNumber,
@@ -259,7 +275,10 @@ export function ScreenshotUpload({
       const blob = await (await fetch(resp.dataUrl)).blob();
       const file = new File(
         [blob],
-        resp.fileName || `screenshot-${Date.now()}.png`,
+        resp.fileName ||
+          `${
+            mode === "region" ? "screenshot-region" : "screenshot"
+          }-${Date.now()}.png`,
         {
           type: resp.mimeType || blob.type || "image/png",
         }
@@ -275,71 +294,79 @@ export function ScreenshotUpload({
     }
   }
 
+  const captureDisabled =
+    uploading || resolvedExtensionInstalled === false || !targetUrl?.trim();
+
   return (
     <div className="space-y-4">
-      {/* Upload Area */}
+      {/* Upload Area (compact) */}
       <Card>
-        <CardContent className="pt-6 pb-4">
+        <CardContent className="pt-3 pb-3">
           <div
-            className="border border-dashed border-muted-foreground/30 rounded-md px-4 py-3 hover:border-muted-foreground/50 transition-colors"
+            className="border border-dashed border-muted-foreground/25 rounded-md px-3 py-3 hover:border-muted-foreground/50 transition-colors"
             onDragOver={handleDragOver}
             onDrop={handleDrop}
           >
-            <div className="flex flex-col items-center gap-4">
-              <div className="rounded-full bg-primary/10 p-3">
-                <Camera className="h-6 w-6 text-primary" />
+            <div className="flex items-start gap-3">
+              <div className="rounded-full bg-primary/10 p-2 mt-0.5 shrink-0">
+                <Camera className="h-4 w-4 text-primary" />
               </div>
 
-              <div className="text-center">
-                <p className="text-sm font-medium">Upload Screenshot</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Drag & drop or click to browse
-                </p>
-              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium leading-tight">
+                      Screenshots
+                    </p>
+                    <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                      Upload or capture. (The preview appears below.)
+                    </p>
+                  </div>
 
-              <Input
-                ref={fileInputRef}
-                type="file"
-                accept={ALLOWED_TYPES.join(",")}
-                onChange={(e) => void handleFileSelect(e.target.files)}
-                className="hidden"
-                id="screenshot-upload"
-                disabled={uploading}
-              />
+                  <p className="text-[11px] text-muted-foreground whitespace-nowrap">
+                    Max 10MB
+                  </p>
+                </div>
 
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
+                <Input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ALLOWED_TYPES.join(",")}
+                  onChange={(e) => void handleFileSelect(e.target.files)}
+                  className="hidden"
+                  id="screenshot-upload"
                   disabled={uploading}
-                >
-                  {uploading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Choose File
-                    </>
-                  )}
-                </Button>
-                <div className="flex gap-2">
+                />
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                  >
+                    {uploading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Choose File
+                      </>
+                    )}
+                  </Button>
+
                   <Button
                     type="button"
                     variant="secondary"
                     size="sm"
-                    onClick={() => void captureScreenshotFromExtension()}
-                    disabled={
-                      uploading ||
-                      extensionInstalled === false ||
-                      !targetUrl?.trim()
-                    }
+                    onClick={() => void captureFromExtension("full")}
+                    disabled={captureDisabled}
                     title={
-                      extensionInstalled === false
+                      resolvedExtensionInstalled === false
                         ? "Install the SynthQA browser extension to use Capture"
                         : !targetUrl?.trim()
                         ? "Enter a target URL to capture screenshots"
@@ -347,42 +374,56 @@ export function ScreenshotUpload({
                     }
                   >
                     <Camera className="h-4 w-4 mr-2" />
-                    Capture
+                    Capture Full
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void captureFromExtension("region")}
+                    disabled={captureDisabled}
+                    title={
+                      extensionInstalled === false
+                        ? "Install the SynthQA browser extension to use Capture"
+                        : !targetUrl?.trim()
+                        ? "Enter a target URL to capture screenshots"
+                        : "Select a region on the page"
+                    }
+                  >
+                    <Camera className="h-4 w-4 mr-2" />
+                    Capture Region
                   </Button>
                 </div>
-              </div>
-              {extensionInstalled === false && (
-                <p className="text-xs text-amber-600 mt-2">
-                  Browser extension required for Capture.
-                  <a
-                    href="/docs/extension-guide"
-                    target="_blank"
-                    className="underline ml-1"
-                  >
-                    Install instructions
-                  </a>
-                </p>
-              )}
 
-              {/* Optional Description */}
-              <div className="w-full space-y-2">
-                <Label htmlFor="description" className="text-xs">
-                  Description (Optional)
-                </Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Add a note about this screenshot..."
-                  rows={2}
-                  className="text-sm resize-none"
-                  disabled={uploading}
-                />
-              </div>
+                {resolvedExtensionInstalled === false && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    Browser extension required for Capture.
+                    <Link
+                      href="/downloads/SynthQA-Evidence-Extension-v0.1.1.zip"
+                      className="ml-1 underline underline-offset-2 font-medium hover:text-amber-700"
+                    >
+                      Install
+                    </Link>
+                  </p>
+                )}
 
-              <p className="text-xs text-muted-foreground">
-                PNG, JPEG, GIF, WebP • Max 10MB
-              </p>
+                {/* Optional Description */}
+                <div className="mt-3 space-y-2">
+                  <Label htmlFor="description" className="text-xs">
+                    Description (Optional)
+                  </Label>
+                  <Textarea
+                    id="description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Add a note about this screenshot..."
+                    rows={2}
+                    className="text-sm resize-none"
+                    disabled={uploading}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -398,16 +439,14 @@ export function ScreenshotUpload({
           </div>
 
           <div className="max-h-[260px] overflow-y-auto pr-1">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {attachments.map((attachment) => (
-                <AttachmentCard
-                  key={attachment.id}
-                  attachment={attachment}
-                  onPreview={handlePreview}
-                  onDelete={handleDelete}
-                />
-              ))}
-            </div>
+            {attachments.map((attachment) => (
+              <AttachmentCard
+                key={attachment.id}
+                attachment={attachment}
+                onPreview={handlePreview}
+                onDelete={handleDelete}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -467,7 +506,7 @@ function AttachmentCard({
             <img
               src={imageUrl}
               alt={attachment.file_name}
-              className="w-full h-full object-cover"
+              className="w-full max-h-[55vh] object-contain rounded-lg mx-auto"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
@@ -548,8 +587,18 @@ function PreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
-        <DialogHeader>
+      <DialogContent
+        className="
+        w-[95vw]
+        sm:max-w-[95vw]
+        lg:max-w-4xl
+        max-h-[90vh]
+        overflow-hidden
+        flex
+        flex-col
+      "
+      >
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>{attachment.file_name}</DialogTitle>
           <DialogDescription>
             {attachment.description || "No description"}
@@ -559,7 +608,8 @@ function PreviewDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[60vh] overflow-auto">
+        {/* Scroll area */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pr-1 pb-2">
           {loading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               Loading…
@@ -577,7 +627,7 @@ function PreviewDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-shrink-0 border-t pt-3">
           <Button
             variant="outline"
             onClick={handleDownload}

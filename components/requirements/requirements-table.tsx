@@ -1,8 +1,8 @@
 // components/requirements/requirements-table.tsx
-"use client"
+"use client";
 
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -10,14 +10,14 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/ui/table";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   Search,
   ChevronLeft,
@@ -29,32 +29,32 @@ import {
   ExternalLink,
   MoreHorizontal,
   Link as LinkIcon,
-  FolderOpen
-} from "lucide-react"
-import { toast } from "sonner"
-import { 
-  getTypeColor, 
-  getPriorityColor, 
+  FolderOpen,
+} from "lucide-react";
+import { toast } from "sonner";
+import {
+  getTypeColor,
+  getPriorityColor,
   getStatusBadge,
   getCoverageIcon,
   getCoverageColor,
   getProjectColor,
-  getRelativeTime 
-} from "@/lib/utils/requirement-helpers"
-import type { Requirement } from "@/types/requirements"
+  getRelativeTime,
+} from "@/lib/utils/requirement-helpers";
+import type { Requirement } from "@/types/requirements";
 
 interface RequirementsTableProps {
-  requirements: Requirement[]
-  selectable?: boolean
-  currentPage: number
-  totalPages: number
-  totalCount: number
-  itemsPerPage: number
-  onRowClick: (requirement: Requirement) => void
-  onOpenLinkDialog: (requirement: Requirement) => void
-  onOpenEditDialog: (requirement: Requirement) => void
-  onDelete: (requirement: Requirement) => void
-  onPageChange: (page: number) => void
+  requirements: Requirement[];
+  selectable?: boolean;
+  currentPage: number;
+  totalPages: number;
+  totalCount: number;
+  itemsPerPage: number;
+  onRowClick: (requirement: Requirement) => void;
+  onOpenLinkDialog: (requirement: Requirement) => void;
+  onOpenEditDialog: (requirement: Requirement) => void;
+  onDelete: (requirement: Requirement) => void;
+  onPageChange: (page: number) => void;
 }
 
 export function RequirementsTable({
@@ -68,10 +68,10 @@ export function RequirementsTable({
   onOpenLinkDialog,
   onOpenEditDialog,
   onDelete,
-  onPageChange
+  onPageChange,
 }: RequirementsTableProps) {
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = Math.min(startIndex + itemsPerPage, totalCount)
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalCount);
 
   return (
     <div className="space-y-4">
@@ -136,9 +136,9 @@ export function RequirementsTable({
               <ChevronLeft className="h-4 w-4 mr-1" />
               Previous
             </Button>
-            
+
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const pageNum = i + 1
+              const pageNum = i + 1;
               return (
                 <Button
                   key={pageNum}
@@ -148,13 +148,15 @@ export function RequirementsTable({
                 >
                   {pageNum}
                 </Button>
-              )
+              );
             })}
-            
+
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+              onClick={() =>
+                onPageChange(Math.min(totalPages, currentPage + 1))
+              }
               disabled={currentPage === totalPages}
             >
               Next
@@ -164,16 +166,16 @@ export function RequirementsTable({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 interface RequirementRowProps {
-  requirement: Requirement
-  selectable: boolean
-  onRowClick: (requirement: Requirement) => void
-  onOpenLinkDialog: (requirement: Requirement) => void
-  onOpenEditDialog: (requirement: Requirement) => void
-  onDelete: (requirement: Requirement) => void
+  requirement: Requirement;
+  selectable: boolean;
+  onRowClick: (requirement: Requirement) => void;
+  onOpenLinkDialog: (requirement: Requirement) => void;
+  onOpenEditDialog: (requirement: Requirement) => void;
+  onDelete: (requirement: Requirement) => void;
 }
 
 function RequirementRow({
@@ -182,11 +184,13 @@ function RequirementRow({
   onRowClick,
   onOpenLinkDialog,
   onOpenEditDialog,
-  onDelete
+  onDelete,
 }: RequirementRowProps) {
   return (
-    <TableRow 
-      className={`cursor-pointer hover:bg-muted/50 ${selectable ? 'hover:bg-primary/10' : ''}`}
+    <TableRow
+      className={`cursor-pointer hover:bg-muted/50 ${
+        selectable ? "hover:bg-primary/10" : ""
+      }`}
       onClick={() => onRowClick(requirement)}
     >
       {/* Title & Description */}
@@ -203,8 +207,14 @@ function RequirementRow({
       <TableCell>
         {requirement.projects ? (
           <div className="flex items-center gap-2">
-            <FolderOpen className={`h-4 w-4 ${getProjectColor(requirement.projects.color)}`} />
-            <span className="text-sm truncate">{requirement.projects.name}</span>
+            <FolderOpen
+              className={`h-4 w-4 ${getProjectColor(
+                requirement.projects.color
+              )}`}
+            />
+            <span className="text-sm truncate">
+              {requirement.projects.name}
+            </span>
           </div>
         ) : (
           <span className="text-xs text-muted-foreground">No project</span>
@@ -214,7 +224,7 @@ function RequirementRow({
       {/* Type */}
       <TableCell>
         <Badge className={getTypeColor(requirement.type)}>
-          {requirement.type.replace('_', ' ')}
+          {requirement.type.replace("_", " ")}
         </Badge>
       </TableCell>
 
@@ -226,16 +236,18 @@ function RequirementRow({
       </TableCell>
 
       {/* Status */}
-      <TableCell>
-        {getStatusBadge(requirement.status)}
-      </TableCell>
+      <TableCell>{getStatusBadge(requirement.status)}</TableCell>
 
       {/* Coverage */}
       <TableCell>
         <div className="flex items-center gap-2">
           {getCoverageIcon(requirement.coverage_percentage)}
           <div className="flex flex-col">
-            <span className={`text-sm font-medium ${getCoverageColor(requirement.coverage_percentage)}`}>
+            <span
+              className={`text-sm font-medium ${getCoverageColor(
+                requirement.coverage_percentage
+              )}`}
+            >
               {requirement.coverage_percentage}%
             </span>
             <span className="text-xs text-muted-foreground">
@@ -244,11 +256,13 @@ function RequirementRow({
           </div>
           {requirement.test_case_count > 0 && (
             <div className="w-16 bg-gray-200 rounded-full h-1">
-              <div 
+              <div
                 className={`h-1 rounded-full transition-all ${
-                  requirement.coverage_percentage >= 80 ? 'bg-green-500' :
-                  requirement.coverage_percentage >= 60 ? 'bg-yellow-500' : 
-                  'bg-red-500'
+                  requirement.coverage_percentage >= 80
+                    ? "bg-green-500"
+                    : requirement.coverage_percentage >= 60
+                    ? "bg-yellow-500"
+                    : "bg-red-500"
                 }`}
                 style={{ width: `${requirement.coverage_percentage}%` }}
               />
@@ -283,43 +297,52 @@ function RequirementRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={(e) => {
-              e.stopPropagation()
-              onRowClick(requirement)
-            }}>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onRowClick(requirement);
+              }}
+            >
               <Eye className="h-4 w-4 mr-2" />
               View Details
             </DropdownMenuItem>
-            
-            <DropdownMenuItem onClick={(e) => {
-              e.stopPropagation()
-              onOpenLinkDialog(requirement)
-            }}>
+
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenLinkDialog(requirement);
+              }}
+            >
               <LinkIcon className="h-4 w-4 mr-2" />
               Link Tests
             </DropdownMenuItem>
-            
-            <DropdownMenuItem onClick={(e) => {
-              e.stopPropagation()
-              toast.info('Test generation coming soon')
-            }}>
+
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                toast.info("Test generation coming soon");
+              }}
+            >
               <Sparkles className="h-4 w-4 mr-2" />
               Generate Tests
             </DropdownMenuItem>
-            
+
             <DropdownMenuSeparator />
-            
-           <DropdownMenuItem onClick={(e) => { 
-            e.stopPropagation() 
-            onOpenEditDialog(requirement) }}> 
-            <Edit className="h-4 w-4 mr-2" /> 
-            Edit 
-            </DropdownMenuItem>
-            
-            <DropdownMenuItem 
+
+            <DropdownMenuItem
               onClick={(e) => {
-                e.stopPropagation()
-                onDelete(requirement)
+                e.stopPropagation();
+                onOpenEditDialog(requirement);
+              }}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Edit
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(requirement);
               }}
               className="text-destructive"
             >
@@ -330,5 +353,5 @@ function RequirementRow({
         </DropdownMenu>
       </TableCell>
     </TableRow>
-  )
+  );
 }

@@ -2,8 +2,10 @@
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import BillingPage from "@/components/billing/billingmanagment";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
-import PromotionalBanner from "@/components/billing/billingmanagment";
 import { SiteFooter } from "@/components/pagecomponents/site-footer";
+import { ClientPageWrapper } from "@/components/auth/client-page-wrapper";
+
+export const dynamic = "force-dynamic";
 
 export default function Billing() {
   return (
@@ -16,7 +18,9 @@ export default function Billing() {
           subtitle="Manage and Update Your Subsription"
         />
         <main>
-          <BillingPage />
+          <ClientPageWrapper>
+            <BillingPage />
+          </ClientPageWrapper>
         </main>
       </div>
       <div className="pt-10"></div>

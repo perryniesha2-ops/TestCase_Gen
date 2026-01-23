@@ -19,7 +19,7 @@ const supabaseAdmin = createClient(
       autoRefreshToken: false,
       persistSession: false,
     },
-  }
+  },
 );
 
 export async function POST(request: NextRequest) {
@@ -39,7 +39,6 @@ export async function POST(request: NextRequest) {
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-      console.log(`✅ Webhook verified: ${event.type}`);
     } catch (err: any) {
       console.error("❌ Webhook signature verification failed:", err.message);
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
@@ -49,11 +48,10 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        console.log(`📋 Checkout completed: ${session.id}`);
 
         if (session.subscription) {
           const subscription = await stripe.subscriptions.retrieve(
-            session.subscription as string
+            session.subscription as string,
           );
           await handleSubscriptionCreated(subscription, session);
         } else {
@@ -64,41 +62,35 @@ export async function POST(request: NextRequest) {
 
       case "customer.subscription.created": {
         const subscription = event.data.object as Stripe.Subscription;
-        console.log(`🆕 Subscription created: ${subscription.id}`);
         await handleSubscriptionCreated(subscription);
         break;
       }
 
       case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription;
-        console.log(`🔄 Subscription updated: ${subscription.id}`);
         await handleSubscriptionUpdated(subscription);
         break;
       }
 
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
-        console.log(`❌ Subscription deleted: ${subscription.id}`);
         await handleSubscriptionDeleted(subscription);
         break;
       }
 
       case "invoice.payment_succeeded": {
         const invoice = event.data.object as Stripe.Invoice;
-        console.log(`💳 Payment succeeded: ${invoice.id}`);
         await handleInvoicePaymentSucceeded(invoice);
         break;
       }
 
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
-        console.log(`⚠️ Payment failed: ${invoice.id}`);
         await handleInvoicePaymentFailed(invoice);
         break;
       }
 
       default:
-        console.log(`⚪ Unhandled event type: ${event.type}`);
     }
 
     return NextResponse.json({ received: true });
@@ -106,32 +98,26 @@ export async function POST(request: NextRequest) {
     console.error("❌ Webhook error:", error);
     return NextResponse.json(
       { error: "Webhook processing failed", details: error.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 async function handleSubscriptionCreated(
   subscription: Stripe.Subscription,
-  session?: Stripe.Checkout.Session
+  session?: Stripe.Checkout.Session,
 ) {
   const userId = subscription.metadata?.user_id;
 
   if (!userId) {
-    console.error("❌ No user_id in subscription metadata");
     return;
   }
-
-  console.log(`👤 Processing subscription for user: ${userId}`);
 
   try {
     const planId = subscription.metadata?.plan_id || "pro";
     const mappedStatus = mapSubscriptionStatus(subscription.status);
 
-    console.log(`📊 Plan: ${planId}, Status: ${mappedStatus}`);
-
-    // FIXED: Type-safe access to subscription properties
-    const subscriptionData = subscription as any; // Type assertion for properties not in types
+    const subscriptionData = subscription as any;
 
     // Update user profile
     const { error: profileError } = await supabaseAdmin
@@ -156,7 +142,6 @@ async function handleSubscriptionCreated(
       .eq("id", userId);
 
     if (profileError) {
-      console.error("❌ Error updating user profile:", profileError);
       throw profileError;
     }
 
@@ -189,7 +174,6 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   const userId = subscription.metadata?.user_id;
 
   if (!userId) {
-    console.error("❌ No user_id in subscription metadata");
     return;
   }
 
@@ -221,8 +205,6 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
       throw error;
     }
 
-    console.log(`✅ Subscription updated for user ${userId}`);
-
     // Create billing event
     await createBillingEvent({
       user_id: userId,
@@ -247,7 +229,6 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   const userId = subscription.metadata?.user_id;
 
   if (!userId) {
-    console.error("❌ No user_id in subscription metadata");
     return;
   }
 
@@ -270,8 +251,6 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
       console.error("❌ Error canceling subscription:", error);
       throw error;
     }
-
-    console.log(`✅ Subscription canceled for user ${userId}`);
 
     // Create billing event
     await createBillingEvent({
@@ -332,8 +311,6 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
 
     if (error) {
       console.error("❌ Error updating payment status:", error);
-    } else {
-      console.log(`✅ Payment succeeded for user ${userId}`);
     }
 
     // FIXED: Type-safe invoice access
@@ -402,8 +379,6 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
 
     if (error) {
       console.error("❌ Error updating payment failure:", error);
-    } else {
-      console.log(`⚠️ Payment failed for user ${userId}`);
     }
 
     // FIXED: Type-safe invoice access
@@ -448,46 +423,53 @@ function mapSubscriptionStatus(stripeStatus: string): string {
   return statusMap[stripeStatus] || "active";
 }
 
-// Helper: Update usage limits based on plan
 async function updateUsageLimits(userId: string, planId: string) {
   const planLimits = {
     free: { testCases: 20, apiCalls: 200 },
     pro: { testCases: 500, apiCalls: 5000 },
     team: { testCases: 2000, apiCalls: 20000 },
-    enterprise: { testCases: -1, apiCalls: -1 },
+    enterprise: { testCases: -1, apiCalls: -1 }, // -1 = unlimited
   };
 
   const limits =
     planLimits[planId as keyof typeof planLimits] || planLimits.free;
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = new Date().toISOString().slice(0, 7); // "2026-01"
 
-  // Get existing usage to preserve current month's usage
-  const { data: existingUsage } = await supabaseAdmin
-    .from("user_usage")
-    .select("test_cases_generated, api_calls_used")
-    .eq("user_id", userId)
-    .eq("month", currentMonth)
-    .single();
+  try {
+    // Get existing usage to preserve current counts
+    const { data: existingUsage } = await supabaseAdmin
+      .from("user_usage")
+      .select("test_cases_generated, api_calls_used")
+      .eq("user_id", userId)
+      .eq("month", currentMonth)
+      .single();
 
-  const upsertData = {
-    user_id: userId,
-    month: currentMonth,
-    test_cases_generated: existingUsage?.test_cases_generated || 0,
-    api_calls_used: existingUsage?.api_calls_used || 0,
-    monthly_limit_test_cases: limits.testCases,
-    monthly_limit_api_calls: limits.apiCalls,
-    updated_at: new Date().toISOString(),
-  };
+    const upsertData = {
+      user_id: userId,
+      month: currentMonth,
+      test_cases_generated: existingUsage?.test_cases_generated || 0,
+      api_calls_used: existingUsage?.api_calls_used || 0,
+      monthly_limit_test_cases: limits.testCases,
+      monthly_limit_api_calls: limits.apiCalls,
+      updated_at: new Date().toISOString(),
+    };
 
-  const { error } = await supabaseAdmin.from("user_usage").upsert(upsertData, {
-    onConflict: "user_id,month",
-    ignoreDuplicates: false,
-  });
+    const { error } = await supabaseAdmin
+      .from("user_usage")
+      .upsert(upsertData, {
+        onConflict: "user_id,month",
+        ignoreDuplicates: false, // IMPORTANT: Allow updates
+      });
 
-  if (error) {
-    console.error("❌ Error updating usage limits:", error);
-  } else {
-    console.log(`✅ Usage limits updated for ${userId}: ${planId}`);
+    if (error) {
+      console.error("❌ Error updating usage limits:", error);
+      throw error;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("❌ Failed to update usage limits:", error);
+    return false;
   }
 }
 
@@ -517,8 +499,6 @@ async function createBillingEvent(event: {
 
     if (error) {
       console.error("❌ Error creating billing event:", error);
-    } else {
-      console.log(`✅ Billing event created: ${event.event_type}`);
     }
   } catch (error: any) {
     console.error("❌ Error in createBillingEvent:", error);

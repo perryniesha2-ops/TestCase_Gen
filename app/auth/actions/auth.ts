@@ -5,6 +5,15 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AuthTokenService, type UserMetadata } from "@/lib/password-reset";
 import { createEmailService } from "@/lib/email-service";
+import { NextResponse } from "next/server";
+
+type AuthResult =
+  | { success: true; message?: string; requiresConfirmation?: boolean }
+  | { error: string; code?: string; retryAfterSeconds?: number };
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
 
 export async function signup(formData: FormData) {
   const supabase = await createClient();
@@ -53,31 +62,43 @@ export async function signup(formData: FormData) {
   revalidatePath("/", "layout");
   return { success: true };
 }
+export async function login(formData: FormData): Promise<AuthResult> {
+  try {
+    const supabase = await createClient();
 
-export async function login(formData: FormData) {
-  const supabase = await createClient();
+    const email = normalizeEmail((formData.get("email") ?? "").toString());
+    const password = (formData.get("password") ?? "").toString();
 
-  // Get form data
-  const data = {
-    email: formData.get("email") as string,
-    password: formData.get("password") as string,
-  };
+    if (!email || !password) {
+      return { error: "Email and password are required", code: "VALIDATION" };
+    }
 
-  // Validate inputs
-  if (!data.email || !data.password) {
-    return { error: "Email and password are required" };
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      const msg = (error.message || "").toLowerCase();
+      if (msg.includes("too many") || msg.includes("rate")) {
+        return {
+          error: "Too many attempts. Please wait and try again.",
+          code: "RATE_LIMITED",
+          retryAfterSeconds: 30,
+        };
+      }
+      return {
+        error: "Invalid email or password.",
+        code: "INVALID_CREDENTIALS",
+      };
+    }
+
+    revalidatePath("/", "layout");
+    return { success: true };
+  } catch (e) {
+    console.error("login failed:", e);
+    return { error: "An unexpected error occurred.", code: "SERVER_ERROR" };
   }
-
-  // Sign in with Supabase
-  const { error } = await supabase.auth.signInWithPassword(data);
-
-  if (error) {
-    return { error: error.message };
-  }
-
-  // Return success, let the client handle redirect
-  revalidatePath("/", "layout");
-  return { success: true };
 }
 
 export async function logout() {
@@ -191,7 +212,7 @@ export async function customSignup(formData: FormData) {
     const tokenResult = await AuthTokenService.createConfirmationToken(
       data.email,
       authData.user.id,
-      { full_name: data.name }
+      { full_name: data.name },
     );
 
     if (!tokenResult.success) {
@@ -249,7 +270,7 @@ export async function confirmEmail(formData: FormData) {
     const supabase = await createClient();
     const { error: updateError } = await supabase.auth.admin.updateUserById(
       tokenResult.userId!,
-      { email_confirm: true }
+      { email_confirm: true },
     );
 
     if (updateError) {
@@ -308,7 +329,7 @@ export async function resendConfirmationEmail(formData: FormData) {
     const tokenResult = await AuthTokenService.createConfirmationToken(
       email,
       user.id,
-      user.user_metadata
+      user.user_metadata,
     );
 
     if (!tokenResult.success) {
@@ -411,7 +432,7 @@ export async function customUpdatePassword(formData: FormData) {
     const supabase = await createClient();
     const { error: updateError } = await supabase.auth.admin.updateUserById(
       tokenResult.userId!,
-      { password }
+      { password },
     );
 
     if (updateError) {

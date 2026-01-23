@@ -1,24 +1,40 @@
-"use client"
+"use client";
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { ChevronDown, FileDown, FolderOpen, Plus, Search } from "lucide-react"
-import type { Project } from "@/types/test-cases"
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  ChevronDown,
+  FileDown,
+  FolderOpen,
+  Plus,
+  Search,
+  Download,
+} from "lucide-react";
+import type { Project } from "@/types/test-cases";
 
 type Props = {
-  searchTerm: string
-  onSearchTermChange: (v: string) => void
+  searchTerm: string;
+  onSearchTermChange: (v: string) => void;
 
-  projects: Project[]
-  selectedProject: string
-  selectedProjectName: string | null
-  onProjectChange: (projectId: string) => void
+  projects: Project[];
+  selectedProject: string;
+  selectedProjectName: string | null;
+  onProjectChange: (projectId: string) => void;
 
-  onCreate: () => void
-  onExport: () => void
-  getProjectColor: (color: string) => string
-}
+  onCreate: () => void;
+  getProjectColor: (color: string) => string;
+  exportButton?: React.ReactNode;
+  filterComponent?: React.ReactNode;
+  onExport?: () => void;
+};
 
 export function TestCaseToolbar({
   searchTerm,
@@ -28,11 +44,19 @@ export function TestCaseToolbar({
   selectedProjectName,
   onProjectChange,
   onCreate,
-  onExport,
   getProjectColor,
+  exportButton,
+  filterComponent,
+  onExport,
 }: Props) {
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+      <div>
+        <Button onClick={onCreate}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Test Case
+        </Button>
+      </div>
       <div className="relative flex-1">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -69,8 +93,13 @@ export function TestCaseToolbar({
           {projects.length > 0 && <DropdownMenuSeparator />}
 
           {projects.map((project) => (
-            <DropdownMenuItem key={project.id} onClick={() => onProjectChange(project.id)}>
-              <FolderOpen className={`h-4 w-4 mr-2 ${getProjectColor(project.color)}`} />
+            <DropdownMenuItem
+              key={project.id}
+              onClick={() => onProjectChange(project.id)}
+            >
+              <FolderOpen
+                className={`h-4 w-4 mr-2 ${getProjectColor(project.color)}`}
+              />
               <span className="truncate">{project.name}</span>
             </DropdownMenuItem>
           ))}
@@ -84,15 +113,14 @@ export function TestCaseToolbar({
       </DropdownMenu>
 
       <div className="flex gap-2 md:gap-3">
-        <Button onClick={onCreate} className="gap-2">
-          <Plus className="h-4 w-4" />
-          New Test Case
-        </Button>
-        <Button variant="outline" size="default" onClick={onExport}>
-          <FileDown className="h-4 w-4 mr-2" />
-          Export
-        </Button>
+        {exportButton ||
+          (onExport && (
+            <Button variant="outline" size="sm" onClick={onExport}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          ))}
       </div>
     </div>
-  )
+  );
 }

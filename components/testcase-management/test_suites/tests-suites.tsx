@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,46 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetClose,
-} from "@/components/ui/sheet";
-import { TestSessionExecution } from "./testsessionexecution";
-import {
-  Play,
-  Plus,
-  FileText,
-  BarChart3,
-  Settings,
-  Trash2,
-  Target,
-  CalendarIcon,
-  Edit3,
-  MoreHorizontal,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  AlertTriangle,
-  Search,
-  Filter,
-  FolderOpen,
-  Code2,
-  Zap,
-  Loader2,
-} from "lucide-react";
-import {
-  TestSuite,
-  TestSession,
-  SuiteType,
-  SessionStats,
-  Project,
-} from "@/types/test-cases";
-import { TestSuiteDetailsDialog } from "./testSuiteDetailsDialog";
-import { SuiteReports } from "./suitesreport";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -69,26 +30,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Progress } from "@/components/ui/progress";
+  Play,
+  Plus,
+  FileText,
+  BarChart3,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+  CalendarIcon,
+  FolderOpen,
+  Code2,
+  Loader2,
+} from "lucide-react";
+
+import type { TestSuite, SuiteType, Project } from "@/types/test-cases";
+
+import { TestSessionExecution } from "./testsessionexecution";
+import { TestSuiteDetailsDialog } from "./dialogs/testSuiteDetailsDialog";
+import { SuiteReports } from "./suitesreport";
 import { ExecutionHistory } from "./executionhistory";
-import { TriagePanel } from "./triage-panel";
-import { TestCaseQuickViewDialog } from "../test-cases/dialogs/test-case-view-dialog";
 import { TestSuiteTable } from "./test-suite-table";
 import { TestSuiteSheet } from "./test-suite-sheet";
 
@@ -108,11 +70,14 @@ type SuiteEditForm = {
 };
 
 export function TestSuitesPage() {
+  const { user } = useAuth();
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterProject, setFilterProject] = useState<string>("all");
+
   const [projects, setProjects] = useState<Project[]>([]);
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -125,17 +90,10 @@ export function TestSuitesPage() {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerSuite, setDrawerSuite] = useState<TestSuite | null>(null);
+
   const [editingSuite, setEditingSuite] = useState<TestSuite | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
-
-  const [openTestCase, setOpenTestCase] = useState(false);
-  const [activeTestCaseId, setActiveTestCaseId] = useState<string | null>(null);
-
-  function openSuiteDrawer(suite: TestSuite) {
-    setDrawerSuite(suite);
-    setDrawerOpen(true);
-  }
 
   const [formData, setFormData] = useState<FormData>({
     name: "",
@@ -146,128 +104,76 @@ export function TestSuitesPage() {
     project_id: "",
   });
 
-  useEffect(() => {
-    fetchTestSuites();
-    fetchProjects();
-  }, []);
+  const [suiteEditForm, setSuiteEditForm] = useState<SuiteEditForm>({
+    name: "",
+    status: "active",
+    suite_type: "manual",
+  });
 
-  async function fetchTestSuites() {
+  // ============================
+  // New: suites overview fetch via API (reduced DB calls)
+  // ============================
+  async function refreshSuites() {
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      setLoading(true);
 
-      if (!user) return;
+      const res = await fetch("/api/suites/overview", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      });
 
-      const { data, error } = await supabase
-        .from("test_suites")
-        .select(
-          `
-          *,
-          projects:project_id(id, name, color, icon)
-        `
-        )
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+      const raw = await res.text().catch(() => "");
+      let payload: any = null;
+      try {
+        payload = raw ? JSON.parse(raw) : null;
+      } catch {}
 
-      if (error) throw error;
+      if (res.status === 401) {
+        // central auth failure handling for this page
+        toast.error("Please log in again.");
+        setTestSuites([]);
+        return;
+      }
 
-      // Get execution stats and test case count for each suite
-      const suitesWithStats = await Promise.all(
-        (data || []).map(async (suite) => {
-          // Get test case count
-          const { data: testCases } = await supabase
-            .from("test_suite_cases")
-            .select("id")
-            .eq("suite_id", suite.id);
+      if (!res.ok) {
+        throw new Error(payload?.error ?? `Failed (${res.status})`);
+      }
 
-          // Get execution stats
-          const { data: executions } = await supabase
-            .from("test_executions")
-            .select("execution_status")
-            .eq("suite_id", suite.id);
-
-          const stats = executions?.reduce(
-            (acc, exec) => {
-              acc.total++;
-              if (exec.execution_status === "passed") acc.passed++;
-              else if (exec.execution_status === "failed") acc.failed++;
-              else if (exec.execution_status === "skipped") acc.skipped++;
-              else if (exec.execution_status === "blocked") acc.blocked++;
-              return acc;
-            },
-            { total: 0, passed: 0, failed: 0, skipped: 0, blocked: 0 }
-          ) ?? { total: 0, passed: 0, failed: 0, skipped: 0, blocked: 0 };
-
-          const { data: suiteCases, error: suiteCasesError } = await supabase
-            .from("test_suite_cases")
-            .select(
-              `
-    test_case_id,
-    test_cases (
-      id,
-      test_steps
-    )
-  `
-            )
-            .eq("suite_id", suite.id);
-
-          if (suiteCasesError) throw suiteCasesError;
-
-          const eligibleCaseIds = (suiteCases ?? [])
-            .map((row: any) => {
-              const tc = Array.isArray(row.test_cases)
-                ? row.test_cases[0]
-                : row.test_cases;
-              const hasSteps =
-                Array.isArray(tc?.test_steps) && tc.test_steps.length > 0;
-              return hasSteps ? row.test_case_id : null;
-            })
-            .filter(Boolean) as string[];
-
-          const eligible_count = eligibleCaseIds.length;
-
-          let scripted_count = 0;
-
-          const mode: "manual" | "partial" | "automated" =
-            eligible_count > 0 && scripted_count === eligible_count
-              ? "automated"
-              : scripted_count > 0
-              ? "partial"
-              : "manual";
-
-          return {
-            ...suite,
-            test_case_count: testCases?.length || 0,
-            execution_stats: stats,
-            automation: { eligible_count, scripted_count, mode },
-          };
-        })
-      );
-
-      setTestSuites(suitesWithStats);
-    } catch (error) {
+      setTestSuites((payload?.suites ?? []) as TestSuite[]);
+    } catch (error: any) {
       console.error("Error fetching test suites:", error);
-      toast.error("Failed to load test suites");
+      toast.error(error?.message ?? "Failed to load test suites");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
+    void refreshSuites();
+    void fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep drawer suite updated if list refreshes
+  useEffect(() => {
     if (!drawerSuite) return;
     const updated = testSuites.find((s) => s.id === drawerSuite.id);
     if (updated) setDrawerSuite(updated);
   }, [testSuites, drawerSuite?.id]);
 
+  function openSuiteDrawer(suite: TestSuite) {
+    setDrawerSuite(suite);
+    setDrawerOpen(true);
+  }
+
+  // ============================
+  // Projects (can remain Supabase, separate optimization later)
+  // ============================
   async function fetchProjects() {
+    if (!user) return;
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
 
       const { data, error } = await supabase
         .from("projects")
@@ -282,14 +188,16 @@ export function TestSuitesPage() {
     }
   }
 
+  // ============================
+  // Create suite (kept as-is; you can later convert to an API route)
+  // ============================
   async function createTestSuite() {
+    if (!user) {
+      toast.error("Please log in again.");
+      return;
+    }
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
 
       const { data, error } = await supabase
         .from("test_suites")
@@ -307,51 +215,21 @@ export function TestSuitesPage() {
 
       if (error) throw error;
 
-      setTestSuites((prev) => [
-        {
-          ...data,
-          test_case_count: 0,
-          execution_stats: {
-            total: 0,
-            passed: 0,
-            failed: 0,
-            skipped: 0,
-            blocked: 0,
-          },
-        },
-        ...prev,
-      ]);
+      // You can either optimistic-add or just refresh.
+      // Refresh is safer since overview adds execution_stats/test_case_count.
       setShowCreateDialog(false);
       resetForm();
       toast.success("Test suite created successfully");
+      await refreshSuites();
     } catch (error) {
       console.error("Error creating test suite:", error);
       toast.error("Failed to create test suite");
     }
   }
 
-  type ScriptableTestStep = {
-    step_number: number;
-    action: string;
-    expected: string;
-    data?: string;
-  };
-
-  type ScriptableTestCase = {
-    id: string;
-    title: string;
-    description: string;
-    test_steps: ScriptableTestStep[];
-  };
-
-  type SuiteCaseRow = {
-    test_case_id: string;
-    test_cases: ScriptableTestCase | ScriptableTestCase[] | null;
-  };
-
   async function deleteTestSuite(suiteId: string) {
     const ok = window.confirm(
-      "Delete this test suite? Executions will be kept in history."
+      "Delete this test suite? Executions will be kept in history.",
     );
     if (!ok) return;
 
@@ -368,10 +246,11 @@ export function TestSuitesPage() {
     if (!res.ok) {
       console.error("Delete suite failed:", res.status, payload ?? raw);
       throw new Error(
-        payload?.error ? `${payload.error}` : `Delete failed (${res.status})`
+        payload?.error ? `${payload.error}` : `Delete failed (${res.status})`,
       );
     }
 
+    // Local removal is fine; refresh is optional
     setTestSuites((prev) => prev.filter((s) => s.id !== suiteId));
     toast.success("Test suite deleted");
   }
@@ -387,6 +266,20 @@ export function TestSuitesPage() {
     });
   }
 
+  function handleExecutionComplete() {
+    setShowExecutionDialog(false);
+    setExecutingSuite(null);
+    void refreshSuites();
+  }
+
+  function startSuiteExecution(suite: TestSuite) {
+    setExecutingSuite(suite);
+    setShowExecutionDialog(true);
+  }
+
+  // ============================
+  // Helpers (keep your existing UI stable)
+  // ============================
   function getSuiteTypeColor(type: string) {
     switch (type) {
       case "regression":
@@ -421,17 +314,6 @@ export function TestSuitesPage() {
     }
   }
 
-  function handleExecutionComplete() {
-    setShowExecutionDialog(false);
-    setExecutingSuite(null);
-    fetchTestSuites();
-  }
-
-  function startSuiteExecution(suite: TestSuite) {
-    setExecutingSuite(suite);
-    setShowExecutionDialog(true);
-  }
-
   function getStatusIcon(status: string) {
     if (status === "active")
       return <Clock className="h-4 w-4 text-green-500" />;
@@ -455,40 +337,26 @@ export function TestSuitesPage() {
     return colors[color] || "text-gray-500";
   }
 
+  function getDisplaySuiteType(suite: TestSuite) {
+    if (suite.suite_type !== "manual") return suite.suite_type;
+    return "manual";
+  }
+
   // Filter suites
   const filteredSuites = testSuites.filter((suite) => {
+    const s = searchTerm.toLowerCase();
     const matchesSearch =
-      suite.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      suite.description?.toLowerCase().includes(searchTerm.toLowerCase());
+      suite.name.toLowerCase().includes(s) ||
+      (suite.description ?? "").toLowerCase().includes(s);
+
     const matchesType = filterType === "all" || suite.suite_type === filterType;
+
     const matchesProject =
       filterProject === "all" ||
       suite.project_id === filterProject ||
       (filterProject === "none" && !suite.project_id);
+
     return matchesSearch && matchesType && matchesProject;
-  });
-
-  // Calculate summary stats
-  const summaryStats = {
-    total: testSuites.length,
-    active: testSuites.filter((s) => s.status === "active").length,
-    completed: testSuites.filter((s) => s.status === "completed").length,
-    totalTests: testSuites.reduce(
-      (sum, s) => sum + (s.test_case_count || 0),
-      0
-    ),
-  };
-
-  function getDisplaySuiteType(suite: TestSuite) {
-    if (suite.suite_type !== "manual") return suite.suite_type;
-
-    return "manual";
-  }
-
-  const [suiteEditForm, setSuiteEditForm] = useState<SuiteEditForm>({
-    name: "",
-    status: "active",
-    suite_type: "manual",
   });
 
   function openEditSuite(suite: TestSuite) {
@@ -524,8 +392,7 @@ export function TestSuitesPage() {
       setEditOpen(false);
       setEditingSuite(null);
 
-      // Refresh list + drawer suite
-      await fetchTestSuites();
+      await refreshSuites();
     } catch (err) {
       console.error("Error updating suite:", err);
       toast.error("Failed to update suite");
@@ -538,13 +405,18 @@ export function TestSuitesPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div></div>
-        <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          New Test Suite
-        </Button>
+        <div />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => void refreshSuites()}>
+            Refresh
+          </Button>
+          <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            New Test Suite
+          </Button>
+        </div>
       </div>
-      {/* Main Tabs */}
+
       <Tabs
         value={activeTab}
         onValueChange={setActiveTab}
@@ -567,30 +439,35 @@ export function TestSuitesPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Summary Cards */}
         <TabsContent value="suites">
-          {/* Test Suites Tab */}
-          <TestSuiteTable
-            suites={filteredSuites}
-            searchTerm={searchTerm}
-            filterType={filterType}
-            onCreateSuite={() => setShowCreateDialog(true)}
-            onOpenDetails={(suite) => openSuiteDrawer(suite)}
-            getStatusIcon={getStatusIcon}
-            getStatusBadge={getStatusBadge}
-            getSuiteTypeColor={getSuiteTypeColor}
-            getDisplaySuiteType={getDisplaySuiteType}
-            getProjectColor={getProjectColor}
-          />
-          <div className="h-2" />
+          {loading ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              Loading suites…
+            </div>
+          ) : (
+            <>
+              <TestSuiteTable
+                suites={filteredSuites}
+                searchTerm={searchTerm}
+                filterType={filterType}
+                onCreateSuite={() => setShowCreateDialog(true)}
+                onOpenDetails={(suite) => openSuiteDrawer(suite)}
+                getStatusIcon={getStatusIcon}
+                getStatusBadge={getStatusBadge}
+                getSuiteTypeColor={getSuiteTypeColor}
+                getDisplaySuiteType={getDisplaySuiteType}
+                getProjectColor={getProjectColor}
+              />
+              <div className="h-2" />
+            </>
+          )}
         </TabsContent>
 
-        {/* Reports Tab */}
         <TabsContent value="reports">
           <SuiteReports showAllSuites={true} />
         </TabsContent>
 
-        {/* Execution Dialog */}
         <TabsContent value="history">
           <ExecutionHistory />
         </TabsContent>
@@ -705,7 +582,7 @@ export function TestSuitesPage() {
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {formData.planned_start_date ? (
                         new Date(
-                          formData.planned_start_date
+                          formData.planned_start_date,
                         ).toLocaleDateString()
                       ) : (
                         <span>Pick a date</span>
@@ -796,7 +673,7 @@ export function TestSuitesPage() {
           suite={selectedSuite}
           open={showDetailsDialog}
           onOpenChange={setShowDetailsDialog}
-          onSuiteUpdated={fetchTestSuites}
+          onSuiteUpdated={refreshSuites}
         />
       )}
 
@@ -809,6 +686,8 @@ export function TestSuitesPage() {
           onSessionComplete={handleExecutionComplete}
         />
       )}
+
+      {/* Edit dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
@@ -891,6 +770,7 @@ export function TestSuitesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Drawer */}
       <TestSuiteSheet
         open={drawerOpen}
         onOpenChange={(open) => {

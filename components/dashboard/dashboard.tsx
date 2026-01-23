@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import {
   Card,
   CardContent,
@@ -50,14 +49,6 @@ interface DashboardMetrics {
   }>;
 }
 
-type ExecutionStatus =
-  | "passed"
-  | "failed"
-  | "blocked"
-  | "skipped"
-  | "not_run"
-  | "in_progress";
-
 const PRIORITY_ORDER = ["critical", "high", "medium", "low"] as const;
 
 export function TestManagementDashboard() {
@@ -82,196 +73,47 @@ export function TestManagementDashboard() {
 
   const [loading, setLoading] = useState(true);
 
-  // Team switcher placeholder (wire this to your team/org model later)
   const [selectedTeamId, setSelectedTeamId] = useState<string>("personal");
   const selectedTeamLabel =
     selectedTeamId === "personal" ? "Personal" : "Team (Coming Soon)";
 
   useEffect(() => {
-    fetchDashboardData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
 
-  async function fetchDashboardData() {
-    try {
-      setLoading(true);
-      await Promise.all([
-        fetchTestCaseMetrics(),
-        fetchRequirementsMetrics(),
-        fetchRecentActivity(),
-      ]);
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error);
-    } finally {
-      setLoading(false);
-    }
-  }
+    async function load() {
+      try {
+        setLoading(true);
 
-  async function fetchTestCaseMetrics() {
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+        const res = await fetch("/api/dashboard/metrics", {
+          cache: "no-store",
+          credentials: "include",
+        });
 
-    const { data: testCases, error: tcErr } = await supabase
-      .from("test_cases")
-      .select("id")
-      .eq("user_id", user.id)
-      .neq("status", "archived");
+        if (res.status === 401) {
+          // Optional: route to login or show a signed-out state
+          if (!cancelled) setMetrics((m) => ({ ...m, recent_activity: [] }));
+          return;
+        }
 
-    if (tcErr) throw tcErr;
+        if (!res.ok) {
+          const msg = await res.text().catch(() => "");
+          throw new Error(`Dashboard metrics failed (${res.status}): ${msg}`);
+        }
 
-    if (!testCases || testCases.length === 0) {
-      setMetrics((prev) => ({
-        ...prev,
-        test_cases: {
-          total: 0,
-          passed: 0,
-          failed: 0,
-          blocked: 0,
-          skipped: 0,
-          not_run: 0,
-          pass_rate: 0,
-        },
-      }));
-      return;
+        const data = (await res.json()) as DashboardMetrics;
+        if (!cancelled) setMetrics(data);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
 
-    const testCaseIds = testCases.map((tc) => tc.id);
-
-    const { data: latestRows, error: leErr } = await supabase
-      .from("v_test_case_latest_execution")
-      .select("test_case_id, execution_status")
-      .in("test_case_id", testCaseIds);
-
-    if (leErr) throw leErr;
-
-    const latestMap = (latestRows || []).reduce((acc, row) => {
-      acc[row.test_case_id] = row.execution_status as ExecutionStatus;
-      return acc;
-    }, {} as Record<string, ExecutionStatus>);
-
-    const counts = {
-      passed: 0,
-      failed: 0,
-      blocked: 0,
-      skipped: 0,
-      not_run: 0,
+    void load();
+    return () => {
+      cancelled = true;
     };
-
-    for (const id of testCaseIds) {
-      const status = latestMap[id] ?? "not_run";
-      if (status === "passed") counts.passed++;
-      else if (status === "failed") counts.failed++;
-      else if (status === "blocked") counts.blocked++;
-      else if (status === "skipped") counts.skipped++;
-      else counts.not_run++; // includes not_run + in_progress for dashboard “health”
-    }
-
-    const total = testCaseIds.length;
-    const pass_rate = total > 0 ? Math.round((counts.passed / total) * 100) : 0;
-
-    setMetrics((prev) => ({
-      ...prev,
-      test_cases: {
-        total,
-        passed: counts.passed,
-        failed: counts.failed,
-        blocked: counts.blocked,
-        skipped: counts.skipped,
-        not_run: counts.not_run,
-        pass_rate,
-      },
-    }));
-  }
-
-  async function fetchRequirementsMetrics() {
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data: requirements, error: reqErr } = await supabase
-      .from("requirements")
-      .select("id, priority")
-      .eq("user_id", user.id);
-
-    if (reqErr) throw reqErr;
-    if (!requirements) return;
-
-    const { data: linkedRequirements, error: linkErr } = await supabase
-      .from("requirement_test_cases")
-      .select("requirement_id")
-      .in(
-        "requirement_id",
-        requirements.map((r) => r.id)
-      );
-
-    if (linkErr) throw linkErr;
-
-    const testedRequirements = new Set(
-      linkedRequirements?.map((lr) => lr.requirement_id) || []
-    );
-
-    const byPriority = requirements.reduce((acc, req) => {
-      const key = (req.priority || "medium") as string;
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    setMetrics((prev) => ({
-      ...prev,
-      requirements: {
-        total: requirements.length,
-        tested: testedRequirements.size,
-        coverage_percentage:
-          requirements.length > 0
-            ? Math.round((testedRequirements.size / requirements.length) * 100)
-            : 0,
-        by_priority: byPriority,
-      },
-    }));
-  }
-
-  async function fetchRecentActivity() {
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data, error } = await supabase
-      .from("test_executions")
-      .select(
-        `
-        id,
-        execution_status,
-        created_at,
-        test_case_id,
-        test_cases ( title )
-      `
-      )
-      .eq("executed_by", user.id)
-      .order("created_at", { ascending: false })
-      .limit(5);
-
-    if (error) throw error;
-
-    const activity = (data || []).map((exec) => ({
-      id: exec.id,
-      type: "execution" as const,
-      description: `Test "${
-        (exec as unknown as { test_cases?: { title?: string } }).test_cases
-          ?.title || "Unknown Test"
-      }" ${exec.execution_status}`,
-      timestamp: exec.created_at,
-      status: exec.execution_status,
-    }));
-
-    setMetrics((prev) => ({ ...prev, recent_activity: activity }));
-  }
+  }, []);
 
   function getStatusIcon(status: string) {
     switch (status) {
@@ -315,10 +157,10 @@ export function TestManagementDashboard() {
       const aKey = a[0].toLowerCase();
       const bKey = b[0].toLowerCase();
       const aIdx = PRIORITY_ORDER.indexOf(
-        aKey as (typeof PRIORITY_ORDER)[number]
+        aKey as (typeof PRIORITY_ORDER)[number],
       );
       const bIdx = PRIORITY_ORDER.indexOf(
-        bKey as (typeof PRIORITY_ORDER)[number]
+        bKey as (typeof PRIORITY_ORDER)[number],
       );
       const safeA = aIdx === -1 ? 999 : aIdx;
       const safeB = bIdx === -1 ? 999 : bIdx;
@@ -343,22 +185,6 @@ export function TestManagementDashboard() {
       {/* Header + Team Switcher Space */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1"></div>
-
-        {/* Team switcher placeholder */}
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="gap-2"
-            onClick={() =>
-              setSelectedTeamId((v) => (v === "personal" ? "team" : "personal"))
-            }
-            title="Team switcher placeholder"
-          >
-            <Users className="h-4 w-4" />
-            Team: {selectedTeamLabel}
-          </Button>
-        </div>
       </div>
 
       {/* Key Metrics Cards */}
@@ -388,7 +214,7 @@ export function TestManagementDashboard() {
           <CardContent className="space-y-1">
             <div
               className={`text-2xl font-semibold ${getPassRateColor(
-                metrics.test_cases.pass_rate
+                metrics.test_cases.pass_rate,
               )}`}
             >
               {metrics.test_cases.pass_rate}%
@@ -527,10 +353,10 @@ export function TestManagementDashboard() {
                         priority === "critical"
                           ? "text-red-600"
                           : priority === "high"
-                          ? "text-orange-600"
-                          : priority === "medium"
-                          ? "text-yellow-600"
-                          : "text-blue-600"
+                            ? "text-orange-600"
+                            : priority === "medium"
+                              ? "text-yellow-600"
+                              : "text-blue-600"
                       }`}
                     >
                       {priority}
