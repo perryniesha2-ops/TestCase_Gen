@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     icon: body.icon ?? "folder",
     start_date: body.start_date ?? null,
     target_end_date: body.target_end_date ?? null,
-    tags: Array.isArray(body.tags) ? body.tags : [], // only if your schema has tags
+    tags: Array.isArray(body.tags) ? body.tags : [],
   };
 
   const { data, error } = await supabase

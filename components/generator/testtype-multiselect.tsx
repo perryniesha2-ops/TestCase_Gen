@@ -28,7 +28,7 @@ export type TestType = {
   recommended?: boolean;
 };
 
-const TEST_TYPES: TestType[] = [
+export const TEST_TYPES: TestType[] = [
   {
     value: "happy-path",
     label: "Happy Path",
@@ -106,7 +106,7 @@ export function TestTypeMultiselect({
 
   const selectRecommended = () => {
     const recommended = TEST_TYPES.filter((t) => t.recommended).map(
-      (t) => t.value
+      (t) => t.value,
     );
     onChange(recommended);
   };
@@ -198,7 +198,7 @@ export function TestTypeMultiselect({
                           "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-primary",
                           isSelected
                             ? "bg-primary text-primary-foreground"
-                            : "opacity-50 [&_svg]:invisible"
+                            : "opacity-50 [&_svg]:invisible",
                         )}
                       >
                         <Check className="h-3 w-3" />

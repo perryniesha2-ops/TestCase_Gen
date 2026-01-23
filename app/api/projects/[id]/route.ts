@@ -109,3 +109,44 @@ export async function DELETE(
 
   return NextResponse.json({ success: true });
 }
+
+export async function GET(
+  req: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  const { id } = await ctx.params;
+
+  const url = new URL(req.url);
+  const days = Math.max(
+    1,
+    Math.min(365, Number(url.searchParams.get("days") ?? 30)),
+  );
+  const suiteId = url.searchParams.get("suiteId"); // optional
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
+
+  if (authErr || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { data, error } = await supabase.rpc("project_dashboard", {
+    p_project_id: id,
+    p_days: days,
+    p_suite_id: suiteId || null,
+    p_limit: 20,
+  });
+
+  if (error) {
+    // If your RPC raises exceptions, Supabase returns them here
+    return NextResponse.json(
+      { error: error.message, details: error.details ?? null },
+      { status: 400 },
+    );
+  }
+
+  return NextResponse.json(data ?? {}, { status: 200 });
+}

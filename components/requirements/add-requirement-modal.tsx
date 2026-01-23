@@ -15,7 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,11 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Plus,
   Loader2,
   X,
@@ -33,8 +39,16 @@ import {
   Settings,
   Sparkles,
   FolderOpen,
+  Target,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Lightbulb,
+  Info,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 import type { Requirement } from "@/types/requirements";
 
 interface Project {
@@ -57,6 +71,37 @@ type MetadataField = {
   type: "text" | "number" | "boolean";
 };
 
+type IssueLevel = "critical" | "high" | "medium" | "low" | "info";
+
+type AnalysisIssue = {
+  type:
+    | "ambiguity"
+    | "missing_criteria"
+    | "gap"
+    | "testability"
+    | "completeness"
+    | "clarity";
+  level: IssueLevel;
+  title: string;
+  description: string;
+  location: "title" | "description" | "criteria" | "overall";
+  suggestion: string;
+  examples?: string[];
+};
+
+type AnalysisResult = {
+  quality_score: number;
+  testability_score: number;
+  completeness_score: number;
+  clarity_score: number;
+  issues: AnalysisIssue[];
+  strengths: string[];
+  improvements: string[];
+  suggested_criteria: string[];
+  missing_aspects: string[];
+  summary: string;
+};
+
 export function AddRequirementModal({
   onRequirementAdded,
   children,
@@ -74,6 +119,11 @@ export function AddRequirementModal({
   // Projects
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
+
+  // Analysis state
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -118,7 +168,7 @@ export function AddRequirementModal({
         .from("projects")
         .select("id, name, color, icon, status")
         .eq("user_id", user.id)
-        .in("status", ["active", "on_hold"]) // Only show active/on_hold projects
+        .in("status", ["active", "on_hold"])
         .order("name");
 
       if (error) throw error;
@@ -142,31 +192,9 @@ export function AddRequirementModal({
 
   function updateAcceptanceCriteria(index: number, value: string) {
     const newCriteria = acceptanceCriteria.map((criteria, i) =>
-      i === index ? value : criteria
+      i === index ? value : criteria,
     );
     setAcceptanceCriteria(newCriteria);
-  }
-
-  function addMetadataField() {
-    setMetadataFields([
-      ...metadataFields,
-      { key: "", value: "", type: "text" },
-    ]);
-  }
-
-  function removeMetadataField(index: number) {
-    setMetadataFields(metadataFields.filter((_, i) => i !== index));
-  }
-
-  function updateMetadataField(
-    index: number,
-    field: "key" | "value" | "type",
-    value: string
-  ) {
-    const newFields = metadataFields.map((item, i) =>
-      i === index ? { ...item, [field]: value } : item
-    );
-    setMetadataFields(newFields);
   }
 
   function buildMetadata(): Record<string, string | number | boolean> {
@@ -184,7 +212,6 @@ export function AddRequirementModal({
       }
     });
 
-    // Add system metadata
     meta.created_via = "manual_entry";
     meta.auto_generate_tests = autoGenerateTests;
     if (formData.externalId) {
@@ -196,7 +223,7 @@ export function AddRequirementModal({
 
   async function generateTestCases(
     requirementId: string,
-    requirementTitle: string
+    requirementTitle: string,
   ) {
     if (!user) {
       setLoading(false);
@@ -204,8 +231,6 @@ export function AddRequirementModal({
 
     setGeneratingTests(true);
     try {
-      const supabase = createClient();
-
       const response = await fetch("/api/generate-tests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -239,6 +264,69 @@ export function AddRequirementModal({
     }
   }
 
+  // NEW: Quality Analysis Function
+  async function analyzeQuality() {
+    if (!formData.title.trim() || !formData.description.trim()) {
+      toast.error("Please fill in title and description first");
+      return;
+    }
+
+    setAnalyzing(true);
+    try {
+      const response = await fetch("/api/requirements/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          type: formData.requirement_type,
+          acceptance_criteria: acceptanceCriteria.filter((c) => c.trim()),
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Analysis failed");
+      }
+
+      const data = await response.json();
+      setAnalysis(data);
+      setShowAnalysis(true);
+
+      if (data.quality_score >= 80) {
+        toast.success("Excellent requirement quality!", {
+          description: `Quality score: ${data.quality_score}/100`,
+        });
+      } else if (data.quality_score >= 60) {
+        toast.message("Good requirement with room for improvement", {
+          description: `Quality score: ${data.quality_score}/100`,
+        });
+      } else {
+        toast.warning("Requirement needs improvement", {
+          description: `Quality score: ${data.quality_score}/100`,
+        });
+      }
+    } catch (error) {
+      console.error("Analysis error:", error);
+      toast.error("Analysis failed", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  // NEW: Apply suggested criteria
+  function applySuggestedCriteria() {
+    if (
+      analysis?.suggested_criteria &&
+      analysis.suggested_criteria.length > 0
+    ) {
+      setAcceptanceCriteria(analysis.suggested_criteria);
+      toast.success("Applied suggested acceptance criteria");
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!user) {
@@ -251,7 +339,7 @@ export function AddRequirementModal({
       const supabase = createClient();
 
       const validCriteria = acceptanceCriteria.filter(
-        (criteria) => criteria.trim() !== ""
+        (criteria) => criteria.trim() !== "",
       );
       const builtMetadata = buildMetadata();
 
@@ -309,9 +397,10 @@ export function AddRequirementModal({
     setAcceptanceCriteria([""]);
     setMetadataFields([]);
     setAutoGenerateTests(false);
+    setAnalysis(null);
+    setShowAnalysis(false);
   }
 
-  // Get project icon color
   function getProjectColor(color: string) {
     const colors: Record<string, string> = {
       blue: "text-blue-500",
@@ -340,7 +429,6 @@ export function AddRequirementModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           raw_text: rawRequirement,
-          // optionally pass user selections so the model aligns with your UI choices
           requirement_type: formData.requirement_type,
           priority: formData.priority,
           source: formData.source,
@@ -355,7 +443,6 @@ export function AddRequirementModal({
 
       const parsed = await response.json();
 
-      // Fill title/description if model provides them (do not overwrite if user already typed)
       setFormData((prev) => ({
         ...prev,
         title: prev.title?.trim() ? prev.title : parsed.title || prev.title,
@@ -364,7 +451,6 @@ export function AddRequirementModal({
           : parsed.description || prev.description,
       }));
 
-      // Fill acceptance criteria
       if (
         Array.isArray(parsed.acceptance_criteria) &&
         parsed.acceptance_criteria.length > 0
@@ -372,7 +458,7 @@ export function AddRequirementModal({
         setAcceptanceCriteria(parsed.acceptance_criteria);
       } else {
         toast.message(
-          "Parsed requirement, but no acceptance criteria were detected."
+          "Parsed requirement, but no acceptance criteria were detected.",
         );
       }
 
@@ -384,7 +470,7 @@ export function AddRequirementModal({
             if (typeof value === "boolean")
               return { key, value: String(value), type: "boolean" };
             return { key, value: String(value), type: "text" };
-          }
+          },
         );
         setMetadataFields(next);
       }
@@ -396,6 +482,27 @@ export function AddRequirementModal({
       setParsing(false);
     }
   }
+
+  const getLevelIcon = (level: IssueLevel) => {
+    switch (level) {
+      case "critical":
+        return <AlertTriangle className="h-3 w-3 text-red-500" />;
+      case "high":
+        return <AlertTriangle className="h-3 w-3 text-orange-500" />;
+      case "medium":
+        return <Info className="h-3 w-3 text-yellow-500" />;
+      case "low":
+        return <Info className="h-3 w-3 text-blue-500" />;
+      case "info":
+        return <Info className="h-3 w-3 text-gray-500" />;
+    }
+  };
+
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return "text-green-600";
+    if (score >= 60) return "text-yellow-600";
+    return "text-red-600";
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -456,50 +563,6 @@ export function AddRequirementModal({
 
             <form onSubmit={handleSubmit} className="space-y-8">
               <TabsContent value="basic" className="space-y-6 pt-2">
-                {/* Project Selection - NEW */}
-                <div className="space-y-2">
-                  <Label htmlFor="project">
-                    Project{" "}
-                    <span className="text-muted-foreground text-xs">
-                      (Optional)
-                    </span>
-                  </Label>
-                  <Select
-                    value={formData.project_id ? formData.project_id : NONE}
-                    onValueChange={(value) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        project_id: value === NONE ? "" : value,
-                      }))
-                    }
-                    disabled={loading || loadingProjects}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="No project selected" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      <SelectItem value={NONE}>No project</SelectItem>
-
-                      {projects.map((project) => (
-                        <SelectItem key={project.id} value={project.id}>
-                          <div className="flex items-center gap-2">
-                            <FolderOpen
-                              className={`h-4 w-4 ${getProjectColor(
-                                project.color
-                              )}`}
-                            />
-                            <span>{project.name}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Link this requirement to a project for better organization
-                  </p>
-                </div>
-
                 {/* Title */}
                 <div className="space-y-2">
                   <Label htmlFor="title">
@@ -597,27 +660,48 @@ export function AddRequirementModal({
                     </Select>
                   </div>
 
+                  {/* Project Selection */}
                   <div className="space-y-2">
-                    <Label>Source</Label>
+                    <Label htmlFor="project">
+                      Project{" "}
+                      <span className="text-muted-foreground text-xs">
+                        (Optional)
+                      </span>
+                    </Label>
                     <Select
-                      value={formData.source}
+                      value={formData.project_id ? formData.project_id : NONE}
                       onValueChange={(value) =>
-                        setFormData({ ...formData, source: value })
+                        setFormData((prev) => ({
+                          ...prev,
+                          project_id: value === NONE ? "" : value,
+                        }))
                       }
-                      disabled={loading}
+                      disabled={loading || loadingProjects}
                     >
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="No project selected" />
                       </SelectTrigger>
+
                       <SelectContent>
-                        <SelectItem value="manual">Manual Entry</SelectItem>
-                        <SelectItem value="import">File Import</SelectItem>
-                        <SelectItem value="jira">JIRA Integration</SelectItem>
-                        <SelectItem value="azure">Azure DevOps</SelectItem>
-                        <SelectItem value="confluence">Confluence</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
+                        <SelectItem value={NONE}>No project</SelectItem>
+
+                        {projects.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            <div className="flex items-center gap-2">
+                              <FolderOpen
+                                className={`h-4 w-4 ${getProjectColor(
+                                  project.color,
+                                )}`}
+                              />
+                              <span>{project.name}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Link this requirement to a project for better organization
+                    </p>
                   </div>
                 </div>
 
@@ -709,6 +793,7 @@ export function AddRequirementModal({
               </TabsContent>
 
               <TabsContent value="advanced" className="space-y-6 pt-2">
+                {/* AI Parse Section */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
@@ -717,7 +802,7 @@ export function AddRequirementModal({
                         Paste a full requirement (AI will extract criteria)
                       </Label>
                       <p className="text-xs text-muted-foreground">
-                        Paste a paragraph or spec. We’ll break it into
+                        Paste a paragraph or spec. We'll break it into
                         acceptance criteria and structured points.
                       </p>
                     </div>
@@ -758,7 +843,6 @@ export function AddRequirementModal({
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        // convenience: auto-create title/desc from raw if user wants quick fill
                         if (!formData.title.trim())
                           setFormData((p) => ({
                             ...p,
@@ -770,7 +854,7 @@ export function AddRequirementModal({
                             description: rawRequirement.trim(),
                           }));
                         toast.message(
-                          "Copied raw text into Description. You can still Extract Criteria."
+                          "Copied raw text into Description. You can still Extract Criteria.",
                         );
                       }}
                       disabled={loading || parsing || !rawRequirement.trim()}
@@ -788,6 +872,201 @@ export function AddRequirementModal({
                       Clear
                     </Button>
                   </div>
+                </div>
+
+                {/* NEW: Quality Analysis Section */}
+                <div className="border-t pt-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="flex items-center gap-2">
+                        <Target className="h-4 w-4 text-blue-600" />
+                        Quality Check (Before Saving)
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Analyze for ambiguities, missing criteria, and quality
+                        issues
+                      </p>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={analyzeQuality}
+                      disabled={
+                        loading ||
+                        analyzing ||
+                        !formData.title.trim() ||
+                        !formData.description.trim()
+                      }
+                    >
+                      {analyzing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Analyzing…
+                        </>
+                      ) : (
+                        <>
+                          <Target className="h-4 w-4 mr-2" />
+                          Check Quality
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Analysis Results */}
+                  {analysis && (
+                    <Collapsible
+                      open={showAnalysis}
+                      onOpenChange={setShowAnalysis}
+                    >
+                      <div className="rounded-lg border p-4 space-y-3">
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-between p-0 h-auto"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">
+                                Analysis Results
+                              </span>
+                              <Badge
+                                className={cn(
+                                  analysis.quality_score >= 80
+                                    ? "bg-green-100 text-green-800"
+                                    : analysis.quality_score >= 60
+                                      ? "bg-yellow-100 text-yellow-800"
+                                      : "bg-red-100 text-red-800",
+                                )}
+                              >
+                                {analysis.quality_score}/100
+                              </Badge>
+                            </div>
+                            {showAnalysis ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </CollapsibleTrigger>
+
+                        <CollapsibleContent className="space-y-3">
+                          {/* Quality Scores */}
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="text-center">
+                              <div
+                                className={cn(
+                                  "text-lg font-bold",
+                                  getScoreColor(analysis.testability_score),
+                                )}
+                              >
+                                {analysis.testability_score}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Testability
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div
+                                className={cn(
+                                  "text-lg font-bold",
+                                  getScoreColor(analysis.completeness_score),
+                                )}
+                              >
+                                {analysis.completeness_score}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Completeness
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div
+                                className={cn(
+                                  "text-lg font-bold",
+                                  getScoreColor(analysis.clarity_score),
+                                )}
+                              >
+                                {analysis.clarity_score}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Clarity
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Summary */}
+                          <div className="text-sm bg-muted p-3 rounded">
+                            {analysis.summary}
+                          </div>
+
+                          {/* Critical Issues Only */}
+                          {analysis.issues.filter(
+                            (i) => i.level === "critical" || i.level === "high",
+                          ).length > 0 && (
+                            <div className="space-y-2">
+                              <div className="text-sm font-medium">
+                                Critical Issues:
+                              </div>
+                              {analysis.issues
+                                .filter(
+                                  (i) =>
+                                    i.level === "critical" ||
+                                    i.level === "high",
+                                )
+                                .slice(0, 3)
+                                .map((issue, i) => (
+                                  <div key={i} className="flex gap-2 text-xs">
+                                    {getLevelIcon(issue.level)}
+                                    <div className="flex-1">
+                                      <div className="font-medium">
+                                        {issue.title}
+                                      </div>
+                                      <div className="text-muted-foreground">
+                                        💡 {issue.suggestion}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+
+                          {/* Suggested Criteria */}
+                          {analysis.suggested_criteria.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm font-medium">
+                                  Suggested Criteria (
+                                  {analysis.suggested_criteria.length}):
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={applySuggestedCriteria}
+                                >
+                                  <Lightbulb className="h-3 w-3 mr-1" />
+                                  Apply All
+                                </Button>
+                              </div>
+                              <div className="max-h-32 overflow-y-auto space-y-1">
+                                {analysis.suggested_criteria
+                                  .slice(0, 5)
+                                  .map((c, i) => (
+                                    <div
+                                      key={i}
+                                      className="text-xs text-muted-foreground"
+                                    >
+                                      {i + 1}. {c}
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+                        </CollapsibleContent>
+                      </div>
+                    </Collapsible>
+                  )}
                 </div>
               </TabsContent>
 

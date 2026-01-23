@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AddRequirementModal } from "@/components/requirements/add-requirement-modal";
+import { ImportRequirementsDialog } from "@/components/requirements/import-requirements-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +41,7 @@ import {
   Loader2,
   Plus,
   Search,
+  Upload,
 } from "lucide-react";
 
 interface RequirementsListProps {
@@ -146,7 +148,7 @@ export function RequirementsList({
 
     if (!res.ok) {
       throw new Error(
-        payload?.error ?? `Failed to load projects (${res.status})`
+        payload?.error ?? `Failed to load projects (${res.status})`,
       );
     }
 
@@ -178,7 +180,7 @@ export function RequirementsList({
 
         if (!res.ok) {
           throw new Error(
-            payload?.error ?? `Failed to load requirements (${res.status})`
+            payload?.error ?? `Failed to load requirements (${res.status})`,
           );
         }
 
@@ -207,7 +209,7 @@ export function RequirementsList({
       debouncedSearch,
       statusFilter,
       priorityFilter,
-    ]
+    ],
   );
 
   useEffect(() => {
@@ -254,7 +256,7 @@ export function RequirementsList({
       setSelectedRequirement(requirement);
       setShowDetailsDialog(true);
     },
-    [selectable, onRequirementSelected]
+    [selectable, onRequirementSelected],
   );
 
   const handleOpenLinkDialog = useCallback((requirement: Requirement) => {
@@ -281,7 +283,7 @@ export function RequirementsList({
   const handleDelete = useCallback(
     async (requirement: Requirement) => {
       const ok = window.confirm(
-        `Are you sure you want to delete "${requirement.title}"?`
+        `Are you sure you want to delete "${requirement.title}"?`,
       );
       if (!ok) return;
 
@@ -303,7 +305,7 @@ export function RequirementsList({
         await fetchRequirementsList();
       }
     },
-    [deleteRequirement, fetchRequirementsList]
+    [deleteRequirement, fetchRequirementsList],
   );
 
   const handleExport = useCallback(() => {
@@ -342,10 +344,15 @@ export function RequirementsList({
     <div className="space-y-6">
       {/* Top actions */}
       <div className="flex items-center justify-end gap-2">
-        <AddRequirementModal
-          defaultProjectId={selectedProject || undefined}
-          onRequirementAdded={handleRequirementAdded}
-        >
+        <ImportRequirementsDialog projectId={selectedProject}>
+          <Button variant="outline">
+            <Upload className="h-4 w-4 mr-2" />
+            Import
+          </Button>
+        </ImportRequirementsDialog>
+
+        {/* Create (single) */}
+        <AddRequirementModal>
           <Button>
             <Plus className="h-4 w-4 mr-2" />
             New Requirement

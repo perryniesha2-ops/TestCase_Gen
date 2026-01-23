@@ -65,6 +65,7 @@ import {
   Package,
   Terminal,
 } from "lucide-react";
+import { ProjectEditorDialog } from "@/components/projects/projecteditor";
 
 // Types
 type ProjectStatus = "active" | "archived" | "completed" | "on_hold";
@@ -127,37 +128,62 @@ const projectIcons: Record<
 
 const colorClasses: Record<
   ProjectColor,
-  { bg: string; border: string; text: string }
+  { bg: string; border: string; text: string; accent: string }
 > = {
-  blue: { bg: "bg-blue-100", border: "border-blue-300", text: "text-blue-700" },
+  blue: {
+    bg: "bg-blue-950/30",
+    border: "border-blue-700/40",
+    text: "text-blue-200",
+    accent: "bg-blue-500",
+  },
   green: {
-    bg: "bg-green-100",
-    border: "border-green-300",
-    text: "text-green-700",
+    bg: "bg-emerald-950/30",
+    border: "border-emerald-700/40",
+    text: "text-emerald-200",
+    accent: "bg-emerald-500",
   },
   purple: {
-    bg: "bg-purple-100",
-    border: "border-purple-300",
-    text: "text-purple-700",
+    bg: "bg-purple-950/30",
+    border: "border-purple-700/40",
+    text: "text-purple-200",
+    accent: "bg-purple-500",
   },
   orange: {
-    bg: "bg-orange-100",
-    border: "border-orange-300",
-    text: "text-orange-700",
+    bg: "bg-orange-950/30",
+    border: "border-orange-700/40",
+    text: "text-orange-200",
+    accent: "bg-orange-500",
   },
-  red: { bg: "bg-red-100", border: "border-red-300", text: "text-red-700" },
-  pink: { bg: "bg-pink-100", border: "border-pink-300", text: "text-pink-700" },
+  red: {
+    bg: "bg-red-950/30",
+    border: "border-red-700/40",
+    text: "text-red-200",
+    accent: "bg-red-500",
+  },
+  pink: {
+    bg: "bg-pink-950/30",
+    border: "border-pink-700/40",
+    text: "text-pink-200",
+    accent: "bg-pink-500",
+  },
   indigo: {
-    bg: "bg-indigo-100",
-    border: "border-indigo-300",
-    text: "text-indigo-700",
+    bg: "bg-indigo-950/30",
+    border: "border-indigo-700/40",
+    text: "text-indigo-200",
+    accent: "bg-indigo-500",
   },
   yellow: {
-    bg: "bg-yellow-100",
-    border: "border-yellow-300",
-    text: "text-yellow-700",
+    bg: "bg-amber-950/30",
+    border: "border-amber-700/40",
+    text: "text-amber-200",
+    accent: "bg-amber-500",
   },
-  gray: { bg: "bg-gray-100", border: "border-gray-300", text: "text-gray-700" },
+  gray: {
+    bg: "bg-slate-950/30",
+    border: "border-slate-700/40",
+    text: "text-slate-200",
+    accent: "bg-slate-500",
+  },
 };
 
 async function safeJson(res: Response) {
@@ -593,8 +619,9 @@ export function ProjectManager() {
                     key={project.id}
                     className="relative overflow-hidden hover:shadow-lg transition-shadow"
                   >
-                    {/* NOTE: prefer a safe mapping over dynamic Tailwind class names */}
-                    <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
+                    <div
+                      className={`absolute top-0 left-0 w-full h-1 ${colors.accent}`}
+                    />
 
                     <CardHeader className="pt-6">
                       <div className="flex items-start justify-between">
@@ -700,9 +727,6 @@ export function ProjectManager() {
                     </CardContent>
 
                     <CardFooter className="flex items-center justify-between gap-2">
-                      <Button asChild size="lg" variant="outline">
-                        <Link href={`/projects/${project.id}`}>Open</Link>
-                      </Button>
                       <Button asChild size="lg" variant="default">
                         <Link
                           href={`/projects/${project.id}/settings/integrations`}
@@ -765,171 +789,21 @@ export function ProjectManager() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {editingProject ? "Edit Project" : "Create New Project"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingProject
-                ? "Update your project details"
-                : "Create a new project to organize your test work"}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Project Name *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                placeholder="e.g., Mobile App v2.0"
-                maxLength={100}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-                placeholder="Describe this project..."
-                rows={3}
-                maxLength={500}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, status: value as ProjectStatus })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="on_hold">On Hold</SelectItem>
-                    <SelectItem value="archived">Archived</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="icon">Icon</Label>
-                <Select
-                  value={formData.icon}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, icon: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(projectIcons).map(([key, Icon]) => (
-                      <SelectItem key={key} value={key}>
-                        <div className="flex items-center gap-2">
-                          <Icon className="h-4 w-4" />
-                          {key}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Color</Label>
-              <div className="flex gap-2 flex-wrap">
-                {(Object.keys(colorClasses) as ProjectColor[]).map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, color })}
-                    className={`w-10 h-10 rounded-full ${colorClasses[color].bg} ${
-                      formData.color === color
-                        ? "ring-2 ring-offset-2 ring-primary"
-                        : ""
-                    }`}
-                    title={color}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="start_date">Start Date</Label>
-                <Input
-                  id="start_date"
-                  type="date"
-                  value={formData.start_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, start_date: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="target_end_date">Target End Date</Label>
-                <Input
-                  id="target_end_date"
-                  type="date"
-                  value={formData.target_end_date}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      target_end_date: e.target.value,
-                    })
-                  }
-                />
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowDialog(false);
-                setEditingProject(null);
-                resetForm();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={saveProject}
-              disabled={loading || !formData.name.trim()}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : editingProject ? (
-                "Update Project"
-              ) : (
-                "Create Project"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ProjectEditorDialog
+        open={showDialog}
+        mode={editingProject ? "edit" : "create"}
+        loading={loading}
+        formData={formData}
+        setFormData={setFormData}
+        onSave={saveProject}
+        onCancel={() => {
+          setShowDialog(false);
+          setEditingProject(null);
+          resetForm();
+        }}
+        projectIcons={projectIcons}
+        colorClasses={colorClasses}
+      />
     </div>
   );
 }

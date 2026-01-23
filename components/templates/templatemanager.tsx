@@ -61,6 +61,8 @@ import {
   Eye,
   Loader2,
 } from "lucide-react";
+import { TemplateEditorDialog } from "@/components/templates/template-editor-dialog";
+import type { TemplateFormData } from "@/components/templates/template-editor-dialog";
 
 // Types
 type TemplateCategory =
@@ -75,7 +77,6 @@ type TemplateCategory =
 interface TemplateContent {
   model: string;
   testCaseCount: number;
-  coverage: "standard" | "comprehensive" | "exhaustive";
   includeEdgeCases?: boolean;
   includeNegativeTests?: boolean;
   defaultSections?: string[];
@@ -84,6 +85,7 @@ interface TemplateContent {
 interface Template {
   id: string;
   user_id: string;
+  project_id?: string | null;
   name: string;
   description?: string | null;
   category: TemplateCategory;
@@ -94,17 +96,7 @@ interface Template {
   last_used_at?: string | null;
   created_at: string;
   updated_at: string;
-}
-
-interface TemplateFormData {
-  name: string;
-  description: string;
-  category: TemplateCategory;
-  model: string;
-  testCaseCount: number;
-  coverage: "standard" | "comprehensive" | "exhaustive";
-  includeEdgeCases: boolean;
-  includeNegativeTests: boolean;
+  test_types: string[];
 }
 
 const categoryIcons: Record<
@@ -188,9 +180,10 @@ export function TemplateManager() {
     category: "functional",
     model: "claude-sonnet-4-5",
     testCaseCount: 10,
-    coverage: "comprehensive",
+    test_types: ["happy-path", "negative", "boundary"],
     includeEdgeCases: true,
     includeNegativeTests: true,
+    project_id: null,
   });
 
   const canQuery = !authLoading && (activeTab === "public" || !!user);
@@ -283,9 +276,10 @@ export function TemplateManager() {
       category: "functional",
       model: "claude-sonnet-4-5",
       testCaseCount: 10,
-      coverage: "comprehensive",
+      test_types: ["happy-path", "negative", "boundary"],
       includeEdgeCases: true,
       includeNegativeTests: true,
+      project_id: null,
     });
   }
 
@@ -303,10 +297,11 @@ export function TemplateManager() {
       category: template.category,
       model: template.template_content.model,
       testCaseCount: template.template_content.testCaseCount,
-      coverage: template.template_content.coverage,
+      test_types: template.test_types ?? [],
       includeEdgeCases: template.template_content.includeEdgeCases ?? true,
       includeNegativeTests:
         template.template_content.includeNegativeTests ?? true,
+      project_id: template.project_id ?? null,
     });
     setShowDialog(true);
   }
@@ -330,12 +325,13 @@ export function TemplateManager() {
         template_content: {
           model: formData.model,
           testCaseCount: formData.testCaseCount,
-          coverage: formData.coverage,
           includeEdgeCases: formData.includeEdgeCases,
           includeNegativeTests: formData.includeNegativeTests,
         } satisfies TemplateContent,
+        test_types: formData.test_types ?? [],
         is_public: false,
         is_favorite: editingTemplate?.is_favorite ?? false,
+        project_id: formData.project_id || null,
       };
 
       const res = await fetch(
@@ -420,8 +416,10 @@ export function TemplateManager() {
           description: template.description ?? null,
           category: template.category,
           template_content: template.template_content,
+          test_types: template.test_types ?? [],
           is_public: false,
           is_favorite: false,
+          project_id: template.project_id ?? null,
         }),
       });
 
@@ -728,12 +726,25 @@ export function TemplateManager() {
                             )}
                           </span>
                         </div>
-                        <div className="flex justify-between">
-                          <span>Coverage:</span>
-                          <span className="capitalize">
-                            {template.template_content.coverage}
-                          </span>
-                        </div>
+                        {template.test_types?.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {template.test_types.slice(0, 3).map((tt) => (
+                              <Badge
+                                key={tt}
+                                variant="secondary"
+                                className="text-[10px]"
+                              >
+                                {tt}
+                              </Badge>
+                            ))}
+                            {template.test_types.length > 3 && (
+                              <Badge variant="outline" className="text-[10px]">
+                                +{template.test_types.length - 3}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+
                         <div className="flex justify-between">
                           <span>Used:</span>
                           <span>{template.usage_count} times</span>
@@ -855,270 +866,21 @@ export function TemplateManager() {
           )}
         </TabsContent>
       </Tabs>
-
-      {/* Create/Edit Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto w-[95vw] sm:max-w-3xl lg:max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>
-              {editingTemplate ? "Edit Template" : "Create New Template"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingTemplate
-                ? "Update your template settings"
-                : "Save your test generation preferences as a reusable template"}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-6 py-4">
-            {/* Basic Information */}
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Template Name *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  placeholder="e.g., API Security Tests"
-                  maxLength={100}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
-                  placeholder="Describe when to use this template..."
-                  rows={3}
-                  maxLength={500}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="category">Category *</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      category: value as TemplateCategory,
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="functional">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4" />
-                        Functional Testing
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="security">
-                      <div className="flex items-center gap-2">
-                        <Shield className="h-4 w-4" />
-                        Security Testing
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="performance">
-                      <div className="flex items-center gap-2">
-                        <Zap className="h-4 w-4" />
-                        Performance Testing
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="integration">
-                      <div className="flex items-center gap-2">
-                        <Globe className="h-4 w-4" />
-                        Integration Testing
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="regression">
-                      <div className="flex items-center gap-2">
-                        <GitBranch className="h-4 w-4" />
-                        Regression Testing
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="accessibility">
-                      <div className="flex items-center gap-2">
-                        <Eye className="h-4 w-4" />
-                        Accessibility Testing
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="other">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Other
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Generation Settings */}
-            <div className="space-y-4 pt-4 border-t">
-              <h4 className="font-medium">Generation Settings</h4>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="model">AI Model</Label>
-                  <Select
-                    value={formData.model}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, model: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="claude-sonnet-4-5">
-                        Claude Sonnet 4.5 (Recommended)
-                      </SelectItem>
-                      <SelectItem value="claude-haiku-4-5">
-                        Claude Haiku 4.5 (Fast)
-                      </SelectItem>
-                      <SelectItem value="claude-opus-4-5">
-                        Claude Opus 4.5 (Max Quality)
-                      </SelectItem>
-                      <SelectItem value="gpt-5-mini">
-                        GPT-5 Mini (Balanced)
-                      </SelectItem>
-                      <SelectItem value="gpt-5.2">GPT-5.2 (Premium)</SelectItem>
-                      <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                      <SelectItem value="gpt-4o-mini">
-                        GPT-4o Mini (Economical)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="testCaseCount">Number of Test Cases</Label>
-                  <Select
-                    value={String(formData.testCaseCount)}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, testCaseCount: Number(value) })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="5">5 test cases</SelectItem>
-                      <SelectItem value="10">10 test cases</SelectItem>
-                      <SelectItem value="15">15 test cases</SelectItem>
-                      <SelectItem value="20">20 test cases</SelectItem>
-                      <SelectItem value="30">30 test cases</SelectItem>
-                      <SelectItem value="50">50 test cases</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="coverage">Coverage Level</Label>
-                <Select
-                  value={formData.coverage}
-                  onValueChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      coverage: value as TemplateContent["coverage"],
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="standard">
-                      Standard - Main functionality
-                    </SelectItem>
-                    <SelectItem value="comprehensive">
-                      Comprehensive - Includes edge cases
-                    </SelectItem>
-                    <SelectItem value="exhaustive">
-                      Exhaustive - All scenarios
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Include Edge Cases</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Generate tests for boundary conditions
-                    </p>
-                  </div>
-                  <Switch
-                    checked={formData.includeEdgeCases}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, includeEdgeCases: checked })
-                    }
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Include Negative Tests</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Generate tests for error scenarios
-                    </p>
-                  </div>
-                  <Switch
-                    checked={formData.includeNegativeTests}
-                    onCheckedChange={(checked) =>
-                      setFormData({
-                        ...formData,
-                        includeNegativeTests: checked,
-                      })
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowDialog(false);
-                setEditingTemplate(null);
-                resetForm();
-              }}
-            >
-              Cancel
-            </Button>
-
-            <Button
-              onClick={saveTemplate}
-              disabled={loading || !formData.name.trim() || !user}
-              title={!user ? "Sign in to save templates" : undefined}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : editingTemplate ? (
-                "Update Template"
-              ) : (
-                "Create Template"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TemplateEditorDialog
+        open={showDialog}
+        onOpenChange={setShowDialog}
+        mode={editingTemplate ? "edit" : "create"}
+        saving={loading}
+        formData={formData}
+        setFormData={setFormData}
+        onCancel={() => {
+          setShowDialog(false);
+          setEditingTemplate(null);
+          resetForm();
+        }}
+        onSave={saveTemplate}
+      />
+      <div className="h-2" />
     </div>
   );
 }

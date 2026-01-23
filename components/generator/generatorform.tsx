@@ -117,7 +117,7 @@ type ProjectRowLite = {
 type BootstrapDefaults = {
   model?: string;
   count?: number;
-  coverage?: Coverage;
+  test_types?: string[];
 } | null;
 
 type BootstrapResponse = {
@@ -278,9 +278,12 @@ function clampTestCount(n: number, min = 1, max = 100) {
   return Math.max(min, Math.min(max, Math.floor(n)));
 }
 
-function coerceCoverage(v: unknown, fallback: Coverage): Coverage {
-  if (v === "standard" || v === "comprehensive" || v === "exhaustive") return v;
-  return fallback;
+function coerceTestTypes(v: unknown, fallback: string[] = []) {
+  if (!Array.isArray(v)) return fallback;
+
+  return v.filter((x): x is string => {
+    return typeof x === "string" && x.trim().length > 0;
+  });
 }
 
 /**
@@ -314,7 +317,7 @@ function useGeneratorBootstrap(userId: string | undefined) {
           headers: { "Content-Type": "application/json" },
           signal: ac.signal,
           cache: "no-store",
-        }
+        },
       );
 
       const data = (await res.json()) as Partial<BootstrapResponse> & {
@@ -332,7 +335,7 @@ function useGeneratorBootstrap(userId: string | undefined) {
         throw new Error(
           data?.error ||
             data?.details ||
-            `Bootstrap failed (HTTP ${res.status})`
+            `Bootstrap failed (HTTP ${res.status})`,
         );
       }
 
@@ -425,8 +428,11 @@ export function GeneratorForm() {
   const [generationDescription, setGenerationDescription] = useState("");
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [projectSource, setProjectSource] = useState<"none" | "requirement">(
-    "none"
+    "none",
   );
+  const [crossPlatformTestTypes, setCrossPlatformTestTypes] = useState<
+    string[]
+  >(["happy-path", "negative", "boundary"]);
 
   // Apply defaults from bootstrap once
   const defaultsAppliedRef = useRef(false);
@@ -437,15 +443,24 @@ export function GeneratorForm() {
     // Only apply if user hasn't started editing (conservative)
     setModel(defaults.model || "claude-sonnet-4-5");
     setTestCaseCount(String(clampTestCount(defaults.count ?? 10, 1, 100)));
-    setCoverage(coerceCoverage(defaults.coverage, "comprehensive"));
-
+    setSelectedTestTypes(
+      coerceTestTypes(defaults.test_types, [
+        "happy-path",
+        "negative",
+        "boundary",
+      ]),
+    );
     // Cross-platform defaults can mirror regular defaults (optional)
     setCrossPlatformModel(defaults.model || "claude-sonnet-4-5");
     setCrossPlatformTestCount(
-      String(clampTestCount(defaults.count ?? 10, 1, 100))
+      String(clampTestCount(defaults.count ?? 10, 1, 100)),
     );
-    setCrossPlatformCoverage(
-      coerceCoverage(defaults.coverage, "comprehensive")
+    setCrossPlatformTestTypes(
+      coerceTestTypes(defaults.test_types, [
+        "happy-path",
+        "negative",
+        "boundary",
+      ]),
     );
 
     defaultsAppliedRef.current = true;
@@ -510,7 +525,7 @@ export function GeneratorForm() {
         }
       }
     },
-    [availableRequirements, selectedRequirement]
+    [availableRequirements, selectedRequirement],
   );
 
   const handleTemplateSelect = useCallback(
@@ -523,7 +538,7 @@ export function GeneratorForm() {
       setTestCaseCount(String(settings.testCaseCount));
       setCoverage(settings.coverage);
     },
-    []
+    [],
   );
 
   const handleCrossPlatformTemplateSelect = useCallback(
@@ -538,7 +553,7 @@ export function GeneratorForm() {
 
       toast.success(`Template "${template.name}" applied to all platforms`);
     },
-    []
+    [],
   );
 
   const togglePlatform = useCallback((platformId: string) => {
@@ -559,7 +574,7 @@ export function GeneratorForm() {
     (platformId: string, framework: string) => {
       setSelectedFrameworks((prev) => ({ ...prev, [platformId]: framework }));
     },
-    []
+    [],
   );
 
   async function handleRegularSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -643,7 +658,7 @@ export function GeneratorForm() {
         throw new Error(
           data.error ||
             data.details ||
-            `HTTP ${response.status}: Failed to generate test cases`
+            `HTTP ${response.status}: Failed to generate test cases`,
         );
       }
 
@@ -665,7 +680,7 @@ export function GeneratorForm() {
   }
 
   async function handleCrossPlatformSubmit(
-    e: React.FormEvent<HTMLFormElement>
+    e: React.FormEvent<HTMLFormElement>,
   ) {
     e.preventDefault();
     setSubmitting(true);
@@ -712,7 +727,7 @@ export function GeneratorForm() {
         testCaseCount: clampTestCount(
           parseInt(crossPlatformTestCount, 10),
           1,
-          100
+          100,
         ),
         coverage: crossPlatformCoverage,
         template: crossPlatformTemplate?.id || null,
@@ -772,7 +787,7 @@ export function GeneratorForm() {
         throw new Error(
           data.error ||
             data.details ||
-            `Failed to generate cross-platform tests`
+            `Failed to generate cross-platform tests`,
         );
       }
 
@@ -1109,7 +1124,7 @@ export function GeneratorForm() {
 
               {/* Settings row */}
               {!templateApplied && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* AI Model */}
                   <div className="space-y-2">
                     <Label htmlFor="model">AI Model</Label>
@@ -1170,7 +1185,7 @@ export function GeneratorForm() {
                   </div>
 
                   {/* Coverage */}
-                  <div className="space-y-2">
+                  <div className="space-y-2 md:col-span-3">
                     <Label
                       htmlFor="test-types"
                       className="text-base font-medium"
@@ -1255,7 +1270,7 @@ export function GeneratorForm() {
               </div>
 
               {/* IMPORTANT: wire these to crossPlatform* state (bugfix) */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="crossPlatformModel">AI Model</Label>
                   <Select
@@ -1316,27 +1331,22 @@ export function GeneratorForm() {
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="crossPlatformCoverage">Coverage Level</Label>
-                  <Select
-                    name="crossPlatformCoverage"
-                    value={crossPlatformCoverage}
-                    onValueChange={(value) =>
-                      setCrossPlatformCoverage(value as Coverage)
-                    }
+                <div className="space-y-2 md:col-span-3">
+                  <Label className="text-base font-medium">
+                    Test Types <span className="text-destructive">*</span>
+                  </Label>
+
+                  <TestTypeMultiselect
+                    value={crossPlatformTestTypes}
+                    onChange={setCrossPlatformTestTypes}
                     disabled={pageBusy}
-                  >
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select coverage" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="standard">Standard</SelectItem>
-                      <SelectItem value="comprehensive">
-                        Comprehensive
-                      </SelectItem>
-                      <SelectItem value="exhaustive">Exhaustive</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    placeholder="Select test types to generate..."
+                  />
+
+                  <p className="text-xs text-muted-foreground">
+                    Select which types of test cases to generate. Applies to all
+                    selected platforms.
+                  </p>
                 </div>
               </div>
 
@@ -1414,7 +1424,7 @@ export function GeneratorForm() {
                                         >
                                           {framework}
                                         </SelectItem>
-                                      )
+                                      ),
                                     )}
                                   </SelectContent>
                                 </Select>
