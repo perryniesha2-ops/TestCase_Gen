@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   if (!expected) {
     return NextResponse.json(
       { error: "Password not configured" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -18,12 +18,11 @@ export async function POST(req: Request) {
 
   const res = NextResponse.json({ ok: true });
 
-  // Set a cookie so we remember they passed the gate
   res.cookies.set("beta_auth", "true", {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 30, // 30 days
+    maxAge: 60 * 60 * 24 * 30,
     path: "/",
   });
 
