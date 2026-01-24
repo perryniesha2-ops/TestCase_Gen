@@ -19,6 +19,8 @@ export default function ProjectManagerPage() {
         <main className="mt-6 flex-1 w-full">
           <ProjectManager />
         </main>
+        <div className="h-4" />
+
         <SiteFooter />
       </div>
     </div>

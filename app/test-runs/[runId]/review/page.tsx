@@ -26,6 +26,8 @@ export default async function RunReviewRoute({ params }: PageProps) {
         <main className="mt-6 flex-1 w-full">
           <RunReviewPage runId={runId} />
         </main>
+        <div className="h-4" />
+
         <SiteFooter />
       </div>
     </div>
