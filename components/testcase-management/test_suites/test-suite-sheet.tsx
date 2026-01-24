@@ -132,12 +132,6 @@ export function TestSuiteSheet({
 
                 {/* Danger zone */}
                 <div className="rounded-lg border border-destructive/40 bg-background">
-                  <div className="border-b px-4 py-3">
-                    <p className="text-sm font-medium text-destructive">
-                      Danger zone
-                    </p>
-                  </div>
-
                   <div className="px-4 py-4 space-y-3">
                     <Button
                       size="sm"

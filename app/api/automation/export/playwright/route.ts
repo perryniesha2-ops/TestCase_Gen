@@ -17,7 +17,7 @@ type TestCaseRow = {
   description: string | null;
   test_type: string | null;
   expected_result: string | null;
-  test_steps: unknown; // can be JSON array / string / object
+  test_steps: unknown;
 };
 
 type SuiteRow = {
@@ -46,7 +46,6 @@ function safeSlug(input: string) {
 function parseSteps(raw: unknown): TestStep[] {
   if (!raw) return [];
 
-  // Already an array
   if (Array.isArray(raw)) {
     return raw
       .map((s: any) => ({
@@ -59,7 +58,6 @@ function parseSteps(raw: unknown): TestStep[] {
       .filter((s) => s.action.length > 0 || s.expected.length > 0);
   }
 
-  // Stored as JSON string
   if (typeof raw === "string") {
     try {
       return parseSteps(JSON.parse(raw));
@@ -68,7 +66,6 @@ function parseSteps(raw: unknown): TestStep[] {
     }
   }
 
-  // Stored as object keyed by index
   if (typeof raw === "object") {
     try {
       const arr = Object.values(raw as Record<string, any>);
@@ -82,7 +79,6 @@ function parseSteps(raw: unknown): TestStep[] {
 }
 
 function escapeTemplateLiteral(s: string) {
-  // Avoid breaking generated TS template strings
   return s.replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
 }
 
@@ -154,7 +150,6 @@ test-results
 }
 
 function renderPackageJson() {
-  // Keep this stable; bump versions later as needed.
   return JSON.stringify(
     {
       name: "synthqa-playwright",
@@ -172,7 +167,7 @@ function renderPackageJson() {
       },
     },
     null,
-    2
+    2,
   );
 }
 
@@ -191,7 +186,7 @@ function renderTsconfig() {
       include: ["tests", "playwright.config.ts", "synthqa"],
     },
     null,
-    2
+    2,
   );
 }
 
@@ -222,7 +217,6 @@ function renderCaseSpec(opts: {
   caseId: string;
   title: string;
 }) {
-  // Each case reads its JSON snapshot from synthqa/cases/<caseKey>.json
   return `import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
@@ -295,13 +289,12 @@ export async function POST(req: Request) {
     if (!suiteId) {
       return NextResponse.json(
         { ok: false, error: "Missing suiteId" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const supabase = await createClient();
 
-    // Auth check (Option 1 expects user-initiated export)
     const {
       data: { user },
       error: userErr,
@@ -309,13 +302,13 @@ export async function POST(req: Request) {
     if (userErr) {
       return NextResponse.json(
         { ok: false, error: userErr.message },
-        { status: 401 }
+        { status: 401 },
       );
     }
     if (!user) {
       return NextResponse.json(
         { ok: false, error: "Not authenticated" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -329,7 +322,7 @@ export async function POST(req: Request) {
     if (suiteErr || !suite) {
       return NextResponse.json(
         { ok: false, error: suiteErr?.message || "Suite not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -337,7 +330,7 @@ export async function POST(req: Request) {
     const { data: suiteLinks, error: linksErr } = await supabase
       .from("test_suite_cases")
       .select(
-        "id, test_case_id, sequence_order, priority, estimated_duration_minutes"
+        "id, test_case_id, sequence_order, priority, estimated_duration_minutes",
       )
       .eq("suite_id", suiteId)
       .order("sequence_order", { ascending: true })
@@ -346,14 +339,14 @@ export async function POST(req: Request) {
     if (linksErr) {
       return NextResponse.json(
         { ok: false, error: linksErr.message },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
     if (!suiteLinks || suiteLinks.length === 0) {
       return NextResponse.json(
         { ok: false, error: "No test cases linked to this suite" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -369,13 +362,12 @@ export async function POST(req: Request) {
     if (casesErr) {
       return NextResponse.json(
         { ok: false, error: casesErr.message },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
     const tcMap = new Map((testCases || []).map((tc) => [tc.id, tc]));
 
-    // Build ordered list in suite sequence
     const ordered = suiteLinks
       .map((link, idx) => {
         const tc = tcMap.get(link.test_case_id);
@@ -383,7 +375,7 @@ export async function POST(req: Request) {
         const steps = parseSteps(tc.test_steps);
         const caseKey = `${String(link.sequence_order ?? idx + 1).padStart(
           3,
-          "0"
+          "0",
         )}-${safeSlug(tc.title)}-${tc.id.slice(0, 8)}`;
 
         return {
@@ -417,7 +409,7 @@ export async function POST(req: Request) {
         suiteName: suite.name,
         suiteId: suite.id,
         caseCount: ordered.length,
-      })
+      }),
     );
 
     // Suite snapshot
@@ -439,7 +431,6 @@ export async function POST(req: Request) {
     };
     add("synthqa/suite.json", JSON.stringify(suiteSnapshot, null, 2));
 
-    // Case JSON snapshots + spec files
     for (const o of ordered) {
       const caseJson = {
         id: o.tc.id,
@@ -462,7 +453,7 @@ export async function POST(req: Request) {
           caseKey: o.caseKey,
           caseId: o.tc.id,
           title: o.tc.title,
-        })
+        }),
       );
     }
 
@@ -482,7 +473,7 @@ export async function POST(req: Request) {
     console.error("[export/playwright] error:", e);
     return NextResponse.json(
       { ok: false, error: e?.message || "Export failed" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

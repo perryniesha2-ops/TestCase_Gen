@@ -11,7 +11,6 @@ export async function GET() {
     error,
   } = await supabase.auth.getUser();
 
-  // Return 200 with user:null (easier for client than 401 in this specific endpoint)
   if (error || !user) {
     return NextResponse.json({ user: null });
   }

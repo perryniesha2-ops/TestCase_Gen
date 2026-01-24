@@ -4,7 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { headers } from "next/headers";
 import Stripe from "stripe";
 
-// FIXED: Use stable API version
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-11-17.clover",
 });
@@ -37,7 +36,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // IMPROVEMENT: Verify customer exists in Stripe
     try {
       await stripe.customers.retrieve(profile.stripe_customer_id);
     } catch (error) {
@@ -48,7 +46,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get return URL from request headers
     const headersList = await headers();
     const origin =
       headersList.get("origin") ||
