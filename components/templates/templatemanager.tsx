@@ -809,7 +809,10 @@ export function TemplateManager() {
                       <div className="flex items-start gap-2">
                         <CategoryIcon className="h-5 w-5 text-muted-foreground mt-0.5" />
                         <div className="flex-1 min-w-0">
-                          <CardTitle className="text-lg truncate">
+                          <CardTitle
+                            className="text-lg leading-snug line-clamp-2 break-words"
+                            title={template.name}
+                          >
                             {template.name}
                           </CardTitle>
                           {template.description && (
