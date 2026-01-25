@@ -38,6 +38,8 @@ import {
   Save,
   Eye,
   EyeOff,
+  KeyRound, RefreshCw,
+  Copy,
 } from "lucide-react";
 import {
   Dialog,
@@ -100,6 +102,13 @@ const MODEL_KEYS = new Set<ModelKey>([
 function isModelKey(v: unknown): v is ModelKey {
   return typeof v === "string" && MODEL_KEYS.has(v as ModelKey);
 }
+
+function randomHex(bytes = 32) {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 
 const MODEL_LABELS: Record<ModelKey, string> = {
   "claude-sonnet-4-5": "Claude Sonnet 4.5",
@@ -200,6 +209,12 @@ export default function SettingsPage() {
   const [themePref, setThemePref] = useState<ThemeOption>("system");
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
+
+  //api key
+  const [apiKeyPlain, setApiKeyPlain] = useState<string | null>(null);
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [apiKeyLoading, setApiKeyLoading] = useState(false);
+
   const [marketingEmails, setMarketingEmails] = useState(false);
 
   const [defaultModel, setDefaultModel] =
@@ -432,6 +447,56 @@ export default function SettingsPage() {
     }
   }
 
+  // In your settings page component
+  async function generateApiKey() {
+    setApiKeyLoading(true);
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      const authUser = auth.user;
+      if (!authUser) {
+        toast.error("You must be signed in to generate an API key.");
+        return;
+      }
+
+      // Example key format: synthqa_<64 hex chars>
+      const apiKey = `synthqa_${randomHex(32)}`;
+
+      // Save to user_profiles (NOTE: your PK seems to be `id`)
+      const { error } = await supabase
+          .from("user_profiles")
+          .update({
+            api_key: apiKey,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", authUser.id);
+
+      if (error) throw error;
+
+
+      setApiKeyPlain(apiKey);
+      setApiKeyVisible(true);
+
+      toast.success("API key generated!", {
+        description: "Copy this key now — you won't see it again.",
+      });
+    } catch (err) {
+      console.error("generateApiKey error:", err);
+      toast.error("Failed to generate API key");
+    } finally {
+      setApiKeyLoading(false);
+    }
+  }
+
+  async function copyApiKey() {
+    if (!apiKeyPlain) return;
+    try {
+      await navigator.clipboard.writeText(apiKeyPlain);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  }
+
   async function handleChangePassword() {
     if (!currentPassword || !newPassword || !confirmPassword) {
       toast.error("Please fill in all password fields");
@@ -515,7 +580,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="profile" className="flex items-center gap-2">
             <User className="h-4 w-4" />
             Profile
@@ -535,7 +600,13 @@ export default function SettingsPage() {
             <Shield className="h-4 w-4" />
             Security
           </TabsTrigger>
+          <TabsTrigger value="api" className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4" />
+            API Keys
+          </TabsTrigger>
+
         </TabsList>
+
 
         {/* Profile */}
         <TabsContent value="profile" className="space-y-6">
@@ -934,6 +1005,197 @@ export default function SettingsPage() {
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/*API*/}
+        {/*API Keys Tab*/}
+        <TabsContent value="api" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>API Integration</CardTitle>
+              <CardDescription>
+                Use these credentials to sync Playwright test results back to SynthQA
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-6">
+              {/* API Key Section */}
+              <div className="space-y-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">API Key</p>
+                    <p className="text-xs text-muted-foreground">
+                      Generate a key to authenticate your test exports
+                    </p>
+                  </div>
+
+                  <Button
+                      variant="outline"
+                      onClick={generateApiKey}
+                      disabled={apiKeyLoading}
+                  >
+                    {apiKeyLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Generating...
+                        </>
+                    ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Generate New Key
+                        </>
+                    )}
+                  </Button>
+                </div>
+
+                {!apiKeyPlain ? (
+                    <div className="rounded-lg border bg-muted/40 p-4">
+                      <p className="text-sm text-muted-foreground">
+                        No key generated yet. Click{" "}
+                        <span className="font-medium">Generate New Key</span> to create
+                        one.
+                      </p>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor="apiKey">Your API Key</Label>
+                      <div className="relative">
+                        <Input
+                            id="apiKey"
+                            readOnly
+                            value={
+                              apiKeyVisible
+                                  ? apiKeyPlain
+                                  : "•".repeat(Math.min(apiKeyPlain.length, 48))
+                            }
+                            className="pr-28 font-mono text-sm"
+                        />
+                        <div className="absolute right-1 top-1 flex gap-1">
+                          <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setApiKeyVisible((v) => !v)}
+                          >
+                            {apiKeyVisible ? (
+                                <EyeOff className="h-4 w-4" />
+                            ) : (
+                                <Eye className="h-4 w-4" />
+                            )}
+                          </Button>
+
+                          <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={copyApiKey}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-destructive font-medium">
+                        ⚠️ Save this key securely - you won't see it again after leaving
+                        this page
+                      </p>
+                    </div>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Webhook URL Section */}
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Webhook URL</p>
+                  <p className="text-xs text-muted-foreground">
+                    Use this URL in your Playwright exports to sync test results
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="webhookUrl">Webhook Endpoint</Label>
+                  <div className="relative">
+                    <Input
+                        id="webhookUrl"
+                        readOnly
+                        value={`${window.location.origin}/api/automation/webhook/results`}
+                        className="pr-12 font-mono text-sm"
+                    />
+                    <div className="absolute right-1 top-1">
+                      <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(
+                                  `${window.location.origin}/api/automation/webhook/results`
+                              );
+                              toast.success("Webhook URL copied to clipboard");
+                            } catch {
+                              toast.error("Failed to copy");
+                            }
+                          }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Usage Instructions */}
+              <div className="rounded-lg border bg-blue-50 dark:bg-blue-950/20 p-4 space-y-3">
+                <div className="flex items-start gap-2">
+                  <KeyRound className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                      How to Use These Credentials
+                    </p>
+                    <ol className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-decimal list-inside">
+                      <li>Export a test suite to Playwright</li>
+                      <li>
+                        Add these values to your <code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded">.env</code> file:
+                      </li>
+                    </ol>
+                    <div className="mt-2 p-3 bg-blue-100 dark:bg-blue-900 rounded font-mono text-xs space-y-1">
+                      <div>
+                        SYNTHQA_WEBHOOK_URL="
+                        {window.location.origin}/api/automation/webhook/results"
+                      </div>
+                      <div>SYNTHQA_API_KEY="{apiKeyPlain || "your_api_key_here"}"</div>
+                    </div>
+                    <p className="text-sm text-blue-800 dark:text-blue-200 mt-2">
+                      Your test results will automatically sync back to SynthQA after
+                      each run.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Security Notice */}
+              <div className="rounded-lg border border-yellow-200 bg-yellow-50 dark:bg-yellow-950/20 dark:border-yellow-900 p-4">
+                <div className="flex items-start gap-2">
+                  <Shield className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
+                      Security Best Practices
+                    </p>
+                    <ul className="text-sm text-yellow-800 dark:text-yellow-200 space-y-1 list-disc list-inside">
+                      <li>Never commit your API key to version control</li>
+                      <li>Add <code className="px-1 py-0.5 bg-yellow-100 dark:bg-yellow-900 rounded">.env</code> to your <code className="px-1 py-0.5 bg-yellow-100 dark:bg-yellow-900 rounded">.gitignore</code></li>
+                      <li>Regenerate the key immediately if it's exposed</li>
+                      <li>Use environment variables in CI/CD pipelines</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -67,8 +67,8 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
   { name: "Projects", href: "/project-manager", icon: Newspaper },
   { name: "Requirements", href: "/requirements", icon: BarChart3 },
-  { name: "Test Cases", href: "/test-cases", icon: FileText },
   { name: "Generate Tests", href: "/generate", icon: FlaskConical },
+  { name: "Test Cases", href: "/test-cases", icon: FileText },
   { name: "Test Suites", href: "/test-library", icon: Library },
   { name: "Templates", href: "/template-manager", icon: Layout },
 ];

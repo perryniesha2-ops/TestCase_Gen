@@ -18,6 +18,18 @@ interface ImportedRequirement {
   tags?: string[];
 }
 
+class ImportValidationError extends Error {
+  code: string;
+  meta?: any;
+
+  constructor(code: string, message: string, meta?: any) {
+    super(message);
+    this.code = code;
+    this.meta = meta;
+  }
+}
+
+
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();
@@ -63,15 +75,30 @@ export async function POST(req: Request) {
         );
       }
     } catch (parseError: any) {
-      console.error("❌ Parse error:", parseError);
+      // "Negative test" scenario: file is valid, but not importable as requirements
+      if (parseError instanceof ImportValidationError) {
+        return NextResponse.json(
+            {
+              error: "File is valid but not importable",
+              code: parseError.code,
+              details: parseError.message,
+              meta: parseError.meta ?? null,
+            },
+            { status: 400 },
+        );
+      }
+
+      // True parsing failures (invalid JSON, unreadable CSV, etc.)
       return NextResponse.json(
-        {
-          error: "Failed to parse file",
-          details: parseError?.message || "Unknown error",
-        },
-        { status: 400 },
+          {
+            error: "Failed to parse file",
+            code: "PARSE_ERROR",
+            details: parseError?.message || "Unknown error",
+          },
+          { status: 400 },
       );
     }
+
 
     console.log(`📋 Parsed ${requirements.length} requirements`);
 
@@ -102,7 +129,6 @@ export async function POST(req: Request) {
             external_id: req.external_id || null,
             acceptance_criteria: req.acceptance_criteria || null,
             source: req.source,
-            tags: req.tags || [],
             metadata: {
               imported_at: new Date().toISOString(),
               import_source: source,
@@ -301,38 +327,60 @@ function parseExcel(buffer: Buffer, source: string): ImportedRequirement[] {
 
 // ===== JSON PARSER =====
 function parseJSON(content: string, source: string): ImportedRequirement[] {
-  const data = JSON.parse(content);
-  const requirements: ImportedRequirement[] = [];
-
-  let items: any[] = [];
-
-  // Handle different JSON structures
-  if (Array.isArray(data)) {
-    items = data;
-  } else if (data.issues && Array.isArray(data.issues)) {
-    // Jira format
-    items = data.issues;
-  } else if (data.results && Array.isArray(data.results)) {
-    // Confluence format
-    items = data.results;
-  } else if (data.value && Array.isArray(data.value)) {
-    // Azure DevOps format
-    items = data.value;
-  } else {
-    throw new Error("Unrecognized JSON format");
+  let data: any;
+  try {
+    data = JSON.parse(content);
+  } catch (e: any) {
+    // Truly invalid JSON
+    throw new ImportValidationError(
+        "INVALID_JSON",
+        e?.message || "Invalid JSON",
+    );
   }
 
-  for (const item of items) {
+  let items: any[] | null = null;
+
+  // Handle different JSON structures (known exports)
+  if (Array.isArray(data)) {
+    items = data;
+  } else if (Array.isArray(data?.issues)) {
     // Jira format
+    items = data.issues;
+  } else if (Array.isArray(data?.results)) {
+    // Confluence format
+    items = data.results;
+  } else if (Array.isArray(data?.value)) {
+    // Azure DevOps format
+    items = data.value;
+  }
+
+  // Negative test: valid JSON but wrong shape (e.g., package.json)
+  if (!items) {
+    const topLevelKeys =
+        data && typeof data === "object" && !Array.isArray(data)
+            ? Object.keys(data).slice(0, 20)
+            : [];
+
+    throw new ImportValidationError(
+        "UNSUPPORTED_JSON_SHAPE",
+        "JSON parsed successfully, but it does not appear to be a requirements export. Expected an array, or an object containing one of: issues[], results[], value[].",
+        { topLevelKeys },
+    );
+  }
+
+  const requirements: ImportedRequirement[] = [];
+
+  for (const item of items) {
+    // Jira / generic item mapping
     const title =
-      item.title || item.summary || item.fields?.summary || item.System?.Title;
+        item.title || item.summary || item.fields?.summary || item.System?.Title;
 
     const description =
-      item.description ||
-      item.body ||
-      item.fields?.description ||
-      item.System?.Description ||
-      item.fields?.description?.content?.[0]?.content?.[0]?.text; // Jira Atlassian doc format
+        item.description ||
+        item.body ||
+        item.fields?.description ||
+        item.System?.Description ||
+        item.fields?.description?.content?.[0]?.content?.[0]?.text;
 
     if (!title || !description) continue;
 
@@ -340,21 +388,30 @@ function parseJSON(content: string, source: string): ImportedRequirement[] {
       title: String(title).trim(),
       description: String(description).trim(),
       type: normalizeType(
-        item.type || item.fields?.issuetype?.name || item.System?.WorkItemType,
+          item.type || item.fields?.issuetype?.name || item.System?.WorkItemType,
       ),
       priority: normalizePriority(
-        item.priority || item.fields?.priority?.name || item.System?.Priority,
+          item.priority || item.fields?.priority?.name || item.System?.Priority,
       ),
       status: normalizeStatus(
-        item.status || item.fields?.status?.name || item.System?.State,
+          item.status || item.fields?.status?.name || item.System?.State,
       ),
       external_id: item.key || item.id || String(item.System?.Id || ""),
       source,
     });
   }
 
+  // Negative test: correct container, but nothing importable
+  if (requirements.length === 0) {
+    throw new ImportValidationError(
+        "NO_IMPORTABLE_ROWS",
+        "JSON parsed successfully, but no items contained both a title and a description.",
+    );
+  }
+
   return requirements;
 }
+
 
 // ===== HELPER FUNCTIONS =====
 function findColumn(headers: string[], candidates: string[]): number {
