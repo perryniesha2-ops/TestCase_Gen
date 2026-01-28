@@ -496,13 +496,15 @@ function buildInsertRow(args: {
   platformId: PlatformId;
   framework: string;
   tc: PlatformTestCase;
+  userId: string;
 }) {
-  const { suiteId, platformId, framework, tc } = args;
+  const { suiteId, platformId, framework, tc, userId } = args;
   const isApi = platformId === "api";
 
   // For API platform, validate that we have required fields
   if (isApi) {
     if (!tc.api || !tc.api.method || !tc.api.path) {
+      console.error("Invalid API spec for test case:", tc.title, tc.api);
       throw new Error(
         `API test case "${tc.title}" missing method or path. Got: ${JSON.stringify(tc.api)}`,
       );
@@ -528,6 +530,7 @@ function buildInsertRow(args: {
     priority: normalizePriority(tc.priority),
     execution_status: "not_run" as const,
     automation_metadata,
+    user_id: userId,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -754,6 +757,7 @@ Return plain text test cases (no JSON).`;
             platformId,
             framework,
             tc,
+            userId: user.id,
           }),
         );
 
