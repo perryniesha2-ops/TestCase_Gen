@@ -34,6 +34,7 @@ export async function middleware(request: NextRequest) {
     "/forgot-password",
     "/reset-password",
     "/confirm-email",
+    "/resend-confirmation",
     "/pricing",
     "/privacy",
     "/terms",
