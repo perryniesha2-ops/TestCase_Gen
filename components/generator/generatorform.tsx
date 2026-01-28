@@ -29,7 +29,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { TestTypeMultiselect } from "@/components/generator/testtype-multiselect";
+import {
+  TestTypeMultiselect,
+  CanonicalTestType,
+} from "@/components/generator/testtype-multiselect";
 
 import {
   Loader2,
@@ -273,6 +276,34 @@ function mapRequirementsToOptions(rows: RequirementRow[]): RequirementOption[] {
   }));
 }
 
+const CANONICAL = new Set<CanonicalTestType>([
+  "happy-path",
+  "negative",
+  "security",
+  "boundary",
+  "edge-case",
+  "performance",
+  "integration",
+  "regression",
+  "smoke",
+]);
+
+function coerceCanonicalTestTypes(
+  v: unknown,
+  fallback: CanonicalTestType[] = ["happy-path"],
+): CanonicalTestType[] {
+  if (!Array.isArray(v)) return fallback;
+
+  const out = v
+    .filter((x): x is string => typeof x === "string")
+    .map((s) => s.trim())
+    .filter((s): s is CanonicalTestType =>
+      CANONICAL.has(s as CanonicalTestType),
+    );
+
+  return out.length > 0 ? out : fallback;
+}
+
 function clampTestCount(n: number, min = 1, max = 100) {
   if (!Number.isFinite(n)) return min;
   return Math.max(min, Math.min(max, Math.floor(n)));
@@ -404,11 +435,9 @@ export function GeneratorForm() {
   const [includeSecurityTests, setIncludeSecurityTests] = useState(false);
   const [includeBoundaryTests, setIncludeBoundaryTests] = useState(true);
   const [exportFormat, setExportFormat] = useState<string>("standard");
-  const [selectedTestTypes, setSelectedTestTypes] = useState<string[]>([
-    "happy-path",
-    "negative",
-    "boundary",
-  ]);
+  const [selectedTestTypes, setSelectedTestTypes] = useState<
+    CanonicalTestType[]
+  >(["happy-path", "negative", "boundary"]);
 
   // Cross-platform state
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
@@ -444,12 +473,13 @@ export function GeneratorForm() {
     setModel(defaults.model || "claude-sonnet-4-5");
     setTestCaseCount(String(clampTestCount(defaults.count ?? 10, 1, 100)));
     setSelectedTestTypes(
-      coerceTestTypes(defaults.test_types, [
+      coerceCanonicalTestTypes(defaults.test_types, [
         "happy-path",
         "negative",
         "boundary",
       ]),
     );
+
     // Cross-platform defaults can mirror regular defaults (optional)
     setCrossPlatformModel(defaults.model || "claude-sonnet-4-5");
     setCrossPlatformTestCount(
@@ -621,7 +651,7 @@ export function GeneratorForm() {
           mode === "saved" && selectedReqData ? selectedRequirement : null,
         model: model.trim(),
         testCaseCount: testCaseCountNum,
-        coverage: coverage,
+        testTypes: selectedTestTypes,
         template: selectedTemplate?.id || null,
         title: generationTitle.trim(),
         description: generationDescription?.trim() || null,

@@ -20,6 +20,20 @@ import {
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 
+/**
+ * Keep this aligned with your backend TEST_TYPE_INSTRUCTIONS keys.
+ */
+export type CanonicalTestType =
+  | "happy-path"
+  | "negative"
+  | "security"
+  | "boundary"
+  | "edge-case"
+  | "performance"
+  | "integration"
+  | "regression"
+  | "smoke";
+
 export type PlatformId =
   | "web"
   | "mobile"
@@ -28,7 +42,7 @@ export type PlatformId =
   | "performance";
 
 export type TestType = {
-  value: string;
+  value: CanonicalTestType;
   label: string;
   description: string;
   icon?: React.ReactNode;
@@ -37,13 +51,12 @@ export type TestType = {
 };
 
 export const TEST_TYPES: TestType[] = [
-  // Web / Mobile shared
   {
-    value: "functional",
-    label: "Functional",
+    value: "happy-path",
+    label: "Happy Path",
     description: "Primary flows with valid inputs and expected behavior",
     recommended: true,
-    platforms: ["web", "mobile"],
+    platforms: ["web", "mobile", "api", "accessibility", "performance"],
   },
   {
     value: "negative",
@@ -53,215 +66,53 @@ export const TEST_TYPES: TestType[] = [
     platforms: ["web", "mobile", "api"],
   },
   {
-    value: "edge-boundary",
-    label: "Edge/Boundary",
-    description: "Limits, min/max values, edge conditions",
+    value: "boundary",
+    label: "Boundary",
+    description: "Min/max limits, constraints, length/value boundaries",
     recommended: true,
     platforms: ["web", "mobile", "api"],
   },
   {
-    value: "validation",
-    label: "Validation",
-    description: "Required fields, formats, business rules, error messages",
+    value: "edge-case",
+    label: "Edge Case",
+    description: "Unusual but valid scenarios, rare sequences, odd combos",
     recommended: true,
-    platforms: ["web"],
+    platforms: ["web", "mobile", "api"],
   },
   {
-    value: "regression-smoke",
-    label: "Regression/Smoke",
-    description: "Critical path and core workflow confidence",
+    value: "security",
+    label: "Security",
+    description: "Auth/session, access control, injection/XSS basics",
     recommended: true,
-    platforms: ["web", "mobile"],
+    platforms: ["web", "api"],
   },
   {
-    value: "ui-ux-basic",
-    label: "UI/UX (Basic)",
-    description: "Layout, responsiveness, basic usability checks",
-    recommended: true,
-    platforms: ["web"],
+    value: "integration",
+    label: "Integration",
+    description: "Cross-service interactions, third-party, data flow checks",
+    recommended: false,
+    platforms: ["web", "mobile", "api"],
   },
   {
-    value: "security-basic",
-    label: "Security (Basic)",
-    description: "Auth/session, basic access control, logout/session expiry",
+    value: "regression",
+    label: "Regression",
+    description: "Core functionality still works after changes",
     recommended: true,
-    platforms: ["web"],
+    platforms: ["web", "mobile", "api"],
   },
   {
-    value: "accessibility-basic",
-    label: "Accessibility (Basic)",
-    description: "Keyboard and focus basics for core flows",
+    value: "smoke",
+    label: "Smoke",
+    description: "Critical path sanity checks to confirm build is testable",
     recommended: true,
-    platforms: ["web"],
-  },
-
-  // Mobile specific
-  {
-    value: "offline-network",
-    label: "Offline/Network Loss",
-    description: "Airplane mode, flaky networks, retry and recovery behavior",
-    recommended: true,
-    platforms: ["mobile"],
+    platforms: ["web", "mobile", "api"],
   },
   {
-    value: "permissions",
-    label: "Permissions",
-    description: "Camera/location/notifications flows and denial handling",
-    recommended: true,
-    platforms: ["mobile"],
-  },
-  {
-    value: "device-os",
-    label: "Device/OS Compatibility",
-    description: "Screen sizes, OS versions, orientation, device constraints",
-    recommended: true,
-    platforms: ["mobile"],
-  },
-  {
-    value: "performance-basic-mobile",
-    label: "Performance (Basic)",
-    description: "Startup time, scrolling responsiveness, jank detection",
-    recommended: true,
-    platforms: ["mobile"],
-  },
-
-  // API specific
-  {
-    value: "contract-schema",
-    label: "Contract/Schema Validation",
-    description: "OpenAPI/WSDL/schema validation, required fields, types",
-    recommended: true,
-    platforms: ["api"],
-  },
-  {
-    value: "authn-authz",
-    label: "AuthN/AuthZ",
-    description: "Token validity, scopes/roles, access enforcement",
-    recommended: true,
-    platforms: ["api"],
-  },
-  {
-    value: "idempotency-replay",
-    label: "Idempotency/Replay",
-    description: "Retry safety, idempotency keys, duplicate requests",
-    recommended: true,
-    platforms: ["api"],
-  },
-  {
-    value: "rate-limits",
-    label: "Rate Limits/Throttling",
-    description: "429 behavior, backoff, retry headers, client handling",
-    recommended: true,
-    platforms: ["api"],
-  },
-  {
-    value: "paging-filter-sort",
-    label: "Pagination/Filtering/Sorting",
-    description: "Paging correctness, stable sorting, edge paging cases",
-    recommended: true,
-    platforms: ["api"],
-  },
-  {
-    value: "data-integrity",
-    label: "Data Integrity (CRUD)",
-    description: "CRUD consistency, concurrency, referential rules",
-    recommended: true,
-    platforms: ["api"],
-  },
-
-  // Accessibility platform
-  {
-    value: "a11y-keyboard",
-    label: "Keyboard-only Navigation",
-    description: "Tab order, trapped focus, keyboard operability",
-    recommended: true,
-    platforms: ["accessibility"],
-  },
-  {
-    value: "a11y-focus",
-    label: "Focus Order/Visible Focus",
-    description: "Predictable focus order and visible focus styles",
-    recommended: true,
-    platforms: ["accessibility"],
-  },
-  {
-    value: "a11y-screenreader",
-    label: "Screen Reader Labels/Roles",
-    description: "ARIA labels, roles, announcements for key components",
-    recommended: true,
-    platforms: ["accessibility"],
-  },
-  {
-    value: "a11y-contrast",
-    label: "Color Contrast",
-    description: "Minimum contrast thresholds for text and controls",
-    recommended: true,
-    platforms: ["accessibility"],
-  },
-  {
-    value: "a11y-forms-errors",
-    label: "Forms/Errors (ARIA)",
-    description: "aria-describedby, error association, announcements",
-    recommended: true,
-    platforms: ["accessibility"],
-  },
-  {
-    value: "a11y-zoom-reflow",
-    label: "Zoom/Reflow",
-    description: "200%+ zoom and reflow without loss of content/controls",
-    recommended: true,
-    platforms: ["accessibility"],
-  },
-
-  // Performance platform
-  {
-    value: "load",
-    label: "Load",
-    description: "Expected traffic and throughput",
-    recommended: true,
-    platforms: ["performance"],
-  },
-  {
-    value: "stress",
-    label: "Stress",
-    description: "Beyond expected load to find limits",
-    recommended: true,
-    platforms: ["performance"],
-  },
-  {
-    value: "spike",
-    label: "Spike",
-    description: "Sudden bursts and recovery",
-    recommended: true,
-    platforms: ["performance"],
-  },
-  {
-    value: "soak",
-    label: "Soak/Endurance",
-    description: "Long-run stability and degradation",
-    recommended: true,
-    platforms: ["performance"],
-  },
-  {
-    value: "latency-sla",
-    label: "Latency/SLAs",
-    description: "Response times against thresholds",
-    recommended: true,
-    platforms: ["performance"],
-  },
-  {
-    value: "resources",
-    label: "Resource Utilization",
-    description: "CPU/memory and bottlenecks",
-    recommended: true,
-    platforms: ["performance"],
-  },
-  {
-    value: "reliability",
-    label: "Reliability/Error Rates",
-    description: "Timeouts, error rates, resilience",
-    recommended: true,
-    platforms: ["performance"],
+    value: "performance",
+    label: "Performance",
+    description: "Response time, load, throughput, basic SLAs",
+    recommended: false,
+    platforms: ["performance", "api", "web", "mobile"],
   },
 ];
 
@@ -280,16 +131,35 @@ function getVisibleTypes(platform?: PlatformId | null) {
   );
 }
 
+function isCanonicalTestType(v: unknown): v is CanonicalTestType {
+  return (
+    typeof v === "string" &&
+    (
+      [
+        "happy-path",
+        "negative",
+        "security",
+        "boundary",
+        "edge-case",
+        "performance",
+        "integration",
+        "regression",
+        "smoke",
+      ] as const
+    ).includes(v as CanonicalTestType)
+  );
+}
+
 interface TestTypeMultiselectProps {
-  value: string[];
-  onChange: (value: string[]) => void;
+  value: CanonicalTestType[]; // ✅ now strongly typed
+  onChange: (value: CanonicalTestType[]) => void;
   disabled?: boolean;
   placeholder?: string;
 
-  /** NEW: filter + recommended defaults based on platform */
+  /** filter + recommended defaults based on platform */
   platform?: PlatformId | null;
 
-  /** Optional: when platform changes, auto-apply recommended if empty */
+  /** when platform changes, auto-apply recommended if empty */
   autoApplyRecommendedOnPlatformChange?: boolean;
 }
 
@@ -313,7 +183,7 @@ export function TestTypeMultiselect({
     [visibleTypes, value],
   );
 
-  // Optional auto default when platform changes (only if empty)
+  // Auto default when platform changes (only if empty)
   React.useEffect(() => {
     if (!autoApplyRecommendedOnPlatformChange) return;
     if (!platform) return;
@@ -322,28 +192,28 @@ export function TestTypeMultiselect({
     const recommended = visibleTypes
       .filter((t) => t.recommended)
       .map((t) => t.value);
-    if (recommended.length > 0) onChange(dedupe(recommended));
+    if (recommended.length > 0) onChange(recommended);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [platform]);
 
-  const toggleType = (typeValue: string) => {
-    const v = normalizeValue(typeValue);
-    const next = value.includes(v)
-      ? value.filter((x) => x !== v)
-      : [...value, v];
-    onChange(dedupe(next));
+  const toggleType = (typeValue: CanonicalTestType) => {
+    const next = value.includes(typeValue)
+      ? value.filter((x) => x !== typeValue)
+      : [...value, typeValue];
+
+    // preserve order + uniqueness
+    onChange(dedupe(next).filter(isCanonicalTestType));
   };
 
-  const removeType = (typeValue: string) => {
-    const v = normalizeValue(typeValue);
-    onChange(value.filter((x) => x !== v));
+  const removeType = (typeValue: CanonicalTestType) => {
+    onChange(value.filter((x) => x !== typeValue));
   };
 
   const selectRecommended = () => {
     const recommended = visibleTypes
       .filter((t) => t.recommended)
       .map((t) => t.value);
-    onChange(dedupe(recommended));
+    onChange(recommended);
   };
 
   const clearAll = () => onChange([]);
