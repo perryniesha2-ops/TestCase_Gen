@@ -1,28 +1,32 @@
-// app/test-cases/components/delete-test-case-dialog.tsx
-
-"use client";
+// components/testcase-management/dialogs/delete-test-case-dialog.tsx
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Loader2, Trash2 } from "lucide-react";
-import type { TestCase } from "@/types/test-cases";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
+import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
 
 interface DeleteTestCaseDialogProps {
-  testCase: TestCase | null;
+  testCase: (TestCase | CrossPlatformTestCase) | null; // ✅ Accept both types
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+}
+
+// ✅ Type guard
+function isRegularTestCase(
+  tc: TestCase | CrossPlatformTestCase,
+): tc is TestCase {
+  return "test_steps" in tc && "test_type" in tc;
 }
 
 export function DeleteTestCaseDialog({
@@ -33,84 +37,53 @@ export function DeleteTestCaseDialog({
 }: DeleteTestCaseDialogProps) {
   const [deleting, setDeleting] = useState(false);
 
-  async function handleDelete() {
-    if (!testCase) return;
+  if (!testCase) return null;
 
+  const handleDelete = async () => {
     setDeleting(true);
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
 
-      if (!user) {
-        toast.error("You must be logged in to delete test cases");
-        return;
-      }
+      // ✅ Determine which table to delete from
+      const table = isRegularTestCase(testCase)
+        ? "test_cases"
+        : "platform_test_cases";
 
-      // STEP 1: Delete test_executions first (foreign key constraint)
-      const { error: executionsError } = await supabase
-        .from("test_executions")
-        .delete()
-        .eq("test_case_id", testCase.id);
-
-      if (executionsError) {
-        console.error("Error deleting test executions:", executionsError);
-        throw new Error("Failed to delete test executions");
-      }
-
-      // STEP 2: Delete test_suite_cases associations
-      const { error: suiteRelationsError } = await supabase
-        .from("test_suite_cases")
-        .delete()
-        .eq("test_case_id", testCase.id);
-
-      if (suiteRelationsError) {
-        console.error(
-          "Error deleting suite associations:",
-          suiteRelationsError
-        );
-        throw new Error("Failed to delete suite associations");
-      }
-
-      // STEP 3: Now delete the test case itself
       const { error } = await supabase
-        .from("test_cases")
+        .from(table)
         .delete()
-        .eq("id", testCase.id)
-        .eq("user_id", user.id); // Security: Ensure user owns this test case
+        .eq("id", testCase.id);
 
-      if (error) {
-        console.error("Error deleting test case:", error);
-        throw error;
-      }
+      if (error) throw error;
 
-      toast.success("Test case deleted successfully");
+      toast.success("Test case deleted");
       onSuccess();
       onClose();
     } catch (error) {
-      console.error("Error deleting test case:", error);
+      console.error("Delete error:", error);
       toast.error("Failed to delete test case");
     } finally {
       setDeleting(false);
     }
-  }
+  };
 
   return (
-    <AlertDialog open={open} onOpenChange={onClose}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete Test Case</AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to delete &quot;{testCase?.title}&quot;? This
-            action cannot be undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete Test Case</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to delete "{testCase.title}"? This action
+            cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
             onClick={handleDelete}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             disabled={deleting}
           >
             {deleting ? (
@@ -119,14 +92,11 @@ export function DeleteTestCaseDialog({
                 Deleting...
               </>
             ) : (
-              <>
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
-              </>
+              "Delete"
             )}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

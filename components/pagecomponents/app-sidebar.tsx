@@ -47,6 +47,7 @@ import {
   CircleDollarSign,
   Layout,
   Newspaper,
+  Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -68,6 +69,7 @@ const navigation = [
   { name: "Projects", href: "/project-manager", icon: Newspaper },
   { name: "Requirements", href: "/requirements", icon: BarChart3 },
   { name: "Generate Tests", href: "/generate", icon: FlaskConical },
+  { name: "Cross-Platform Tests", href: "/cross-platform-cases", icon: Layers },
   { name: "Test Cases", href: "/test-cases", icon: FileText },
   { name: "Test Suites", href: "/test-library", icon: Library },
   { name: "Templates", href: "/template-manager", icon: Layout },

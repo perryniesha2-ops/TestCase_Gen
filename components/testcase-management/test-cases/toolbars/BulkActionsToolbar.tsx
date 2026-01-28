@@ -1,225 +1,227 @@
-// components/test-cases/BulkActionsToolbar.tsx
-"use client"
+// components/testcase-management/toolbars/BulkActionsToolbar.tsx
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
-  CheckSquare,
-  Square,
-  ChevronDown,
-  X,
-  FileText,
-  FolderOpen,
+  FolderPlus,
   Trash2,
+  ChevronDown,
+  ListChecks,
+  MoreHorizontal,
+  FileText,
   Download,
-  PlayCircle,
-} from "lucide-react"
-import { BulkUpdateDialog } from "../dialogs/BulkUpdateDialog"
-import type { TestCase } from "@/types/test-cases"
+  FolderOpen,
+} from "lucide-react";
+import { BulkUpdateDialog } from "../dialogs/BulkUpdateDialog";
+import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
+
+type CombinedTestCase = (TestCase | CrossPlatformTestCase) & {
+  _caseType?: "regular" | "cross-platform";
+};
 
 interface BulkActionsToolbarProps {
-  selectedIds: Set<string>
-  allTestCases: TestCase[]
-  onSelectAll: () => void
-  onDeselectAll: () => void
-  onBulkUpdate: (ids: string[], updates: Partial<TestCase>) => Promise<void>
-  onBulkDelete: (ids: string[]) => Promise<void>
-  onBulkAddToSuite: (ids: string[], suiteId: string) => Promise<void>
-  onBulkExport: (ids: string[]) => void
+  selectedIds: Set<string>;
+  allTestCases: CombinedTestCase[];
+  type: "regular" | "cross-platform";
+
+  // Selection handlers
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+
+  // Regular test case actions
+  onBulkUpdate?: (updates: any) => Promise<void>;
+  onBulkDelete?: (ids: string[]) => Promise<void>;
+  onBulkAddToSuite?: (ids: string[], suiteId: string) => Promise<void>;
+  onBulkExport?: (ids: string[]) => void;
+
+  // Cross-platform test case actions
+  onBulkUpdateCrossPlatform?: (ids: string[], updates: any) => Promise<void>;
+  onBulkDeleteCrossPlatform?: (ids: string[]) => Promise<void>;
+  onBulkAddCrossPlatformToSuite?: (
+    ids: string[],
+    suiteId: string,
+  ) => Promise<void>;
 }
-
-type BulkAction = 
-  | "status"
-  | "priority"
-  | "project"
-  | "suite"
-  | "export"
-  | "delete"
-
-type DialogAction = "status" | "priority" | "project" | "suite"
 
 export function BulkActionsToolbar({
   selectedIds,
   allTestCases,
+  type,
   onSelectAll,
   onDeselectAll,
   onBulkUpdate,
   onBulkDelete,
   onBulkAddToSuite,
   onBulkExport,
+  onBulkUpdateCrossPlatform,
+  onBulkDeleteCrossPlatform,
+  onBulkAddCrossPlatformToSuite,
 }: BulkActionsToolbarProps) {
-  const [showDialog, setShowDialog] = useState(false)
-  const [currentAction, setCurrentAction] = useState<DialogAction | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogAction, setDialogAction] = useState<
+    "status" | "priority" | "project" | "suite" | "approve" | "reject"
+  >("status");
+  const selectedCount = selectedIds.size;
 
-  const selectedCount = selectedIds.size
-  const totalCount = allTestCases.length
-  const allSelected = selectedCount === totalCount && totalCount > 0
+  const openDialog = (action: typeof dialogAction) => {
+    setDialogAction(action);
+    setDialogOpen(true);
+  };
 
-  function handleActionClick(action: BulkAction) {
-    if (action === "export") {
-      onBulkExport(Array.from(selectedIds))
-      return
+  const handleUpdate = async (updates: any) => {
+    const ids = Array.from(selectedIds);
+    if (type === "cross-platform" && onBulkUpdateCrossPlatform) {
+      await onBulkUpdateCrossPlatform(ids, updates);
+    } else if (onBulkUpdate) {
+      await onBulkUpdate(updates);
     }
-    
-    if (action === "delete") {
-      handleBulkDelete()
-      return
-    }
-    
-    // Only open dialog for actions that need it
-    setCurrentAction(action)
-    setShowDialog(true)
-  }
+  };
 
-  async function handleBulkDelete() {
+  const handleAddToSuite = async (suiteId: string) => {
+    const ids = Array.from(selectedIds);
+    if (type === "cross-platform" && onBulkAddCrossPlatformToSuite) {
+      await onBulkAddCrossPlatformToSuite(ids, suiteId);
+    } else if (onBulkAddToSuite) {
+      await onBulkAddToSuite(ids, suiteId);
+    }
+  };
+
+  const handleDelete = async () => {
+    const ids = Array.from(selectedIds);
     const confirmed = window.confirm(
-      `Delete ${selectedCount} test case${selectedCount === 1 ? "" : "s"}? This cannot be undone.`
-    )
-    if (!confirmed) return
+      `Delete ${selectedCount} test case${selectedCount === 1 ? "" : "s"}?\n\nThis cannot be undone.`,
+    );
+    if (!confirmed) return;
 
-    try {
-      await onBulkDelete(Array.from(selectedIds))
-    } catch (error) {
-      console.error("Bulk delete error:", error)
+    if (type === "cross-platform" && onBulkDeleteCrossPlatform) {
+      await onBulkDeleteCrossPlatform(ids);
+    } else if (onBulkDelete) {
+      await onBulkDelete(ids);
     }
-  }
+  };
 
-  async function handleBulkUpdate(updates: Partial<TestCase>) {
-    try {
-      await onBulkUpdate(Array.from(selectedIds), updates)
-      setShowDialog(false)
-      setCurrentAction(null)
-    } catch (error) {
-      console.error("Bulk update error:", error)
+  const handleExport = () => {
+    if (onBulkExport) {
+      const ids = Array.from(selectedIds);
+      onBulkExport(ids);
     }
-  }
+  };
 
-  async function handleAddToSuite(suiteId: string) {
-    try {
-      await onBulkAddToSuite(Array.from(selectedIds), suiteId)
-      setShowDialog(false)
-      setCurrentAction(null)
-    } catch (error) {
-      console.error("Bulk add to suite error:", error)
-    }
+  if (selectedCount === 0) {
+    return null;
   }
-
-  if (selectedCount === 0) return null
 
   return (
     <>
-      <div className="flex items-center gap-3 p-4 bg-primary/5 border-b border-primary/20">
-        {/* Selection Info */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={allSelected ? onDeselectAll : onSelectAll}
-          className="gap-2"
-        >
-          {allSelected ? (
-            <CheckSquare className="h-4 w-4" />
-          ) : (
-            <Square className="h-4 w-4" />
-          )}
-          {allSelected ? "Deselect All" : "Select All"}
-        </Button>
-
-        <div className="flex items-center gap-2">
-         
+      <div className="flex items-center justify-between gap-2 p-3 bg-muted/50 border rounded-lg">
+        <div className="flex items-center gap-3">
+          <Badge variant="secondary" className="font-semibold">
             {selectedCount} selected
-          
-          {selectedCount < totalCount && (
-            <span className="text-sm text-muted-foreground">
-              of {totalCount}
-            </span>
-          )}
+          </Badge>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={
+              selectedCount === allTestCases.length
+                ? onDeselectAll
+                : onSelectAll
+            }
+          >
+            <ListChecks className="h-4 w-4 mr-2" />
+            {selectedCount === allTestCases.length
+              ? "Deselect All"
+              : "Select All"}
+          </Button>
         </div>
 
-        <div className="h-4 w-px bg-border" />
+        <div className="flex items-center gap-2">
+          {/* Common: Add to Suite - Available for BOTH types */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2"
+            onClick={() => openDialog("suite")}
+          >
+            <FolderPlus className="h-4 w-4" />
+            Add to Suite
+          </Button>
 
-        {/* Bulk Actions Dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="default" size="sm" className="gap-2">
-               Actions
-              <ChevronDown className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel>Update {selectedCount} test cases</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            
-            <DropdownMenuItem onClick={() => handleActionClick("status")}>
-              <FileText className="h-4 w-4 mr-2" />
-              Change Status
-            </DropdownMenuItem>
-            
-            <DropdownMenuItem onClick={() => handleActionClick("priority")}>
-              <FileText className="h-4 w-4 mr-2" />
-              Change Priority
-            </DropdownMenuItem>
-            
-            <DropdownMenuItem onClick={() => handleActionClick("project")}>
-              <FolderOpen className="h-4 w-4 mr-2" />
-              Assign to Project
-            </DropdownMenuItem>
-            
-            <DropdownMenuItem onClick={() => handleActionClick("suite")}>
-              <PlayCircle className="h-4 w-4 mr-2" />
-              Add to Suite
-            </DropdownMenuItem>
-            
-            <DropdownMenuSeparator />
-            
-            <DropdownMenuItem onClick={() => handleActionClick("export")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export as CSV
-            </DropdownMenuItem>
-            
-            <DropdownMenuSeparator />
-            
-            <DropdownMenuItem
-              onClick={() => handleActionClick("delete")}
-              className="text-destructive focus:text-destructive"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete Selected
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          {/* More actions dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" className="gap-2">
+                <MoreHorizontal className="h-4 w-4" />
+                More
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {/* ✅ Status - Available for BOTH types */}
+              <DropdownMenuItem onClick={() => openDialog("status")}>
+                <FileText className="h-4 w-4 mr-2" />
+                Change Status
+              </DropdownMenuItem>
 
-        {/* Clear Selection */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onDeselectAll}
-          className="ml-auto gap-2"
-        >
-          <X className="h-4 w-4" />
-          Clear Selection
-        </Button>
+              <DropdownMenuSeparator />
+
+              {/* ✅ Priority - Available for BOTH types */}
+              <DropdownMenuItem onClick={() => openDialog("priority")}>
+                <FileText className="h-4 w-4 mr-2" />
+                Change Priority
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              {/* ✅ Project - Now available for BOTH types */}
+              <DropdownMenuItem onClick={() => openDialog("project")}>
+                <FolderOpen className="h-4 w-4 mr-2" />
+                Assign to Project
+              </DropdownMenuItem>
+
+              {/* ✅ Export - Available for BOTH types */}
+              {onBulkExport && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleExport}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export Selected
+                  </DropdownMenuItem>
+                </>
+              )}
+
+              {/* ✅ Delete - Available for BOTH types */}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={handleDelete}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Selected
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
-      {/* Bulk Update Dialog */}
-      {currentAction && (
-        <BulkUpdateDialog
-          open={showDialog}
-          onOpenChange={setShowDialog}
-          action={currentAction}
-          selectedCount={selectedCount}
-          onUpdate={handleBulkUpdate}
-          onAddToSuite={handleAddToSuite}
-        />
-      )}
+      <BulkUpdateDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        action={dialogAction}
+        selectedCount={selectedCount}
+        type={type}
+        onUpdate={handleUpdate}
+        onAddToSuite={handleAddToSuite}
+      />
     </>
-  )
+  );
 }
