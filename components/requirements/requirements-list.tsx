@@ -228,11 +228,7 @@ export function RequirementsList({
   }, [fetchProjects, fetchRequirementsList]);
 
   useEffect(() => {
-    // Any filter change should reset to page 1, but avoid double-fetch:
-    // If currentPage is already 1, just refetch. Otherwise setCurrentPage(1)
-    // and let the page effect below refetch.
     setCurrentPage((prev) => (prev === 1 ? 1 : 1));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject, debouncedSearch, statusFilter, priorityFilter]);
 
   useEffect(() => {
@@ -301,7 +297,6 @@ export function RequirementsList({
       } catch (err: any) {
         console.error("deleteRequirement error:", err);
         toast.error(err?.message ?? "Failed to delete requirement");
-        // Re-sync list after failure
         await fetchRequirementsList();
       }
     },

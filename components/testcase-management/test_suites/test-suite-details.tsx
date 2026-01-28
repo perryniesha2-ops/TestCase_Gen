@@ -62,11 +62,6 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
       if (res.ok) {
         const data = await res.json();
 
-        // DEBUG: Log the raw response
-        console.log("📦 Raw metadata response:", JSON.stringify(data, null, 2));
-        console.log("📦 data.kind:", data.kind);
-        console.log("📦 data.platforms:", data.platforms);
-
         setSuiteKind(data.kind || "regular");
         setPlatforms(data.platforms || []);
       } else {

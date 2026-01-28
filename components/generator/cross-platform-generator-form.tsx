@@ -402,8 +402,7 @@ export function CrossPlatformGeneratorForm() {
         if (!cancelled) setSavedReqs(mapped);
       } catch (e) {
         if ((e as any)?.name === "AbortError") return;
-        console.error("❌ Requirements bootstrap error:", e);
-        if (!cancelled) setSavedReqs([]); // fallback to placeholders
+        if (!cancelled) setSavedReqs([]);
       } finally {
         if (!cancelled) setBootstrappingReqs(false);
       }
@@ -662,7 +661,6 @@ export function CrossPlatformGeneratorForm() {
         }
 
         if (!res.ok) {
-          console.error("[cross-platform] error payload:", data);
           const msg =
             data.details ||
             data.error ||
@@ -738,8 +736,7 @@ export function CrossPlatformGeneratorForm() {
           </CardTitle>
           <CardDescription>
             Generate platform-specific test suites
-            (web/mobile/API/accessibility/performance). Test Types are selected
-            per platform and drive what scenarios get generated.
+            (web/mobile/API/accessibility/performance).
           </CardDescription>
 
           <div className="pt-3 flex flex-wrap items-center gap-2">
@@ -923,7 +920,7 @@ export function CrossPlatformGeneratorForm() {
                 disabled={pageBusy}
                 onSelect={(p) => {
                   setProjectId(p?.id ?? "");
-                  setProjectSource("none"); // user manually chose project
+                  setProjectSource("none");
                 }}
               />
             </div>
@@ -1263,6 +1260,7 @@ export function CrossPlatformGeneratorForm() {
           </form>
         </CardContent>
       </Card>
+      <div className="h-2" />
     </div>
   );
 }

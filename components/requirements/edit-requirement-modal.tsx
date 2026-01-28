@@ -102,7 +102,6 @@ export function EditRequirementModal({
     }
   }
 
-  // 🔧 FIX: Re-hydrate form when modal opens (and when requirement data changes)
   useEffect(() => {
     if (!open) return;
 
@@ -129,13 +128,6 @@ export function EditRequirementModal({
     setNewCriterion("");
 
     const criteria = parseAcceptanceCriteria(requirement.acceptance_criteria);
-
-    console.log("🔍 Parsed acceptance criteria:", {
-      raw: requirement.acceptance_criteria,
-      rawType: typeof requirement.acceptance_criteria,
-      parsed: criteria,
-      parsedLength: criteria.length,
-    });
 
     setAcceptanceCriteria(criteria);
     setNewCriterion("");
@@ -209,14 +201,11 @@ export function EditRequirementModal({
   function parseAcceptanceCriteria(data: any): string[] {
     if (!data) return [];
 
-    // If it's already an array (shouldn't happen with TEXT, but be defensive)
     if (Array.isArray(data)) {
       return data;
     }
 
-    // If it's a string, try to parse it as JSON
     if (typeof data === "string") {
-      // Handle empty string
       if (data.trim() === "") return [];
 
       try {

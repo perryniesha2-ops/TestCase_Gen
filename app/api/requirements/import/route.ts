@@ -29,7 +29,6 @@ class ImportValidationError extends Error {
   }
 }
 
-
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();
@@ -50,8 +49,6 @@ export async function POST(req: Request) {
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
-
-    console.log("📁 Importing file:", file.name, "Source:", source);
 
     // Read file
     const arrayBuffer = await file.arrayBuffer();
@@ -78,29 +75,26 @@ export async function POST(req: Request) {
       // "Negative test" scenario: file is valid, but not importable as requirements
       if (parseError instanceof ImportValidationError) {
         return NextResponse.json(
-            {
-              error: "File is valid but not importable",
-              code: parseError.code,
-              details: parseError.message,
-              meta: parseError.meta ?? null,
-            },
-            { status: 400 },
+          {
+            error: "File is valid but not importable",
+            code: parseError.code,
+            details: parseError.message,
+            meta: parseError.meta ?? null,
+          },
+          { status: 400 },
         );
       }
 
       // True parsing failures (invalid JSON, unreadable CSV, etc.)
       return NextResponse.json(
-          {
-            error: "Failed to parse file",
-            code: "PARSE_ERROR",
-            details: parseError?.message || "Unknown error",
-          },
-          { status: 400 },
+        {
+          error: "Failed to parse file",
+          code: "PARSE_ERROR",
+          details: parseError?.message || "Unknown error",
+        },
+        { status: 400 },
       );
     }
-
-
-    console.log(`📋 Parsed ${requirements.length} requirements`);
 
     if (requirements.length === 0) {
       return NextResponse.json(
@@ -333,8 +327,8 @@ function parseJSON(content: string, source: string): ImportedRequirement[] {
   } catch (e: any) {
     // Truly invalid JSON
     throw new ImportValidationError(
-        "INVALID_JSON",
-        e?.message || "Invalid JSON",
+      "INVALID_JSON",
+      e?.message || "Invalid JSON",
     );
   }
 
@@ -357,14 +351,14 @@ function parseJSON(content: string, source: string): ImportedRequirement[] {
   // Negative test: valid JSON but wrong shape (e.g., package.json)
   if (!items) {
     const topLevelKeys =
-        data && typeof data === "object" && !Array.isArray(data)
-            ? Object.keys(data).slice(0, 20)
-            : [];
+      data && typeof data === "object" && !Array.isArray(data)
+        ? Object.keys(data).slice(0, 20)
+        : [];
 
     throw new ImportValidationError(
-        "UNSUPPORTED_JSON_SHAPE",
-        "JSON parsed successfully, but it does not appear to be a requirements export. Expected an array, or an object containing one of: issues[], results[], value[].",
-        { topLevelKeys },
+      "UNSUPPORTED_JSON_SHAPE",
+      "JSON parsed successfully, but it does not appear to be a requirements export. Expected an array, or an object containing one of: issues[], results[], value[].",
+      { topLevelKeys },
     );
   }
 
@@ -373,14 +367,14 @@ function parseJSON(content: string, source: string): ImportedRequirement[] {
   for (const item of items) {
     // Jira / generic item mapping
     const title =
-        item.title || item.summary || item.fields?.summary || item.System?.Title;
+      item.title || item.summary || item.fields?.summary || item.System?.Title;
 
     const description =
-        item.description ||
-        item.body ||
-        item.fields?.description ||
-        item.System?.Description ||
-        item.fields?.description?.content?.[0]?.content?.[0]?.text;
+      item.description ||
+      item.body ||
+      item.fields?.description ||
+      item.System?.Description ||
+      item.fields?.description?.content?.[0]?.content?.[0]?.text;
 
     if (!title || !description) continue;
 
@@ -388,13 +382,13 @@ function parseJSON(content: string, source: string): ImportedRequirement[] {
       title: String(title).trim(),
       description: String(description).trim(),
       type: normalizeType(
-          item.type || item.fields?.issuetype?.name || item.System?.WorkItemType,
+        item.type || item.fields?.issuetype?.name || item.System?.WorkItemType,
       ),
       priority: normalizePriority(
-          item.priority || item.fields?.priority?.name || item.System?.Priority,
+        item.priority || item.fields?.priority?.name || item.System?.Priority,
       ),
       status: normalizeStatus(
-          item.status || item.fields?.status?.name || item.System?.State,
+        item.status || item.fields?.status?.name || item.System?.State,
       ),
       external_id: item.key || item.id || String(item.System?.Id || ""),
       source,
@@ -404,14 +398,13 @@ function parseJSON(content: string, source: string): ImportedRequirement[] {
   // Negative test: correct container, but nothing importable
   if (requirements.length === 0) {
     throw new ImportValidationError(
-        "NO_IMPORTABLE_ROWS",
-        "JSON parsed successfully, but no items contained both a title and a description.",
+      "NO_IMPORTABLE_ROWS",
+      "JSON parsed successfully, but no items contained both a title and a description.",
     );
   }
 
   return requirements;
 }
-
 
 // ===== HELPER FUNCTIONS =====
 function findColumn(headers: string[], candidates: string[]): number {

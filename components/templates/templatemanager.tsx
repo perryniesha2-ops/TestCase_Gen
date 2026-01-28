@@ -6,25 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Card,
   CardContent,
@@ -40,6 +22,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FileText,
@@ -61,10 +50,15 @@ import {
   Eye,
   Loader2,
 } from "lucide-react";
+
 import { TemplateEditorDialog } from "@/components/templates/template-editor-dialog";
 import type { TemplateFormData } from "@/components/templates/template-editor-dialog";
+import type { CanonicalTestType } from "@/components/generator/testtype-multiselect";
 
-// Types
+// ============================================================================
+// TYPES
+// ============================================================================
+
 type TemplateCategory =
   | "functional"
   | "security"
@@ -96,10 +90,17 @@ interface Template {
   last_used_at?: string | null;
   created_at: string;
   updated_at: string;
-  test_types: string[];
+  test_types: string[]; // Keep as string[] from database
 }
 
-const categoryIcons: Record<
+type Scope = "my" | "public";
+type Tab = "my-templates" | "public";
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const CATEGORY_ICONS: Record<
   TemplateCategory,
   React.ComponentType<{ className?: string }>
 > = {
@@ -112,7 +113,7 @@ const categoryIcons: Record<
   other: FileText,
 };
 
-const categoryColors: Record<TemplateCategory, string> = {
+const CATEGORY_COLORS: Record<TemplateCategory, string> = {
   functional: "bg-blue-500",
   security: "bg-red-500",
   performance: "bg-orange-500",
@@ -122,52 +123,70 @@ const categoryColors: Record<TemplateCategory, string> = {
   other: "bg-gray-500",
 };
 
-function getModelDisplayName(modelKey: string): string {
-  if (modelKey === "claude-sonnet-4-5") return "Claude Sonnet 4.5";
-  if (modelKey === "claude-haiku-4-5") return "Claude Haiku 4.5";
-  if (modelKey === "claude-opus-4-5") return "Claude Opus 4.5";
-  if (modelKey === "gpt-5-mini") return "GPT-5 Mini";
-  if (modelKey === "gpt-5.2") return "GPT-5.2";
-  if (modelKey === "gpt-4o") return "GPT-4o";
-  if (modelKey === "gpt-4o-mini") return "GPT-4o Mini";
+const MODEL_DISPLAY_NAMES: Record<string, string> = {
+  "claude-sonnet-4-5": "Claude Sonnet 4.5",
+  "claude-haiku-4-5": "Claude Haiku 4.5",
+  "claude-opus-4-5": "Claude Opus 4.5",
+  "gpt-5-mini": "GPT-5 Mini",
+  "gpt-5.2": "GPT-5.2",
+  "gpt-4o": "GPT-4o",
+  "gpt-4o-mini": "GPT-4o Mini",
+};
 
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+function getModelDisplayName(modelKey: string): string {
+  if (MODEL_DISPLAY_NAMES[modelKey]) return MODEL_DISPLAY_NAMES[modelKey];
+
+  // Fallback to legacy models
   if (modelKey.includes("claude-3-5-sonnet")) return "Claude 3.5 Sonnet";
   if (modelKey.includes("claude-3-5-haiku")) return "Claude 3.5 Haiku";
   if (modelKey.includes("claude-sonnet-4")) return "Claude Sonnet 4";
   if (modelKey.includes("claude-opus-4")) return "Claude Opus 4";
   if (modelKey.includes("gpt-4-turbo")) return "GPT-4 Turbo";
   if (modelKey.includes("gpt-3.5")) return "GPT-3.5 Turbo";
-
   if (modelKey.includes("claude")) return "Claude";
   if (modelKey.includes("gpt")) return "GPT";
 
   return modelKey;
 }
 
-type Scope = "my" | "public";
-type Tab = "my-templates" | "public";
-
 function tabToScope(tab: Tab): Scope {
   return tab === "public" ? "public" : "my";
 }
 
-function safeJsonParse<T>(text: string): T | null {
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    return null;
-  }
+function toCanonicalTestTypes(types: string[]): CanonicalTestType[] {
+  const validTypes: CanonicalTestType[] = [
+    "happy-path",
+    "negative",
+    "security",
+    "boundary",
+    "edge-case",
+    "performance",
+    "integration",
+    "regression",
+    "smoke",
+  ];
+
+  return types.filter((t): t is CanonicalTestType =>
+    validTypes.includes(t as CanonicalTestType),
+  );
 }
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
 
 export function TemplateManager() {
   const { user, loading: authLoading } = useAuth();
 
+  // State
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-
+  const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
-
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<
     TemplateCategory | "all"
@@ -186,53 +205,8 @@ export function TemplateManager() {
     project_id: null,
   });
 
+  // Computed values
   const canQuery = !authLoading && (activeTab === "public" || !!user);
-
-  const fetchTemplates = useCallback(async (tab: Tab) => {
-    const scope = tabToScope(tab);
-
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/templates?scope=${scope}`, {
-        cache: "no-store",
-      });
-
-      const raw = await res.text().catch(() => "");
-      const payload = safeJsonParse<{ templates?: Template[]; error?: string }>(
-        raw || "{}",
-      );
-
-      if (res.status === 401) {
-        // If they’re on "public", 401 should not happen (API should allow it),
-        // but handle defensively.
-        setTemplates([]);
-        toast.error("Please sign in again.");
-        window.location.href = "/login";
-        return;
-      }
-
-      if (!res.ok) {
-        throw new Error(payload?.error ?? `Failed (${res.status})`);
-      }
-
-      setTemplates(payload?.templates ?? []);
-    } catch (e: any) {
-      console.error("[TemplateManager] fetchTemplates error:", e);
-      toast.error("Failed to load templates");
-      setTemplates([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!canQuery) {
-      setLoading(false);
-      setTemplates([]);
-      return;
-    }
-    fetchTemplates(activeTab);
-  }, [canQuery, activeTab, fetchTemplates]);
 
   const filteredTemplates = useMemo(() => {
     let filtered = templates;
@@ -269,7 +243,56 @@ export function TemplateManager() {
     return templates.filter((t) => new Date(t.created_at) > weekAgo).length;
   }, [templates]);
 
-  function resetForm() {
+  // ============================================================================
+  // API FUNCTIONS
+  // ============================================================================
+
+  const fetchTemplates = useCallback(async (tab: Tab) => {
+    const scope = tabToScope(tab);
+    setLoading(true);
+
+    try {
+      const res = await fetch(`/api/templates?scope=${scope}`, {
+        cache: "no-store",
+      });
+
+      if (res.status === 401) {
+        setTemplates([]);
+        toast.error("Please sign in again.");
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.error ?? `Failed (${res.status})`);
+      }
+
+      const payload = await res.json();
+      setTemplates(payload?.templates ?? []);
+    } catch (e: any) {
+      console.error("[TemplateManager] fetchTemplates error:", e);
+      toast.error("Failed to load templates");
+      setTemplates([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!canQuery) {
+      setLoading(false);
+      setTemplates([]);
+      return;
+    }
+    fetchTemplates(activeTab);
+  }, [canQuery, activeTab, fetchTemplates]);
+
+  // ============================================================================
+  // FORM HANDLERS
+  // ============================================================================
+
+  const resetForm = useCallback(() => {
     setFormData({
       name: "",
       description: "",
@@ -281,15 +304,15 @@ export function TemplateManager() {
       includeNegativeTests: true,
       project_id: null,
     });
-  }
+  }, []);
 
-  function openNewDialog() {
+  const openNewDialog = useCallback(() => {
     setEditingTemplate(null);
     resetForm();
     setShowDialog(true);
-  }
+  }, [resetForm]);
 
-  function openEditDialog(template: Template) {
+  const openEditDialog = useCallback((template: Template) => {
     setEditingTemplate(template);
     setFormData({
       name: template.name,
@@ -297,16 +320,16 @@ export function TemplateManager() {
       category: template.category,
       model: template.template_content.model,
       testCaseCount: template.template_content.testCaseCount,
-      test_types: template.test_types ?? [],
+      test_types: toCanonicalTestTypes(template.test_types ?? []), // ✅ Convert here
       includeEdgeCases: template.template_content.includeEdgeCases ?? true,
       includeNegativeTests:
         template.template_content.includeNegativeTests ?? true,
       project_id: template.project_id ?? null,
     });
     setShowDialog(true);
-  }
+  }, []);
 
-  async function saveTemplate() {
+  const saveTemplate = useCallback(async () => {
     if (!user) {
       toast.error("Please sign in to save templates.");
       return;
@@ -328,7 +351,7 @@ export function TemplateManager() {
           includeEdgeCases: formData.includeEdgeCases,
           includeNegativeTests: formData.includeNegativeTests,
         } satisfies TemplateContent,
-        test_types: formData.test_types ?? [],
+        test_types: formData.test_types, // Already CanonicalTestType[]
         is_public: false,
         is_favorite: editingTemplate?.is_favorite ?? false,
         project_id: formData.project_id || null,
@@ -345,8 +368,6 @@ export function TemplateManager() {
         },
       );
 
-      const payload = await res.json().catch(() => ({}));
-
       if (res.status === 401) {
         toast.error("Session expired. Please sign in again.");
         window.location.href = "/login";
@@ -354,6 +375,7 @@ export function TemplateManager() {
       }
 
       if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
         throw new Error(payload?.error ?? `Failed (${res.status})`);
       }
 
@@ -368,123 +390,141 @@ export function TemplateManager() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [user, formData, editingTemplate, resetForm, fetchTemplates, activeTab]);
 
-  async function deleteTemplate(id: string) {
-    if (!user) {
-      toast.error("Please sign in to delete templates.");
-      return;
-    }
-    if (!confirm("Delete this template? This action cannot be undone.")) return;
+  const deleteTemplate = useCallback(
+    async (id: string) => {
+      if (!user) {
+        toast.error("Please sign in to delete templates.");
+        return;
+      }
+      if (!confirm("Delete this template? This action cannot be undone."))
+        return;
 
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/templates/${id}`, { method: "DELETE" });
-      const payload = await res.json().catch(() => ({}));
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/templates/${id}`, { method: "DELETE" });
 
-      if (res.status === 401) {
-        toast.error("Session expired. Please sign in again.");
-        window.location.href = "/login";
+        if (res.status === 401) {
+          toast.error("Session expired. Please sign in again.");
+          window.location.href = "/login";
+          return;
+        }
+
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          throw new Error(payload?.error ?? `Failed (${res.status})`);
+        }
+
+        toast.success("Template deleted");
+        await fetchTemplates(activeTab);
+      } catch (e) {
+        console.error("[TemplateManager] deleteTemplate error:", e);
+        toast.error("Failed to delete template");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user, fetchTemplates, activeTab],
+  );
+
+  const duplicateTemplate = useCallback(
+    async (template: Template) => {
+      if (!user) {
+        toast.error("Please sign in to copy templates.");
         return;
       }
 
-      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+      setLoading(true);
+      try {
+        const res = await fetch("/api/templates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: `${template.name} (Copy)`,
+            description: template.description ?? null,
+            category: template.category,
+            template_content: template.template_content,
+            test_types: template.test_types ?? [], // Keep as string[]
+            is_public: false,
+            is_favorite: false,
+            project_id: template.project_id ?? null,
+          }),
+        });
 
-      toast.success("Template deleted");
-      await fetchTemplates(activeTab);
-    } catch (e) {
-      console.error("[TemplateManager] deleteTemplate error:", e);
-      toast.error("Failed to delete template");
-    } finally {
-      setLoading(false);
-    }
-  }
+        if (res.status === 401) {
+          toast.error("Session expired. Please sign in again.");
+          window.location.href = "/login";
+          return;
+        }
 
-  async function duplicateTemplate(template: Template) {
-    if (!user) {
-      toast.error("Please sign in to copy templates.");
-      return;
-    }
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          throw new Error(payload?.error ?? `Failed (${res.status})`);
+        }
 
-    setLoading(true);
-    try {
-      const res = await fetch("/api/templates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `${template.name} (Copy)`,
-          description: template.description ?? null,
-          category: template.category,
-          template_content: template.template_content,
-          test_types: template.test_types ?? [],
-          is_public: false,
-          is_favorite: false,
-          project_id: template.project_id ?? null,
-        }),
-      });
+        toast.success("Template duplicated");
+        await fetchTemplates(activeTab);
+      } catch (e) {
+        console.error("[TemplateManager] duplicateTemplate error:", e);
+        toast.error("Failed to duplicate template");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user, fetchTemplates, activeTab],
+  );
 
-      const payload = await res.json().catch(() => ({}));
-
-      if (res.status === 401) {
-        toast.error("Session expired. Please sign in again.");
-        window.location.href = "/login";
+  const toggleFavorite = useCallback(
+    async (template: Template) => {
+      if (!user) {
+        toast.error("Please sign in to favorite templates.");
         return;
       }
 
-      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
-
-      toast.success("Template duplicated");
-      await fetchTemplates(activeTab);
-    } catch (e) {
-      console.error("[TemplateManager] duplicateTemplate error:", e);
-      toast.error("Failed to duplicate template");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function toggleFavorite(template: Template) {
-    if (!user) {
-      toast.error("Please sign in to favorite templates.");
-      return;
-    }
-
-    // optimistic update
-    setTemplates((prev) =>
-      prev.map((t) =>
-        t.id === template.id ? { ...t, is_favorite: !t.is_favorite } : t,
-      ),
-    );
-
-    try {
-      const res = await fetch(`/api/templates/${template.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_favorite: !template.is_favorite }),
-      });
-
-      const payload = await res.json().catch(() => ({}));
-
-      if (res.status === 401) {
-        toast.error("Session expired. Please sign in again.");
-        window.location.href = "/login";
-        return;
-      }
-
-      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
-    } catch (e) {
-      // revert if error
+      // Optimistic update
       setTemplates((prev) =>
         prev.map((t) =>
-          t.id === template.id
-            ? { ...t, is_favorite: template.is_favorite }
-            : t,
+          t.id === template.id ? { ...t, is_favorite: !t.is_favorite } : t,
         ),
       );
-      console.error("[TemplateManager] toggleFavorite error:", e);
-      toast.error("Failed to update favorite status");
-    }
-  }
+
+      try {
+        const res = await fetch(`/api/templates/${template.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ is_favorite: !template.is_favorite }),
+        });
+
+        if (res.status === 401) {
+          toast.error("Session expired. Please sign in again.");
+          window.location.href = "/login";
+          return;
+        }
+
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          throw new Error(payload?.error ?? `Failed (${res.status})`);
+        }
+      } catch (e) {
+        // Revert on error
+        setTemplates((prev) =>
+          prev.map((t) =>
+            t.id === template.id
+              ? { ...t, is_favorite: template.is_favorite }
+              : t,
+          ),
+        );
+        console.error("[TemplateManager] toggleFavorite error:", e);
+        toast.error("Failed to update favorite status");
+      }
+    },
+    [user],
+  );
+
+  // ============================================================================
+  // RENDER
+  // ============================================================================
 
   return (
     <div className="space-y-3">
@@ -625,8 +665,8 @@ export function TemplateManager() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredTemplates.map((template) => {
-                const CategoryIcon = categoryIcons[template.category];
-                const categoryColor = categoryColors[template.category];
+                const CategoryIcon = CATEGORY_ICONS[template.category];
+                const categoryColor = CATEGORY_COLORS[template.category];
 
                 return (
                   <Card
@@ -729,6 +769,7 @@ export function TemplateManager() {
                             )}
                           </span>
                         </div>
+
                         {template.test_types?.length > 0 && (
                           <div className="flex flex-wrap gap-1">
                             {template.test_types.slice(0, 3).map((tt) => (
@@ -796,8 +837,8 @@ export function TemplateManager() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredTemplates.map((template) => {
-                const CategoryIcon = categoryIcons[template.category];
-                const categoryColor = categoryColors[template.category];
+                const CategoryIcon = CATEGORY_ICONS[template.category];
+                const categoryColor = CATEGORY_COLORS[template.category];
 
                 return (
                   <Card
@@ -872,6 +913,8 @@ export function TemplateManager() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Editor Dialog */}
       <TemplateEditorDialog
         open={showDialog}
         onOpenChange={setShowDialog}
@@ -886,6 +929,7 @@ export function TemplateManager() {
         }}
         onSave={saveTemplate}
       />
+
       <div className="h-2" />
     </div>
   );

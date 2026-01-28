@@ -503,7 +503,6 @@ function buildInsertRow(args: {
   // For API platform, validate that we have required fields
   if (isApi) {
     if (!tc.api || !tc.api.method || !tc.api.path) {
-      console.error("Invalid API spec for test case:", tc.title, tc.api);
       throw new Error(
         `API test case "${tc.title}" missing method or path. Got: ${JSON.stringify(tc.api)}`,
       );

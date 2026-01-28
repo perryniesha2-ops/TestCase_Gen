@@ -29,11 +29,6 @@ export async function GET(
     .maybeSingle();
 
   if (crossPlatformSuite) {
-    console.log("✅ Found cross-platform suite:", {
-      id: crossPlatformSuite.id,
-      platforms: crossPlatformSuite.platforms,
-    });
-
     return NextResponse.json({
       kind: "cross-platform",
       platforms: crossPlatformSuite.platforms || [],
@@ -49,14 +44,11 @@ export async function GET(
     .maybeSingle();
 
   if (regularSuite) {
-    console.log("✅ Found regular suite:", regularSuite.id);
-
     return NextResponse.json({
       kind: "regular",
       platforms: [],
     });
   }
 
-  console.log("❌ Suite not found:", suiteId);
   return NextResponse.json({ error: "Suite not found" }, { status: 404 });
 }

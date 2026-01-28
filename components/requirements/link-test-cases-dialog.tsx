@@ -46,7 +46,7 @@ export function LinkTestCasesDialog({
   onLinked,
 }: LinkTestCasesDialogProps) {
   const [linkedTestCases, setLinkedTestCases] = useState<RequirementTestCase[]>(
-    []
+    [],
   );
   const [allTestCases, setAllTestCases] = useState<TestCase[]>([]);
   const [selectedCoverageTypes, setSelectedCoverageTypes] = useState<
@@ -54,7 +54,7 @@ export function LinkTestCasesDialog({
   >({});
   const [loading, setLoading] = useState(false);
   const [selectedTestCaseIds, setSelectedTestCaseIds] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   const { user } = useAuth();
@@ -77,7 +77,7 @@ export function LinkTestCasesDialog({
           `
           *,
           test_cases(id, title, test_type, priority, status)
-        `
+        `,
         )
         .eq("requirement_id", requirement.id);
 
@@ -97,7 +97,7 @@ export function LinkTestCasesDialog({
       const { data, error } = await supabase
         .from("test_cases")
         .select(
-          "id, title, test_type, priority, status, created_at, updated_at"
+          "id, title, test_type, priority, status, created_at, updated_at",
         )
         .eq("user_id", user.id)
         .order("title");
@@ -163,9 +163,8 @@ export function LinkTestCasesDialog({
     }
   }
 
-  // Filter out already linked test cases
   const availableTestCases = allTestCases.filter(
-    (tc) => !linkedTestCases.some((link) => link.test_case_id === tc.id)
+    (tc) => !linkedTestCases.some((link) => link.test_case_id === tc.id),
   );
 
   function toggleSelected(id: string, checked: boolean) {
@@ -233,7 +232,7 @@ export function LinkTestCasesDialog({
       if (error) throw error;
 
       toast.success(
-        `Linked ${ids.length} test case${ids.length > 1 ? "s" : ""}`
+        `Linked ${ids.length} test case${ids.length > 1 ? "s" : ""}`,
       );
       await fetchLinkedTestCases();
       onLinked();
@@ -365,8 +364,8 @@ export function LinkTestCasesDialog({
                           allSelected
                             ? true
                             : someSelected
-                            ? "indeterminate"
-                            : false
+                              ? "indeterminate"
+                              : false
                         }
                         onCheckedChange={(v) => setAllSelected(Boolean(v))}
                         disabled={loading}
