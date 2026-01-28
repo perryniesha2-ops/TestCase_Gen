@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -38,6 +38,9 @@ import {
   Save,
   Eye,
   EyeOff,
+  KeyRound,
+  RefreshCw,
+  Copy,
 } from "lucide-react";
 import {
   Dialog,
@@ -50,7 +53,14 @@ import {
 } from "@/components/ui/dialog";
 
 import type { ModelKey } from "@/lib/ai-models/config";
-import { TestTypeMultiselect } from "../generator/testtype-multiselect";
+import {
+  CanonicalTestType,
+  TestTypeMultiselect,
+} from "../generator/testtype-multiselect";
+
+// ============================================================================
+// TYPES
+// ============================================================================
 
 type ThemeOption = "light" | "dark" | "system";
 
@@ -64,7 +74,7 @@ type Preferences = {
   test_case_defaults: {
     model: ModelKey;
     count: number;
-    test_types: string[];
+    test_types: string[]; // Keep as string[] for DB compatibility
   };
 };
 
@@ -76,6 +86,10 @@ interface UserProfile {
   created_at: string;
   preferences?: Preferences;
 }
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
 
 const DEFAULT_PREFERENCES: Preferences = {
   theme: "system",
@@ -97,10 +111,6 @@ const MODEL_KEYS = new Set<ModelKey>([
   "gpt-4o-mini",
 ]);
 
-function isModelKey(v: unknown): v is ModelKey {
-  return typeof v === "string" && MODEL_KEYS.has(v as ModelKey);
-}
-
 const MODEL_LABELS: Record<ModelKey, string> = {
   "claude-sonnet-4-5": "Claude Sonnet 4.5",
   "claude-haiku-4-5": "Claude Haiku 4.5",
@@ -111,10 +121,6 @@ const MODEL_LABELS: Record<ModelKey, string> = {
   "gpt-4o-mini": "GPT-4o Mini",
 };
 
-function getModelDisplayName(modelKey: string): string {
-  return (MODEL_LABELS as Record<string, string>)[modelKey] ?? modelKey;
-}
-
 const MODEL_MIGRATIONS: Record<string, ModelKey> = {
   "claude-3-5-sonnet-20241022": "claude-sonnet-4-5",
   "claude-3-5-haiku-20241022": "claude-haiku-4-5",
@@ -122,18 +128,53 @@ const MODEL_MIGRATIONS: Record<string, ModelKey> = {
   "gpt-4o-mini-2024-07-18": "gpt-4o-mini",
 };
 
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+function isModelKey(v: unknown): v is ModelKey {
+  return typeof v === "string" && MODEL_KEYS.has(v as ModelKey);
+}
+
+function randomHex(bytes = 32): string {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function getModelDisplayName(modelKey: string): string {
+  return MODEL_LABELS[modelKey as ModelKey] ?? modelKey;
+}
+
 function normalizeModel(raw: unknown): ModelKey {
   const s = typeof raw === "string" ? raw : "";
   const migrated = MODEL_MIGRATIONS[s];
   if (migrated) return migrated;
 
-  // prefix-based normalization for dated variants
   if (s.startsWith("claude-3-5-sonnet")) return "claude-sonnet-4-5";
   if (s.startsWith("claude-3-5-haiku")) return "claude-haiku-4-5";
   if (s.startsWith("gpt-4o-mini")) return "gpt-4o-mini";
   if (s.startsWith("gpt-4o")) return "gpt-4o";
 
   return isModelKey(s) ? s : "claude-sonnet-4-5";
+}
+
+function toCanonicalTestTypes(types: string[]): CanonicalTestType[] {
+  const validTypes: CanonicalTestType[] = [
+    "happy-path",
+    "negative",
+    "security",
+    "boundary",
+    "edge-case",
+    "performance",
+    "integration",
+    "regression",
+    "smoke",
+  ];
+
+  return types.filter((t): t is CanonicalTestType =>
+    validTypes.includes(t as CanonicalTestType),
+  );
 }
 
 function safePreferences(input: unknown): Preferences {
@@ -175,50 +216,54 @@ function safePreferences(input: unknown): Preferences {
   };
 }
 
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
+
 export default function SettingsPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const { setTheme: setNextTheme } = useNextTheme();
 
+  // Core state
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  // profile form
+  // Profile form
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
 
-  // password form
+  // Password form
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPasswords, setShowPasswords] = useState(false);
 
-  // preferences
+  // Preferences
   const [themePref, setThemePref] = useState<ThemeOption>("system");
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
   const [marketingEmails, setMarketingEmails] = useState(false);
-
   const [defaultModel, setDefaultModel] =
     useState<ModelKey>("claude-sonnet-4-5");
-
   const [defaultCount, setDefaultCount] = useState(10);
+  const [defaultTestTypes, setDefaultTestTypes] = useState<CanonicalTestType[]>(
+    ["happy-path", "negative", "boundary"],
+  );
 
-  const [defaultTestTypes, setDefaultTestTypes] = useState<string[]>([
-    "happy-path",
-    "negative",
-    "boundary",
-  ]);
+  // API key
+  const [apiKeyPlain, setApiKeyPlain] = useState<string | null>(null);
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [apiKeyLoading, setApiKeyLoading] = useState(false);
 
-  useEffect(() => {
-    void fetchUserProfile();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // ============================================================================
+  // DATA FETCHING
+  // ============================================================================
 
-  async function fetchUserProfile() {
+  const fetchUserProfile = useCallback(async () => {
     try {
       const { data } = await supabase.auth.getUser();
       const authUser = data.user;
@@ -234,13 +279,14 @@ export default function SettingsPage() {
         .maybeSingle();
 
       if (error) {
-        console.error("Error loading profile from user_profiles:", error);
+        console.error("Error loading profile:", error);
         toast.error("Failed to load user profile");
         return;
       }
 
       let finalProfile = profile;
 
+      // Create profile if it doesn't exist
       if (!finalProfile) {
         const initialPrefs = safePreferences(
           authUser.user_metadata?.preferences ?? DEFAULT_PREFERENCES,
@@ -262,7 +308,7 @@ export default function SettingsPage() {
           .single();
 
         if (upsertError) {
-          console.error("Error upserting user profile:", upsertError);
+          console.error("Error creating user profile:", upsertError);
           toast.error("Failed to initialize user profile");
           return;
         }
@@ -293,7 +339,7 @@ export default function SettingsPage() {
 
       setUser(userProfile);
 
-      // hydrate UI state
+      // Hydrate form state
       setFullName(userProfile.full_name || "");
       setEmail(userProfile.email);
       setThemePref(prefs.theme);
@@ -302,7 +348,9 @@ export default function SettingsPage() {
       setMarketingEmails(prefs.notifications.marketing);
       setDefaultModel(prefs.test_case_defaults.model);
       setDefaultCount(prefs.test_case_defaults.count);
-      setDefaultTestTypes(prefs.test_case_defaults.test_types ?? []);
+      setDefaultTestTypes(
+        toCanonicalTestTypes(prefs.test_case_defaults.test_types),
+      );
 
       setNextTheme(prefs.theme);
     } catch (err) {
@@ -311,56 +359,67 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [router, supabase, setNextTheme]);
 
-  async function handleAvatarUpload(
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) {
-    const file = event.target.files?.[0];
-    if (!file || !user) return;
+  useEffect(() => {
+    void fetchUserProfile();
+  }, [fetchUserProfile]);
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("File size must be less than 5MB");
-      return;
-    }
-    if (!file.type.startsWith("image/")) {
-      toast.error("File must be an image");
-      return;
-    }
+  // ============================================================================
+  // HANDLERS
+  // ============================================================================
 
-    setUploadingAvatar(true);
-    try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+  const handleAvatarUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file || !user) return;
 
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(fileName, file, {
-          cacheControl: "3600",
-          upsert: false,
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("File size must be less than 5MB");
+        return;
+      }
+      if (!file.type.startsWith("image/")) {
+        toast.error("File must be an image");
+        return;
+      }
+
+      setUploadingAvatar(true);
+      try {
+        const fileExt = file.name.split(".").pop();
+        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("avatars")
+          .upload(fileName, file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage
+          .from("avatars")
+          .getPublicUrl(fileName);
+
+        const { error: updateError } = await supabase.auth.updateUser({
+          data: { avatar_url: data.publicUrl, full_name: fullName },
         });
-      if (uploadError) throw uploadError;
+        if (updateError) throw updateError;
 
-      const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
+        setUser((prev) =>
+          prev ? { ...prev, avatar_url: data.publicUrl } : prev,
+        );
+        toast.success("Avatar updated successfully!");
+      } catch (err) {
+        console.error("Error uploading avatar:", err);
+        toast.error("Failed to upload avatar");
+      } finally {
+        setUploadingAvatar(false);
+      }
+    },
+    [user, fullName, supabase],
+  );
 
-      const { error: updateError } = await supabase.auth.updateUser({
-        data: { avatar_url: data.publicUrl, full_name: fullName },
-      });
-      if (updateError) throw updateError;
-
-      setUser((prev) =>
-        prev ? { ...prev, avatar_url: data.publicUrl } : prev,
-      );
-      toast.success("Avatar updated successfully!");
-    } catch (err) {
-      console.error("Error uploading avatar:", err);
-      toast.error("Failed to upload avatar");
-    } finally {
-      setUploadingAvatar(false);
-    }
-  }
-
-  async function handleRemoveAvatar() {
+  const handleRemoveAvatar = useCallback(async () => {
     if (!user?.avatar_url) return;
     try {
       const { error } = await supabase.auth.updateUser({
@@ -374,9 +433,9 @@ export default function SettingsPage() {
       console.error("Error removing avatar:", err);
       toast.error("Failed to remove avatar");
     }
-  }
+  }, [user, fullName, supabase]);
 
-  async function handleSaveProfile() {
+  const handleSaveProfile = useCallback(async () => {
     if (!user) return;
     setSaving(true);
 
@@ -391,17 +450,17 @@ export default function SettingsPage() {
         test_case_defaults: {
           model: defaultModel,
           count: defaultCount,
-          test_types: defaultTestTypes,
+          test_types: defaultTestTypes, // ✅ Now properly defined
         },
       };
 
-      // 1) update auth metadata
+      // Update auth metadata
       const { error: authError } = await supabase.auth.updateUser({
         data: { full_name: fullName, preferences },
       });
       if (authError) throw authError;
 
-      // 2) update user_profiles
+      // Update user_profiles table
       const { error: profileError } = await supabase
         .from("user_profiles")
         .update({
@@ -418,7 +477,6 @@ export default function SettingsPage() {
         prev ? { ...prev, full_name: fullName, preferences } : prev,
       );
 
-      // 3) apply theme
       setNextTheme(themePref);
 
       toast.success("Profile updated successfully!", {
@@ -430,9 +488,68 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  }
+  }, [
+    user,
+    themePref,
+    emailNotifications,
+    pushNotifications,
+    marketingEmails,
+    defaultModel,
+    defaultCount,
+    defaultTestTypes,
+    fullName,
+    email,
+    supabase,
+    setNextTheme,
+  ]);
 
-  async function handleChangePassword() {
+  const generateApiKey = useCallback(async () => {
+    setApiKeyLoading(true);
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      const authUser = auth.user;
+      if (!authUser) {
+        toast.error("You must be signed in to generate an API key.");
+        return;
+      }
+
+      const apiKey = `synthqa_${randomHex(32)}`;
+
+      const { error } = await supabase
+        .from("user_profiles")
+        .update({
+          api_key: apiKey,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", authUser.id);
+
+      if (error) throw error;
+
+      setApiKeyPlain(apiKey);
+      setApiKeyVisible(true);
+
+      toast.success("API key generated!", {
+        description: "Copy this key now — you won't see it again.",
+      });
+    } catch (err) {
+      console.error("generateApiKey error:", err);
+      toast.error("Failed to generate API key");
+    } finally {
+      setApiKeyLoading(false);
+    }
+  }, [supabase]);
+
+  const copyApiKey = useCallback(async () => {
+    if (!apiKeyPlain) return;
+    try {
+      await navigator.clipboard.writeText(apiKeyPlain);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  }, [apiKeyPlain]);
+
+  const handleChangePassword = useCallback(async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
       toast.error("Please fill in all password fields");
       return;
@@ -463,17 +580,24 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  }
+  }, [currentPassword, newPassword, confirmPassword, supabase]);
 
-  const getUserInitials = (name: string) => {
-    const base = name?.trim() ? name : email;
-    return base
-      .split(" ")
-      .filter(Boolean)
-      .map((w) => w.charAt(0).toUpperCase())
-      .slice(0, 2)
-      .join("");
-  };
+  const getUserInitials = useCallback(
+    (name: string) => {
+      const base = name?.trim() ? name : email;
+      return base
+        .split(" ")
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase())
+        .slice(0, 2)
+        .join("");
+    },
+    [email],
+  );
+
+  // ============================================================================
+  // LOADING & UNAUTHORIZED STATES
+  // ============================================================================
 
   if (loading) {
     return (
@@ -505,6 +629,10 @@ export default function SettingsPage() {
     );
   }
 
+  // ============================================================================
+  // RENDER
+  // ============================================================================
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       <div className="mb-8">
@@ -515,7 +643,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="profile" className="flex items-center gap-2">
             <User className="h-4 w-4" />
             Profile
@@ -535,9 +663,13 @@ export default function SettingsPage() {
             <Shield className="h-4 w-4" />
             Security
           </TabsTrigger>
+          <TabsTrigger value="api" className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4" />
+            API Keys
+          </TabsTrigger>
         </TabsList>
 
-        {/* Profile */}
+        {/* Profile Tab */}
         <TabsContent value="profile" className="space-y-6">
           <Card>
             <CardHeader>
@@ -637,7 +769,7 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* Preferences */}
+        {/* Preferences Tab */}
         <TabsContent value="preferences" className="space-y-6">
           <Card>
             <CardHeader>
@@ -686,19 +818,6 @@ export default function SettingsPage() {
                   </p>
                 </div>
 
-                <div className="space-y-2 md:col-span-3">
-                  <Label>Default Test Types</Label>
-                  <TestTypeMultiselect
-                    value={defaultTestTypes}
-                    onChange={(value: string[]) => setDefaultTestTypes(value)}
-                    placeholder="Select default test types..."
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    These will be preselected in the generator. You can still
-                    override per run.
-                  </p>
-                </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="defaultCount">Default Test Count</Label>
                   <Select
@@ -717,6 +836,19 @@ export default function SettingsPage() {
                       <SelectItem value="50">50 test cases</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2 md:col-span-3">
+                  <Label>Default Test Types</Label>
+                  <TestTypeMultiselect
+                    value={defaultTestTypes}
+                    onChange={setDefaultTestTypes}
+                    placeholder="Select default test types..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    These will be preselected in the generator. You can still
+                    override per run.
+                  </p>
                 </div>
               </div>
 
@@ -762,7 +894,7 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* Notifications */}
+        {/* Notifications Tab */}
         <TabsContent value="notifications" className="space-y-6">
           <Card>
             <CardHeader>
@@ -821,7 +953,7 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* Security */}
+        {/* Security Tab */}
         <TabsContent value="security" className="space-y-6">
           <Card>
             <CardHeader>
@@ -939,7 +1071,186 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* Save bar */}
+        {/* API Keys Tab */}
+        <TabsContent value="api" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>API Integration</CardTitle>
+              <CardDescription>
+                Use these credentials to sync Playwright test results back to
+                SynthQA
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-6">
+              {/* API Key Section */}
+              <div className="space-y-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">API Key</p>
+                    <p className="text-xs text-muted-foreground">
+                      Generate a key to authenticate your test exports
+                    </p>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    onClick={generateApiKey}
+                    disabled={apiKeyLoading}
+                  >
+                    {apiKeyLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Generate New Key
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {!apiKeyPlain ? (
+                  <div className="rounded-lg border bg-muted/40 p-4">
+                    <p className="text-sm text-muted-foreground">
+                      No key generated yet. Click{" "}
+                      <span className="font-medium">Generate New Key</span> to
+                      create one.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="apiKey">Your API Key</Label>
+                    <div className="relative">
+                      <Input
+                        id="apiKey"
+                        readOnly
+                        value={
+                          apiKeyVisible
+                            ? apiKeyPlain
+                            : "•".repeat(Math.min(apiKeyPlain.length, 48))
+                        }
+                        className="pr-28 font-mono text-sm"
+                      />
+                      <div className="absolute right-1 top-1 flex gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setApiKeyVisible((v) => !v)}
+                        >
+                          {apiKeyVisible ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={copyApiKey}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-destructive font-medium">
+                      ⚠️ Save this key securely - you won't see it again after
+                      leaving this page
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Webhook URL Section */}
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Webhook URL</p>
+                  <p className="text-xs text-muted-foreground">
+                    Use this URL in your Playwright exports to sync test results
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="webhookUrl">Webhook Endpoint</Label>
+                  <div className="relative">
+                    <Input
+                      id="webhookUrl"
+                      readOnly
+                      value={`${window.location.origin}/api/automation/webhook/results`}
+                      className="pr-12 font-mono text-sm"
+                    />
+                    <div className="absolute right-1 top-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(
+                              `${window.location.origin}/api/automation/webhook/results`,
+                            );
+                            toast.success("Webhook URL copied to clipboard");
+                          } catch {
+                            toast.error("Failed to copy");
+                          }
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Usage Instructions */}
+              <div className="rounded-lg border bg-blue-50 dark:bg-blue-950/20 p-4 space-y-3">
+                <div className="flex items-start gap-2">
+                  <KeyRound className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                      How to Use These Credentials
+                    </p>
+                    <ol className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-decimal list-inside">
+                      <li>Export a test suite to Playwright</li>
+                      <li>
+                        Add these values to your{" "}
+                        <code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded">
+                          .env
+                        </code>{" "}
+                        file:
+                      </li>
+                    </ol>
+                    <div className="mt-2 p-3 bg-blue-100 dark:bg-blue-900 rounded font-mono text-xs space-y-1">
+                      <div>
+                        SYNTHQA_WEBHOOK_URL="
+                        {window.location.origin}/api/automation/webhook/results"
+                      </div>
+                      <div>
+                        SYNTHQA_API_KEY="{apiKeyPlain || "your_api_key_here"}"
+                      </div>
+                    </div>
+                    <p className="text-sm text-blue-800 dark:text-blue-200 mt-2">
+                      Your test results will automatically sync back to SynthQA
+                      after each run.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Save Bar */}
         <div className="flex items-center gap-2 pt-4 border-t">
           <Button onClick={handleSaveProfile} disabled={saving}>
             {saving ? (

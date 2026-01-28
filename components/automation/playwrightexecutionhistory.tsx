@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { useRouter } from "next/navigation";
 
 // Matches your existing test_executions schema
 type TestExecution = {
@@ -124,6 +125,8 @@ export function PlaywrightExecutionHistory({
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   const { user } = useAuth();
+  const router = useRouter();
+
 
   useEffect(() => {
     if (user) {
@@ -606,15 +609,12 @@ export function PlaywrightExecutionHistory({
                       </TableCell>
 
                       <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1"
-                          onClick={() => openRunDetails(run)}
+                        <button
+                            onClick={() => router.push(`/automation/execution/${run.executions[0].id}`)}
+                            className="text-sm text-primary hover:underline"
                         >
-                          <Eye className="h-4 w-4" />
-                          View
-                        </Button>
+                          View Details →
+                        </button>
                       </TableCell>
                     </TableRow>
                   );

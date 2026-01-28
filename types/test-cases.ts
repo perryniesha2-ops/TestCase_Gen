@@ -1,4 +1,4 @@
-// app/test-cases/types/test-cases.ts
+// types/test-cases.ts
 
 export type ExecutionStatus =
   | "not_run"
@@ -7,6 +7,7 @@ export type ExecutionStatus =
   | "failed"
   | "blocked"
   | "skipped";
+
 export type ApprovalStatus =
   | "draft"
   | "active"
@@ -14,7 +15,9 @@ export type ApprovalStatus =
   | "pending"
   | "approved"
   | "rejected";
+
 export type Priority = "low" | "medium" | "high" | "critical";
+
 export type AutomationMode = "manual" | "partial" | "automated";
 
 export interface TestStep {
@@ -44,27 +47,55 @@ export interface TestCase {
   is_negative_test: boolean;
   is_security_test: boolean;
   is_boundary_test: boolean;
+  user_id?: string; // ✅ Added for consistency
 }
 
 export interface CrossPlatformTestCase {
   id: string;
   suite_id: string;
+  user_id?: string; // ✅ Added
   platform: string;
   framework: string;
   title: string;
   description: string;
-  preconditions: string[];
+  preconditions: string[] | string; // ✅ Support both formats
   steps: string[];
   expected_results: string[];
   automation_hints?: string[];
+  automation_metadata?: Record<string, any>; // ✅ Added for API metadata
+  project_id?: string | null; // ✅ Add this
+  projects?: Project; // ✅ Add this for joined data
   priority: Priority;
   execution_status: ExecutionStatus;
   status: ApprovalStatus;
   created_at: string;
+  updated_at?: string; // ✅ Added
+  approved_at?: string; // ✅ Added
+  approved_by?: string; // ✅ Added
   cross_platform_test_suites?: {
     requirement: string;
     user_id: string;
   };
+}
+
+// ✅ NEW: Combined type for unified table
+export type CombinedTestCase = (TestCase | CrossPlatformTestCase) & {
+  _caseType?: "regular" | "cross-platform";
+};
+
+// ✅ NEW: Type guards
+export function isRegularTestCase(
+  tc: CombinedTestCase,
+): tc is TestCase & { _caseType?: "regular" } {
+  return tc._caseType === "regular" || !tc._caseType || "test_steps" in tc;
+}
+
+export function isCrossPlatformTestCase(
+  tc: CombinedTestCase,
+): tc is CrossPlatformTestCase & { _caseType: "cross-platform" } {
+  return (
+    tc._caseType === "cross-platform" || ("platform" in tc && "framework" in tc)
+  );
 }
 
 export interface TestCaseForm {
@@ -127,6 +158,7 @@ export interface Project {
   color: string;
   icon: string;
 }
+
 export interface Generation {
   id: string;
   title: string;
@@ -138,6 +170,7 @@ export interface CrossPlatformSuite {
   platforms: string[];
   generated_at: string;
 }
+
 export const platformIcons = {
   web: "Monitor",
   mobile: "Smartphone",
@@ -145,6 +178,8 @@ export const platformIcons = {
   accessibility: "Eye",
   performance: "Zap",
 } as const;
+
+export type PlatformType = keyof typeof platformIcons;
 
 export const testTypes = [
   "functional",
@@ -163,7 +198,7 @@ export const testTypes = [
 export interface TestSuite {
   id: string;
   name: string;
-  description?: string;
+  description?: string | null;
   suite_type: "manual" | "automated" | "regression" | "smoke" | "integration";
   status: "draft" | "active" | "completed" | "archived";
   planned_start_date?: string;
@@ -187,6 +222,19 @@ export interface TestSuite {
     with_automation: number;
     ready: number;
   };
+}
+
+// ✅ NEW: Suite-TestCase relationship supporting both types
+export interface SuiteTestCase {
+  id: string;
+  suite_id: string;
+  test_case_id: string | null; // For regular test cases
+  platform_test_case_id: string | null; // For cross-platform test cases
+  sequence_order: number;
+  priority: Priority;
+  estimated_duration_minutes: number;
+  test_cases?: TestCase | null;
+  platform_test_cases?: CrossPlatformTestCase | null;
 }
 
 export interface SessionStats {
@@ -301,3 +349,17 @@ export type TestCasesOverviewResponse = {
   generations: Generation[];
   crossPlatformSuites: CrossPlatformSuite[];
 };
+
+// ✅ NEW: Export types for dialog components
+export type AnyTestCase = TestCase | CrossPlatformTestCase;
+
+// ✅ NEW: Helper to get case type from object
+export function getCaseType(tc: AnyTestCase): "regular" | "cross-platform" {
+  if ("test_steps" in tc && "test_type" in tc) {
+    return "regular";
+  }
+  if ("platform" in tc && "framework" in tc) {
+    return "cross-platform";
+  }
+  return "regular"; // fallback
+}

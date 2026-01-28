@@ -22,6 +22,7 @@ export async function GET(req: Request) {
     const generationId = url.searchParams.get("generation");
     const sessionId = url.searchParams.get("session");
     const projectId = url.searchParams.get("project");
+    const selectedProject = url.searchParams.get("project");
 
     // 1) Projects (toolbar)
     const { data: projects, error: projErr } = await supabase
@@ -54,7 +55,7 @@ export async function GET(req: Request) {
         updated_at,
         project_id,
         projects:project_id(id, name, color, icon)
-      `
+      `,
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
@@ -67,41 +68,52 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: tcErr.message }, { status: 500 });
     }
 
-    // 3) Cross-platform test cases (platform_test_cases joined to suites)
-    // Note: project filtering for cross-platform depends on your schema.
-    // If your suites have project_id, you can filter via the joined suite.
-    const { data: crossPlatformCases, error: cpErr } = await supabase
+    let crossPlatformQuery = supabase
       .from("platform_test_cases")
       .select(
         `
-        id,
-        suite_id,
-        platform,
-        framework,
-        title,
-        description,
-        preconditions,
-        steps,
-        expected_results,
-        automation_hints,
-        priority,
-        status,
-        created_at,
-        cross_platform_test_suites!inner(
-          id,
-          requirement,
-          user_id,
-          platforms,
-          generated_at
-        )
-      `
+    id,
+    suite_id,
+    platform,
+    framework,
+    title,
+    description,
+    preconditions,
+    steps,
+    expected_results,
+    automation_hints,
+    priority,
+    status,
+    project_id,
+    created_at,
+    projects (id, name, color, icon),
+    cross_platform_test_suites!inner(
+      id,
+      requirement,
+      user_id,
+      platforms,
+      generated_at
+    )
+  `,
       )
       .eq("cross_platform_test_suites.user_id", user.id)
       .order("created_at", { ascending: false });
 
+    if (selectedProject) {
+      crossPlatformQuery = crossPlatformQuery.eq("project_id", selectedProject);
+    }
+
+    const { data: rawCrossPlatformCases, error: cpErr } =
+      await crossPlatformQuery;
+
     if (cpErr) {
       return NextResponse.json({ error: cpErr.message }, { status: 500 });
     }
+
+    const crossPlatformCases = (rawCrossPlatformCases || []).map((tc) => ({
+      ...tc,
+      projects: Array.isArray(tc.projects) ? tc.projects[0] : tc.projects,
+    }));
 
     // 4) Session header (optional)
     let currentSession: any = null;
@@ -177,19 +189,18 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({
-      projects: projects ?? [],
       testCases: testCases ?? [],
       crossPlatformCases: crossPlatformCases ?? [],
       currentSession,
       executionByCaseId,
-
+      projects: projects ?? [],
       generations: generations ?? [],
       crossPlatformSuites: suites ?? [],
     });
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message ?? "Unexpected error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

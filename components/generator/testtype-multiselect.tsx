@@ -1,4 +1,4 @@
-// components/generator/test-type-multiselect.tsx - IMPROVED WITH SCROLLING
+// components/generator/test-type-multiselect.tsx
 "use client";
 
 import * as React from "react";
@@ -20,67 +20,147 @@ import {
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 
+/**
+ * Keep this aligned with your backend TEST_TYPE_INSTRUCTIONS keys.
+ */
+export type CanonicalTestType =
+  | "happy-path"
+  | "negative"
+  | "security"
+  | "boundary"
+  | "edge-case"
+  | "performance"
+  | "integration"
+  | "regression"
+  | "smoke";
+
+export type PlatformId =
+  | "web"
+  | "mobile"
+  | "api"
+  | "accessibility"
+  | "performance";
+
 export type TestType = {
-  value: string;
+  value: CanonicalTestType;
   label: string;
   description: string;
-  icon?: string;
+  icon?: React.ReactNode;
   recommended?: boolean;
+  platforms?: PlatformId[]; // optional filter
 };
 
 export const TEST_TYPES: TestType[] = [
   {
     value: "happy-path",
     label: "Happy Path",
-    description: "Positive scenarios with valid inputs and expected flows",
+    description: "Primary flows with valid inputs and expected behavior",
+    recommended: true,
+    platforms: ["web", "mobile", "api", "accessibility", "performance"],
   },
   {
     value: "negative",
-    label: "Negative Tests",
-    description: "Invalid inputs, error handling, and unhappy paths",
+    label: "Negative",
+    description: "Invalid inputs, error handling, unhappy paths",
+    recommended: true,
+    platforms: ["web", "mobile", "api"],
   },
   {
     value: "boundary",
-    label: "Boundary Tests",
-    description: "Min/max values, limits, and edge conditions",
-  },
-  {
-    value: "security",
-    label: "Security Tests",
-    description: "Authentication, authorization, XSS, injection attacks",
+    label: "Boundary",
+    description: "Min/max limits, constraints, length/value boundaries",
+    recommended: true,
+    platforms: ["web", "mobile", "api"],
   },
   {
     value: "edge-case",
-    label: "Edge Cases",
-    description: "Unusual but valid scenarios and rare conditions",
+    label: "Edge Case",
+    description: "Unusual but valid scenarios, rare sequences, odd combos",
+    recommended: true,
+    platforms: ["web", "mobile", "api"],
   },
   {
-    value: "performance",
-    label: "Performance Tests",
-    description: "Load, stress, and response time scenarios",
+    value: "security",
+    label: "Security",
+    description: "Auth/session, access control, injection/XSS basics",
+    recommended: true,
+    platforms: ["web", "api"],
   },
   {
     value: "integration",
-    label: "Integration Tests",
-    description: "Component interactions and data flow between systems",
+    label: "Integration",
+    description: "Cross-service interactions, third-party, data flow checks",
+    recommended: false,
+    platforms: ["web", "mobile", "api"],
   },
   {
     value: "regression",
-    label: "Regression Tests",
-    description: "Verify existing functionality after changes",
+    label: "Regression",
+    description: "Core functionality still works after changes",
+    recommended: true,
+    platforms: ["web", "mobile", "api"],
   },
   {
     value: "smoke",
-    label: "Smoke Tests",
-    description: "Critical path validation and basic functionality",
+    label: "Smoke",
+    description: "Critical path sanity checks to confirm build is testable",
+    recommended: true,
+    platforms: ["web", "mobile", "api"],
+  },
+  {
+    value: "performance",
+    label: "Performance",
+    description: "Response time, load, throughput, basic SLAs",
+    recommended: false,
+    platforms: ["performance", "api", "web", "mobile"],
   },
 ];
 
+function normalizeValue(v: string) {
+  return String(v || "").trim();
+}
+
+function dedupe(values: string[]) {
+  return Array.from(new Set(values.map(normalizeValue).filter(Boolean)));
+}
+
+function getVisibleTypes(platform?: PlatformId | null) {
+  if (!platform) return TEST_TYPES;
+  return TEST_TYPES.filter(
+    (t) => !t.platforms || t.platforms.includes(platform),
+  );
+}
+
+function isCanonicalTestType(v: unknown): v is CanonicalTestType {
+  return (
+    typeof v === "string" &&
+    (
+      [
+        "happy-path",
+        "negative",
+        "security",
+        "boundary",
+        "edge-case",
+        "performance",
+        "integration",
+        "regression",
+        "smoke",
+      ] as const
+    ).includes(v as CanonicalTestType)
+  );
+}
+
 interface TestTypeMultiselectProps {
-  value: string[];
-  onChange: (value: string[]) => void;
+  value: CanonicalTestType[]; // ✅ now strongly typed
+  onChange: (value: CanonicalTestType[]) => void;
   disabled?: boolean;
   placeholder?: string;
+
+  /** filter + recommended defaults based on platform */
+  platform?: PlatformId | null;
+
+  /** when platform changes, auto-apply recommended if empty */
+  autoApplyRecommendedOnPlatformChange?: boolean;
 }
 
 export function TestTypeMultiselect({
@@ -88,32 +168,68 @@ export function TestTypeMultiselect({
   onChange,
   disabled = false,
   placeholder = "Select test types...",
+  platform = null,
+  autoApplyRecommendedOnPlatformChange = true,
 }: TestTypeMultiselectProps) {
   const [open, setOpen] = React.useState(false);
 
-  const selectedTypes = TEST_TYPES.filter((type) => value.includes(type.value));
+  const visibleTypes = React.useMemo(
+    () => getVisibleTypes(platform),
+    [platform],
+  );
 
-  const toggleType = (typeValue: string) => {
-    const newValue = value.includes(typeValue)
-      ? value.filter((v) => v !== typeValue)
+  const selectedTypes = React.useMemo(
+    () => visibleTypes.filter((type) => value.includes(type.value)),
+    [visibleTypes, value],
+  );
+
+  // Auto default when platform changes (only if empty)
+  React.useEffect(() => {
+    if (!autoApplyRecommendedOnPlatformChange) return;
+    if (!platform) return;
+    if (value.length > 0) return;
+
+    const recommended = visibleTypes
+      .filter((t) => t.recommended)
+      .map((t) => t.value);
+    if (recommended.length > 0) onChange(recommended);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [platform]);
+
+  const toggleType = (typeValue: CanonicalTestType) => {
+    const next = value.includes(typeValue)
+      ? value.filter((x) => x !== typeValue)
       : [...value, typeValue];
-    onChange(newValue);
+
+    // preserve order + uniqueness
+    onChange(dedupe(next).filter(isCanonicalTestType));
   };
 
-  const removeType = (typeValue: string) => {
-    onChange(value.filter((v) => v !== typeValue));
+  const removeType = (typeValue: CanonicalTestType) => {
+    onChange(value.filter((x) => x !== typeValue));
   };
 
   const selectRecommended = () => {
-    const recommended = TEST_TYPES.filter((t) => t.recommended).map(
-      (t) => t.value,
-    );
+    const recommended = visibleTypes
+      .filter((t) => t.recommended)
+      .map((t) => t.value);
     onChange(recommended);
   };
 
-  const clearAll = () => {
-    onChange([]);
-  };
+  const clearAll = () => onChange([]);
+
+  const platformLabel =
+    platform === "web"
+      ? "Web"
+      : platform === "mobile"
+        ? "Mobile"
+        : platform === "api"
+          ? "API"
+          : platform === "accessibility"
+            ? "Accessibility"
+            : platform === "performance"
+              ? "Performance"
+              : null;
 
   return (
     <div className="space-y-2">
@@ -149,6 +265,7 @@ export function TestTypeMultiselect({
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
+
         <PopoverContent
           className="w-[--radix-popover-trigger-width] p-0"
           align="start"
@@ -157,10 +274,10 @@ export function TestTypeMultiselect({
             <CommandInput placeholder="Search test types..." className="h-9" />
             <CommandEmpty>No test type found.</CommandEmpty>
 
-            {/* Header with actions - Fixed at top */}
             <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground border-b bg-muted/30 sticky top-0 z-10">
               <span>
-                {selectedTypes.length} of {TEST_TYPES.length} selected
+                {selectedTypes.length} of {visibleTypes.length} selected
+                {platformLabel ? ` • ${platformLabel}` : ""}
               </span>
               <div className="flex gap-2">
                 <button
@@ -182,9 +299,8 @@ export function TestTypeMultiselect({
               </div>
             </div>
 
-            {/* Scrollable list */}
             <CommandGroup className="max-h-[350px] overflow-y-auto p-2">
-              {TEST_TYPES.map((type) => {
+              {visibleTypes.map((type) => {
                 const isSelected = value.includes(type.value);
                 return (
                   <CommandItem
@@ -205,7 +321,6 @@ export function TestTypeMultiselect({
                       </div>
                       <div className="flex-1 space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-base">{type.icon}</span>
                           <span className="font-medium text-sm">
                             {type.label}
                           </span>
@@ -228,8 +343,7 @@ export function TestTypeMultiselect({
               })}
             </CommandGroup>
 
-            {/* Scroll indicator hint at bottom */}
-            {TEST_TYPES.length > 6 && (
+            {visibleTypes.length > 6 && (
               <div className="px-3 py-1.5 text-center text-[10px] text-muted-foreground border-t bg-muted/20">
                 Scroll for more options
               </div>

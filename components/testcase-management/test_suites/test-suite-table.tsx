@@ -1,3 +1,4 @@
+// components/test-suites/TestSuiteTable.tsx
 "use client";
 
 import { Badge } from "@/components/ui/badge";
@@ -19,10 +20,10 @@ type Props = {
   searchTerm: string;
   filterType: string;
   onCreateSuite: () => void;
-  onOpenDetails: (suite: TestSuite) => void;
-  onExport?: () => void;
 
-  // Keep these as injected helpers so the table stays dumb/presentational
+  // change this:
+  onViewDetails: (suite: TestSuite) => void;
+
   getStatusIcon: (status: string) => React.ReactNode;
   getStatusBadge: (status: string) => React.ReactNode;
   getSuiteTypeColor: (type: string) => string;
@@ -35,7 +36,7 @@ export function TestSuiteTable({
   searchTerm,
   filterType,
   onCreateSuite,
-  onOpenDetails,
+  onViewDetails,
   getStatusIcon,
   getStatusBadge,
   getSuiteTypeColor,
@@ -78,7 +79,6 @@ export function TestSuiteTable({
           ) : (
             suites.map((suite) => (
               <TableRow key={suite.id} className="group">
-                {/* Name */}
                 <TableCell>
                   <div className="space-y-1">
                     <div className="font-medium flex items-center gap-2">
@@ -91,7 +91,6 @@ export function TestSuiteTable({
                   </div>
                 </TableCell>
 
-                {/* Type */}
                 <TableCell>
                   <Badge
                     className={getSuiteTypeColor(getDisplaySuiteType(suite))}
@@ -100,13 +99,12 @@ export function TestSuiteTable({
                   </Badge>
                 </TableCell>
 
-                {/* Project */}
                 <TableCell>
                   {suite.projects ? (
                     <div className="flex items-center gap-2">
                       <FolderOpen
                         className={`h-4 w-4 ${getProjectColor(
-                          suite.projects.color
+                          suite.projects.color,
                         )}`}
                       />
                       <span className="text-sm truncate">
@@ -120,10 +118,8 @@ export function TestSuiteTable({
                   )}
                 </TableCell>
 
-                {/* Status */}
                 <TableCell>{getStatusBadge(suite.status)}</TableCell>
 
-                {/* Case count */}
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Target className="h-4 w-4 text-muted-foreground" />
@@ -131,7 +127,6 @@ export function TestSuiteTable({
                   </div>
                 </TableCell>
 
-                {/* Progress */}
                 <TableCell>
                   {suite.execution_stats && suite.execution_stats.total > 0 ? (
                     <div className="space-y-2">
@@ -141,7 +136,7 @@ export function TestSuiteTable({
                           {Math.round(
                             (suite.execution_stats.passed /
                               suite.execution_stats.total) *
-                              100
+                              100,
                           )}
                           %
                         </span>
@@ -173,12 +168,11 @@ export function TestSuiteTable({
                   )}
                 </TableCell>
 
-                {/* Details */}
                 <TableCell className="text-right">
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => onOpenDetails(suite)}
+                    onClick={() => onViewDetails(suite)}
                   >
                     Details
                   </Button>

@@ -1,4 +1,4 @@
-// components/testcase-management/test-cases/dialogs/BulkUpdateDialog.tsx
+// components/testcase-management/dialogs/BulkUpdateDialog.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -21,13 +21,8 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
-import type {
-  TestCase,
-  Project,
-  TestSuite,
-  CrossPlatformTestCase,
-} from "@/types/test-cases";
+import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import type { Project, TestSuite } from "@/types/test-cases";
 
 interface BulkUpdateDialogProps {
   open: boolean;
@@ -48,7 +43,7 @@ export function BulkUpdateDialog({
   action,
   selectedCount,
   type = "regular",
-  pendingCount,
+  pendingCount = 0,
   onUpdate,
   onAddToSuite,
   onApprove,
@@ -72,7 +67,6 @@ export function BulkUpdateDialog({
     }
   }, [open, action]);
 
-  // Reset form when dialog closes
   useEffect(() => {
     if (!open) {
       setSelectedStatus("");
@@ -127,7 +121,6 @@ export function BulkUpdateDialog({
   async function handleSubmit() {
     setLoading(true);
     try {
-      // Handle cross-platform actions
       if (action === "approve" && onApprove) {
         await onApprove();
         onOpenChange(false);
@@ -140,7 +133,6 @@ export function BulkUpdateDialog({
         return;
       }
 
-      // Handle suite action
       if (action === "suite") {
         if (!selectedSuite) {
           alert("Please select a suite");
@@ -153,7 +145,6 @@ export function BulkUpdateDialog({
         return;
       }
 
-      // Handle regular update actions
       if (onUpdate) {
         const updates: any = {};
 
@@ -186,15 +177,13 @@ export function BulkUpdateDialog({
       case "status":
         return "Change Status";
       case "priority":
-        return type === "cross-platform"
-          ? "Change Priority"
-          : "Change Priority";
+        return "Change Priority";
       case "project":
         return "Assign to Project";
       case "suite":
         return "Add to Test Suite";
       case "approve":
-        return "Approve & Convert Test Cases";
+        return "Approve Test Cases";
       case "reject":
         return "Reject Test Cases";
       default:
@@ -204,14 +193,14 @@ export function BulkUpdateDialog({
 
   function getDialogDescription() {
     if (action === "approve") {
-      return `You are about to approve ${
-        pendingCount || selectedCount
-      } pending test case${(pendingCount || selectedCount) === 1 ? "" : "s"}`;
+      return `Approve ${pendingCount || selectedCount} pending test case${
+        (pendingCount || selectedCount) === 1 ? "" : "s"
+      }`;
     }
     if (action === "reject") {
-      return `You are about to reject ${
-        pendingCount || selectedCount
-      } pending test case${(pendingCount || selectedCount) === 1 ? "" : "s"}`;
+      return `Reject ${pendingCount || selectedCount} pending test case${
+        (pendingCount || selectedCount) === 1 ? "" : "s"
+      }`;
     }
     return `Update ${selectedCount} test case${selectedCount === 1 ? "" : "s"}`;
   }
@@ -225,8 +214,8 @@ export function BulkUpdateDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Status Selection */}
-          {action === "status" && (
+          {/* Status Selection - Regular only */}
+          {action === "status" && type === "regular" && (
             <div className="space-y-2">
               <Label htmlFor="status">New Status</Label>
               <Select value={selectedStatus} onValueChange={setSelectedStatus}>
@@ -236,14 +225,13 @@ export function BulkUpdateDialog({
                 <SelectContent>
                   <SelectItem value="draft">Draft</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="deprecated">Deprecated</SelectItem>
                   <SelectItem value="archived">Archived</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           )}
 
-          {/* Priority Selection */}
+          {/* Priority Selection - Both types */}
           {action === "priority" && (
             <div className="space-y-2">
               <Label htmlFor="priority">New Priority</Label>
@@ -264,7 +252,6 @@ export function BulkUpdateDialog({
             </div>
           )}
 
-          {/* Project Selection */}
           {action === "project" && (
             <div className="space-y-2">
               <Label htmlFor="project">Project</Label>
@@ -287,7 +274,7 @@ export function BulkUpdateDialog({
             </div>
           )}
 
-          {/* Suite Selection */}
+          {/* Suite Selection - Both types */}
           {action === "suite" && (
             <div className="space-y-2">
               <Label htmlFor="suite">Test Suite</Label>
@@ -313,27 +300,20 @@ export function BulkUpdateDialog({
 
           {/* Approve Confirmation */}
           {action === "approve" && (
-            <Alert className="border-green-200 bg-green-50">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-800">
+            <Alert className="border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-800">
+              <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+              <AlertDescription className="text-green-800 dark:text-green-300">
                 <div className="space-y-2">
-                  <p className="font-semibold">This action will:</p>
+                  <p className="font-semibold">
+                    This will approve {pendingCount || selectedCount} test case
+                    {(pendingCount || selectedCount) === 1 ? "" : "s"}
+                  </p>
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>
-                      Convert {pendingCount || selectedCount} pending test case
-                      {(pendingCount || selectedCount) === 1 ? "" : "s"} to
-                      regular test case
-                      {(pendingCount || selectedCount) === 1 ? "" : "s"}
+                      Status will be set to <strong>Approved</strong>
                     </li>
-                    <li>
-                      Set status to <strong>Active</strong>
-                    </li>
-                    <li>
-                      Make{" "}
-                      {(pendingCount || selectedCount) === 1 ? "it" : "them"}{" "}
-                      available to add to test suites
-                    </li>
-                    <li>Keep original as approved for reference</li>
+                    <li>Cases can be added to test suites</li>
+                    <li>Cases will remain in the cross-platform table</li>
                   </ul>
                 </div>
               </AlertDescription>
@@ -342,22 +322,20 @@ export function BulkUpdateDialog({
 
           {/* Reject Confirmation */}
           {action === "reject" && (
-            <Alert className="border-orange-200 bg-orange-50">
-              <XCircle className="h-4 w-4 text-orange-600" />
-              <AlertDescription className="text-orange-800">
+            <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800">
+              <XCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+              <AlertDescription className="text-orange-800 dark:text-orange-300">
                 <div className="space-y-2">
-                  <p className="font-semibold">This action will:</p>
+                  <p className="font-semibold">
+                    This will reject {pendingCount || selectedCount} test case
+                    {(pendingCount || selectedCount) === 1 ? "" : "s"}
+                  </p>
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>
-                      Mark {pendingCount || selectedCount} test case
-                      {(pendingCount || selectedCount) === 1 ? "" : "s"} as{" "}
-                      <strong>Rejected</strong>
+                      Status will be set to <strong>Rejected</strong>
                     </li>
-                    <li>
-                      {(pendingCount || selectedCount) === 1 ? "It" : "They"}{" "}
-                      will remain visible but cannot be converted
-                    </li>
-                    <li>You can always change this later if needed</li>
+                    <li>Cases will remain visible but not usable</li>
+                    <li>You can change this later if needed</li>
                   </ul>
                 </div>
               </AlertDescription>
@@ -380,8 +358,8 @@ export function BulkUpdateDialog({
               action === "reject"
                 ? "destructive"
                 : action === "approve"
-                ? "default"
-                : "default"
+                  ? "default"
+                  : "default"
             }
             className={
               action === "approve" ? "bg-green-600 hover:bg-green-700" : ""
@@ -390,10 +368,9 @@ export function BulkUpdateDialog({
             {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {action === "approve" && <CheckCircle2 className="h-4 w-4 mr-2" />}
             {action === "reject" && <XCircle className="h-4 w-4 mr-2" />}
-            {action === "approve" && `Approve ${pendingCount || selectedCount}`}
-            {action === "reject" && `Reject ${pendingCount || selectedCount}`}
-            {!["approve", "reject"].includes(action) &&
-              `Update ${selectedCount}`}
+            {action === "approve" && `Approve`}
+            {action === "reject" && `Reject`}
+            {!["approve", "reject"].includes(action) && `Update`}
           </Button>
         </DialogFooter>
       </DialogContent>

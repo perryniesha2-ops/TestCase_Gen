@@ -355,7 +355,6 @@ export function TestSessionExecution({
   async function startNewSession() {
     // Prevent duplicate session creation
     if (isStartingSession) {
-      console.log("⚠️ Session start already in progress, skipping...");
       return;
     }
 
@@ -704,13 +703,6 @@ export function TestSessionExecution({
 
   async function endSession() {
     if (!currentSession) return;
-
-    console.log(
-      "🛑 Ending session:",
-      currentSession.id,
-      "Progress:",
-      currentSession.progress_percentage,
-    );
 
     // Only mark as completed if truly 100% done
     if (currentSession.progress_percentage === 100) {

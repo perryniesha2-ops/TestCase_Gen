@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
@@ -52,7 +53,6 @@ import { TestSuiteDetailsDialog } from "./dialogs/testSuiteDetailsDialog";
 import { SuiteReports } from "./suitesreport";
 import { ExecutionHistory } from "./executionhistory";
 import { TestSuiteTable } from "./test-suite-table";
-import { TestSuiteSheet } from "./test-suite-sheet";
 
 interface FormData {
   name: string;
@@ -73,6 +73,7 @@ export function TestSuitesPage() {
   const { user } = useAuth();
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
@@ -369,6 +370,10 @@ export function TestSuitesPage() {
     setEditOpen(true);
   }
 
+  function handleViewDetails(suite: TestSuite) {
+    router.push(`/test-library/${suite.id}`);
+  }
+
   async function updateSuiteDetails() {
     if (!editingSuite) return;
 
@@ -452,7 +457,7 @@ export function TestSuitesPage() {
                 searchTerm={searchTerm}
                 filterType={filterType}
                 onCreateSuite={() => setShowCreateDialog(true)}
-                onOpenDetails={(suite) => openSuiteDrawer(suite)}
+                onViewDetails={handleViewDetails}
                 getStatusIcon={getStatusIcon}
                 getStatusBadge={getStatusBadge}
                 getSuiteTypeColor={getSuiteTypeColor}
@@ -769,30 +774,6 @@ export function TestSuitesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Drawer */}
-      <TestSuiteSheet
-        open={drawerOpen}
-        onOpenChange={(open) => {
-          setDrawerOpen(open);
-          if (!open) setDrawerSuite(null);
-        }}
-        suite={drawerSuite}
-        getStatusBadge={getStatusBadge}
-        getSuiteTypeColor={getSuiteTypeColor}
-        getDisplaySuiteType={getDisplaySuiteType}
-        onRun={(suite) => startSuiteExecution(suite)}
-        onManage={(suite) => {
-          setSelectedSuite(suite);
-          setShowDetailsDialog(true);
-        }}
-        onEdit={(suite) => openEditSuite(suite)}
-        onDelete={async (suite) => {
-          await deleteTestSuite(suite.id);
-          setDrawerOpen(false);
-          setDrawerSuite(null);
-        }}
-      />
     </div>
   );
 }

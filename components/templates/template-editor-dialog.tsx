@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +23,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { TestTypeMultiselect } from "@/components/generator/testtype-multiselect";
+import {
+  TestTypeMultiselect,
+  type CanonicalTestType, // ✅ import the canonical union type from your multiselect file
+} from "@/components/generator/testtype-multiselect";
 import { ProjectSelect } from "@/components/projects/project-select";
 
 type TemplateCategory =
@@ -51,7 +53,10 @@ export type TemplateFormData = {
   testCaseCount: number;
   includeEdgeCases: boolean;
   includeNegativeTests: boolean;
-  test_types: string[];
+
+  // ✅ was string[]
+  test_types: CanonicalTestType[];
+
   project_id: string | null;
 };
 
@@ -82,7 +87,6 @@ export function TemplateEditorDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] sm:max-w-3xl lg:max-w-4xl max-h-[90vh] p-0 overflow-hidden">
-        {/* Sticky header */}
         <DialogHeader className="px-6 py-4 border-b sticky top-0 bg-background z-10">
           <DialogTitle>
             {mode === "edit" ? "Edit Template" : "Create New Template"}
@@ -94,9 +98,7 @@ export function TemplateEditorDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Scrollable body */}
         <div className="px-6 py-5 overflow-y-auto max-h-[calc(90vh-152px)] space-y-8">
-          {/* Basic */}
           <section className="space-y-4">
             <h4 className="text-sm font-semibold text-muted-foreground">
               Basic Information
@@ -131,7 +133,6 @@ export function TemplateEditorDialog({
               />
             </div>
 
-            {/* Category + Project inline */}
             <div className="grid grid-cols-1 gap-4 items-start">
               <div className="space-y-2">
                 <Label>Category *</Label>
@@ -161,7 +162,6 @@ export function TemplateEditorDialog({
               </div>
 
               <div className="space-y-2">
-                {/* Key fix: force ProjectSelect to stretch */}
                 <div className="w-full">
                   <ProjectSelect
                     value={formData.project_id ?? undefined}
@@ -178,13 +178,11 @@ export function TemplateEditorDialog({
             </div>
           </section>
 
-          {/* Generation */}
           <section className="space-y-4">
             <h4 className="text-sm font-semibold text-muted-foreground">
               Generation Settings
             </h4>
 
-            {/* AI Model + Test Count inline */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
               <div className="space-y-2">
                 <Label>AI Model</Label>
@@ -245,14 +243,17 @@ export function TemplateEditorDialog({
 
             <div className="space-y-2">
               <Label>Test Types</Label>
+
               <TestTypeMultiselect
                 value={formData.test_types}
-                onChange={(value: string[]) =>
-                  setFormData((p) => ({ ...p, test_types: value }))
+                // ✅ IMPORTANT: do NOT force value: string[]
+                onChange={(next) =>
+                  setFormData((p) => ({ ...p, test_types: next }))
                 }
                 disabled={saving}
                 placeholder="Select test types..."
               />
+
               <p className="text-xs text-muted-foreground">
                 Choose which kinds of tests to generate when this template is
                 used.
@@ -261,7 +262,6 @@ export function TemplateEditorDialog({
           </section>
         </div>
 
-        {/* Sticky footer */}
         <DialogFooter className="px-6 py-4 border-t bg-background sticky bottom-0 z-10">
           <Button variant="outline" onClick={onCancel} disabled={saving}>
             Cancel

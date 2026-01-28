@@ -127,8 +127,6 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
       });
 
       if (error) {
-        // If you kept "raise exception 'Unauthorized'" in the RPC, you'll land here.
-        console.error("[project_dashboard] rpc error:", error);
         toast.error(error.message || "Failed to load project dashboard");
         setDashboard(null);
         setProject(null);
