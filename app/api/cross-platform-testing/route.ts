@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import { usageTracker } from "@/lib/usage-tracker";
+import { checkAndRecordUsage } from "@/lib/usage-tracker";
 
 export const runtime = "nodejs";
 
@@ -52,8 +52,6 @@ type RequestBody = {
   testCaseCount?: number | string;
   coverage?: string;
   template?: string;
-
-  // Optional: suite metadata
   title?: string;
   description?: string | null;
   project_id?: string | null;
@@ -68,7 +66,7 @@ type ApiAuthOut =
 
 type ApiSpecOut = {
   method: ApiMethod;
-  path: string; // relative only, e.g. "/v1/orders"
+  path: string;
   headers?: Record<string, string>;
   query?: Record<string, string>;
   body?: unknown;
@@ -84,7 +82,7 @@ interface PlatformTestCase {
   expected_results: string[];
   automation_hints?: string[];
   priority: "low" | "medium" | "high" | "critical";
-  api?: ApiSpecOut; // only meaningful when platformId === "api"
+  api?: ApiSpecOut;
 }
 
 // ----- Helpers -----
@@ -479,7 +477,6 @@ async function structureTestCasesWithOpenAI(
         ? parsed.testCases
         : [];
 
-    // Normalize API spec only for API platform
     return isApi
       ? parsedCases.map((tc) => ({
           ...tc,
@@ -496,11 +493,11 @@ function buildInsertRow(args: {
   platformId: PlatformId;
   framework: string;
   tc: PlatformTestCase;
+  userId: string;
 }) {
-  const { suiteId, platformId, framework, tc } = args;
+  const { suiteId, platformId, framework, tc, userId } = args;
   const isApi = platformId === "api";
 
-  // For API platform, validate that we have required fields
   if (isApi) {
     if (!tc.api || !tc.api.method || !tc.api.path) {
       throw new Error(
@@ -528,6 +525,7 @@ function buildInsertRow(args: {
     priority: normalizePriority(tc.priority),
     execution_status: "not_run" as const,
     automation_metadata,
+    user_id: userId, // ✅ CHANGE #3: Include user_id in return
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -535,7 +533,6 @@ function buildInsertRow(args: {
 
 // ----- Handler -----
 export async function POST(request: Request) {
-  // IMPORTANT: must be per-request (not module-global)
   const apiCaseDetails: Array<{ id?: string; title: string; api: ApiSpecOut }> =
     [];
 
@@ -602,20 +599,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Quota check
     const requestedTotal = testCaseCount * platforms.length;
-    const quota = await usageTracker.canGenerateTestCases(
-      user.id,
-      requestedTotal,
-    );
 
-    if (!quota.allowed) {
+    try {
+      await checkAndRecordUsage(user.id, requestedTotal);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Usage limit exceeded";
       return NextResponse.json(
         {
-          error: quota.error || "Monthly usage limit exceeded",
+          error: msg,
           upgradeRequired: true,
           usage: {
-            remaining: quota.remaining,
             requested: requestedTotal,
             perPlatform: testCaseCount,
             platforms: platforms.length,
@@ -754,6 +748,7 @@ Return plain text test cases (no JSON).`;
             platformId,
             framework,
             tc,
+            userId: user.id,
           }),
         );
 
@@ -812,9 +807,6 @@ Return plain text test cases (no JSON).`;
       );
     }
 
-    await usageTracker.recordTestCaseGeneration(user.id, totalInserted);
-    const after = await usageTracker.canGenerateTestCases(user.id, 0);
-
     const successfulPlatforms = generationResults.filter(
       (r) => r.count > 0,
     ).length;
@@ -825,12 +817,7 @@ Return plain text test cases (no JSON).`;
       total_test_cases: totalInserted,
       platforms: platforms.map((p) => p.platform),
       generation_results: generationResults,
-      usage: {
-        remaining: after.remaining,
-        generated: totalInserted,
-        requested: requestedTotal,
-      },
-      api_case_details: apiCaseDetails, // optional, only populated for API platform
+      api_case_details: apiCaseDetails,
       message: `Successfully generated ${totalInserted} test cases across ${successfulPlatforms} platform(s)`,
     });
   } catch (error) {
