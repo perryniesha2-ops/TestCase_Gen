@@ -17,7 +17,9 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth/auth-context";
+import { AlertCircle, Mail } from "lucide-react";
 
 const COOLDOWN_SECONDS = 3;
 
@@ -26,6 +28,8 @@ export function LoginForm() {
 
   const [cooldown, setCooldown] = useState(0);
   const cooldownTimerRef = useRef<number | null>(null);
+  const [emailNotConfirmed, setEmailNotConfirmed] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
 
   const { run, loading } = useSingleFlight(async (formData: FormData) => {
     return await login(formData);
@@ -62,10 +66,14 @@ export function LoginForm() {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    // Block submits during cooldown (separate from single-flight)
+    // Reset email confirmation error state
+    setEmailNotConfirmed(false);
+
+    // Block submits during cooldown
     if (cooldown > 0) return;
 
     const formData = new FormData(e.currentTarget);
+    const email = formData.get("email") as string;
 
     const result = await run(formData);
 
@@ -76,7 +84,16 @@ export function LoginForm() {
     startCooldown(COOLDOWN_SECONDS);
 
     if ("error" in result) {
-      toast.error("Login failed", { description: result.error });
+      // Check if it's an email confirmation issue
+      if (result.code === "EMAIL_NOT_CONFIRMED") {
+        setEmailNotConfirmed(true);
+        setUserEmail(email);
+        toast.error("Email not confirmed", {
+          description: result.error,
+        });
+      } else {
+        toast.error("Login failed", { description: result.error });
+      }
       return;
     }
 
@@ -101,6 +118,37 @@ export function LoginForm() {
                 Enter your email to access your account
               </FieldSeparator>
 
+              {/* Email Confirmation Alert */}
+              {emailNotConfirmed && (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="flex flex-col gap-2">
+                    <p className="font-medium">
+                      Your email address hasn't been confirmed yet.
+                    </p>
+                    <p className="text-sm">
+                      Please check your inbox for the confirmation email. Didn't
+                      receive it?
+                    </p>
+                    <div className="flex justify-items-center">
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="w-ful"
+                      >
+                        <Link
+                          href={`/resend-confirmation?email=${encodeURIComponent(userEmail)}`}
+                        >
+                          <Mail className="h-4 w-4 mr-2" />
+                          Resend Confirmation Email
+                        </Link>
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input
@@ -109,20 +157,19 @@ export function LoginForm() {
                   type="email"
                   required
                   disabled={disabled}
+                  defaultValue={userEmail}
                 />
               </Field>
 
               <Field>
-                <div className="flex items-center">
-                  <div className="flex items-center gap-35">
-                    <FieldLabel htmlFor="password">Password</FieldLabel>
-                    <Link
-                      href="/forgot-password"
-                      className="text-sm text-muted-foreground hover:text-primary"
-                    >
-                      Forgot password?
-                    </Link>
-                  </div>
+                <div className="flex items-center justify-between">
+                  <FieldLabel htmlFor="password">Password</FieldLabel>
+                  <Link
+                    href="/forgot-password"
+                    className="text-sm text-muted-foreground hover:text-primary"
+                  >
+                    Forgot password?
+                  </Link>
                 </div>
                 <Input
                   id="password"
@@ -148,7 +195,10 @@ export function LoginForm() {
                 </Button>
 
                 <FieldDescription className="text-center">
-                  Don&apos;t have an account? <a href="/signup">Sign up</a>
+                  Don&apos;t have an account?{" "}
+                  <Link href="/signup" className="text-primary hover:underline">
+                    Sign up
+                  </Link>
                 </FieldDescription>
               </Field>
             </FieldGroup>

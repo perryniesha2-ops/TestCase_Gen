@@ -62,6 +62,7 @@ export async function signup(formData: FormData) {
   revalidatePath("/", "layout");
   return { success: true };
 }
+
 export async function login(formData: FormData): Promise<AuthResult> {
   try {
     const supabase = await createClient();
@@ -80,6 +81,15 @@ export async function login(formData: FormData): Promise<AuthResult> {
 
     if (error) {
       const msg = (error.message || "").toLowerCase();
+
+      // Check if it's an email confirmation issue
+      if (msg.includes("email not confirmed") || msg.includes("confirm")) {
+        return {
+          error: "Please confirm your email address before logging in.",
+          code: "EMAIL_NOT_CONFIRMED",
+        };
+      }
+
       if (msg.includes("too many") || msg.includes("rate")) {
         return {
           error: "Too many attempts. Please wait and try again.",
@@ -87,6 +97,7 @@ export async function login(formData: FormData): Promise<AuthResult> {
           retryAfterSeconds: 30,
         };
       }
+
       return {
         error: "Invalid email or password.",
         code: "INVALID_CREDENTIALS",
@@ -364,6 +375,8 @@ export async function resendConfirmationEmail(formData: FormData) {
   }
 }
 
+// app/actions/auth.ts - Update customResetPassword
+
 export async function customResetPassword(formData: FormData) {
   const email = formData.get("email") as string;
 
@@ -372,6 +385,34 @@ export async function customResetPassword(formData: FormData) {
   }
 
   try {
+    const supabase = await createClient();
+
+    // Check if user exists and if email is confirmed
+    const {
+      data: { users },
+      error: userError,
+    } = await supabase.auth.admin.listUsers();
+    const user = users?.find((u) => u.email === normalizeEmail(email));
+
+    if (!user) {
+      // Don't reveal if email exists
+      return {
+        success: true,
+        message:
+          "If that email exists, we've sent a reset link. Check your inbox!",
+      };
+    }
+
+    // If email is not confirmed, offer to resend confirmation instead
+    if (!user.email_confirmed_at) {
+      return {
+        error: "This email address hasn't been confirmed yet.",
+        code: "EMAIL_NOT_CONFIRMED",
+        message:
+          "Please confirm your email first. We can resend the confirmation email if needed.",
+      };
+    }
+
     // Create reset token
     const result = await AuthTokenService.createResetToken(email);
 
@@ -404,6 +445,7 @@ export async function customResetPassword(formData: FormData) {
         "If that email exists, we've sent a reset link. Check your inbox!",
     };
   } catch (error) {
+    console.error("Password reset error:", error);
     return { error: "An unexpected error occurred" };
   }
 }

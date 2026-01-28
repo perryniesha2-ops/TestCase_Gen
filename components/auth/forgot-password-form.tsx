@@ -19,12 +19,13 @@ import {
 } from "@/components/ui/field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-import { ArrowLeft, AlertTriangle, Mail } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Mail, AlertCircle } from "lucide-react";
 
 export function ForgotPasswordForm() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [email, setEmail] = useState("");
+  const [emailNotConfirmed, setEmailNotConfirmed] = useState(false);
   const searchParams = useSearchParams();
 
   const error = searchParams.get("error");
@@ -42,16 +43,26 @@ export function ForgotPasswordForm() {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
+    setEmailNotConfirmed(false); // Reset state
 
     const formData = new FormData(e.currentTarget);
+    const enteredEmail = String(formData.get("email") || "");
 
     try {
       const result = await customResetPassword(formData);
 
       if (result?.error) {
-        toast.error("Reset failed", { description: result.error });
+        // Check if it's an email confirmation issue
+        if (result.code === "EMAIL_NOT_CONFIRMED") {
+          setEmailNotConfirmed(true);
+          setEmail(enteredEmail);
+          toast.error("Email not confirmed", {
+            description: result.message || result.error,
+          });
+        } else {
+          toast.error("Reset failed", { description: result.error });
+        }
       } else if (result?.success) {
-        const enteredEmail = String(formData.get("email") || "");
         setEmail(enteredEmail);
         setSent(true);
         toast.success("Reset email sent!", { description: result.message });
@@ -66,7 +77,7 @@ export function ForgotPasswordForm() {
     }
   }
 
-  // --- SENT STATE (styled like LoginForm) ---
+  // --- SENT STATE ---
   if (sent) {
     return (
       <div className={cn("flex flex-col gap-6")}>
@@ -139,7 +150,7 @@ export function ForgotPasswordForm() {
     );
   }
 
-  // --- DEFAULT STATE (styled like LoginForm) ---
+  // --- DEFAULT STATE ---
   return (
     <div className={cn("flex flex-col gap-6")}>
       <Card>
@@ -148,12 +159,44 @@ export function ForgotPasswordForm() {
         </CardHeader>
 
         <CardContent>
+          {/* Expired Link Alert */}
           {error === "expired" && (
             <div className="mb-4">
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
                   Your reset link expired. Request a new one below.
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
+
+          {/* Email Not Confirmed Alert */}
+          {emailNotConfirmed && (
+            <div className="mb-4">
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="space-y-3">
+                  <div>
+                    <p className="font-medium">Email not confirmed</p>
+                    <p className="text-sm mt-1">
+                      You need to confirm your email address before you can
+                      reset your password.
+                    </p>
+                  </div>
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                  >
+                    <Link
+                      href={`/resend-confirmation?email=${encodeURIComponent(email)}`}
+                    >
+                      <Mail className="h-4 w-4 mr-2" />
+                      Resend Confirmation Email
+                    </Link>
+                  </Button>
                 </AlertDescription>
               </Alert>
             </div>
@@ -174,6 +217,7 @@ export function ForgotPasswordForm() {
                   placeholder="you@example.com"
                   required
                   disabled={loading}
+                  defaultValue={email}
                 />
               </Field>
 
