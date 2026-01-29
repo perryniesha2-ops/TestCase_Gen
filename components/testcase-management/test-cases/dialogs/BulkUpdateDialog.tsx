@@ -20,21 +20,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import type { Project, TestSuite } from "@/types/test-cases";
 
 interface BulkUpdateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  action: "status" | "priority" | "project" | "suite" | "approve" | "reject";
+  action: "status" | "priority" | "project" | "suite";
   selectedCount: number;
   type?: "regular" | "cross-platform";
-  pendingCount?: number;
   onUpdate?: (updates: any) => Promise<void>;
   onAddToSuite?: (suiteId: string) => Promise<void>;
-  onApprove?: () => Promise<void>;
-  onReject?: () => Promise<void>;
 }
 
 export function BulkUpdateDialog({
@@ -43,11 +39,8 @@ export function BulkUpdateDialog({
   action,
   selectedCount,
   type = "regular",
-  pendingCount = 0,
   onUpdate,
   onAddToSuite,
-  onApprove,
-  onReject,
 }: BulkUpdateDialogProps) {
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -121,18 +114,6 @@ export function BulkUpdateDialog({
   async function handleSubmit() {
     setLoading(true);
     try {
-      if (action === "approve" && onApprove) {
-        await onApprove();
-        onOpenChange(false);
-        return;
-      }
-
-      if (action === "reject" && onReject) {
-        await onReject();
-        onOpenChange(false);
-        return;
-      }
-
       if (action === "suite") {
         if (!selectedSuite) {
           alert("Please select a suite");
@@ -182,26 +163,12 @@ export function BulkUpdateDialog({
         return "Assign to Project";
       case "suite":
         return "Add to Test Suite";
-      case "approve":
-        return "Approve Test Cases";
-      case "reject":
-        return "Reject Test Cases";
       default:
         return "Bulk Update";
     }
   }
 
   function getDialogDescription() {
-    if (action === "approve") {
-      return `Approve ${pendingCount || selectedCount} pending test case${
-        (pendingCount || selectedCount) === 1 ? "" : "s"
-      }`;
-    }
-    if (action === "reject") {
-      return `Reject ${pendingCount || selectedCount} pending test case${
-        (pendingCount || selectedCount) === 1 ? "" : "s"
-      }`;
-    }
     return `Update ${selectedCount} test case${selectedCount === 1 ? "" : "s"}`;
   }
 
@@ -214,8 +181,8 @@ export function BulkUpdateDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Status Selection - Regular only */}
-          {action === "status" && type === "regular" && (
+          {/* Status Selection - Both types */}
+          {action === "status" && (
             <div className="space-y-2">
               <Label htmlFor="status">New Status</Label>
               <Select value={selectedStatus} onValueChange={setSelectedStatus}>
@@ -252,6 +219,7 @@ export function BulkUpdateDialog({
             </div>
           )}
 
+          {/* Project Selection - Both types */}
           {action === "project" && (
             <div className="space-y-2">
               <Label htmlFor="project">Project</Label>
@@ -297,50 +265,6 @@ export function BulkUpdateDialog({
               )}
             </div>
           )}
-
-          {/* Approve Confirmation */}
-          {action === "approve" && (
-            <Alert className="border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-800">
-              <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-              <AlertDescription className="text-green-800 dark:text-green-300">
-                <div className="space-y-2">
-                  <p className="font-semibold">
-                    This will approve {pendingCount || selectedCount} test case
-                    {(pendingCount || selectedCount) === 1 ? "" : "s"}
-                  </p>
-                  <ul className="list-disc list-inside space-y-1 text-sm">
-                    <li>
-                      Status will be set to <strong>Approved</strong>
-                    </li>
-                    <li>Cases can be added to test suites</li>
-                    <li>Cases will remain in the cross-platform table</li>
-                  </ul>
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Reject Confirmation */}
-          {action === "reject" && (
-            <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800">
-              <XCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-              <AlertDescription className="text-orange-800 dark:text-orange-300">
-                <div className="space-y-2">
-                  <p className="font-semibold">
-                    This will reject {pendingCount || selectedCount} test case
-                    {(pendingCount || selectedCount) === 1 ? "" : "s"}
-                  </p>
-                  <ul className="list-disc list-inside space-y-1 text-sm">
-                    <li>
-                      Status will be set to <strong>Rejected</strong>
-                    </li>
-                    <li>Cases will remain visible but not usable</li>
-                    <li>You can change this later if needed</li>
-                  </ul>
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
         </div>
 
         <DialogFooter>
@@ -351,26 +275,9 @@ export function BulkUpdateDialog({
           >
             Cancel
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={loading}
-            variant={
-              action === "reject"
-                ? "destructive"
-                : action === "approve"
-                  ? "default"
-                  : "default"
-            }
-            className={
-              action === "approve" ? "bg-green-600 hover:bg-green-700" : ""
-            }
-          >
+          <Button onClick={handleSubmit} disabled={loading}>
             {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {action === "approve" && <CheckCircle2 className="h-4 w-4 mr-2" />}
-            {action === "reject" && <XCircle className="h-4 w-4 mr-2" />}
-            {action === "approve" && `Approve`}
-            {action === "reject" && `Reject`}
-            {!["approve", "reject"].includes(action) && `Update`}
+            Update
           </Button>
         </DialogFooter>
       </DialogContent>

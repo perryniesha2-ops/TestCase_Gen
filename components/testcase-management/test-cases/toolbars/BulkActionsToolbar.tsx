@@ -37,19 +37,11 @@ interface BulkActionsToolbarProps {
   onSelectAll: () => void;
   onDeselectAll: () => void;
 
-  // Regular test case actions
+  // Unified actions for both regular and cross-platform
   onBulkUpdate?: (updates: any) => Promise<void>;
-  onBulkDelete?: (ids: string[]) => Promise<void>;
-  onBulkAddToSuite?: (ids: string[], suiteId: string) => Promise<void>;
-  onBulkExport?: (ids: string[]) => void;
-
-  // Cross-platform test case actions
-  onBulkUpdateCrossPlatform?: (ids: string[], updates: any) => Promise<void>;
-  onBulkDeleteCrossPlatform?: (ids: string[]) => Promise<void>;
-  onBulkAddCrossPlatformToSuite?: (
-    ids: string[],
-    suiteId: string,
-  ) => Promise<void>;
+  onBulkDelete?: () => Promise<void>; // ✅ Fixed: no ids parameter
+  onBulkAddToSuite?: (suiteId: string) => Promise<void>; // ✅ Fixed: only suiteId
+  onBulkExport?: () => void; // ✅ Fixed: no ids parameter
 }
 
 export function BulkActionsToolbar({
@@ -62,13 +54,10 @@ export function BulkActionsToolbar({
   onBulkDelete,
   onBulkAddToSuite,
   onBulkExport,
-  onBulkUpdateCrossPlatform,
-  onBulkDeleteCrossPlatform,
-  onBulkAddCrossPlatformToSuite,
 }: BulkActionsToolbarProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogAction, setDialogAction] = useState<
-    "status" | "priority" | "project" | "suite" | "approve" | "reject"
+    "status" | "priority" | "project" | "suite"
   >("status");
   const selectedCount = selectedIds.size;
 
@@ -78,41 +67,31 @@ export function BulkActionsToolbar({
   };
 
   const handleUpdate = async (updates: any) => {
-    const ids = Array.from(selectedIds);
-    if (type === "cross-platform" && onBulkUpdateCrossPlatform) {
-      await onBulkUpdateCrossPlatform(ids, updates);
-    } else if (onBulkUpdate) {
+    if (onBulkUpdate) {
       await onBulkUpdate(updates);
     }
   };
 
   const handleAddToSuite = async (suiteId: string) => {
-    const ids = Array.from(selectedIds);
-    if (type === "cross-platform" && onBulkAddCrossPlatformToSuite) {
-      await onBulkAddCrossPlatformToSuite(ids, suiteId);
-    } else if (onBulkAddToSuite) {
-      await onBulkAddToSuite(ids, suiteId);
+    if (onBulkAddToSuite) {
+      await onBulkAddToSuite(suiteId);
     }
   };
 
   const handleDelete = async () => {
-    const ids = Array.from(selectedIds);
     const confirmed = window.confirm(
       `Delete ${selectedCount} test case${selectedCount === 1 ? "" : "s"}?\n\nThis cannot be undone.`,
     );
     if (!confirmed) return;
 
-    if (type === "cross-platform" && onBulkDeleteCrossPlatform) {
-      await onBulkDeleteCrossPlatform(ids);
-    } else if (onBulkDelete) {
-      await onBulkDelete(ids);
+    if (onBulkDelete) {
+      await onBulkDelete();
     }
   };
 
   const handleExport = () => {
     if (onBulkExport) {
-      const ids = Array.from(selectedIds);
-      onBulkExport(ids);
+      onBulkExport();
     }
   };
 
@@ -145,7 +124,7 @@ export function BulkActionsToolbar({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Common: Add to Suite - Available for BOTH types */}
+          {/* Add to Suite */}
           <Button
             size="sm"
             variant="outline"
@@ -166,7 +145,7 @@ export function BulkActionsToolbar({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              {/* ✅ Status - Available for BOTH types */}
+              {/* Change Status */}
               <DropdownMenuItem onClick={() => openDialog("status")}>
                 <FileText className="h-4 w-4 mr-2" />
                 Change Status
@@ -174,7 +153,7 @@ export function BulkActionsToolbar({
 
               <DropdownMenuSeparator />
 
-              {/* ✅ Priority - Available for BOTH types */}
+              {/* Change Priority */}
               <DropdownMenuItem onClick={() => openDialog("priority")}>
                 <FileText className="h-4 w-4 mr-2" />
                 Change Priority
@@ -182,13 +161,13 @@ export function BulkActionsToolbar({
 
               <DropdownMenuSeparator />
 
-              {/* ✅ Project - Now available for BOTH types */}
+              {/* Assign to Project */}
               <DropdownMenuItem onClick={() => openDialog("project")}>
                 <FolderOpen className="h-4 w-4 mr-2" />
                 Assign to Project
               </DropdownMenuItem>
 
-              {/* ✅ Export - Available for BOTH types */}
+              {/* Export */}
               {onBulkExport && (
                 <>
                   <DropdownMenuSeparator />
@@ -199,7 +178,7 @@ export function BulkActionsToolbar({
                 </>
               )}
 
-              {/* ✅ Delete - Available for BOTH types */}
+              {/* Delete */}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleDelete}

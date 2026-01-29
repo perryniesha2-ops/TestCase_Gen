@@ -65,7 +65,8 @@ interface TestCase {
 
 interface SuiteTestCase {
   id: string;
-  test_case_id: string;
+  test_case_id: string | null; // ✅ Can be null for cross-platform
+  platform_test_case_id: string | null; // ✅ Added
   sequence_order: number;
   priority: string;
   estimated_duration_minutes: number;
@@ -247,10 +248,11 @@ export function TestSessionExecution({
     try {
       const supabase = createClient();
 
+      // ✅ Fetch both test_case_id AND platform_test_case_id
       const { data: suiteLinks, error: linksError } = await supabase
         .from("test_suite_cases")
         .select(
-          "id, test_case_id, sequence_order, priority, estimated_duration_minutes",
+          "id, test_case_id, platform_test_case_id, sequence_order, priority, estimated_duration_minutes",
         )
         .eq("suite_id", suite.id)
         .order("sequence_order");
@@ -266,28 +268,71 @@ export function TestSessionExecution({
         return [];
       }
 
-      const testCaseIds = suiteLinks.map((link) => link.test_case_id);
+      // ✅ Split into regular and cross-platform IDs
+      const regularTestCaseIds = suiteLinks
+        .filter((link) => link.test_case_id)
+        .map((link) => link.test_case_id);
 
-      const { data: testCases, error: testCasesError } = await supabase
-        .from("test_cases")
-        .select(
-          "id, title, description, test_type, test_steps, expected_result",
-        )
-        .in("id", testCaseIds);
+      const crossPlatformTestCaseIds = suiteLinks
+        .filter((link) => link.platform_test_case_id)
+        .map((link) => link.platform_test_case_id);
 
-      if (testCasesError) {
-        console.error("❌ Error fetching test cases:", testCasesError);
-        throw testCasesError;
+      // ✅ Fetch regular test cases
+      let regularTestCases: any[] = [];
+      if (regularTestCaseIds.length > 0) {
+        const { data, error } = await supabase
+          .from("test_cases")
+          .select(
+            "id, title, description, test_type, test_steps, expected_result",
+          )
+          .in("id", regularTestCaseIds);
+
+        if (error) {
+          console.error("❌ Error fetching test cases:", error);
+          throw error;
+        }
+        regularTestCases = data || [];
       }
 
-      const testCaseMap = new Map((testCases || []).map((tc) => [tc.id, tc]));
+      // ✅ Fetch cross-platform test cases
+      let crossPlatformTestCases: any[] = [];
+      if (crossPlatformTestCaseIds.length > 0) {
+        const { data, error } = await supabase
+          .from("platform_test_cases")
+          .select("id, title, description, platform, steps, expected_results")
+          .in("id", crossPlatformTestCaseIds);
+
+        if (error) {
+          console.error("❌ Error fetching cross-platform test cases:", error);
+          throw error;
+        }
+
+        // ✅ Transform to match regular test case structure
+        crossPlatformTestCases = (data || []).map((tc) => ({
+          id: tc.id,
+          title: tc.title,
+          description: tc.description,
+          test_type: tc.platform || "cross-platform",
+          test_steps: tc.steps || [],
+          expected_result: Array.isArray(tc.expected_results)
+            ? tc.expected_results.join(", ")
+            : tc.expected_results || "",
+        }));
+      }
+
+      const testCaseMap = new Map<string, any>();
+      regularTestCases.forEach((tc) => testCaseMap.set(tc.id, tc));
+      crossPlatformTestCases.forEach((tc) => testCaseMap.set(tc.id, tc));
 
       const transformed: SuiteTestCase[] = suiteLinks
         .map((link) => {
-          const testCase = testCaseMap.get(link.test_case_id);
+          // ✅ Get the test case ID (could be from either FK)
+          const actualTestCaseId =
+            link.test_case_id || link.platform_test_case_id;
+          const testCase = testCaseMap.get(actualTestCaseId);
 
           if (!testCase) {
-            console.warn(`⚠️ Test case ${link.test_case_id} not found`);
+            console.warn(`⚠️ Test case ${actualTestCaseId} not found`);
             return null;
           }
 
@@ -314,6 +359,7 @@ export function TestSessionExecution({
           return {
             id: link.id,
             test_case_id: link.test_case_id,
+            platform_test_case_id: link.platform_test_case_id,
             sequence_order: link.sequence_order,
             priority: link.priority,
             estimated_duration_minutes: link.estimated_duration_minutes,
@@ -468,13 +514,29 @@ export function TestSessionExecution({
         return;
       }
 
-      const { data: existing, error: existingError } = await supabase
+      // ✅ Determine which FK to use
+      const actualTestCaseId =
+        testCase.test_case_id || testCase.platform_test_case_id;
+      const isRegular = !!testCase.test_case_id;
+
+      // ✅ Check for existing execution with correct FK
+      let existingQuery = supabase
         .from("test_executions")
         .select(
           "id, execution_status, execution_notes, failure_reason, completed_steps",
         )
-        .eq("session_id", currentSessionId)
-        .eq("test_case_id", testCase.test_case_id)
+        .eq("session_id", currentSessionId);
+
+      if (isRegular) {
+        existingQuery = existingQuery.eq("test_case_id", actualTestCaseId);
+      } else {
+        existingQuery = existingQuery.eq(
+          "platform_test_case_id",
+          actualTestCaseId,
+        );
+      }
+
+      const { data: existing, error: existingError } = await existingQuery
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -502,10 +564,12 @@ export function TestSessionExecution({
         return;
       }
 
+      // ✅ Create execution with correct FK (actual null, not "null")
       const { data: created, error: createError } = await supabase
         .from("test_executions")
         .insert({
-          test_case_id: testCase.test_case_id,
+          test_case_id: isRegular ? actualTestCaseId : null, // ✅ null for cross-platform
+          platform_test_case_id: isRegular ? null : actualTestCaseId, // ✅ ID for cross-platform
           suite_id: suite.id,
           session_id: currentSessionId,
           executed_by: user.id,
@@ -531,6 +595,7 @@ export function TestSessionExecution({
       setCurrentExecutionStatus("in_progress");
       setIsCurrentExecutionReadOnly(false);
     } catch (error) {
+      console.error("❌ startTestExecutionWithTestCase error:", error);
       toastError("Failed to start test execution");
     }
   }
@@ -1214,7 +1279,11 @@ export function TestSessionExecution({
                           <CardContent className="flex-1 overflow-y-auto">
                             <ScreenshotUpload
                               executionId={currentExecutionId}
-                              testCaseId={currentTest.test_case_id}
+                              testCaseId={
+                                currentTest.test_case_id ||
+                                currentTest.platform_test_case_id ||
+                                ""
+                              }
                               attachments={attachments}
                               targetUrl={targetUrl}
                               onUploadComplete={(attachment) =>

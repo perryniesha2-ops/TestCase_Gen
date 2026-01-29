@@ -46,22 +46,11 @@ export function useTestCases(generationId?: string | null) {
       if (testCasesError) throw testCasesError;
       setTestCases(testCasesData || []);
 
-      // Fetch cross-platform test cases
+      // Fetch cross-platform test cases (including status field)
       const { data: crossPlatformData, error: crossPlatformError } =
         await supabase
           .from("platform_test_cases")
-          .select(
-            `
-          *,
-          cross_platform_test_suites!inner(
-            id,
-            requirement,
-            user_id,
-            platforms,
-            generated_at
-          )
-        `
-          )
+          .select("*")
           .eq("cross_platform_test_suites.user_id", user.id)
           .order("created_at", { ascending: false });
 

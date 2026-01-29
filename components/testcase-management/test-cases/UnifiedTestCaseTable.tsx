@@ -85,7 +85,6 @@ type Props = {
 
   getPriorityColor: (priority: string) => string;
   getProjectColor: (color: string) => string;
-  getApprovalStatusBadge?: (status?: string) => React.ReactNode;
   getRelativeTime?: (date: string) => string;
 
   onOpenDetails: (tc: CombinedTestCase) => void;
@@ -116,7 +115,6 @@ export function UnifiedTestCaseTable(props: Props) {
     onNextPage,
     getPriorityColor,
     getProjectColor,
-    getApprovalStatusBadge,
     getRelativeTime,
     onOpenDetails,
     onOpenCreate,
@@ -373,11 +371,9 @@ export function UnifiedTestCaseTable(props: Props) {
                     </TableCell>
 
                     <TableCell>
-                      {isCrossPlatform && getApprovalStatusBadge ? (
-                        getApprovalStatusBadge(testCase.status)
-                      ) : onUpdateStatus && isRegular ? (
+                      {onUpdateStatus ? (
                         <Select
-                          value={testCase.status}
+                          value={testCase.status as any}
                           onValueChange={(
                             value: "draft" | "active" | "archived",
                           ) => onUpdateStatus(testCase.id, value)}
