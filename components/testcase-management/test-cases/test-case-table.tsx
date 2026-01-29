@@ -11,7 +11,7 @@ import { FlaskConical, Layers, Loader2 } from "lucide-react";
 import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
 
 import { TestCaseToolbar } from "./toolbars/TestCaseToolbar";
-import { UnifiedTestCaseTable } from "./UnifiedTestCaseTable"; // NEW
+import { UnifiedTestCaseTable } from "./UnifiedTestCaseTable";
 import { BulkActionsToolbar } from "./toolbars/BulkActionsToolbar";
 
 import { TestCaseFormDialog } from "./dialogs/test-case-form-dialog";
@@ -23,7 +23,7 @@ import { useTestCaseData } from "@/hooks/useTestCaseData";
 import { useExecutions } from "@/hooks/useExecutions";
 import { ExportButton } from "@/components/testcase-management/export-button";
 import { Badge } from "@/components/ui/badge";
-import { Clock, CheckCircle2, XCircle } from "lucide-react";
+import { Clock } from "lucide-react";
 
 type CaseType = "regular" | "cross-platform";
 type CombinedTestCase = (TestCase | CrossPlatformTestCase) & {
@@ -47,9 +47,9 @@ export function TabbedTestCaseTable() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [editingTestCase, setEditingTestCase] =
-    useState<CombinedTestCase | null>(null); // ✅ Changed from TestCase
+    useState<CombinedTestCase | null>(null);
   const [deletingTestCase, setDeletingTestCase] =
-    useState<CombinedTestCase | null>(null); // ✅ Changed from TestCase
+    useState<CombinedTestCase | null>(null);
 
   // Runner
   const [showRunnerDialog, setShowRunnerDialog] = useState(false);
@@ -104,13 +104,27 @@ export function TabbedTestCaseTable() {
     });
   }, [loading, testCases, crossPlatformCases, executionByCaseId, setExecution]);
 
-  // Bulk actions
-  const crossPlatformBulkActions = useBulkActions(
-    crossPlatformCases,
-    refresh,
-    "cross-platform",
+  // Add _caseType to test cases
+  const regularCasesWithType = useMemo(
+    () => testCases.map((tc) => ({ ...tc, _caseType: "regular" as const })),
+    [testCases],
   );
-  const regularBulkActions = useBulkActions(testCases, refresh);
+
+  const crossPlatformCasesWithType = useMemo(
+    () =>
+      crossPlatformCases.map((tc) => ({
+        ...tc,
+        _caseType: "cross-platform" as const,
+      })),
+    [crossPlatformCases],
+  );
+
+  // Unified bulk actions for both types
+  const regularBulkActions = useBulkActions(regularCasesWithType, refresh);
+  const crossPlatformBulkActions = useBulkActions(
+    crossPlatformCasesWithType,
+    refresh,
+  );
 
   const getRelativeTime = useCallback((dateString: string) => {
     const date = new Date(dateString);
@@ -128,21 +142,6 @@ export function TabbedTestCaseTable() {
   }, []);
 
   const itemsPerPage = 10;
-
-  // Add _caseType to test cases
-  const regularCasesWithType = useMemo(
-    () => testCases.map((tc) => ({ ...tc, _caseType: "regular" as const })),
-    [testCases],
-  );
-
-  const crossPlatformCasesWithType = useMemo(
-    () =>
-      crossPlatformCases.map((tc) => ({
-        ...tc,
-        _caseType: "cross-platform" as const,
-      })),
-    [crossPlatformCases],
-  );
 
   const filteredTestCases = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -211,42 +210,7 @@ export function TabbedTestCaseTable() {
     return colors[color] || "text-gray-500";
   }, []);
 
-  const getApprovalStatusBadge = useCallback((approvalStatus?: string) => {
-    const status = approvalStatus || "pending";
-    switch (status) {
-      case "pending":
-        return (
-          <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200">
-            <Clock className="h-3 w-3 mr-1" />
-            Pending
-          </Badge>
-        );
-      case "approved":
-        return (
-          <Badge className="bg-green-100 text-green-800 hover:bg-green-200">
-            <CheckCircle2 className="h-3 w-3 mr-1" />
-            Approved
-          </Badge>
-        );
-      case "rejected":
-        return (
-          <Badge className="bg-red-100 text-red-800 hover:bg-red-200">
-            <XCircle className="h-3 w-3 mr-1" />
-            Rejected
-          </Badge>
-        );
-      default:
-        return (
-          <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200">
-            <Clock className="h-3 w-3 mr-1" />
-            Pending
-          </Badge>
-        );
-    }
-  }, []);
-
-  //Metrics
-
+  // Metrics
   const regularMetrics = useMemo(() => {
     return {
       total: filteredTestCases.length,
@@ -310,26 +274,24 @@ export function TabbedTestCaseTable() {
   }, []);
 
   const openEdit = useCallback((tc: CombinedTestCase) => {
-    // ✅ Changed
     setEditingTestCase(tc);
     setShowEditDialog(true);
   }, []);
 
   const openDelete = useCallback((tc: CombinedTestCase) => {
-    // ✅ Changed
     setDeletingTestCase(tc);
     setShowDeleteDialog(true);
   }, []);
 
   const runTestFromSheet = useCallback(
     (tc: CombinedTestCase) => {
-      // ✅ Changed
       const type =
         tc._caseType === "cross-platform" ? "cross-platform" : "regular";
       void openRunner(tc, type);
     },
     [openRunner],
   );
+
   const handleProjectChange = useCallback((projectId: string) => {
     setSelectedProject(projectId);
     setCurrentPage(1);
@@ -438,6 +400,7 @@ export function TabbedTestCaseTable() {
         }
         getProjectColor={getProjectColor}
       />
+
       <Tabs defaultValue="regular" className="w-full">
         <TabsList className="grid w-full grid-cols-2 h-11">
           <TabsTrigger
@@ -462,6 +425,7 @@ export function TabbedTestCaseTable() {
           </TabsTrigger>
         </TabsList>
 
+        {/* Regular Tests Tab */}
         <TabsContent value="regular" className="space-y-4 mt-6">
           <BulkActionsToolbar
             selectedIds={regularBulkActions.selectedIds}
@@ -504,22 +468,15 @@ export function TabbedTestCaseTable() {
 
         {/* Cross-Platform Tests Tab */}
         <TabsContent value="cross-platform" className="space-y-4 mt-6">
-          {/* Type-Specific Bulk Actions */}
           <BulkActionsToolbar
             selectedIds={crossPlatformBulkActions.selectedIds}
             allTestCases={crossPlatformCasesWithType}
             type="cross-platform"
             onSelectAll={crossPlatformBulkActions.selectAll}
             onDeselectAll={crossPlatformBulkActions.deselectAll}
-            onBulkUpdateCrossPlatform={
-              crossPlatformBulkActions.bulkUpdateCrossPlatform
-            }
-            onBulkDeleteCrossPlatform={
-              crossPlatformBulkActions.bulkDeleteCrossPlatform
-            }
-            onBulkAddCrossPlatformToSuite={
-              crossPlatformBulkActions.bulkAddCrossPlatformToSuite
-            }
+            onBulkUpdate={crossPlatformBulkActions.bulkUpdate}
+            onBulkDelete={crossPlatformBulkActions.bulkDelete}
+            onBulkAddToSuite={crossPlatformBulkActions.bulkAddToSuite}
             onBulkExport={crossPlatformBulkActions.bulkExport}
           />
 
@@ -547,14 +504,14 @@ export function TabbedTestCaseTable() {
             }
             getPriorityColor={getPriorityColor}
             getProjectColor={getProjectColor}
-            getApprovalStatusBadge={getApprovalStatusBadge}
             getRelativeTime={getRelativeTime}
-            onOpenDetails={handleViewDetails} // ✅ Navigate to details page
+            onOpenDetails={handleViewDetails}
             onOpenCreate={openCreate}
-            onOpenActionSheet={handleViewDetails} // ✅ Navigate on action button click
+            onOpenActionSheet={handleViewDetails}
           />
         </TabsContent>
       </Tabs>
+
       {/* Dialogs */}
       <DeleteTestCaseDialog
         testCase={deletingTestCase}
@@ -574,6 +531,7 @@ export function TabbedTestCaseTable() {
           }
         }}
       />
+
       <TestCaseFormDialog
         open={showCreateDialog || showEditDialog}
         mode={showCreateDialog ? "create" : "edit"}
@@ -590,6 +548,7 @@ export function TabbedTestCaseTable() {
         }}
         onSuccess={refresh}
       />
+
       {runnerCase && (
         <TestRunnerDialog
           open={showRunnerDialog}
@@ -606,6 +565,7 @@ export function TabbedTestCaseTable() {
           onToggleStep={toggleStep}
         />
       )}
+
       <div className="h-2" />
     </div>
   );

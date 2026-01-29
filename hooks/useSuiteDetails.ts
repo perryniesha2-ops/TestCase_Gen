@@ -201,7 +201,6 @@ export function useSuiteDetails(
     setSuiteTestCases(transformed);
   }, [supabase, suiteId, userId]);
 
-  // ✅ UPDATED: Fetch available test cases from BOTH tables
   const fetchAvailableTestCases = useCallback(async () => {
     if (!userId) return;
 
@@ -243,7 +242,7 @@ export function useSuiteDetails(
     const platformQuery = supabase
       .from("platform_test_cases")
       .select("id, title, description, platform, framework, priority, status")
-      .eq("status", "approved")
+      .eq("status", "active")
       .eq("user_id", userId)
       .order("title", { ascending: true });
 
@@ -349,9 +348,8 @@ export function useSuiteDetails(
     [supabase, suiteId, fetchSuite],
   );
 
-  // ✅ UPDATED: Add test case (handles both types)
   const addTestCaseToSuite = useCallback(
-    async (testCaseIdOrObject: string | TestCase) => {
+    async (input: string | TestCase) => {
       if (!suiteId) return;
 
       setLoading(true);
@@ -361,16 +359,25 @@ export function useSuiteDetails(
             ? Math.max(...suiteTestCases.map((stc) => stc.sequence_order))
             : 0;
 
-        // Determine if it's a string ID or TestCase object
         let testCaseId: string;
         let caseType: "regular" | "cross-platform";
 
-        if (typeof testCaseIdOrObject === "string") {
-          testCaseId = testCaseIdOrObject;
-          caseType = "regular"; // Default to regular for backward compatibility
+        if (typeof input === "string") {
+          const [maybeType, maybeId] = input.split(":");
+          if (
+            maybeId &&
+            (maybeType === "regular" || maybeType === "cross-platform")
+          ) {
+            caseType = maybeType;
+            testCaseId = maybeId;
+          } else {
+            // fallback for older callers that pass raw UUID (treat as regular)
+            caseType = "regular";
+            testCaseId = input;
+          }
         } else {
-          testCaseId = testCaseIdOrObject.id;
-          caseType = testCaseIdOrObject._caseType || "regular";
+          testCaseId = input.id;
+          caseType = input._caseType || "regular";
         }
 
         const insertData = {
@@ -388,7 +395,7 @@ export function useSuiteDetails(
           .insert(insertData);
 
         if (error) {
-          if (error.code === "23505") {
+          if ((error as any).code === "23505") {
             toast.error("Test case is already in this suite");
             return;
           }

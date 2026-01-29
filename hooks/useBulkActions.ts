@@ -1,27 +1,54 @@
 // hooks/useBulkActions.ts
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import type { TestCase } from "@/types/test-cases";
+import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
+
+type CombinedTestCase = (TestCase | CrossPlatformTestCase) & {
+  _caseType?: "regular" | "cross-platform";
+};
+
+type BulkStatus = "draft" | "active" | "archived";
+
+function isCross(tc: CombinedTestCase) {
+  return tc._caseType === "cross-platform";
+}
 
 export function useBulkActions(
-  testCases: TestCase[] | any[],
+  testCases: CombinedTestCase[],
   onRefresh: () => void,
-  type: "regular" | "cross-platform" = "regular",
 ) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
 
+  const selectedList = useMemo(() => Array.from(selectedIds), [selectedIds]);
+
+  // Map id -> testcase so we can split by type
+  const byId = useMemo(() => {
+    const m = new Map<string, CombinedTestCase>();
+    for (const tc of testCases) m.set(tc.id, tc);
+    return m;
+  }, [testCases]);
+
+  const splitSelected = useMemo(() => {
+    const regularIds: string[] = [];
+    const crossIds: string[] = [];
+
+    for (const id of selectedList) {
+      const tc = byId.get(id);
+      if (!tc) continue;
+      if (isCross(tc)) crossIds.push(id);
+      else regularIds.push(id);
+    }
+    return { regularIds, crossIds };
+  }, [selectedList, byId]);
+
   function toggleSelection(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   }
@@ -34,27 +61,36 @@ export function useBulkActions(
     setSelectedIds(new Set());
   }
 
-  // ✅ Regular test case: bulk update
-  async function bulkUpdate(updates: Partial<TestCase>) {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
+  // ✅ Unified bulk update (updates both tables)
+  async function bulkUpdate(
+    updates: Partial<TestCase> & { status?: BulkStatus },
+  ) {
+    const { regularIds, crossIds } = splitSelected;
+    if (regularIds.length + crossIds.length === 0) return;
 
     setIsProcessing(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase
-        .from("test_cases")
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString(),
-        })
-        .in("id", ids);
+      const patch = { ...updates, updated_at: new Date().toISOString() };
 
-      if (error) throw error;
+      // Run both updates (if needed)
+      const [regRes, crossRes] = await Promise.all([
+        regularIds.length
+          ? supabase.from("test_cases").update(patch).in("id", regularIds)
+          : Promise.resolve({ error: null as any }),
+        crossIds.length
+          ? supabase
+              .from("platform_test_cases")
+              .update(patch)
+              .in("id", crossIds)
+          : Promise.resolve({ error: null as any }),
+      ]);
 
-      toast.success(
-        `Updated ${ids.length} test case${ids.length === 1 ? "" : "s"}`,
-      );
+      if (regRes.error) throw regRes.error;
+      if (crossRes.error) throw crossRes.error;
+
+      const total = regularIds.length + crossIds.length;
+      toast.success(`Updated ${total} test case${total === 1 ? "" : "s"}`);
       deselectAll();
       onRefresh();
     } catch (error) {
@@ -66,24 +102,29 @@ export function useBulkActions(
     }
   }
 
-  // ✅ Regular test case: bulk delete
-  async function bulkDelete(ids: string[]) {
-    if (ids.length === 0) return;
+  // ✅ Unified bulk delete (deletes from both tables)
+  async function bulkDelete() {
+    const { regularIds, crossIds } = splitSelected;
+    const total = regularIds.length + crossIds.length;
+    if (total === 0) return;
 
     setIsProcessing(true);
     try {
       const supabase = createClient();
 
-      const { error } = await supabase
-        .from("test_cases")
-        .delete()
-        .in("id", ids);
+      const [regRes, crossRes] = await Promise.all([
+        regularIds.length
+          ? supabase.from("test_cases").delete().in("id", regularIds)
+          : Promise.resolve({ error: null as any }),
+        crossIds.length
+          ? supabase.from("platform_test_cases").delete().in("id", crossIds)
+          : Promise.resolve({ error: null as any }),
+      ]);
 
-      if (error) throw error;
+      if (regRes.error) throw regRes.error;
+      if (crossRes.error) throw crossRes.error;
 
-      toast.success(
-        `Deleted ${ids.length} test case${ids.length === 1 ? "" : "s"}`,
-      );
+      toast.success(`Deleted ${total} test case${total === 1 ? "" : "s"}`);
       deselectAll();
       onRefresh();
     } catch (error) {
@@ -95,15 +136,16 @@ export function useBulkActions(
     }
   }
 
-  // ✅ Regular test case: add to suite
-  async function bulkAddToSuite(ids: string[], suiteId: string) {
-    if (ids.length === 0) return;
+  // ✅ Unified add-to-suite (inserts the correct FK column depending on type)
+  async function bulkAddToSuite(suiteId: string) {
+    const { regularIds, crossIds } = splitSelected;
+    const total = regularIds.length + crossIds.length;
+    if (total === 0) return;
 
     setIsProcessing(true);
     try {
       const supabase = createClient();
 
-      // Get current max sequence order for the suite
       const { data: existingCases } = await supabase
         .from("test_suite_cases")
         .select("sequence_order")
@@ -113,27 +155,36 @@ export function useBulkActions(
 
       const maxOrder = existingCases?.[0]?.sequence_order ?? 0;
 
-      // Create suite case links with NULL platform_test_case_id
-      const rows = ids.map((testCaseId, index) => ({
-        suite_id: suiteId,
-        test_case_id: testCaseId,
-        platform_test_case_id: null, // ✅ Explicitly set to null for regular cases
-        sequence_order: maxOrder + index + 1,
-        priority: "medium",
-        estimated_duration_minutes: 5,
-      }));
+      const rows = [
+        ...regularIds.map((testCaseId, index) => ({
+          suite_id: suiteId,
+          test_case_id: testCaseId,
+          platform_test_case_id: null,
+          sequence_order: maxOrder + index + 1,
+          priority: "medium",
+          estimated_duration_minutes: 5,
+        })),
+        ...crossIds.map((platformTestCaseId, index) => ({
+          suite_id: suiteId,
+          test_case_id: null,
+          platform_test_case_id: platformTestCaseId,
+          sequence_order: maxOrder + regularIds.length + index + 1,
+          priority: "medium",
+          estimated_duration_minutes: 5,
+        })),
+      ];
 
       const { error } = await supabase.from("test_suite_cases").insert(rows);
 
       if (error) {
-        if (error.code === "23505") {
+        if ((error as any).code === "23505") {
           toast.error("Some test cases are already in this suite");
         } else {
           throw error;
         }
       } else {
         toast.success(
-          `Added ${ids.length} test case${ids.length === 1 ? "" : "s"} to suite`,
+          `Added ${total} test case${total === 1 ? "" : "s"} to suite`,
         );
       }
 
@@ -148,11 +199,12 @@ export function useBulkActions(
     }
   }
 
-  // ✅ Regular test case: export
-  function bulkExport(ids: string[]) {
+  // ✅ Unified export (already basically works)
+  function bulkExport() {
+    const ids = selectedList;
     const selectedCases = testCases.filter((tc) => ids.includes(tc.id));
+    if (selectedCases.length === 0) return;
 
-    // Create CSV
     const headers = [
       "ID",
       "Title",
@@ -162,12 +214,11 @@ export function useBulkActions(
       "Status",
       "Created",
     ];
-
-    const rows = selectedCases.map((tc) => [
+    const rows = selectedCases.map((tc: any) => [
       tc.id,
       tc.title,
       tc.description || "",
-      tc.test_type || tc.platform, // Handle both types
+      tc.test_type || tc.platform || "",
       tc.priority,
       tc.status,
       new Date(tc.created_at).toLocaleDateString(),
@@ -180,7 +231,6 @@ export function useBulkActions(
       ),
     ].join("\n");
 
-    // Download
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -197,233 +247,17 @@ export function useBulkActions(
     deselectAll();
   }
 
-  // ✅ Cross-platform: approve
-  async function bulkApproveCrossPlatform(ids: string[]) {
-    if (type !== "cross-platform" || ids.length === 0) return;
-
-    setIsProcessing(true);
-    try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      // Filter to only pending cases
-      const pendingCases = testCases.filter(
-        (tc: any) => ids.includes(tc.id) && tc.status === "pending",
-      );
-
-      if (pendingCases.length === 0) {
-        toast.error("No pending test cases selected");
-        return;
-      }
-
-      // ✅ Updated: Just approve, don't convert
-      const { error } = await supabase
-        .from("platform_test_cases")
-        .update({
-          status: "approved",
-          approved_by: user.id,
-          approved_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .in(
-          "id",
-          ids.filter((id) => pendingCases.some((tc: any) => tc.id === id)),
-        );
-
-      if (error) throw error;
-
-      toast.success(
-        `Approved ${pendingCases.length} test case${
-          pendingCases.length === 1 ? "" : "s"
-        }`,
-      );
-      deselectAll();
-      onRefresh();
-    } catch (error) {
-      console.error("Bulk approve error:", error);
-      toast.error("Failed to bulk approve");
-    } finally {
-      setIsProcessing(false);
-    }
-  }
-
-  // ✅ Cross-platform: reject
-  async function bulkRejectCrossPlatform(ids: string[]) {
-    if (type !== "cross-platform" || ids.length === 0) return;
-
-    setIsProcessing(true);
-    try {
-      const supabase = createClient();
-
-      // Filter to only pending cases
-      const pendingCases = testCases.filter(
-        (tc: any) => ids.includes(tc.id) && tc.status === "pending",
-      );
-
-      if (pendingCases.length === 0) {
-        toast.error("No pending test cases selected");
-        return;
-      }
-
-      const { error } = await supabase
-        .from("platform_test_cases")
-        .update({
-          status: "rejected",
-          updated_at: new Date().toISOString(),
-        })
-        .in(
-          "id",
-          ids.filter((id) => pendingCases.some((tc: any) => tc.id === id)),
-        );
-
-      if (error) throw error;
-
-      toast.success(
-        `Rejected ${pendingCases.length} test case${
-          pendingCases.length === 1 ? "" : "s"
-        }`,
-      );
-      deselectAll();
-      onRefresh();
-    } catch (error) {
-      console.error("Bulk reject error:", error);
-      toast.error("Failed to bulk reject");
-    } finally {
-      setIsProcessing(false);
-    }
-  }
-
-  // ✅ Cross-platform: delete
-  async function bulkDeleteCrossPlatform(ids: string[]) {
-    if (type !== "cross-platform" || ids.length === 0) return;
-
-    setIsProcessing(true);
-    try {
-      const supabase = createClient();
-
-      const { error } = await supabase
-        .from("platform_test_cases")
-        .delete()
-        .in("id", ids);
-
-      if (error) throw error;
-
-      toast.success(
-        `Deleted ${ids.length} test case${ids.length === 1 ? "" : "s"}`,
-      );
-      deselectAll();
-      onRefresh();
-    } catch (error) {
-      console.error("Bulk delete error:", error);
-      toast.error("Failed to delete test cases");
-    } finally {
-      setIsProcessing(false);
-    }
-  }
-
-  // ✅ Cross-platform: update
-  async function bulkUpdateCrossPlatform(ids: string[], updates: any) {
-    if (type !== "cross-platform" || ids.length === 0) return;
-
-    setIsProcessing(true);
-    try {
-      const supabase = createClient();
-
-      const { error } = await supabase
-        .from("platform_test_cases")
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString(),
-        })
-        .in("id", ids);
-
-      if (error) throw error;
-
-      toast.success(
-        `Updated ${ids.length} test case${ids.length === 1 ? "" : "s"}`,
-      );
-      deselectAll();
-      onRefresh();
-    } catch (error) {
-      console.error("Bulk update error:", error);
-      toast.error("Failed to update test cases");
-    } finally {
-      setIsProcessing(false);
-    }
-  }
-
-  // ✅ NEW: Cross-platform: add to suite
-  async function bulkAddCrossPlatformToSuite(ids: string[], suiteId: string) {
-    if (type !== "cross-platform" || ids.length === 0) return;
-
-    setIsProcessing(true);
-    try {
-      const supabase = createClient();
-
-      // Get current max sequence order for the suite
-      const { data: existingCases } = await supabase
-        .from("test_suite_cases")
-        .select("sequence_order")
-        .eq("suite_id", suiteId)
-        .order("sequence_order", { ascending: false })
-        .limit(1);
-
-      const maxOrder = existingCases?.[0]?.sequence_order ?? 0;
-
-      // Create suite case links with NULL test_case_id
-      const rows = ids.map((platformTestCaseId, index) => ({
-        suite_id: suiteId,
-        test_case_id: null, // ✅ NULL for cross-platform
-        platform_test_case_id: platformTestCaseId, // ✅ Set platform ID
-        sequence_order: maxOrder + index + 1,
-        priority: "medium",
-        estimated_duration_minutes: 5,
-      }));
-
-      const { error } = await supabase.from("test_suite_cases").insert(rows);
-
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Some test cases are already in this suite");
-        } else {
-          throw error;
-        }
-      } else {
-        toast.success(
-          `Added ${ids.length} test case${ids.length === 1 ? "" : "s"} to suite`,
-        );
-      }
-
-      deselectAll();
-      onRefresh();
-    } catch (error) {
-      console.error("Bulk add to suite error:", error);
-      toast.error("Failed to add test cases to suite");
-      throw error;
-    } finally {
-      setIsProcessing(false);
-    }
-  }
-
   return {
     selectedIds,
     isProcessing,
     toggleSelection,
     selectAll,
     deselectAll,
-    // Regular test case actions
+
+    // One unified set of actions:
     bulkUpdate,
     bulkDelete,
     bulkAddToSuite,
     bulkExport,
-    // Cross-platform test case actions
-    bulkApproveCrossPlatform,
-    bulkRejectCrossPlatform,
-    bulkDeleteCrossPlatform,
-    bulkUpdateCrossPlatform,
-    bulkAddCrossPlatformToSuite, // ✅ NEW
   };
 }

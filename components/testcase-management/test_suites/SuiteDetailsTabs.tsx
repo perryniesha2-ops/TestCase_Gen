@@ -63,7 +63,7 @@ export type SuiteDetailsTabsProps = {
 
   defaultTab?: "details" | "assigned" | "available";
   onSaveSuite: (patch: SuiteEditForm) => Promise<void>;
-  onAddTestCase: (testCaseId: string) => Promise<void>;
+  onAddTestCase: (testCase: TestCase) => Promise<void>;
   onRemoveTestCase: (suiteTestCaseId: string) => Promise<void>;
   onUpdatePriority: (
     suiteTestCaseId: string,
@@ -570,7 +570,7 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
                       <TableCell className="text-right">
                         <Button
                           size="sm"
-                          onClick={() => void onAddTestCase(testCase.id)}
+                          onClick={() => void onAddTestCase(testCase)}
                           disabled={busy}
                           className="h-8"
                         >
