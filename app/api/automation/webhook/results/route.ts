@@ -42,7 +42,6 @@ export async function POST(req: Request) {
 
     const apiKey = authHeader.substring(7);
 
-    // Create service role client to bypass RLS for API key verification
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -54,10 +53,9 @@ export async function POST(req: Request) {
       },
     );
 
-    // Verify API key (id IS the user_id in user_profiles)
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
-      .select("id") // ✅ Changed from "id, user_id" to just "id"
+      .select("id")
       .eq("api_key", apiKey)
       .single();
 
@@ -67,12 +65,11 @@ export async function POST(req: Request) {
 
     const payload: TestResultPayload = await req.json();
 
-    // Verify suite belongs to user (use profile.id as the user_id)
     const { data: suite, error: suiteError } = await supabase
-      .from("test_suites")
+      .from("suites")
       .select("id, user_id")
       .eq("id", payload.suite_id)
-      .eq("user_id", profile.id) // ✅ Changed from profile.user_id to profile.id
+      .eq("user_id", profile.id)
       .single();
 
     if (suiteError || !suite) {
@@ -95,8 +92,8 @@ export async function POST(req: Request) {
     const { data: execution, error: execError } = await supabase
       .from("test_executions")
       .insert({
-        user_id: profile.id, // ✅ Changed from profile.user_id
-        executed_by: profile.id, // ✅ Changed from profile.user_id
+        user_id: profile.id,
+        executed_by: profile.id,
         suite_id: payload.suite_id,
         test_case_id: null,
         execution_type: "automated",

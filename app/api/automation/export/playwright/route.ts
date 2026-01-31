@@ -4,9 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-// ============================================================================
-// TYPES - Updated with automation fields
-// ============================================================================
+//============================================================================
 
 type TestStep = {
   step_number?: number;
@@ -14,11 +12,33 @@ type TestStep = {
   expected: string;
   // Automation fields
   selector?: string;
-  action_type?: 'click' | 'fill' | 'type' | 'select' | 'check' | 'uncheck' | 'hover' | 'wait' | 'navigate' | 'press';
+  action_type?:
+    | "click"
+    | "fill"
+    | "type"
+    | "select"
+    | "check"
+    | "uncheck"
+    | "hover"
+    | "wait"
+    | "navigate"
+    | "press";
   input_value?: string;
   wait_time?: number;
   assertion?: {
-    type: 'visible' | 'hidden' | 'text' | 'exact-text' | 'value' | 'url' | 'title' | 'count' | 'enabled' | 'disabled' | 'checked' | 'attribute';
+    type:
+      | "visible"
+      | "hidden"
+      | "text"
+      | "exact-text"
+      | "value"
+      | "url"
+      | "title"
+      | "count"
+      | "enabled"
+      | "disabled"
+      | "checked"
+      | "attribute";
     target?: string;
     value?: any;
     attribute?: string;
@@ -42,10 +62,22 @@ type SuiteRow = {
 
 type SuiteLinkRow = {
   id: string;
-  test_case_id: string;
+  test_case_id: string | null;
+  platform_test_case_id: string | null;
   sequence_order: number | null;
   priority: string | null;
   estimated_duration_minutes: number | null;
+};
+
+type PlatformTestCaseRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  platform: string;
+  framework: string | null;
+  steps: string[];
+  expected_results: string[] | null;
+  automation_metadata: any;
 };
 
 // ============================================================================
@@ -54,11 +86,11 @@ type SuiteLinkRow = {
 
 function safeSlug(input: string) {
   return String(input || "")
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "")
-      .slice(0, 60);
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 60);
 }
 
 function parseSteps(raw: unknown): TestStep[] {
@@ -66,20 +98,22 @@ function parseSteps(raw: unknown): TestStep[] {
 
   if (Array.isArray(raw)) {
     return raw
-        .map((s: any) => ({
-          step_number: Number.isFinite(s?.step_number)
-              ? Number(s.step_number)
-              : undefined,
-          action: String(s?.action ?? "").trim(),
-          expected: String(s?.expected ?? "").trim(),
-          // NEW: Parse automation fields
-          selector: s?.selector ? String(s.selector).trim() : undefined,
-          action_type: s?.action_type || undefined,
-          input_value: s?.input_value !== undefined ? String(s.input_value) : undefined,
-          wait_time: Number.isFinite(s?.wait_time) ? Number(s.wait_time) : undefined,
-          assertion: s?.assertion || undefined,
-        }))
-        .filter((s) => s.action.length > 0 || s.expected.length > 0);
+      .map((s: any) => ({
+        step_number: Number.isFinite(s?.step_number)
+          ? Number(s.step_number)
+          : undefined,
+        action: String(s?.action ?? "").trim(),
+        expected: String(s?.expected ?? "").trim(),
+        selector: s?.selector ? String(s.selector).trim() : undefined,
+        action_type: s?.action_type || undefined,
+        input_value:
+          s?.input_value !== undefined ? String(s.input_value) : undefined,
+        wait_time: Number.isFinite(s?.wait_time)
+          ? Number(s.wait_time)
+          : undefined,
+        assertion: s?.assertion || undefined,
+      }))
+      .filter((s) => s.action.length > 0 || s.expected.length > 0);
   }
 
   if (typeof raw === "string") {
@@ -125,53 +159,57 @@ function generateExecutableStep(step: TestStep): string {
 
     // Generate action code
     switch (step.action_type) {
-      case 'click':
+      case "click":
         lines.push(`await page.locator('${sel}').click();`);
         break;
 
-      case 'fill':
+      case "fill":
         if (step.input_value !== undefined) {
           const val = escapeString(step.input_value);
           lines.push(`await page.locator('${sel}').fill('${val}');`);
         }
         break;
 
-      case 'type':
+      case "type":
         if (step.input_value !== undefined) {
           const val = escapeString(step.input_value);
-          lines.push(`await page.locator('${sel}').pressSequentially('${val}');`);
+          lines.push(
+            `await page.locator('${sel}').pressSequentially('${val}');`,
+          );
         }
         break;
 
-      case 'select':
+      case "select":
         if (step.input_value !== undefined) {
           const val = escapeString(step.input_value);
           lines.push(`await page.locator('${sel}').selectOption('${val}');`);
         }
         break;
 
-      case 'check':
+      case "check":
         lines.push(`await page.locator('${sel}').check();`);
         break;
 
-      case 'uncheck':
+      case "uncheck":
         lines.push(`await page.locator('${sel}').uncheck();`);
         break;
 
-      case 'hover':
+      case "hover":
         lines.push(`await page.locator('${sel}').hover();`);
         break;
 
-      case 'wait':
-        lines.push(`await page.locator('${sel}').waitFor({ state: 'visible' });`);
+      case "wait":
+        lines.push(
+          `await page.locator('${sel}').waitFor({ state: 'visible' });`,
+        );
         break;
 
-      case 'navigate':
+      case "navigate":
         if (step.input_value !== undefined) {
           const url = step.input_value;
 
           // Check if it's a full URL or a path
-          if (url.startsWith('http://') || url.startsWith('https://')) {
+          if (url.startsWith("http://") || url.startsWith("https://")) {
             try {
               const urlObj = new URL(url);
               const path = urlObj.pathname + urlObj.search + urlObj.hash;
@@ -187,7 +225,7 @@ function generateExecutableStep(step: TestStep): string {
         }
         break;
 
-      case 'press':
+      case "press":
         if (step.input_value !== undefined) {
           const val = escapeString(step.input_value);
           lines.push(`await page.locator('${sel}').press('${val}');`);
@@ -206,112 +244,142 @@ function generateExecutableStep(step: TestStep): string {
       const escapedTarget = escapeString(target!);
 
       switch (step.assertion.type) {
-        case 'visible':
-          lines.push(`await expect(page.locator('${escapedTarget}')).toBeVisible();`);
+        case "visible":
+          lines.push(
+            `await expect(page.locator('${escapedTarget}')).toBeVisible();`,
+          );
           break;
 
-        case 'hidden':
-          lines.push(`await expect(page.locator('${escapedTarget}')).toBeHidden();`);
+        case "hidden":
+          lines.push(
+            `await expect(page.locator('${escapedTarget}')).toBeHidden();`,
+          );
           break;
 
-        case 'text':
+        case "text":
           if (step.assertion.value !== undefined) {
             const val = escapeString(String(step.assertion.value));
-            lines.push(`await expect(page.locator('${escapedTarget}')).toContainText('${val}');`);
+            lines.push(
+              `await expect(page.locator('${escapedTarget}')).toContainText('${val}');`,
+            );
           }
           break;
 
-        case 'exact-text':
+        case "exact-text":
           if (step.assertion.value !== undefined) {
             const val = escapeString(String(step.assertion.value));
-            lines.push(`await expect(page.locator('${escapedTarget}')).toHaveText('${val}');`);
+            lines.push(
+              `await expect(page.locator('${escapedTarget}')).toHaveText('${val}');`,
+            );
           }
           break;
 
-        case 'value':
+        case "value":
           if (step.assertion.value !== undefined) {
             const val = escapeString(String(step.assertion.value));
-            lines.push(`await expect(page.locator('${escapedTarget}')).toHaveValue('${val}');`);
+            lines.push(
+              `await expect(page.locator('${escapedTarget}')).toHaveValue('${val}');`,
+            );
           }
           break;
 
-        case 'url':
+        case "url":
           if (step.assertion.value !== undefined) {
             const val = escapeString(String(step.assertion.value));
             lines.push(`await expect(page).toHaveURL(/${val}/);`);
           }
           break;
 
-        case 'title':
+        case "title":
           if (step.assertion.value !== undefined) {
             const val = escapeString(String(step.assertion.value));
             lines.push(`await expect(page).toHaveTitle('${val}');`);
           }
           break;
 
-        case 'count':
+        case "count":
           if (step.assertion.value !== undefined) {
             const countValue = step.assertion.value;
 
             // Handle comparison operators (check longer operators first!)
-            if (typeof countValue === 'string') {
+            if (typeof countValue === "string") {
               const trimmed = countValue.trim();
 
               // Check for >= operator FIRST (before >)
-              if (trimmed.startsWith('>=')) {
-                const num = trimmed.replace(/[>=\s]/g, '') || '0';
-                lines.push(`const elementCount = await page.locator('${escapedTarget}').count();`);
-                lines.push(`expect(elementCount).toBeGreaterThanOrEqual(${num});`);
+              if (trimmed.startsWith(">=")) {
+                const num = trimmed.replace(/[>=\s]/g, "") || "0";
+                lines.push(
+                  `const elementCount = await page.locator('${escapedTarget}').count();`,
+                );
+                lines.push(
+                  `expect(elementCount).toBeGreaterThanOrEqual(${num});`,
+                );
                 break;
               }
 
               // Check for > operator
-              if (trimmed.startsWith('>')) {
-                const num = trimmed.replace(/[>\s]/g, '') || '0';
-                lines.push(`const elementCount = await page.locator('${escapedTarget}').count();`);
+              if (trimmed.startsWith(">")) {
+                const num = trimmed.replace(/[>\s]/g, "") || "0";
+                lines.push(
+                  `const elementCount = await page.locator('${escapedTarget}').count();`,
+                );
                 lines.push(`expect(elementCount).toBeGreaterThan(${num});`);
                 break;
               }
 
               // Check for <= operator FIRST (before <)
-              if (trimmed.startsWith('<=')) {
-                const num = trimmed.replace(/[<=\s]/g, '') || '999';
-                lines.push(`const elementCount = await page.locator('${escapedTarget}').count();`);
+              if (trimmed.startsWith("<=")) {
+                const num = trimmed.replace(/[<=\s]/g, "") || "999";
+                lines.push(
+                  `const elementCount = await page.locator('${escapedTarget}').count();`,
+                );
                 lines.push(`expect(elementCount).toBeLessThanOrEqual(${num});`);
                 break;
               }
 
               // Check for < operator
-              if (trimmed.startsWith('<')) {
-                const num = trimmed.replace(/[<\s]/g, '') || '999';
-                lines.push(`const elementCount = await page.locator('${escapedTarget}').count();`);
+              if (trimmed.startsWith("<")) {
+                const num = trimmed.replace(/[<\s]/g, "") || "999";
+                lines.push(
+                  `const elementCount = await page.locator('${escapedTarget}').count();`,
+                );
                 lines.push(`expect(elementCount).toBeLessThan(${num});`);
                 break;
               }
             }
 
             // Normal exact count
-            lines.push(`await expect(page.locator('${escapedTarget}')).toHaveCount(${countValue});`);
+            lines.push(
+              `await expect(page.locator('${escapedTarget}')).toHaveCount(${countValue});`,
+            );
           }
           break;
 
-        case 'enabled':
-          lines.push(`await expect(page.locator('${escapedTarget}')).toBeEnabled();`);
+        case "enabled":
+          lines.push(
+            `await expect(page.locator('${escapedTarget}')).toBeEnabled();`,
+          );
           break;
 
-        case 'disabled':
-          lines.push(`await expect(page.locator('${escapedTarget}')).toBeDisabled();`);
+        case "disabled":
+          lines.push(
+            `await expect(page.locator('${escapedTarget}')).toBeDisabled();`,
+          );
           break;
 
-        case 'checked':
-          lines.push(`await expect(page.locator('${escapedTarget}')).toBeChecked();`);
+        case "checked":
+          lines.push(
+            `await expect(page.locator('${escapedTarget}')).toBeChecked();`,
+          );
           break;
 
-        case 'attribute':
+        case "attribute":
           if (step.assertion.attribute && step.assertion.value !== undefined) {
             const attr = escapeString(step.assertion.attribute);
             const val = escapeString(String(step.assertion.value));
-            lines.push(`await expect(page.locator('${escapedTarget}')).toHaveAttribute('${attr}', '${val}');`);
+            lines.push(
+              `await expect(page.locator('${escapedTarget}')).toHaveAttribute('${attr}', '${val}');`,
+            );
           }
           break;
       }
@@ -322,15 +390,18 @@ function generateExecutableStep(step: TestStep): string {
     lines.push(`// Expected: ${escapeString(step.expected)}`);
   }
 
-  return lines.join('\n        ');
+  return lines.join("\n        ");
 }
 
 // ============================================================================
 // RENDER FUNCTIONS
 // ============================================================================
 
-
-function renderReadme(opts: { suiteName: string; suiteId: string; caseCount: number }) {
+function renderReadme(opts: {
+  suiteName: string;
+  suiteId: string;
+  caseCount: number;
+}) {
   return `# SynthQA Playwright Project
 
 Generated by SynthQA - AI-powered test automation
@@ -601,43 +672,43 @@ auth.json
 
 function renderPackageJson() {
   return JSON.stringify(
-      {
-        name: "synthqa-playwright",
-        private: true,
-        type: "module",
-        scripts: {
-          test: "playwright test",
-          "test:ui": "playwright test --ui",
-          "test:headed": "playwright test --headed",
-          report: "playwright show-report",
-        },
-        devDependencies: {
-          "@playwright/test": "^1.46.0",
-          dotenv: "^16.4.5",
-          typescript: "^5.5.4",
-        },
+    {
+      name: "synthqa-playwright",
+      private: true,
+      type: "module",
+      scripts: {
+        test: "playwright test",
+        "test:ui": "playwright test --ui",
+        "test:headed": "playwright test --headed",
+        report: "playwright show-report",
       },
-      null,
-      2,
+      devDependencies: {
+        "@playwright/test": "^1.46.0",
+        dotenv: "^16.4.5",
+        typescript: "^5.5.4",
+      },
+    },
+    null,
+    2,
   );
 }
 
 function renderTsconfig() {
   return JSON.stringify(
-      {
-        compilerOptions: {
-          target: "ES2022",
-          module: "ESNext",
-          moduleResolution: "Bundler",
-          strict: true,
-          esModuleInterop: true,
-          skipLibCheck: true,
-          types: ["node"],
-        },
-        include: ["tests", "playwright.config.ts", "synthqa"],
+    {
+      compilerOptions: {
+        target: "ES2022",
+        module: "ESNext",
+        moduleResolution: "Bundler",
+        strict: true,
+        esModuleInterop: true,
+        skipLibCheck: true,
+        types: ["node"],
       },
-      null,
-      2,
+      include: ["tests", "playwright.config.ts", "synthqa"],
+    },
+    null,
+    2,
   );
 }
 
@@ -677,7 +748,6 @@ setup('authenticate', async ({ page }) => {
 });
 `;
 }
-
 
 function renderPlaywrightConfig(suiteId: string) {
   return `import { defineConfig } from "@playwright/test";
@@ -732,11 +802,12 @@ function renderCaseSpec(opts: {
   title: string;
   steps: TestStep[];
 }) {
-  const stepsCode = opts.steps.map((step, idx) => {
-    const stepNum = step.step_number ?? idx + 1;
-    const executableCode = generateExecutableStep(step);
+  const stepsCode = opts.steps
+    .map((step, idx) => {
+      const stepNum = step.step_number ?? idx + 1;
+      const executableCode = generateExecutableStep(step);
 
-    return `
+      return `
     await test.step(\`Step ${stepNum}: ${escapeTemplateLiteral(step.action)}\`, async () => {
         ${executableCode}
         
@@ -745,7 +816,8 @@ function renderCaseSpec(opts: {
           fullPage: true,
         });
     });`;
-  }).join('\n');
+    })
+    .join("\n");
 
   return `import { test, expect } from "@playwright/test";
 
@@ -923,8 +995,8 @@ export async function POST(req: Request) {
     const suiteId = body?.suiteId?.trim();
     if (!suiteId) {
       return NextResponse.json(
-          { ok: false, error: "Missing suiteId" },
-          { status: 400 },
+        { ok: false, error: "Missing suiteId" },
+        { status: 400 },
       );
     }
 
@@ -936,102 +1008,189 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser();
     if (userErr) {
       return NextResponse.json(
-          { ok: false, error: userErr.message },
-          { status: 401 },
+        { ok: false, error: userErr.message },
+        { status: 401 },
       );
     }
     if (!user) {
       return NextResponse.json(
-          { ok: false, error: "Not authenticated" },
-          { status: 401 },
+        { ok: false, error: "Not authenticated" },
+        { status: 401 },
       );
     }
 
     // Fetch suite
     const { data: suite, error: suiteErr } = await supabase
-        .from("test_suites")
-        .select("id, name, description")
-        .eq("id", suiteId)
-        .single<SuiteRow>();
+      .from("suites")
+      .select("id, name, description")
+      .eq("id", suiteId)
+      .single<SuiteRow>();
 
     if (suiteErr || !suite) {
       return NextResponse.json(
-          { ok: false, error: suiteErr?.message || "Suite not found" },
-          { status: 404 },
+        { ok: false, error: suiteErr?.message || "Suite not found" },
+        { status: 404 },
       );
     }
 
     // Fetch suite links
     const { data: suiteLinks, error: linksErr } = await supabase
-        .from("test_suite_cases")
-        .select(
-            "id, test_case_id, sequence_order, priority, estimated_duration_minutes",
-        )
-        .eq("suite_id", suiteId)
-        .order("sequence_order", { ascending: true })
-        .returns<SuiteLinkRow[]>();
+      .from("suite_items")
+      .select(
+        "id, test_case_id, platform_test_case_id, sequence_order, priority, estimated_duration_minutes",
+      )
+      .eq("suite_id", suiteId)
+      .order("sequence_order", { ascending: true })
+      .returns<SuiteLinkRow[]>();
 
     if (linksErr) {
       return NextResponse.json(
-          { ok: false, error: linksErr.message },
-          { status: 500 },
+        { ok: false, error: linksErr.message },
+        { status: 500 },
       );
     }
 
     if (!suiteLinks || suiteLinks.length === 0) {
       return NextResponse.json(
-          { ok: false, error: "No test cases linked to this suite" },
-          { status: 400 },
+        { ok: false, error: "No test cases linked to this suite" },
+        { status: 400 },
       );
     }
 
-    const testCaseIds = suiteLinks.map((l) => l.test_case_id);
+    const regularIds = (suiteLinks ?? [])
+      .map((l) => l.test_case_id)
+      .filter((x): x is string => Boolean(x));
+
+    const platformIds = (suiteLinks ?? [])
+      .map((l) => l.platform_test_case_id)
+      .filter((x): x is string => Boolean(x));
 
     // Fetch test cases
     const { data: testCases, error: casesErr } = await supabase
-        .from("test_cases")
-        .select("id, title, description, test_type, expected_result, test_steps")
-        .in("id", testCaseIds)
-        .returns<TestCaseRow[]>();
+      .from("test_cases")
+      .select("id, title, description, test_type, expected_result, test_steps")
+      .in("id", regularIds)
+      .returns<TestCaseRow[]>();
 
     if (casesErr) {
       return NextResponse.json(
-          { ok: false, error: casesErr.message },
-          { status: 500 },
+        { ok: false, error: casesErr.message },
+        { status: 500 },
       );
     }
 
-    const tcMap = new Map((testCases || []).map((tc) => [tc.id, tc]));
+    const { data: platformCases, error: platErr } = platformIds.length
+      ? await supabase
+          .from("platform_test_cases")
+          .select(
+            "id, title, description, platform, framework, steps, expected_results, automation_metadata",
+          )
+          .in("id", platformIds)
+          .eq("platform", "web")
+          .returns<PlatformTestCaseRow[]>()
+      : { data: [], error: null as any };
 
-    const ordered = suiteLinks
-        .map((link, idx) => {
+    if (platErr) {
+      return NextResponse.json(
+        { ok: false, error: platErr.message },
+        { status: 500 },
+      );
+    }
+
+    function platformToSteps(tc: PlatformTestCaseRow): TestStep[] {
+      const actions = Array.isArray(tc.steps) ? tc.steps : [];
+      const expected = Array.isArray(tc.expected_results)
+        ? tc.expected_results
+        : [];
+
+      // OPTIONAL: if you store automation hints per step in automation_metadata
+      // Example shape (recommended):
+      // automation_metadata = { steps: [{ selector, action_type, input_value, assertion, wait_time }, ...] }
+      const metaSteps = Array.isArray(tc.automation_metadata?.steps)
+        ? tc.automation_metadata.steps
+        : [];
+
+      return actions
+        .map((action, i) => {
+          const meta = metaSteps[i] ?? {};
+          return {
+            step_number: i + 1,
+            action: String(action ?? "").trim(),
+            expected: String(expected[i] ?? "").trim(),
+            selector: meta.selector ? String(meta.selector).trim() : undefined,
+            action_type: meta.action_type,
+            input_value:
+              meta.input_value !== undefined
+                ? String(meta.input_value)
+                : undefined,
+            wait_time: Number.isFinite(meta.wait_time)
+              ? Number(meta.wait_time)
+              : undefined,
+            assertion: meta.assertion,
+          };
+        })
+        .filter((s) => s.action.length > 0 || s.expected.length > 0);
+    }
+
+    const tcMap = new Map((testCases ?? []).map((tc) => [tc.id, tc]));
+    const ptcMap = new Map((platformCases ?? []).map((tc) => [tc.id, tc]));
+
+    const ordered = (suiteLinks ?? [])
+      .map((link, idx) => {
+        const orderNum = link.sequence_order ?? idx + 1;
+
+        // Regular test case
+        if (link.test_case_id) {
           const tc = tcMap.get(link.test_case_id);
           if (!tc) return null;
+
           const steps = parseSteps(tc.test_steps);
-          const caseKey = `${String(link.sequence_order ?? idx + 1).padStart(
-              3,
-              "0",
-          )}-${safeSlug(tc.title)}-${tc.id.slice(0, 8)}`;
+          const caseKey = `${String(orderNum).padStart(3, "0")}-${safeSlug(tc.title)}-${tc.id.slice(0, 8)}`;
+
+          return { link, tc, steps, caseKey, source: "regular" as const };
+        }
+
+        // Cross-platform web case
+        if (link.platform_test_case_id) {
+          const ptc = ptcMap.get(link.platform_test_case_id);
+          if (!ptc) return null; // could be non-web platform filtered out
+
+          const steps = platformToSteps(ptc);
+          const caseKey = `${String(orderNum).padStart(3, "0")}-${safeSlug(ptc.title)}-${ptc.id.slice(0, 8)}`;
+
+          // Normalize to same shape your rendering expects
+          const normalized: TestCaseRow = {
+            id: ptc.id,
+            title: ptc.title,
+            description: ptc.description,
+            test_type: "web",
+            expected_result: null,
+            test_steps: steps,
+          };
 
           return {
             link,
-            tc,
+            tc: normalized,
             steps,
             caseKey,
+            source: "cross-platform-web" as const,
           };
-        })
-        .filter((x): x is NonNullable<typeof x> => Boolean(x));
+        }
+
+        return null;
+      })
+      .filter((x): x is NonNullable<typeof x> => Boolean(x));
 
     // --------------------------
     // Zip project
     // --------------------------
     const zip = new JSZip();
     const root = `synthqa-playwright-${
-        safeSlug(suite.name) || "suite"
+      safeSlug(suite.name) || "suite"
     }-${suite.id.slice(0, 8)}`;
 
     const add = (p: string, content: string) =>
-        zip.file(`${root}/${p}`, content);
+      zip.file(`${root}/${p}`, content);
 
     add("package.json", renderPackageJson());
     add("playwright.config.ts", renderPlaywrightConfig(suiteId));
@@ -1041,12 +1200,12 @@ export async function POST(req: Request) {
     add(".gitignore", renderGitignore());
     add("synthqa-reporter.ts", renderSynthQAReporter());
     add(
-        "README.md",
-        renderReadme({
-          suiteName: suite.name,
-          suiteId: suite.id,
-          caseCount: ordered.length,
-        }),
+      "README.md",
+      renderReadme({
+        suiteName: suite.name,
+        suiteId: suite.id,
+        caseCount: ordered.length,
+      }),
     );
 
     // Suite snapshot
@@ -1092,14 +1251,14 @@ export async function POST(req: Request) {
 
       // IMPORTANT: Pass steps to renderCaseSpec
       add(
-          `tests/cases/${o.caseKey}.spec.ts`,
-          renderCaseSpec({
-            suiteId: suite.id,
-            caseKey: o.caseKey,
-            caseId: o.tc.id,
-            title: o.tc.title,
-            steps: o.steps,  // <-- Pass the parsed steps here
-          }),
+        `tests/cases/${o.caseKey}.spec.ts`,
+        renderCaseSpec({
+          suiteId: suite.id,
+          caseKey: o.caseKey,
+          caseId: o.tc.id,
+          title: o.tc.title,
+          steps: o.steps, // <-- Pass the parsed steps here
+        }),
       );
     }
 
@@ -1118,8 +1277,8 @@ export async function POST(req: Request) {
   } catch (e: any) {
     console.error("[export/playwright] error:", e);
     return NextResponse.json(
-        { ok: false, error: e?.message || "Export failed" },
-        { status: 500 },
+      { ok: false, error: e?.message || "Export failed" },
+      { status: 500 },
     );
   }
 }

@@ -123,21 +123,35 @@ export function RunReviewPage({ runId }: { runId: string }) {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) {
         toast.error("You must be signed in");
-        router.push("/test-library");
+        router.push("/login");
         return;
       }
 
+      // ✅ Fetch run without the bad join
       const { data: runData, error: runError } = await supabase
         .from("test_run_sessions")
-        .select("*, test_suites:suite_id(id, name, project_id)")
+        .select("*")
         .eq("id", runId)
         .single();
 
       if (runError) throw runError;
 
+      // ✅ Resolve the suite separately
+      let suiteName = "Unknown Suite";
+      let projectId: string | null = null;
+      if (runData.suite_id) {
+        const { data: suite } = await supabase
+          .from("suites")
+          .select("id, name, project_id")
+          .eq("id", runData.suite_id)
+          .single();
+        suiteName = suite?.name ?? "Unknown Suite";
+        projectId = suite?.project_id ?? null;
+      }
+
       const runWithStats: RunWithStats = {
         id: runData.id,
-        suite_name: runData.test_suites?.name ?? "Unknown Suite",
+        suite_name: suiteName,
         name: runData.name,
         status: runData.status,
         test_cases_total: runData.test_cases_total ?? 0,
@@ -151,6 +165,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
 
       setRun(runWithStats);
 
+      // ✅ Fetch executions without joins
       const { data: execsRaw, error: execError } = await supabase
         .from("test_executions")
         .select(
@@ -159,6 +174,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
           suite_id,
           session_id,
           test_case_id,
+          platform_test_case_id,
           execution_status,
           execution_notes,
           failure_reason,
@@ -170,9 +186,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
           review_note,
           reviewed_at,
           jira_issue_key,
-          testrail_defect_id,
-          test_suites:suite_id(id, name, project_id),
-          test_cases:test_case_id(id, title, description)
+          testrail_defect_id
         `,
         )
         .eq("session_id", runId)
@@ -181,15 +195,54 @@ export function RunReviewPage({ runId }: { runId: string }) {
 
       if (execError) throw execError;
 
-      const execIds = (execsRaw ?? []).map((e: any) => e.id);
-      const evidenceCounts = new Map<string, number>();
+      const execs = execsRaw ?? [];
 
+      // ✅ Batch resolve regular test cases
+      const regularIds = [
+        ...new Set(execs.map((e: any) => e.test_case_id).filter(Boolean)),
+      ];
+      const regularMap = new Map<
+        string,
+        { title: string; description: string | null }
+      >();
+      if (regularIds.length > 0) {
+        const { data: cases } = await supabase
+          .from("test_cases")
+          .select("id, title, description")
+          .in("id", regularIds);
+        (cases ?? []).forEach((c: any) =>
+          regularMap.set(c.id, { title: c.title, description: c.description }),
+        );
+      }
+
+      // ✅ Batch resolve platform test cases
+      const platformIds = [
+        ...new Set(
+          execs.map((e: any) => e.platform_test_case_id).filter(Boolean),
+        ),
+      ];
+      const platformMap = new Map<
+        string,
+        { title: string; description: string | null }
+      >();
+      if (platformIds.length > 0) {
+        const { data: cases } = await supabase
+          .from("platform_test_cases")
+          .select("id, title, description")
+          .in("id", platformIds);
+        (cases ?? []).forEach((c: any) =>
+          platformMap.set(c.id, { title: c.title, description: c.description }),
+        );
+      }
+
+      // Evidence counts
+      const execIds = execs.map((e: any) => e.id);
+      const evidenceCounts = new Map<string, number>();
       if (execIds.length > 0) {
         const { data: attachments } = await supabase
           .from("test_attachments")
           .select("execution_id")
           .in("execution_id", execIds);
-
         for (const att of attachments ?? []) {
           evidenceCounts.set(
             att.execution_id,
@@ -198,7 +251,12 @@ export function RunReviewPage({ runId }: { runId: string }) {
         }
       }
 
-      const mapped: ExecutionHistoryRow[] = (execsRaw ?? []).map((e: any) => {
+      // ✅ Map using whichever FK is set
+      const mapped: ExecutionHistoryRow[] = execs.map((e: any) => {
+        const testCase = e.test_case_id
+          ? regularMap.get(e.test_case_id)
+          : platformMap.get(e.platform_test_case_id);
+
         let duration: number | null = null;
         if (e.started_at && e.completed_at) {
           duration =
@@ -209,11 +267,11 @@ export function RunReviewPage({ runId }: { runId: string }) {
         return {
           execution_id: e.id,
           suite_id: e.suite_id,
-          suite_name: e.test_suites?.name ?? "Unknown Suite",
+          suite_name: suiteName,
           session_id: e.session_id,
-          test_case_id: e.test_case_id,
-          test_title: e.test_cases?.title ?? "Unknown Test",
-          test_description: e.test_cases?.description ?? null,
+          test_case_id: e.test_case_id || e.platform_test_case_id,
+          test_title: testCase?.title ?? "Unknown Test",
+          test_description: testCase?.description ?? null,
           execution_status: e.execution_status ?? "passed",
           execution_notes: e.execution_notes ?? null,
           failure_reason: e.failure_reason ?? null,
@@ -233,7 +291,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
 
       setRows(mapped);
 
-      const projectId = runData.test_suites?.project_id;
+      // ✅ Load integrations using the projectId we already resolved
       if (projectId) {
         const { data: intData } = await supabase
           .from("integrations")

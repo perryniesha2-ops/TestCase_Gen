@@ -414,7 +414,7 @@ export function ExecutionHistory() {
       if (!auth.user) return;
 
       const { data, error } = await supabase
-        .from("test_suites")
+        .from("suites")
         .select("id, name")
         .eq("user_id", auth.user.id)
         .order("name");
@@ -549,35 +549,33 @@ export function ExecutionHistory() {
         .from("test_run_sessions")
         .select(
           `
-          id,
-          user_id,
-          suite_id,
-          name,
-          description,
-          status,
-          planned_start,
-          actual_start,
-          actual_end,
-          environment,
-          test_cases_total,
-          test_cases_completed,
-          progress_percentage,
-          passed_cases,
-          failed_cases,
-          skipped_cases,
-          blocked_cases,
-          created_at,
-          updated_at,
-          paused_at,
-          auto_advance,
-test_suites:suite_id ( id, name, project_id)
-        `,
+        id,
+        user_id,
+        suite_id,
+        name,
+        description,
+        status,
+        planned_start,
+        actual_start,
+        actual_end,
+        environment,
+        test_cases_total,
+        test_cases_completed,
+        progress_percentage,
+        passed_cases,
+        failed_cases,
+        skipped_cases,
+        blocked_cases,
+        created_at,
+        updated_at,
+        paused_at,
+        auto_advance
+      `,
         )
         .eq("user_id", auth.user.id)
         .order("created_at", { ascending: false })
         .limit(200);
 
-      // finished runs
       if (showAborted) q = q.in("status", ["completed", "aborted"]);
       else q = q.eq("status", "completed");
 
@@ -589,11 +587,29 @@ test_suites:suite_id ( id, name, project_id)
 
       const sessions = (sessionsRaw ?? []) as Array<any>;
 
-      // client-side search
+      // ✅ Batch resolve suites
+      const suiteIds = [
+        ...new Set(sessions.map((s) => s.suite_id).filter(Boolean)),
+      ];
+      const suiteMap = new Map<
+        string,
+        { id: string; name: string; project_id: string | null }
+      >();
+      if (suiteIds.length > 0) {
+        const { data: suites } = await supabase
+          .from("suites")
+          .select("id, name, project_id")
+          .in("id", suiteIds);
+        (suites ?? []).forEach((s: any) => suiteMap.set(s.id, s));
+      }
+
+      // Client-side search
       const s = debouncedRunsSearch.trim().toLowerCase();
       const filtered = s
         ? sessions.filter((r) => {
-            const suiteName = String(r?.test_suites?.name ?? "").toLowerCase();
+            const suiteName = String(
+              suiteMap.get(r.suite_id)?.name ?? "",
+            ).toLowerCase();
             const runName = String(r?.name ?? "").toLowerCase();
             const desc = String(r?.description ?? "").toLowerCase();
             const env = String(r?.environment ?? "").toLowerCase();
@@ -675,13 +691,14 @@ test_suites:suite_id ( id, name, project_id)
         }
       }
 
+      // ✅ Use suiteMap instead of r.test_suites
       const mapped: RunWithStats[] = filtered.map((r) => {
-        const suiteName = r?.test_suites?.name ?? "Unknown Suite";
+        const suite = suiteMap.get(r.suite_id);
         return {
           id: r.id,
           user_id: r.user_id,
           suite_id: r.suite_id ?? null,
-          suite_name: suiteName,
+          suite_name: suite?.name ?? "Unknown Suite",
 
           name: r.name,
           description: r.description ?? null,
@@ -744,25 +761,24 @@ test_suites:suite_id ( id, name, project_id)
         .from("test_executions")
         .select(
           `
-          id,
-          suite_id,
-          session_id,
-          test_case_id,
-          execution_status,
-          execution_notes,
-          failure_reason,
-          created_at,
-          started_at,
-          completed_at,
-          review_needs_update,
-          review_create_issue,
-          review_note,
-          reviewed_at,
-          jira_issue_key,
-          testrail_defect_id,
-          test_suites:suite_id ( id, name, project_id),
-          test_cases:test_case_id ( id, title, description )
-        `,
+        id,
+        suite_id,
+        session_id,
+        test_case_id,
+        platform_test_case_id,
+        execution_status,
+        execution_notes,
+        failure_reason,
+        created_at,
+        started_at,
+        completed_at,
+        review_needs_update,
+        review_create_issue,
+        review_note,
+        reviewed_at,
+        jira_issue_key,
+        testrail_defect_id
+      `,
         )
         .eq("executed_by", auth.user.id)
         .in("execution_status", INCLUDED_STATUSES)
@@ -792,25 +808,81 @@ test_suites:suite_id ( id, name, project_id)
       const { data: execsRaw, error } = await dataQuery;
       if (error) throw error;
 
-      const execs = (execsRaw ?? []) as unknown as SupabaseExecutionRow[];
-      const projectId = execs[0]?.test_suites?.project_id ?? null;
+      const execs = (execsRaw ?? []) as any[];
+
+      // ✅ Batch resolve suites
+      const suiteIds = [
+        ...new Set(execs.map((e) => e.suite_id).filter(Boolean)),
+      ];
+      const suiteMap = new Map<
+        string,
+        { id: string; name: string; project_id: string | null }
+      >();
+      if (suiteIds.length > 0) {
+        const { data: suites } = await supabase
+          .from("suites")
+          .select("id, name, project_id")
+          .in("id", suiteIds);
+        (suites ?? []).forEach((s: any) => suiteMap.set(s.id, s));
+      }
+
+      // ✅ Batch resolve regular test cases
+      const regularIds = [
+        ...new Set(execs.map((e) => e.test_case_id).filter(Boolean)),
+      ];
+      const regularMap = new Map<
+        string,
+        { id: string; title: string; description: string | null }
+      >();
+      if (regularIds.length > 0) {
+        const { data: cases } = await supabase
+          .from("test_cases")
+          .select("id, title, description")
+          .in("id", regularIds);
+        (cases ?? []).forEach((c: any) => regularMap.set(c.id, c));
+      }
+
+      // ✅ Batch resolve cross-platform test cases
+      const platformIds = [
+        ...new Set(execs.map((e) => e.platform_test_case_id).filter(Boolean)),
+      ];
+      const platformMap = new Map<
+        string,
+        { id: string; title: string; description: string | null }
+      >();
+      if (platformIds.length > 0) {
+        const { data: cases } = await supabase
+          .from("platform_test_cases")
+          .select("id, title, description")
+          .in("id", platformIds);
+        (cases ?? []).forEach((c: any) => platformMap.set(c.id, c));
+      }
+
+      const projectId = suiteMap.values().next().value?.project_id ?? null;
       await loadIntegrationsForProject(projectId);
 
       const base: ExecutionHistoryRow[] = execs.map((e) => {
+        const suite = suiteMap.get(e.suite_id);
+        // ✅ Look up test case from whichever FK is set
+        const testCase = e.test_case_id
+          ? regularMap.get(e.test_case_id)
+          : platformMap.get(e.platform_test_case_id);
+
         let duration: number | null = null;
         if (e.started_at && e.completed_at) {
           duration =
             new Date(e.completed_at).getTime() -
             new Date(e.started_at).getTime();
         }
+
         return {
           execution_id: e.id,
           suite_id: e.suite_id,
-          suite_name: e.test_suites?.name ?? "Unknown Suite",
+          suite_name: suite?.name ?? "Unknown Suite",
           session_id: e.session_id ?? null,
-          test_case_id: e.test_case_id,
-          test_title: e.test_cases?.title ?? "Unknown Test",
-          test_description: e.test_cases?.description ?? null,
+          test_case_id: e.test_case_id || e.platform_test_case_id,
+          test_title: testCase?.title ?? "Unknown Test",
+          test_description: testCase?.description ?? null,
           execution_status: (e.execution_status as AllowedStatus) ?? "passed",
           execution_notes: e.execution_notes ?? null,
           failure_reason: e.failure_reason ?? null,
@@ -819,12 +891,10 @@ test_suites:suite_id ( id, name, project_id)
           completed_at: e.completed_at ?? null,
           duration_ms: duration,
           evidence_count: 0,
-
           review_needs_update: Boolean(e.review_needs_update ?? false),
           review_create_issue: Boolean(e.review_create_issue ?? false),
           review_note: (e.review_note ?? null) as string | null,
           reviewed_at: (e.reviewed_at ?? null) as string | null,
-
           jira_issue_key: e.jira_issue_key ?? null,
           testrail_defect_id: e.testrail_defect_id ?? null,
         };
@@ -1141,25 +1211,24 @@ test_suites:suite_id ( id, name, project_id)
         .from("test_executions")
         .select(
           `
-        id,
-        suite_id,
-        session_id,
-        test_case_id,
-        execution_status,
-        execution_notes,
-        failure_reason,
-        created_at,
-        started_at,
-        completed_at,
-        review_needs_update,
-        review_create_issue,
-        review_note,
-        reviewed_at,
-        jira_issue_key,
-        testrail_defect_id,
-        test_suites:suite_id ( id, name, project_id ),
-        test_cases:test_case_id ( id, title, description )
-      `,
+    id,
+    suite_id,
+    session_id,
+    test_case_id,
+    platform_test_case_id,
+    execution_status,
+    execution_notes,
+    failure_reason,
+    created_at,
+    started_at,
+    completed_at,
+    review_needs_update,
+    review_create_issue,
+    review_note,
+    reviewed_at,
+    jira_issue_key,
+    testrail_defect_id
+  `,
         )
         .eq("executed_by", auth.user.id)
         .eq("session_id", run.id)
@@ -1168,31 +1237,79 @@ test_suites:suite_id ( id, name, project_id)
 
       if (error) throw error;
 
-      const execs = (execsRaw ?? []) as unknown as SupabaseExecutionRow[];
+      const execs = (execsRaw ?? []) as any[];
 
-      const projectId = execs[0]?.test_suites?.project_id ?? null;
+      // ✅ Same three batch lookups as fetchHistory
+      const suiteIds = [
+        ...new Set(execs.map((e) => e.suite_id).filter(Boolean)),
+      ];
+      const suiteMap = new Map<
+        string,
+        { id: string; name: string; project_id: string | null }
+      >();
+      if (suiteIds.length > 0) {
+        const { data: suites } = await supabase
+          .from("suites")
+          .select("id, name, project_id")
+          .in("id", suiteIds);
+        (suites ?? []).forEach((s: any) => suiteMap.set(s.id, s));
+      }
+
+      const regularIds = [
+        ...new Set(execs.map((e) => e.test_case_id).filter(Boolean)),
+      ];
+      const regularMap = new Map<
+        string,
+        { id: string; title: string; description: string | null }
+      >();
+      if (regularIds.length > 0) {
+        const { data: cases } = await supabase
+          .from("test_cases")
+          .select("id, title, description")
+          .in("id", regularIds);
+        (cases ?? []).forEach((c: any) => regularMap.set(c.id, c));
+      }
+
+      const platformIds = [
+        ...new Set(execs.map((e) => e.platform_test_case_id).filter(Boolean)),
+      ];
+      const platformMap = new Map<
+        string,
+        { id: string; title: string; description: string | null }
+      >();
+      if (platformIds.length > 0) {
+        const { data: cases } = await supabase
+          .from("platform_test_cases")
+          .select("id, title, description")
+          .in("id", platformIds);
+        (cases ?? []).forEach((c: any) => platformMap.set(c.id, c));
+      }
+
+      const projectId = suiteMap.values().next().value?.project_id ?? null;
       if (projectId) {
         await loadIntegrationsForProject(projectId);
       }
 
-      // Evidence counts for this run
+      // Evidence counts
       const execIds = execs.map((e) => e.id);
       const counts = new Map<string, number>();
-
       if (execIds.length) {
         const { data: attsRaw, error: attErr } = await supabase
           .from("test_attachments")
           .select("execution_id")
           .in("execution_id", execIds);
-
         if (attErr) throw attErr;
-
         for (const a of (attsRaw ?? []) as Array<{ execution_id: string }>) {
           counts.set(a.execution_id, (counts.get(a.execution_id) ?? 0) + 1);
         }
       }
 
       const mapped: ExecutionHistoryRow[] = execs.map((e) => {
+        const suite = suiteMap.get(e.suite_id);
+        const testCase = e.test_case_id
+          ? regularMap.get(e.test_case_id)
+          : platformMap.get(e.platform_test_case_id);
+
         let duration: number | null = null;
         if (e.started_at && e.completed_at) {
           duration =
@@ -1203,11 +1320,11 @@ test_suites:suite_id ( id, name, project_id)
         return {
           execution_id: e.id,
           suite_id: e.suite_id,
-          suite_name: e.test_suites?.name ?? "Unknown Suite",
+          suite_name: suite?.name ?? "Unknown Suite",
           session_id: e.session_id ?? null,
-          test_case_id: e.test_case_id,
-          test_title: e.test_cases?.title ?? "Unknown Test",
-          test_description: e.test_cases?.description ?? null,
+          test_case_id: e.test_case_id || e.platform_test_case_id,
+          test_title: testCase?.title ?? "Unknown Test",
+          test_description: testCase?.description ?? null,
           execution_status: (e.execution_status as AllowedStatus) ?? "passed",
           execution_notes: e.execution_notes ?? null,
           failure_reason: e.failure_reason ?? null,
@@ -1216,12 +1333,10 @@ test_suites:suite_id ( id, name, project_id)
           completed_at: e.completed_at ?? null,
           duration_ms: duration,
           evidence_count: counts.get(e.id) ?? 0,
-
           review_needs_update: Boolean(e.review_needs_update ?? false),
           review_create_issue: Boolean(e.review_create_issue ?? false),
           review_note: (e.review_note ?? null) as string | null,
           reviewed_at: (e.reviewed_at ?? null) as string | null,
-
           jira_issue_key: e.jira_issue_key ?? null,
           testrail_defect_id: e.testrail_defect_id ?? null,
         };

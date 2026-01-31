@@ -24,8 +24,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
-import { Loader2, Save, X, Plus, Trash2, FolderOpen } from "lucide-react";
+import {
+  Loader2,
+  Save,
+  X,
+  Plus,
+  Trash2,
+  FolderOpen,
+  FileCode,
+  Layers,
+  Monitor,
+  Smartphone,
+  Globe,
+  Eye,
+  Zap,
+} from "lucide-react";
 
 import type {
   TestCase,
@@ -35,6 +50,30 @@ import type {
 import { testTypes } from "@/types/test-cases";
 
 type CombinedTestCase = TestCase | CrossPlatformTestCase;
+
+const PLATFORM_FRAMEWORKS = {
+  web: [
+    "Playwright",
+    "Selenium",
+    "Cypress",
+    "Puppeteer",
+    "TestCafe",
+    "WebdriverIO",
+  ],
+  mobile: ["Appium", "Detox", "Espresso", "XCUITest", "Maestro", "Calabash"],
+  api: ["Postman", "REST Assured", "Karate", "SoapUI", "Insomnia", "Newman"],
+  accessibility: ["axe", "WAVE", "Pa11y", "Lighthouse", "JAWS", "NVDA"],
+  performance: [
+    "JMeter",
+    "k6",
+    "Gatling",
+    "Locust",
+    "Artillery",
+    "Apache Bench",
+  ],
+} as const;
+
+type PlatformKey = keyof typeof PLATFORM_FRAMEWORKS;
 
 interface RegularFormData {
   title: string;
@@ -90,14 +129,12 @@ export function TestCaseFormDialog({
   open,
   mode,
   testCase,
-  caseType = "regular",
+  caseType,
   generationId,
   onClose,
   onSuccess,
 }: TestCaseFormDialogProps) {
-  const [activeType, setActiveType] = useState<"regular" | "cross-platform">(
-    caseType,
-  );
+  const [activeType, setActiveType] = useState<"regular" | "cross-platform">();
 
   const [regularFormData, setRegularFormData] = useState<RegularFormData>({
     title: "",
@@ -107,7 +144,7 @@ export function TestCaseFormDialog({
     preconditions: "",
     test_steps: [{ step_number: 1, action: "", expected: "" }],
     expected_result: "",
-    status: "draft",
+    status: "active",
     project_id: null,
   });
 
@@ -116,29 +153,49 @@ export function TestCaseFormDialog({
       title: "",
       description: "",
       platform: "web",
-      framework: "selenium",
+      framework: "playwright",
       priority: "medium",
       preconditions: [],
       steps: [""],
       expected_results: [""],
       automation_hints: [],
-      status: "pending",
+      status: "active",
       project_id: null,
     });
 
+  const [loading, setIsLoadingEditData] = useState(false);
   const [saving, setSaving] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
+  const frameworkOptions = crossPlatformFormData.platform
+    ? PLATFORM_FRAMEWORKS[crossPlatformFormData.platform as PlatformKey] || []
+    : [];
+
+  useEffect(() => {
+    if (mode === "create" && activeType === "cross-platform") {
+      const platform = crossPlatformFormData.platform as PlatformKey;
+      const frameworks = PLATFORM_FRAMEWORKS[platform];
+
+      // If current framework is not valid for new platform, reset to first option
+      if (frameworks) {
+        setCrossPlatformFormData((prev) => ({
+          ...prev,
+          framework: frameworks[0]?.toLowerCase() || "",
+        }));
+      }
+    }
+  }, [crossPlatformFormData.platform, mode, activeType]);
 
   // Fetch projects on mount
   useEffect(() => {
     void fetchProjects();
   }, []);
 
-  // Populate form when editing / reset when creating
   useEffect(() => {
     if (!open) return;
 
-    if (mode === "edit" && testCase) {
+    if (mode === "edit" && testCase && projects.length > 0) {
+      setIsLoadingEditData(true);
+
       if (isRegularTestCase(testCase)) {
         setActiveType("regular");
         const testTypesList = testTypes as readonly string[];
@@ -155,15 +212,20 @@ export function TestCaseFormDialog({
           test_steps: testCase.test_steps,
           expected_result: testCase.expected_result,
           status: testCase.status,
-          project_id: testCase.project_id || null,
+          project_id: testCase.project_id ? String(testCase.project_id) : null,
         });
       } else if (isCrossPlatformTestCase(testCase)) {
         setActiveType("cross-platform");
+
+        // Get actual values from database - no fallbacks, no transformations
+        const platform = testCase.platform || "web";
+        const framework = testCase.framework || ""; // Get actual DB value
+
         setCrossPlatformFormData({
           title: testCase.title,
           description: testCase.description || "",
-          platform: testCase.platform,
-          framework: testCase.framework,
+          platform,
+          framework, // Use exact value from DB
           priority: testCase.priority,
           preconditions: Array.isArray(testCase.preconditions)
             ? testCase.preconditions
@@ -174,16 +236,21 @@ export function TestCaseFormDialog({
           expected_results: testCase.expected_results || [""],
           automation_hints: testCase.automation_hints || [],
           status: testCase.status,
-          project_id: testCase.project_id || null,
+          project_id: testCase.project_id ? String(testCase.project_id) : null,
         });
       }
+
+      // Delay to ensure state is updated before allowing auto-reset
+      setTimeout(() => setIsLoadingEditData(false), 100);
       return;
     }
 
     if (mode === "create") {
+      setIsLoadingEditData(false);
       resetForm();
+      setActiveType(caseType);
     }
-  }, [mode, testCase, open]);
+  }, [mode, testCase, open, caseType]);
 
   async function fetchProjects() {
     try {
@@ -215,21 +282,21 @@ export function TestCaseFormDialog({
       preconditions: "",
       test_steps: [{ step_number: 1, action: "", expected: "" }],
       expected_result: "",
-      status: "draft",
+      status: "active",
       project_id: null,
     });
     setCrossPlatformFormData({
       title: "",
       description: "",
       platform: "web",
-      framework: "selenium",
+      framework: "playwright",
       priority: "medium",
       preconditions: [],
       steps: [""],
       expected_results: [""],
       automation_hints: [],
-      status: "pending",
-      project_id: "",
+      status: "active",
+      project_id: null,
     });
   }
 
@@ -463,7 +530,35 @@ export function TestCaseFormDialog({
       return;
     }
 
-    if (mode === "edit" && testCase && isCrossPlatformTestCase(testCase)) {
+    if (mode === "create") {
+      // Create new cross-platform test case
+      const { error } = await supabase
+        .from("platform_test_cases")
+        .insert({
+          user_id: userId,
+          title: formData.title,
+          description: formData.description,
+          platform: formData.platform,
+          framework: formData.framework,
+          priority: formData.priority,
+          preconditions: formData.preconditions.filter((p) => p.trim()),
+          steps: formData.steps,
+          expected_results: formData.expected_results,
+          automation_hints: formData.automation_hints.filter((h) => h.trim()),
+          status: formData.status,
+          project_id: formData.project_id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      toast.success("Cross-platform test case created successfully");
+
+      onSuccess();
+      onClose();
+      resetForm();
+    } else if (testCase && isCrossPlatformTestCase(testCase)) {
+      // Update existing cross-platform test case
       const { error } = await supabase
         .from("platform_test_cases")
         .update({
@@ -477,6 +572,7 @@ export function TestCaseFormDialog({
           expected_results: formData.expected_results,
           automation_hints: formData.automation_hints.filter((h) => h.trim()),
           status: formData.status,
+          project_id: formData.project_id,
           updated_at: new Date().toISOString(),
         })
         .eq("id", testCase.id);
@@ -487,8 +583,6 @@ export function TestCaseFormDialog({
       onSuccess();
       onClose();
       resetForm();
-    } else {
-      toast.error("Cannot create cross-platform test cases from this dialog");
     }
   }
 
@@ -498,6 +592,7 @@ export function TestCaseFormDialog({
   }
 
   const isRegularMode = activeType === "regular";
+  const canChangeType = mode === "create"; // Only allow changing type when creating
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -510,11 +605,10 @@ export function TestCaseFormDialog({
             <div className="space-y-2 min-w-0">
               <DialogTitle className="truncate">
                 {mode === "create" ? "Create New Test Case" : "Edit Test Case"}
-                {!isRegularMode && " (Cross-Platform)"}
               </DialogTitle>
               <DialogDescription>
                 {mode === "create"
-                  ? "Fill in the details below to create a new test case."
+                  ? "Choose the test case type and fill in the details below."
                   : "Update the test case details below."}
               </DialogDescription>
             </div>
@@ -532,6 +626,70 @@ export function TestCaseFormDialog({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+          {/* Test Case Type Selector - Only shown in create mode */}
+          {canChangeType && (
+            <div className="space-y-3 pb-4 border-b">
+              <Label>Test Case Type</Label>
+              <RadioGroup
+                value={activeType}
+                onValueChange={(value: "regular" | "cross-platform") =>
+                  setActiveType(value)
+                }
+                className="grid grid-cols-1 md:grid-cols-2 gap-4"
+              >
+                <div
+                  className={`relative flex items-start space-x-3 p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                    activeType === "regular"
+                      ? "border-primary bg-primary/5"
+                      : "border-input hover:border-primary/50"
+                  }`}
+                  onClick={() => setActiveType("regular")}
+                >
+                  <RadioGroupItem value="regular" id="type-regular" />
+                  <div className="flex-1">
+                    <Label
+                      htmlFor="type-regular"
+                      className="flex items-center gap-2 cursor-pointer font-medium"
+                    >
+                      <FileCode className="h-4 w-4" />
+                      Regular Test Case
+                    </Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Standard test cases for single platform testing with
+                      detailed steps
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  className={`relative flex items-start space-x-3 p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                    activeType === "cross-platform"
+                      ? "border-primary bg-primary/5"
+                      : "border-input hover:border-primary/50"
+                  }`}
+                  onClick={() => setActiveType("cross-platform")}
+                >
+                  <RadioGroupItem
+                    value="cross-platform"
+                    id="type-cross-platform"
+                  />
+                  <div className="flex-1">
+                    <Label
+                      htmlFor="type-cross-platform"
+                      className="flex items-center gap-2 cursor-pointer font-medium"
+                    >
+                      <Layers className="h-4 w-4" />
+                      Cross-Platform Test Case
+                    </Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Test cases across Web, Mobile, API, and more platforms
+                    </p>
+                  </div>
+                </div>
+              </RadioGroup>
+            </div>
+          )}
+
           {/* Regular Test Case Form */}
           {isRegularMode && (
             <>
@@ -796,7 +954,7 @@ export function TestCaseFormDialog({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
                 <div className="space-y-2">
-                  <Label htmlFor="platform">Platform</Label>
+                  <Label htmlFor="platform">Platform *</Label>
                   <Select
                     value={crossPlatformFormData.platform}
                     onValueChange={(value) =>
@@ -805,39 +963,94 @@ export function TestCaseFormDialog({
                         platform: value,
                       }))
                     }
-                    disabled={mode === "edit"}
                   >
                     <SelectTrigger id="platform">
                       <SelectValue placeholder="Select platform" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="web">Web</SelectItem>
-                      <SelectItem value="mobile">Mobile</SelectItem>
-                      <SelectItem value="api">API</SelectItem>
-                      <SelectItem value="accessibility">
-                        Accessibility
+                      <SelectItem value="web">
+                        <div className="flex items-center gap-2">
+                          <Monitor className="h-4 w-4" />
+                          Web
+                        </div>
                       </SelectItem>
-                      <SelectItem value="performance">Performance</SelectItem>
+                      <SelectItem value="mobile">
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="h-4 w-4" />
+                          Mobile
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="api">
+                        <div className="flex items-center gap-2">
+                          <Globe className="h-4 w-4" />
+                          API
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="accessibility">
+                        <div className="flex items-center gap-2">
+                          <Eye className="h-4 w-4" />
+                          Accessibility
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="performance">
+                        <div className="flex items-center gap-2">
+                          <Zap className="h-4 w-4" />
+                          Performance
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
+                  {mode === "edit" && (
+                    <p className="text-xs text-muted-foreground">
+                      Platform cannot be changed after creation
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="framework">Framework</Label>
-                  <Input
-                    id="framework"
+                  <Label htmlFor="framework">Framework *</Label>
+                  <Select
                     value={crossPlatformFormData.framework}
-                    onChange={(e) =>
+                    onValueChange={(value) =>
                       setCrossPlatformFormData((prev) => ({
                         ...prev,
-                        framework: e.target.value,
+                        framework: value,
                       }))
                     }
-                    placeholder="e.g., Selenium, Playwright"
-                    disabled={mode === "edit"}
-                  />
+                  >
+                    <SelectTrigger id="framework">
+                      <SelectValue placeholder="Select framework" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {frameworkOptions.map((framework) => (
+                        <SelectItem
+                          key={framework}
+                          value={framework.toLowerCase()}
+                        >
+                          {framework}
+                        </SelectItem>
+                      ))}
+                      {/* If current framework is not in predefined list, add it as an option */}
+                      {mode === "edit" &&
+                        crossPlatformFormData.framework &&
+                        !frameworkOptions.some(
+                          (f) =>
+                            f.toLowerCase() ===
+                            crossPlatformFormData.framework.toLowerCase(),
+                        ) && (
+                          <SelectItem value={crossPlatformFormData.framework}>
+                            {crossPlatformFormData.framework} (Custom)
+                          </SelectItem>
+                        )}
+                      <SelectItem value="other">Other (Custom)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {mode === "edit" && (
+                    <p className="text-xs text-muted-foreground">
+                      Framework cannot be changed after creation
+                    </p>
+                  )}
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="cp-priority">Priority</Label>
                   <Select
@@ -860,6 +1073,7 @@ export function TestCaseFormDialog({
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="cp-project">Project (Optional)</Label>
                   <Select
@@ -867,7 +1081,7 @@ export function TestCaseFormDialog({
                     onValueChange={(value) =>
                       setCrossPlatformFormData((prev) => ({
                         ...prev,
-                        project_id: value === "none" ? null : value,
+                        project_id: value,
                       }))
                     }
                   >
@@ -875,7 +1089,7 @@ export function TestCaseFormDialog({
                       <SelectValue placeholder="Select a project" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">
+                      <SelectItem value={"none"}>
                         <span className="text-muted-foreground">
                           No Project
                         </span>
@@ -907,9 +1121,9 @@ export function TestCaseFormDialog({
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="approved">Approved</SelectItem>
-                      <SelectItem value="rejected">Rejected</SelectItem>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="archived">Archived</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -947,28 +1161,32 @@ export function TestCaseFormDialog({
                   </Button>
                 </div>
 
-                <div className="space-y-2">
-                  {crossPlatformFormData.preconditions.map((precond, index) => (
-                    <div key={index} className="flex gap-2">
-                      <Input
-                        value={precond}
-                        onChange={(e) =>
-                          updatePrecondition(index, e.target.value)
-                        }
-                        placeholder="Enter precondition"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removePrecondition(index)}
-                        className="text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+                {crossPlatformFormData.preconditions.length > 0 && (
+                  <div className="space-y-2">
+                    {crossPlatformFormData.preconditions.map(
+                      (precond, index) => (
+                        <div key={index} className="flex gap-2">
+                          <Input
+                            value={precond}
+                            onChange={(e) =>
+                              updatePrecondition(index, e.target.value)
+                            }
+                            placeholder="Enter precondition"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removePrecondition(index)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Test Steps */}
@@ -1060,28 +1278,32 @@ export function TestCaseFormDialog({
                   </Button>
                 </div>
 
-                <div className="space-y-2">
-                  {crossPlatformFormData.automation_hints.map((hint, index) => (
-                    <div key={index} className="flex gap-2">
-                      <Input
-                        value={hint}
-                        onChange={(e) =>
-                          updateAutomationHint(index, e.target.value)
-                        }
-                        placeholder="Enter automation hint"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeAutomationHint(index)}
-                        className="text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+                {crossPlatformFormData.automation_hints.length > 0 && (
+                  <div className="space-y-2">
+                    {crossPlatformFormData.automation_hints.map(
+                      (hint, index) => (
+                        <div key={index} className="flex gap-2">
+                          <Input
+                            value={hint}
+                            onChange={(e) =>
+                              updateAutomationHint(index, e.target.value)
+                            }
+                            placeholder="Enter automation hint"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeAutomationHint(index)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                )}
               </div>
             </>
           )}

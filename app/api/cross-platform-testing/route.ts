@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import { checkAndRecordUsage } from "@/lib/usage-tracker";
+import {
+  checkUsageQuota,
+  recordSuccessfulGeneration,
+} from "@/lib/usage-tracker";
 
 export const runtime = "nodejs";
 
@@ -489,13 +492,13 @@ async function structureTestCasesWithOpenAI(
 }
 
 function buildInsertRow(args: {
-  suiteId: string;
   platformId: PlatformId;
   framework: string;
   tc: PlatformTestCase;
   userId: string;
+  projectId: string | null;
 }) {
-  const { suiteId, platformId, framework, tc, userId } = args;
+  const { platformId, framework, tc, userId, projectId } = args;
   const isApi = platformId === "api";
 
   if (isApi) {
@@ -509,7 +512,6 @@ function buildInsertRow(args: {
   const automation_metadata = isApi ? { api: tc.api } : {};
 
   return {
-    suite_id: suiteId,
     platform: platformId,
     framework,
     title: tc.title || "Untitled Test",
@@ -523,11 +525,10 @@ function buildInsertRow(args: {
       ? tc.automation_hints
       : [],
     priority: normalizePriority(tc.priority),
-    execution_status: "not_run" as const,
+    status: "draft",
     automation_metadata,
-    user_id: userId, // ✅ CHANGE #3: Include user_id in return
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    user_id: userId,
+    project_id: projectId,
   };
 }
 
@@ -556,6 +557,7 @@ export async function POST(request: Request) {
     const modelKey = (body.model as ModelKey) || DEFAULT_MODEL;
     const testCaseCount = clampCount(Number(body.testCaseCount ?? 10), 1, 100);
     const coverage = (body.coverage as CoverageKey) || "comprehensive";
+    const project_id = body.project_id || null;
     const templateText = await resolveTemplateText(
       supabase,
       user.id,
@@ -602,7 +604,7 @@ export async function POST(request: Request) {
     const requestedTotal = testCaseCount * platforms.length;
 
     try {
-      await checkAndRecordUsage(user.id, requestedTotal);
+      await checkUsageQuota(user.id, requestedTotal);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Usage limit exceeded";
       return NextResponse.json(
@@ -619,25 +621,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create suite
-    const { data: suite, error: suiteError } = await supabase
-      .from("cross_platform_test_suites")
-      .insert({
-        requirement,
-        platforms: platforms.map((p) => p.platform),
-        user_id: user.id,
-        generated_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (suiteError || !suite) {
-      return NextResponse.json(
-        { error: "Failed to create test suite", details: suiteError?.message },
-        { status: 500 },
-      );
-    }
-
     // Provider routing
     const selectedModel = AI_MODELS[modelKey];
     const isAnthropicModel = selectedModel.startsWith("claude");
@@ -649,8 +632,10 @@ export async function POST(request: Request) {
       : "anthropic";
 
     let totalInserted = 0;
+    const allInsertedCases: any[] = [];
     const generationResults: Array<{
       platform: string;
+      framework: string;
       count: number;
       error?: string;
     }> = [];
@@ -736,6 +721,7 @@ Return plain text test cases (no JSON).`;
         if (testCases.length === 0) {
           generationResults.push({
             platform: platformId,
+            framework,
             count: 0,
             error: "No test cases generated",
           });
@@ -744,29 +730,29 @@ Return plain text test cases (no JSON).`;
 
         const testCasesToInsert = testCases.map((tc) =>
           buildInsertRow({
-            suiteId: suite.id,
             platformId,
             framework,
             tc,
             userId: user.id,
+            projectId: project_id,
           }),
         );
 
         const { data: insertedCases, error: insertError } = await supabase
           .from("platform_test_cases")
           .insert(testCasesToInsert)
-          .select("id, title, automation_metadata");
+          .select("id, title, platform, framework, automation_metadata");
 
         if (insertError) {
           generationResults.push({
             platform: platformId,
+            framework,
             count: 0,
             error: insertError.message,
           });
           continue;
         }
 
-        // Collect API details (optional, for UI/export)
         if (isApi && Array.isArray(insertedCases)) {
           for (const row of insertedCases as any[]) {
             const api = normalizeApiSpec(row?.automation_metadata?.api);
@@ -782,20 +768,21 @@ Return plain text test cases (no JSON).`;
 
         const insertedCount = insertedCases?.length ?? 0;
         totalInserted += insertedCount;
-        generationResults.push({ platform: platformId, count: insertedCount });
+        allInsertedCases.push(...(insertedCases || []));
+        generationResults.push({
+          platform: platformId,
+          framework,
+          count: insertedCount,
+        });
       } catch (err) {
         generationResults.push({
           platform: String((platformData as any)?.platform ?? "unknown"),
+          framework: String((platformData as any)?.framework ?? "unknown"),
           count: 0,
           error: err instanceof Error ? err.message : "Unknown error",
         });
       }
     }
-
-    await supabase
-      .from("cross_platform_test_suites")
-      .update({ total_test_cases: totalInserted })
-      .eq("id", suite.id);
 
     if (totalInserted === 0) {
       return NextResponse.json(
@@ -806,6 +793,11 @@ Return plain text test cases (no JSON).`;
         { status: 500 },
       );
     }
+    try {
+      await recordSuccessfulGeneration(user.id, totalInserted);
+    } catch (recordError) {
+      console.error("Failed to record usage:", recordError);
+    }
 
     const successfulPlatforms = generationResults.filter(
       (r) => r.count > 0,
@@ -813,12 +805,15 @@ Return plain text test cases (no JSON).`;
 
     return NextResponse.json({
       success: true,
-      suite_id: suite.id,
       total_test_cases: totalInserted,
-      platforms: platforms.map((p) => p.platform),
+      test_cases: allInsertedCases,
+      platforms: platforms.map((p) => ({
+        platform: p.platform,
+        framework: p.framework,
+      })),
       generation_results: generationResults,
       api_case_details: apiCaseDetails,
-      message: `Successfully generated ${totalInserted} test cases across ${successfulPlatforms} platform(s)`,
+      message: `Successfully generated ${totalInserted} cross-platform test cases across ${successfulPlatforms} platform(s)`,
     });
   } catch (error) {
     return NextResponse.json(

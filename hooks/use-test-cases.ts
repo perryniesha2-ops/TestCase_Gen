@@ -51,7 +51,7 @@ export function useTestCases(generationId?: string | null) {
         await supabase
           .from("platform_test_cases")
           .select("*")
-          .eq("cross_platform_test_suites.user_id", user.id)
+          .eq("user_id", user.id)
           .order("created_at", { ascending: false });
 
       if (crossPlatformError) throw crossPlatformError;

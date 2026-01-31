@@ -130,32 +130,39 @@ export function TestCaseDetailsPageClient({
         .from("platform_test_cases")
         .select(
           `
-          id,
-          suite_id,
-          platform,
-          framework,
-          title,
-          description,
-          preconditions,
-          steps,
-          expected_results,
-          automation_hints,
-          priority,
-          status,
-          execution_status,
-          created_at,
-          updated_at,
-          approved_at,
-          approved_by,
-          automation_metadata
-        `,
+      id,
+      suite_id,
+      platform,
+      framework,
+      title,
+      description,
+      preconditions,
+      steps,
+      expected_results,
+      automation_hints,
+      priority,
+      execution_status,
+      created_at,
+      updated_at,
+      approved_at,
+      approved_by,
+      automation_metadata,
+      status, 
+      project_id, 
+      projects(id, name, color, icon)
+    `,
         )
         .eq("id", testCaseId)
         .eq("user_id", user.id)
         .single();
 
       if (!platformError && platformCase) {
-        setTestCase(platformCase as CrossPlatformTestCase);
+        const transformedCase: CrossPlatformTestCase = {
+          ...platformCase,
+          projects: platformCase.projects?.[0] || null,
+        };
+
+        setTestCase(transformedCase);
         setLoading(false);
         return;
       }

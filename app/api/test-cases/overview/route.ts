@@ -22,7 +22,6 @@ export async function GET(req: Request) {
     const generationId = url.searchParams.get("generation");
     const sessionId = url.searchParams.get("session");
     const projectId = url.searchParams.get("project");
-    const selectedProject = url.searchParams.get("project");
 
     // 1) Projects (toolbar)
     const { data: projects, error: projErr } = await supabase
@@ -68,39 +67,33 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: tcErr.message }, { status: 500 });
     }
 
+    // 3) Cross-platform test cases - FIXED: Removed trailing comma and extra whitespace
     let crossPlatformQuery = supabase
       .from("platform_test_cases")
       .select(
         `
-    id,
-    suite_id,
-    platform,
-    framework,
-    title,
-    description,
-    preconditions,
-    steps,
-    expected_results,
-    automation_hints,
-    priority,
-    status,
-    project_id,
-    created_at,
-    projects (id, name, color, icon),
-    cross_platform_test_suites!inner(
-      id,
-      requirement,
-      user_id,
-      platforms,
-      generated_at
-    )
-  `,
+        id,
+        suite_id,
+        platform,
+        framework,
+        title,
+        description,
+        preconditions,
+        steps,
+        expected_results,
+        automation_hints,
+        priority,
+        status,
+        project_id,
+        created_at,
+        projects (id, name, color, icon)
+      `,
       )
-      .eq("cross_platform_test_suites.user_id", user.id)
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
-    if (selectedProject) {
-      crossPlatformQuery = crossPlatformQuery.eq("project_id", selectedProject);
+    if (projectId) {
+      crossPlatformQuery = crossPlatformQuery.eq("project_id", projectId);
     }
 
     const { data: rawCrossPlatformCases, error: cpErr } =
@@ -109,11 +102,6 @@ export async function GET(req: Request) {
     if (cpErr) {
       return NextResponse.json({ error: cpErr.message }, { status: 500 });
     }
-
-    const crossPlatformCases = (rawCrossPlatformCases || []).map((tc) => ({
-      ...tc,
-      projects: Array.isArray(tc.projects) ? tc.projects[0] : tc.projects,
-    }));
 
     // 4) Session header (optional)
     let currentSession: any = null;
@@ -138,20 +126,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: genErr.message }, { status: 500 });
     }
 
-    // 6) Cross-platform suites map (optional, keeps old UI compatible)
-    const { data: suites, error: suitesErr } = await supabase
-      .from("cross_platform_test_suites")
-      .select("id, requirement, platforms, generated_at")
-      .eq("user_id", user.id)
-      .order("generated_at", { ascending: false });
-
-    if (suitesErr) {
-      return NextResponse.json({ error: suitesErr.message }, { status: 500 });
-    }
-
-    // 7) Latest execution status map (single query via view)
+    // 6) Latest execution status map (single query via view)
     const regularIds = (testCases ?? []).map((t: any) => t.id);
-    const crossIds = (crossPlatformCases ?? []).map((t: any) => t.id);
+    const crossIds = (rawCrossPlatformCases ?? []).map((t: any) => t.id);
     const ids = [...regularIds, ...crossIds];
 
     const executionByCaseId: Record<
@@ -165,12 +142,8 @@ export async function GET(req: Request) {
         .select("test_case_id, execution_status, executed_at")
         .in("test_case_id", ids);
 
-      // If your view already filters by session, ignore this.
-      // If it doesn't, and you want session-scoped "latest", you should implement
-      // a session-specific view or switch to a query against test_executions.
       if (sessionId) {
         // If your view contains session_id, you can filter here.
-        // Otherwise do nothing.
         // exQuery = exQuery.eq("session_id", sessionId);
       }
 
@@ -190,12 +163,11 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       testCases: testCases ?? [],
-      crossPlatformCases: crossPlatformCases ?? [],
+      crossPlatformCases: rawCrossPlatformCases ?? [],
       currentSession,
       executionByCaseId,
       projects: projects ?? [],
       generations: generations ?? [],
-      crossPlatformSuites: suites ?? [],
     });
   } catch (e: any) {
     return NextResponse.json(

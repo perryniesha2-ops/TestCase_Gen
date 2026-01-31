@@ -22,13 +22,13 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
 
 type TestCase = {
   id: string;
   title: string;
-  test_type: string | null;
+  test_type?: string | null;
   description: string | null;
+  platform?: string;
 };
 
 type Suite = {
@@ -36,12 +36,7 @@ type Suite = {
   name: string;
   description: string | null;
   created_at: string;
-};
-
-type SuiteLink = {
-  test_case_id: string;
-  sequence_order: number | null;
-  priority: string | null;
+  kind: "regular" | "cross-platform";
 };
 
 interface ExportPageContentProps {
@@ -66,52 +61,82 @@ export function ExportPageContent({ suiteId }: ExportPageContentProps) {
 
       const supabase = createClient();
 
-      // Fetch suite
       const { data: suiteData, error: suiteError } = await supabase
-        .from("test_suites")
-        .select("id, name, description, created_at")
+        .from("suites")
+        .select("id, name, description, created_at, kind")
         .eq("id", suiteId)
         .single();
 
       if (suiteError) throw suiteError;
       setSuite(suiteData);
 
-      // Fetch suite links
-      const { data: links, error: linksError } = await supabase
-        .from("test_suite_cases")
-        .select("test_case_id, sequence_order, priority")
-        .eq("suite_id", suiteId)
-        .order("sequence_order", { ascending: true });
+      if (suiteData.kind === "regular") {
+        const { data: items, error: itemsError } = await supabase
+          .from("suite_items")
+          .select(
+            `
+            test_case_id,
+            sequence_order,
+            test_cases (
+              id,
+              title,
+              test_type,
+              description
+            )
+          `,
+          )
+          .eq("suite_id", suiteId)
+          .not("test_case_id", "is", null)
+          .order("sequence_order", { ascending: true });
 
-      if (linksError) throw linksError;
+        if (itemsError) throw itemsError;
 
-      if (!links || links.length === 0) {
-        setTestCases([]);
-        return;
+        const cases = (items || [])
+          .map((item: any) => {
+            const tc = Array.isArray(item.test_cases)
+              ? item.test_cases[0]
+              : item.test_cases;
+            return tc;
+          })
+          .filter(Boolean) as TestCase[];
+
+        setTestCases(cases);
+      } else if (suiteData.kind === "cross-platform") {
+        const { data: items, error: itemsError } = await supabase
+          .from("suite_items")
+          .select(
+            `
+            platform_test_case_id,
+            sequence_order,
+            platform_test_cases (
+              id,
+              title,
+              platform,
+              description
+            )
+          `,
+          )
+          .eq("suite_id", suiteId)
+          .not("platform_test_case_id", "is", null)
+          .order("sequence_order", { ascending: true });
+
+        if (itemsError) throw itemsError;
+
+        const cases = (items || [])
+          .map((item: any) => {
+            const tc = Array.isArray(item.platform_test_cases)
+              ? item.platform_test_cases[0]
+              : item.platform_test_cases;
+            return tc ? { ...tc, test_type: tc.platform } : null;
+          })
+          .filter(Boolean) as TestCase[];
+
+        setTestCases(cases);
       }
-
-      // Fetch test cases
-      const { data: cases, error: casesError } = await supabase
-        .from("test_cases")
-        .select("id, title, test_type, description")
-        .in(
-          "id",
-          links.map((l) => l.test_case_id)
-        );
-
-      if (casesError) throw casesError;
-
-      // Order cases by suite sequence
-      const caseMap = new Map((cases || []).map((c) => [c.id, c]));
-      const orderedCases = links
-        .map((link) => caseMap.get(link.test_case_id))
-        .filter((c): c is TestCase => c !== undefined);
-
-      setTestCases(orderedCases);
     } catch (err) {
       console.error("Error loading suite:", err);
       setError(
-        err instanceof Error ? err.message : "Failed to load suite data"
+        err instanceof Error ? err.message : "Failed to load suite data",
       );
     } finally {
       setLoading(false);
@@ -173,6 +198,9 @@ export function ExportPageContent({ suiteId }: ExportPageContentProps) {
               <CardTitle className="flex items-center gap-2">
                 <Folder className="h-5 w-5" />
                 {suite.name}
+                <Badge variant="outline" className="ml-2">
+                  {suite.kind}
+                </Badge>
               </CardTitle>
               {suite.description && (
                 <CardDescription>{suite.description}</CardDescription>
@@ -196,6 +224,10 @@ export function ExportPageContent({ suiteId }: ExportPageContentProps) {
               <span className="ml-2 font-medium">
                 {new Date(suite.created_at).toLocaleDateString()}
               </span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Suite Type:</span>
+              <span className="ml-2 font-medium capitalize">{suite.kind}</span>
             </div>
           </div>
         </CardContent>
@@ -229,6 +261,8 @@ export function ExportPageContent({ suiteId }: ExportPageContentProps) {
               <p className="text-sm text-muted-foreground">
                 {testCases.length} TypeScript test files with step-by-step
                 execution
+                {suite.kind === "cross-platform" &&
+                  " across multiple platforms"}
               </p>
             </div>
           </div>
@@ -269,12 +303,12 @@ export function ExportPageContent({ suiteId }: ExportPageContentProps) {
                   key={tc.id}
                   className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
                     <span className="text-sm text-muted-foreground font-mono">
                       #{String(idx + 1).padStart(2, "0")}
                     </span>
-                    <div>
-                      <p className="font-medium">{tc.title}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{tc.title}</p>
                       {tc.description && (
                         <p className="text-sm text-muted-foreground line-clamp-1">
                           {tc.description}
@@ -282,12 +316,40 @@ export function ExportPageContent({ suiteId }: ExportPageContentProps) {
                       )}
                     </div>
                   </div>
-                  {tc.test_type && (
-                    <Badge variant="outline">{tc.test_type}</Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {tc.test_type && (
+                      <Badge variant="outline" className="capitalize">
+                        {tc.test_type}
+                      </Badge>
+                    )}
+                    {tc.platform && (
+                      <Badge variant="secondary" className="capitalize">
+                        {tc.platform}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Empty State */}
+      {testCases.length === 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Test Cases</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              This suite doesn't have any test cases yet.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/test-library`)}
+            >
+              Manage Test Cases
+            </Button>
           </CardContent>
         </Card>
       )}

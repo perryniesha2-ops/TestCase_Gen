@@ -96,7 +96,7 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
 
         // Load suite
         const { data: suiteData, error: suiteError } = await supabase
-          .from("test_suites")
+          .from("suites")
           .select(`*, projects:project_id(id, name, color, icon)`)
           .eq("id", suiteId)
           .eq("user_id", user.id)
@@ -106,7 +106,7 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
 
         // Load test cases
         const { data: suiteCases, error: casesError } = await supabase
-          .from("test_suite_cases")
+          .from("suite_items")
           .select(
             `
             *,

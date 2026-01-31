@@ -1229,7 +1229,6 @@ export function CrossPlatformGeneratorForm() {
               )}
             </Button>
 
-            {/* Debug (safe) */}
             <div className="text-xs text-muted-foreground space-y-1">
               <p>
                 Request summary: {selectedPlatforms.length} platform(s),{" "}

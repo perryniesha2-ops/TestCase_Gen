@@ -40,6 +40,8 @@ import {
   Settings,
   ListChecks,
   ArrowUpRight,
+  Layers,
+  FileCode,
 } from "lucide-react";
 import type { Project, TestSuite } from "@/types/test-cases";
 import type { SuiteTestCase, TestCase } from "@/hooks/useSuiteDetails";
@@ -104,6 +106,9 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
     project_id: suite.project_id ?? "",
   });
 
+  // Get suite kind (with fallback for TypeScript)
+  const suiteKind = (suite as any).kind || "regular";
+
   // keep form in sync when suite changes
   useEffect(() => {
     setEditForm({
@@ -123,7 +128,6 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
   ]);
 
   function getStatusIcon(status?: string) {
-    // Add ? to make it optional
     switch (status) {
       case "passed":
         return <CheckCircle className="h-4 w-4 text-green-600" />;
@@ -169,7 +173,12 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
   }
 
   const assignedTestCaseIds = useMemo(
-    () => new Set(suiteTestCases.map((stc) => stc.test_case_id)),
+    () =>
+      new Set(
+        suiteTestCases.map(
+          (stc) => stc.test_case_id || stc.platform_test_case_id,
+        ),
+      ),
     [suiteTestCases],
   );
 
@@ -199,9 +208,29 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
     <div className="h-full flex flex-col">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold truncate">{suite.name}</h2>
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="text-base font-semibold truncate">{suite.name}</h2>
+            <Badge
+              variant={suiteKind === "cross-platform" ? "secondary" : "outline"}
+              className="capitalize"
+            >
+              {suiteKind === "cross-platform" ? (
+                <div className="flex items-center gap-1">
+                  <Layers className="h-3 w-3" />
+                  Cross-Platform
+                </div>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <FileCode className="h-3 w-3" />
+                  Regular
+                </div>
+              )}
+            </Badge>
+          </div>
           <p className="text-sm text-muted-foreground">
-            Edit suite details and manage assigned test cases.
+            {suiteKind === "cross-platform"
+              ? "Manage cross-platform test cases across Web, Mobile, API, and more."
+              : "Edit suite details and manage assigned test cases."}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <Badge variant="secondary">{suiteTestCases.length} assigned</Badge>
@@ -274,6 +303,33 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
             </div>
 
             <div className="space-y-2">
+              <Label>Suite Kind</Label>
+              <div className="flex items-center h-10 px-3 rounded-md border border-input bg-muted">
+                <Badge
+                  variant={
+                    suiteKind === "cross-platform" ? "secondary" : "outline"
+                  }
+                  className="capitalize"
+                >
+                  {suiteKind === "cross-platform" ? (
+                    <div className="flex items-center gap-1">
+                      <Layers className="h-3 w-3" />
+                      Cross-Platform
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <FileCode className="h-3 w-3" />
+                      Regular
+                    </div>
+                  )}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Suite kind cannot be changed after creation
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label>Status</Label>
               <Select
                 value={editForm.status}
@@ -307,6 +363,7 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
                   <SelectItem value="regression">Regression</SelectItem>
                   <SelectItem value="smoke">Smoke</SelectItem>
                   <SelectItem value="integration">Integration</SelectItem>
+                  <SelectItem value="automated">Automated</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -363,7 +420,9 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
           className="flex-1 overflow-hidden flex flex-col mt-4"
         >
           <div className="text-sm text-muted-foreground mb-4">
-            Test cases currently assigned to this suite.
+            {suiteKind === "cross-platform"
+              ? "Cross-platform test cases currently assigned to this suite."
+              : "Test cases currently assigned to this suite."}
           </div>
 
           <div className="flex-1 overflow-auto">
@@ -379,7 +438,9 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
                   No test cases assigned yet
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Switch to &quot;Available&quot; to add test cases
+                  Switch to &quot;Available&quot; to add{" "}
+                  {suiteKind === "cross-platform" ? "cross-platform " : ""}test
+                  cases
                 </p>
               </div>
             ) : (
@@ -388,7 +449,9 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
                   <TableRow>
                     <TableHead className="w-[70px]">Order</TableHead>
                     <TableHead>Test Case</TableHead>
-                    <TableHead className="w-[110px]">Type</TableHead>
+                    <TableHead className="w-[110px]">
+                      {suiteKind === "cross-platform" ? "Platform" : "Type"}
+                    </TableHead>
                     <TableHead className="w-[130px]">Priority</TableHead>
                     <TableHead className="w-[140px]">Exec Status</TableHead>
                     <TableHead className="w-[120px]">Est. Duration</TableHead>
@@ -429,8 +492,9 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
 
                       <TableCell>
                         {suiteTestCase.test_cases && (
-                          <Badge variant="outline">
-                            {suiteTestCase.test_cases.test_type}
+                          <Badge variant="outline" className="capitalize">
+                            {suiteTestCase.test_cases.platform ||
+                              suiteTestCase.test_cases.test_type}
                           </Badge>
                         )}
                       </TableCell>
@@ -507,7 +571,7 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search available test cases..."
+                placeholder={`Search available ${suiteKind === "cross-platform" ? "cross-platform " : ""}test cases...`}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -520,7 +584,9 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
               <div className="text-center py-12 border-2 border-dashed border-muted rounded-lg">
                 <Search className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
                 <p className="text-muted-foreground">
-                  No available test cases found
+                  No available{" "}
+                  {suiteKind === "cross-platform" ? "cross-platform " : ""}test
+                  cases found
                 </p>
               </div>
             ) : (
@@ -528,7 +594,9 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[360px]">Test Case</TableHead>
-                    <TableHead className="w-[110px]">Type</TableHead>
+                    <TableHead className="w-[110px]">
+                      {suiteKind === "cross-platform" ? "Platform" : "Type"}
+                    </TableHead>
                     <TableHead className="w-[110px]">Priority</TableHead>
                     <TableHead className="w-[140px]">Exec Status</TableHead>
                     <TableHead className="w-[90px] text-right">Add</TableHead>
@@ -549,7 +617,9 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{testCase.test_type}</Badge>
+                        <Badge variant="outline" className="capitalize">
+                          {testCase.platform || testCase.test_type}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge className={getPriorityColor(testCase.priority)}>

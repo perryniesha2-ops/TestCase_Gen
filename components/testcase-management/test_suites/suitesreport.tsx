@@ -42,7 +42,7 @@ import { toast } from "sonner";
 interface TestSuite {
   id: string;
   name: string;
-  suite_type: string;
+  kind: string;
 }
 
 interface SuiteExecutionStats {
@@ -150,18 +150,23 @@ export function SuiteReports({
       if (perfRes.error) throw perfRes.error;
       if (trendsRes.error) throw trendsRes.error;
 
+      const kindBySuiteId = new Map(suites.map((s) => [s.id, s.kind]));
+
       setSuiteStats(
         (statsRes.data || []).map((row: any) => ({
           suite_id: row.suite_id,
           suite_name: row.suite_name,
-          suite_type: row.suite_type,
+          suite_type:
+            kindBySuiteId.get(row.suite_id) === "cross-platform"
+              ? "cross-platform"
+              : "regular",
           execution_count: row.execution_count,
           total_tests: row.total_tests,
           avg_pass_rate: row.avg_pass_rate,
           avg_execution_time: row.avg_execution_time,
           last_execution: row.last_execution ?? "",
           trend: row.trend as "up" | "down" | "stable",
-        }))
+        })),
       );
 
       setTestCasePerformance(
@@ -174,7 +179,7 @@ export function SuiteReports({
           last_failure_date: row.last_failure_date ?? undefined,
           failure_frequency: row.failure_frequency,
           last_failure_reason: row.last_failure_reason ?? undefined,
-        }))
+        })),
       );
 
       setExecutionTrends(
@@ -185,7 +190,7 @@ export function SuiteReports({
           blocked: row.blocked,
           skipped: row.skipped,
           total: row.total,
-        }))
+        })),
       );
     } catch (error) {
       console.error("Error fetching reports data:", error);
@@ -205,8 +210,8 @@ export function SuiteReports({
       const supabase = createClient();
 
       const { data, error } = await supabase
-        .from("test_suites")
-        .select("id, name, suite_type")
+        .from("suites")
+        .select("id, name, kind")
         .eq("user_id", user.id)
         .order("name");
 
@@ -245,7 +250,7 @@ export function SuiteReports({
       }
 
       const cutoffDate = new Date(
-        Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000
+        Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000,
       ).toISOString();
 
       const stats = await Promise.all(
@@ -259,7 +264,7 @@ export function SuiteReports({
           if (error) {
             console.error(
               `Error fetching executions for suite ${suite.id}:`,
-              error
+              error,
             );
             return null;
           }
@@ -268,7 +273,7 @@ export function SuiteReports({
             return {
               suite_id: suite.id,
               suite_name: suite.name,
-              suite_type: suite.suite_type,
+              suite_type: suite.kind,
               execution_count: 0,
               total_tests: 0,
               avg_pass_rate: 0,
@@ -280,7 +285,7 @@ export function SuiteReports({
 
           const totalExecutions = executions.length;
           const passedExecutions = executions.filter(
-            (e) => e.execution_status === "passed"
+            (e) => e.execution_status === "passed",
           ).length;
           const passRate =
             totalExecutions > 0
@@ -288,7 +293,7 @@ export function SuiteReports({
               : 0;
 
           const completedExecutions = executions.filter(
-            (e) => e.started_at && e.completed_at
+            (e) => e.started_at && e.completed_at,
           );
           const avgTime =
             completedExecutions.length > 0
@@ -307,10 +312,10 @@ export function SuiteReports({
           const twoWeeksAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
 
           const recentExecs = executions.filter(
-            (e) => new Date(e.created_at) >= oneWeekAgo
+            (e) => new Date(e.created_at) >= oneWeekAgo,
           );
           const recentPass = recentExecs.filter(
-            (e) => e.execution_status === "passed"
+            (e) => e.execution_status === "passed",
           ).length;
           const recentTotal = recentExecs.length;
 
@@ -319,7 +324,7 @@ export function SuiteReports({
             return d >= twoWeeksAgo && d < oneWeekAgo;
           });
           const previousPass = previousExecs.filter(
-            (e) => e.execution_status === "passed"
+            (e) => e.execution_status === "passed",
           ).length;
           const previousTotal = previousExecs.length;
 
@@ -334,13 +339,13 @@ export function SuiteReports({
           const sortedByDate = [...executions].sort(
             (a, b) =>
               new Date(b.created_at).getTime() -
-              new Date(a.created_at).getTime()
+              new Date(a.created_at).getTime(),
           );
 
           return {
             suite_id: suite.id,
             suite_name: suite.name,
-            suite_type: suite.suite_type,
+            suite_type: suite.kind,
             execution_count: totalExecutions,
             total_tests: totalExecutions,
             avg_pass_rate: Math.round(passRate),
@@ -348,7 +353,7 @@ export function SuiteReports({
             last_execution: sortedByDate[0]?.created_at || "",
             trend,
           };
-        })
+        }),
       );
 
       setSuiteStats(stats.filter(Boolean) as SuiteExecutionStats[]);
@@ -365,14 +370,13 @@ export function SuiteReports({
       const supabase = createClient();
 
       const cutoffDate = new Date(
-        Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000
+        Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000,
       ).toISOString();
 
-      // Build query
       let query = supabase
         .from("test_executions")
         .select(
-          "test_case_id, execution_status, started_at, completed_at, failure_reason, created_at"
+          "test_case_id, platform_test_case_id, execution_status, started_at, completed_at, failure_reason, created_at", // ✅ added platform_test_case_id
         )
         .gte("created_at", cutoffDate);
 
@@ -388,57 +392,62 @@ export function SuiteReports({
         return;
       }
 
-      // Get unique test case IDs
-      const testCaseIds = Array.from(
-        new Set(executions.map((e) => e.test_case_id))
-      );
+      // ✅ Separate regular and platform test case IDs
+      const regularIds = [
+        ...new Set(executions.map((e: any) => e.test_case_id).filter(Boolean)),
+      ];
+      const platformIds = [
+        ...new Set(
+          executions.map((e: any) => e.platform_test_case_id).filter(Boolean),
+        ),
+      ];
 
-      if (testCaseIds.length === 0) {
-        setTestCasePerformance([]);
-        return;
+      // ✅ Batch fetch both tables
+      const titleMap = new Map<string, string>();
+
+      if (regularIds.length > 0) {
+        const { data: cases } = await supabase
+          .from("test_cases")
+          .select("id, title")
+          .in("id", regularIds);
+        (cases ?? []).forEach((c: any) => titleMap.set(c.id, c.title));
       }
 
-      // Fetch test case details
-      const { data: testCases, error: testCaseError } = await supabase
-        .from("test_cases")
-        .select("id, title")
-        .in("id", testCaseIds);
+      if (platformIds.length > 0) {
+        const { data: cases } = await supabase
+          .from("platform_test_cases")
+          .select("id, title")
+          .in("id", platformIds);
+        (cases ?? []).forEach((c: any) => titleMap.set(c.id, c.title));
+      }
 
-      if (testCaseError) throw testCaseError;
-
-      // Create a lookup map
-      const testCaseMap =
-        testCases?.reduce((acc, tc) => {
-          acc[tc.id] = tc.title;
+      // ✅ Group by whichever ID is set
+      const testCaseGroups = executions.reduce(
+        (acc: Record<string, any[]>, exec: any) => {
+          const id = exec.test_case_id || exec.platform_test_case_id;
+          if (!id) return acc;
+          if (!acc[id]) acc[id] = [];
+          acc[id].push(exec);
           return acc;
-        }, {} as Record<string, string>) || {};
+        },
+        {} as Record<string, any[]>,
+      );
 
-      // Group executions by test case
-      const testCaseGroups = executions.reduce((acc, exec) => {
-        if (!acc[exec.test_case_id]) {
-          acc[exec.test_case_id] = [];
-        }
-        acc[exec.test_case_id].push(exec);
-        return acc;
-      }, {} as Record<string, typeof executions>);
-
-      // Calculate performance metrics
       const performance = Object.entries(testCaseGroups).map(
         ([testCaseId, execs]) => {
           const totalExecs = execs.length;
           const passedExecs = execs.filter(
-            (e) => e.execution_status === "passed"
+            (e) => e.execution_status === "passed",
           ).length;
           const failedExecs = execs.filter(
-            (e) => e.execution_status === "failed"
+            (e) => e.execution_status === "failed",
           );
 
           const passRate =
             totalExecs > 0 ? (passedExecs / totalExecs) * 100 : 0;
 
-          // Calculate average execution time
           const completedExecs = execs.filter(
-            (e) => e.started_at && e.completed_at
+            (e) => e.started_at && e.completed_at,
           );
           const avgTime =
             completedExecs.length > 0
@@ -449,42 +458,38 @@ export function SuiteReports({
                 }, 0) /
                 completedExecs.length /
                 1000 /
-                60 // minutes
+                60
               : 0;
 
-          // Find most recent failure
           const sortedFailures = failedExecs.sort(
             (a, b) =>
               new Date(b.created_at).getTime() -
-              new Date(a.created_at).getTime()
+              new Date(a.created_at).getTime(),
           );
           const lastFailure = sortedFailures[0];
 
           return {
             test_case_id: testCaseId,
-            test_title: testCaseMap[testCaseId] || "Unknown Test",
+            test_title: titleMap.get(testCaseId) || "Unknown Test", // ✅ uses combined map
             total_executions: totalExecs,
             pass_rate: Math.round(passRate),
             avg_execution_time: Math.round(avgTime * 10) / 10,
             last_failure_date: lastFailure?.created_at,
             failure_frequency: Math.round(
-              (failedExecs.length / totalExecs) * 100
+              (failedExecs.length / totalExecs) * 100,
             ),
             last_failure_reason: lastFailure?.failure_reason,
           };
-        }
+        },
       );
 
-      // Sort by failure frequency (most problematic first)
       performance.sort((a, b) => b.failure_frequency - a.failure_frequency);
-
       setTestCasePerformance(performance);
     } catch (error) {
       console.error("Error fetching test case performance:", error);
       throw error;
     }
   }
-
   async function fetchExecutionTrends() {
     if (!user) return;
 
@@ -492,7 +497,7 @@ export function SuiteReports({
       const supabase = createClient();
 
       const cutoffDate = new Date(
-        Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000
+        Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000,
       ).toISOString();
 
       // Build query
@@ -578,7 +583,7 @@ export function SuiteReports({
               suite.last_execution
                 ? new Date(suite.last_execution).toLocaleString()
                 : "Never"
-            }"`
+            }"`,
         ),
       ].join("\n");
 
@@ -699,7 +704,7 @@ export function SuiteReports({
                   <div className="text-2xl font-bold">
                     {suiteStats.reduce(
                       (acc, suite) => acc + suite.execution_count,
-                      0
+                      0,
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -719,8 +724,8 @@ export function SuiteReports({
                       ? Math.round(
                           suiteStats.reduce(
                             (acc, suite) => acc + suite.avg_pass_rate,
-                            0
-                          ) / suiteStats.length
+                            0,
+                          ) / suiteStats.length,
                         )
                       : 0}
                     %
@@ -743,7 +748,7 @@ export function SuiteReports({
                       ? (
                           suiteStats.reduce(
                             (acc, suite) => acc + suite.avg_execution_time,
-                            0
+                            0,
                           ) / suiteStats.length
                         ).toFixed(1)
                       : 0}
@@ -790,7 +795,9 @@ export function SuiteReports({
                             {suite.suite_name}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">{suite.suite_type}</Badge>
+                            <Badge variant="outline" className="capitalize">
+                              {suite.suite_type}
+                            </Badge>
                           </TableCell>
                           <TableCell>{suite.execution_count}</TableCell>
                           <TableCell>
@@ -800,8 +807,8 @@ export function SuiteReports({
                                   suite.avg_pass_rate >= 80
                                     ? "text-green-600"
                                     : suite.avg_pass_rate >= 60
-                                    ? "text-yellow-600"
-                                    : "text-red-600"
+                                      ? "text-yellow-600"
+                                      : "text-red-600"
                                 }`}
                               >
                                 {suite.avg_pass_rate}%
@@ -813,7 +820,7 @@ export function SuiteReports({
                           <TableCell className="text-muted-foreground">
                             {suite.last_execution
                               ? new Date(
-                                  suite.last_execution
+                                  suite.last_execution,
                                 ).toLocaleDateString()
                               : "Never"}
                           </TableCell>
@@ -874,8 +881,8 @@ export function SuiteReports({
                                 test.pass_rate >= 80
                                   ? "text-green-600"
                                   : test.pass_rate >= 60
-                                  ? "text-yellow-600"
-                                  : "text-red-600"
+                                    ? "text-yellow-600"
+                                    : "text-red-600"
                               }`}
                             >
                               {test.pass_rate}%
@@ -887,8 +894,8 @@ export function SuiteReports({
                                 test.failure_frequency <= 10
                                   ? "text-green-600"
                                   : test.failure_frequency <= 25
-                                  ? "text-yellow-600"
-                                  : "text-red-600"
+                                    ? "text-yellow-600"
+                                    : "text-red-600"
                               }`}
                             >
                               {test.failure_frequency}%
@@ -898,7 +905,7 @@ export function SuiteReports({
                           <TableCell className="text-muted-foreground">
                             {test.last_failure_date
                               ? new Date(
-                                  test.last_failure_date
+                                  test.last_failure_date,
                                 ).toLocaleDateString()
                               : "None"}
                           </TableCell>

@@ -1,13 +1,17 @@
-// app/api/generate-test-cases/route.ts - ENHANCED WITH TEST TYPES & EXPORT FORMATS
+// app/api/generate-test-cases/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import { checkAndRecordUsage } from "@/lib/usage-tracker";
+import {
+  checkUsageQuota,
+  recordSuccessfulGeneration,
+} from "@/lib/usage-tracker";
 
 export const runtime = "nodejs";
 
-// ----- Types -----
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 interface TestStep {
   step_number: number;
   action: string;
@@ -18,7 +22,7 @@ interface GeneratedTestCase {
   title: string;
   description: string;
   test_type: string;
-  priority: "low" | "medium" | "high" | "critical";
+  priority: Priority;
   preconditions: string | null;
   test_steps: TestStep[];
   expected_result: string;
@@ -29,7 +33,21 @@ interface GeneratedTestCase {
   tags?: string[];
 }
 
-// ----- AI Model Configuration -----
+interface RequestBody {
+  requirements?: string;
+  requirement_id?: string;
+  project_id?: string | null;
+  model?: string;
+  testCaseCount?: number | string;
+  testTypes?: string[];
+  template?: string;
+  title?: string;
+  description?: string | null;
+  application_url?: string;
+}
+
+// ─── AI Configuration ────────────────────────────────────────────────────────
+
 const AI_MODELS = {
   "claude-sonnet-4-5": "claude-sonnet-4-5-20250514",
   "claude-haiku-4-5": "claude-haiku-4-5-20250514",
@@ -40,18 +58,52 @@ const AI_MODELS = {
   "gpt-4o-mini": "gpt-4o-mini-2024-07-18",
 } as const;
 
-const DEFAULT_MODEL = "claude-sonnet-4-5";
-const FALLBACK_CLAUDE = "claude-sonnet-4-5";
-const FALLBACK_GPT = "gpt-4o";
-
 type ModelKey = keyof typeof AI_MODELS;
 type Priority = "low" | "medium" | "high" | "critical";
 
-// ----- Clients -----
+const DEFAULT_MODEL: ModelKey = "claude-sonnet-4-5";
+
+// Full model strings — not the short keys — so these are safe to pass directly
+// to the provider clients when the primary model fails.
+const FALLBACK_MODELS = {
+  anthropic: "claude-sonnet-4-5-20250514",
+  openai: "gpt-4o-2024-11-20",
+} as const;
+
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-// ----- Test Type Instructions -----
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const PRIORITY_VALUES = new Set<Priority>([
+  "low",
+  "medium",
+  "high",
+  "critical",
+]);
+
+const PRIORITY_ALIASES: Record<string, Priority> = {
+  p0: "critical",
+  blocker: "critical",
+  p1: "high",
+  p2: "medium",
+  p3: "low",
+};
+
+const TEST_TYPE_LABELS: Record<string, string> = {
+  "happy-path": "Happy Path",
+  negative: "Negative",
+  security: "Security",
+  boundary: "Boundary",
+  "edge-case": "Edge Case",
+  performance: "Performance",
+  integration: "Integration",
+  regression: "Regression",
+  smoke: "Smoke",
+};
+
+// ─── Test Type Instructions ─────────────────────────────────────────────────
+
 const TEST_TYPE_INSTRUCTIONS: Record<string, string> = {
   "happy-path": `
 HAPPY PATH / POSITIVE TESTS:
@@ -280,38 +332,6 @@ Example:
 `,
 };
 
-// ----- Helper Functions -----
-function isAnthropicTextBlock(b: unknown): b is { type: "text"; text: string } {
-  return (
-    typeof b === "object" &&
-    b !== null &&
-    "type" in b &&
-    "text" in b &&
-    (b as Record<string, unknown>).type === "text" &&
-    typeof (b as Record<string, unknown>).text === "string"
-  );
-}
-
-function anthropicTextFromContent(blocks: unknown): string {
-  if (!Array.isArray(blocks)) return "";
-  return blocks
-    .filter(isAnthropicTextBlock)
-    .map((b) => b.text)
-    .join("\n\n")
-    .trim();
-}
-
-const ALLOWED = new Set(["low", "medium", "high", "critical"] as const);
-
-function normalizePriority(p: unknown): Priority {
-  const s = (typeof p === "string" ? p : "").toLowerCase().trim();
-  if (["p0", "blocker"].includes(s)) return "critical";
-  if (["p1"].includes(s)) return "high";
-  if (["p2"].includes(s)) return "medium";
-  if (["p3"].includes(s)) return "low";
-  return ALLOWED.has(s as Priority) ? (s as Priority) : "medium";
-}
-
 const AUTOMATION_GUIDELINES = `
 AUTOMATION REQUIREMENTS:
 You are creating test cases that will be AUTOMATICALLY CONVERTED to Playwright automation scripts.
@@ -339,263 +359,104 @@ Follow these rules strictly:
    - NOT: "valid email", "user name", "address"
 `;
 
-// ----- Build Enhanced Prompt -----
-function buildPromptFromTestTypes(params: {
-  requirements: string;
-  testCaseCount: number;
-  testTypes: string[];
-  application_url?: string;
-  template?: string;
-}): string {
-  const { requirements, testCaseCount, testTypes, application_url, template } =
-    params;
+// ─── Utility Functions ──────────────────────────────────────────────────────
 
-  const templateInstruction = template
-    ? `\n\nUse this template structure:\n${template}`
-    : "";
-  const urlContext = application_url
-    ? `\n\nAPPLICATION BASE URL: ${application_url}\nUse this as the base URL for all navigation steps.`
-    : "";
-
-  // Calculate distribution based on selected types
-  const typesCount = testTypes.length;
-  const perType = Math.floor(testCaseCount / typesCount);
-  const remainder = testCaseCount % typesCount;
-
-  let distributionText = `\nTEST CASE DISTRIBUTION (${testCaseCount} total across ${typesCount} type${
-    typesCount > 1 ? "s" : ""
-  }):\n`;
-
-  testTypes.forEach((type, index) => {
-    const count = perType + (index === 0 ? remainder : 0);
-    const label =
-      type === "happy-path"
-        ? "Happy Path"
-        : type === "negative"
-        ? "Negative"
-        : type === "security"
-        ? "Security"
-        : type === "boundary"
-        ? "Boundary"
-        : type === "edge-case"
-        ? "Edge Case"
-        : type === "performance"
-        ? "Performance"
-        : type === "integration"
-        ? "Integration"
-        : type === "regression"
-        ? "Regression"
-        : type === "smoke"
-        ? "Smoke"
-        : type;
-    distributionText += `- ${count} ${label} test${count > 1 ? "s" : ""}\n`;
-  });
-
-  // Build instructions for selected types
-  let typeInstructions = "";
-  testTypes.forEach((type) => {
-    if (TEST_TYPE_INSTRUCTIONS[type]) {
-      typeInstructions += TEST_TYPE_INSTRUCTIONS[type] + "\n\n";
-    }
-  });
-
-  return `${AUTOMATION_GUIDELINES}
-
-${distributionText}
-
-${typeInstructions}
-
-Generate test cases for the following requirements:
-
-${requirements}${urlContext}${templateInstruction}
-
-For each test case, provide:
-1. A clear, specific title describing what is being tested
-2. Detailed description of the test scenario
-3. Test type (functional, integration, e2e, security, performance, etc.)
-4. Priority level (critical, high, medium, low)
-5. Preconditions with specific setup requirements
-6. Step-by-step test steps with SPECIFIC actions and CLEAR expected results
-7. Overall expected result
-8. Flags for test categorization:
-   - is_edge_case: true/false
-   - is_negative_test: true/false (for negative/unhappy path tests)
-   - is_security_test: true/false (for security tests)
-   - is_boundary_test: true/false (for boundary/limit tests)
-9. Tags array (e.g., ["login", "authentication", "negative-test"])
-
-CRITICAL REQUIREMENTS:
-- Every step must be ACTIONABLE by Playwright automation
-- Include EXACT test data (emails, passwords, names, values)
-- Specify EXACT element selectors or button text
-- Define CLEAR, VERIFIABLE expected results
-- Use FULL URLs for navigation steps
-- Break complex actions into individual steps
-- Each step should map to a single Playwright command
-- CORRECTLY FLAG each test with appropriate boolean values based on the test type`;
+function normalizePriority(p: unknown): Priority {
+  const s = (typeof p === "string" ? p : "").toLowerCase().trim();
+  if (PRIORITY_ALIASES[s]) return PRIORITY_ALIASES[s];
+  return PRIORITY_VALUES.has(s as Priority) ? (s as Priority) : "medium";
 }
 
-// ----- Main Handler -----
-export async function POST(request: Request) {
-  try {
-    const supabase = await createClient();
+function extractAnthropicText(blocks: unknown): string {
+  if (!Array.isArray(blocks)) return "";
+  return blocks
+    .filter(
+      (b): b is { type: "text"; text: string } =>
+        typeof b === "object" &&
+        b !== null &&
+        (b as Record<string, unknown>).type === "text" &&
+        typeof (b as Record<string, unknown>).text === "string",
+    )
+    .map((b) => b.text)
+    .join("\n\n")
+    .trim();
+}
 
-    // Auth
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+// ─── LLM Interaction ─────────────────────────────────────────────────────────
 
-    // Input
-    const body = (await request.json()) as {
-      requirements?: string;
-      requirement_id?: string;
-      project_id?: string | null;
-      model?: string;
-      testCaseCount?: number | string;
-      testTypes?: string[]; // NEW: Array of test type strings
-      template?: string;
-      title?: string;
-      description?: string | null;
-      application_url?: string;
-    };
+interface LLMResult {
+  text: string;
+  provider: "anthropic" | "openai";
+  model: string;
+}
 
-    const requirements = (body.requirements ?? "").trim();
-    const requirement_id = body.requirement_id || null;
-    const modelKey = (body.model as ModelKey) || DEFAULT_MODEL;
-    const testCaseCount = Number(body.testCaseCount ?? 10);
-    const testTypes = Array.isArray(body.testTypes)
-      ? body.testTypes
-      : ["happy-path"];
-    const template = body.template ?? "";
-    const title = (body.title ?? "").trim();
-    const description = body.description ?? null;
-    const application_url = (body.application_url ?? "").trim();
-    const project_id = body.project_id || null;
+/**
+ * Calls the requested model, then automatically retries on the other provider
+ * using its fallback model if the primary call throws. Throws if both fail.
+ */
+async function callWithFallback(
+  model: string,
+  prompt: string,
+  maxTokens: number = 8000,
+): Promise<LLMResult> {
+  const isAnthropic = model.startsWith("claude");
 
-    // Validation
-    if (!requirements) {
-      return NextResponse.json(
-        { error: "Requirements are required", field: "requirements" },
-        { status: 400 }
-      );
-    }
-    if (!title) {
-      return NextResponse.json(
-        { error: "Generation title is required", field: "title" },
-        { status: 400 }
-      );
-    }
-    if (testCaseCount <= 0 || testCaseCount > 50) {
-      return NextResponse.json(
-        {
-          error: "Test case count must be between 1 and 50",
-          field: "testCaseCount",
-        },
-        { status: 400 }
-      );
-    }
-    if (testTypes.length === 0) {
-      return NextResponse.json(
-        {
-          error: "At least one test type must be selected",
-          field: "testTypes",
-        },
-        { status: 400 }
-      );
-    }
+  // Ordered list: primary first, fallback second.
+  const providers: Array<{ type: "anthropic" | "openai"; model: string }> =
+    isAnthropic
+      ? [
+          { type: "anthropic", model },
+          { type: "openai", model: FALLBACK_MODELS.openai },
+        ]
+      : [
+          { type: "openai", model },
+          { type: "anthropic", model: FALLBACK_MODELS.anthropic },
+        ];
 
-    // Quota check
+  for (const provider of providers) {
     try {
-      await checkAndRecordUsage(user.id, testCaseCount);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Usage limit exceeded";
-      return NextResponse.json(
-        { error: msg, upgradeRequired: true },
-        { status: 429 }
-      );
-    }
-
-    const model = AI_MODELS[modelKey];
-
-    const promptUsed = buildPromptFromTestTypes({
-      requirements,
-      testCaseCount,
-      testTypes,
-      application_url,
-      template,
-    });
-
-    // ---- Call LLM (primary, then fallback) ----
-    const isAnthropicModel = model.startsWith("claude");
-    const primary: "anthropic" | "openai" = isAnthropicModel
-      ? "anthropic"
-      : "openai";
-    const fallback: "anthropic" | "openai" = isAnthropicModel
-      ? "openai"
-      : "anthropic";
-
-    let rawText = "";
-    let usedProvider = "";
-    let usedModel = "";
-
-    try {
-      if (primary === "anthropic") {
+      if (provider.type === "anthropic") {
         const res = await anthropic.messages.create({
-          model: model,
-          max_tokens: 8000,
-          messages: [{ role: "user", content: promptUsed }],
+          model: provider.model,
+          max_tokens: maxTokens,
+          messages: [{ role: "user", content: prompt }],
         });
-        rawText = anthropicTextFromContent(res.content);
-        usedProvider = "anthropic";
-        usedModel = model;
-      } else {
-        const res = await openai.chat.completions.create({
-          model: model,
-          messages: [{ role: "user", content: promptUsed }],
-          max_tokens: 8000,
-        });
-        rawText = res.choices?.[0]?.message?.content ?? "";
-        usedProvider = "openai";
-        usedModel = model;
+        return {
+          text: extractAnthropicText(res.content),
+          provider: "anthropic",
+          model: provider.model,
+        };
       }
-    } catch (primaryError) {
-      try {
-        if (fallback === "anthropic") {
-          const res = await anthropic.messages.create({
-            model: FALLBACK_CLAUDE,
-            max_tokens: 8000,
-            messages: [{ role: "user", content: promptUsed }],
-          });
-          rawText = anthropicTextFromContent(res.content);
-          usedProvider = "anthropic";
-          usedModel = FALLBACK_CLAUDE;
-        } else {
-          const res = await openai.chat.completions.create({
-            model: FALLBACK_GPT,
-            messages: [{ role: "user", content: promptUsed }],
-            max_tokens: 8000,
-          });
-          rawText = res.choices?.[0]?.message?.content ?? "";
-          usedProvider = "openai";
-          usedModel = FALLBACK_GPT;
-        }
-      } catch (fallbackError) {
-        return NextResponse.json(
-          {
-            error:
-              "Generation temporarily unavailable. Please try again later.",
-          },
-          { status: 503 }
-        );
-      }
-    }
 
-    // ---- Structure into JSON via OpenAI ----
-    const structurePrompt = `Convert the following test cases into a structured JSON array. Each test case should have this exact format:
+      const res = await openai.chat.completions.create({
+        model: provider.model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: maxTokens,
+      });
+      return {
+        text: res.choices?.[0]?.message?.content ?? "",
+        provider: "openai",
+        model: provider.model,
+      };
+    } catch {
+      continue; // try next provider
+    }
+  }
+
+  throw new Error("All LLM providers failed");
+}
+
+// ─── Test Case Structuring ───────────────────────────────────────────────────
+
+/**
+ * Sends raw LLM output to GPT-4o-mini with json_object mode to produce a
+ * typed array of GeneratedTestCase.  Falls back to a regex extraction of a
+ * bare JSON array from rawText if the structured call fails entirely.
+ */
+async function structureTestCases(
+  rawText: string,
+): Promise<GeneratedTestCase[]> {
+  const prompt = `Convert the following test cases into a structured JSON array. Each test case should have this exact format:
 
 {
   "title": "string",
@@ -624,47 +485,227 @@ ${rawText}
 
 Return ONLY valid JSON, no markdown, no explanation.`;
 
-    let testCases: GeneratedTestCase[] = [];
+  try {
+    const res = await openai.chat.completions.create({
+      model: "gpt-4o-mini-2024-07-18",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      max_tokens: 8000,
+    });
+
+    const content = res.choices?.[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(content) as {
+      test_cases?: GeneratedTestCase[];
+      testCases?: GeneratedTestCase[];
+    };
+
+    return parsed.test_cases ?? parsed.testCases ?? [];
+  } catch {
+    // Last resort: pull a bare JSON array out of the raw text.
+    const match = rawText.match(/\[[\s\S]*\]/);
+    if (!match) return [];
+
     try {
-      const structured = await openai.chat.completions.create({
-        model: "gpt-4o-mini-2024-07-18",
-        messages: [{ role: "user", content: structurePrompt }],
-        response_format: { type: "json_object" },
-        max_tokens: 8000,
-      });
-      const content = structured.choices?.[0]?.message?.content ?? "{}";
-      const parsed = JSON.parse(content) as {
-        test_cases?: GeneratedTestCase[];
-        testCases?: GeneratedTestCase[];
-      };
-      testCases = Array.isArray(parsed.test_cases)
-        ? parsed.test_cases
-        : Array.isArray(parsed.testCases)
-        ? parsed.testCases
-        : [];
+      return JSON.parse(match[0]) as GeneratedTestCase[];
     } catch {
-      const match = rawText.match(/\[[\s\S]*\]/);
-      if (!match) {
-        return NextResponse.json(
-          { error: "Failed to structure test cases. Please regenerate." },
-          { status: 500 }
-        );
-      }
-      testCases = JSON.parse(match[0]) as GeneratedTestCase[];
+      return [];
+    }
+  }
+}
+
+// ─── Prompt Building ─────────────────────────────────────────────────────────
+
+function buildPrompt(params: {
+  requirements: string;
+  testCaseCount: number;
+  testTypes: string[];
+  application_url?: string;
+  template?: string;
+}): string {
+  const { requirements, testCaseCount, testTypes, application_url, template } =
+    params;
+
+  // Distribute cases as evenly as possible; remainder goes to the first type.
+  const perType = Math.floor(testCaseCount / testTypes.length);
+  const remainder = testCaseCount % testTypes.length;
+
+  const distribution = testTypes
+    .map((type, i) => {
+      const count = perType + (i === 0 ? remainder : 0);
+      const label = TEST_TYPE_LABELS[type] ?? type;
+      return `- ${count} ${label} test${count !== 1 ? "s" : ""}`;
+    })
+    .join("\n");
+
+  const typeInstructions = testTypes
+    .map((type) => TEST_TYPE_INSTRUCTIONS[type] ?? "")
+    .filter(Boolean)
+    .join("\n\n");
+
+  const urlContext = application_url
+    ? `\n\nAPPLICATION BASE URL: ${application_url}\nUse this as the base URL for all navigation steps.`
+    : "";
+
+  const templateContext = template
+    ? `\n\nUse this template structure:\n${template}`
+    : "";
+
+  return `${AUTOMATION_GUIDELINES}
+
+TEST CASE DISTRIBUTION (${testCaseCount} total across ${testTypes.length} type${testTypes.length !== 1 ? "s" : ""}):
+${distribution}
+
+${typeInstructions}
+
+Generate test cases for the following requirements:
+
+${requirements}${urlContext}${templateContext}
+
+For each test case, provide:
+1. A clear, specific title describing what is being tested
+2. Detailed description of the test scenario
+3. Test type (functional, integration, e2e, security, performance, etc.)
+4. Priority level (critical, high, medium, low)
+5. Preconditions with specific setup requirements
+6. Step-by-step test steps with SPECIFIC actions and CLEAR expected results
+7. Overall expected result
+8. Flags for test categorization:
+   - is_edge_case: true/false
+   - is_negative_test: true/false (for negative/unhappy path tests)
+   - is_security_test: true/false (for security tests)
+   - is_boundary_test: true/false (for boundary/limit tests)
+9. Tags array (e.g., ["login", "authentication", "negative-test"])
+
+CRITICAL REQUIREMENTS:
+- Every step must be ACTIONABLE by Playwright automation
+- Include EXACT test data (emails, passwords, names, values)
+- Specify EXACT element selectors or button text
+- Define CLEAR, VERIFIABLE expected results
+- Use FULL URLs for navigation steps
+- Break complex actions into individual steps
+- Each step should map to a single Playwright command
+- CORRECTLY FLAG each test with appropriate boolean values based on the test type`;
+}
+
+// ─── Route Handlers ──────────────────────────────────────────────────────────
+
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient();
+
+    // ── Auth ──────────────────────────────────────────────────────────────
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!Array.isArray(testCases)) testCases = [];
+    // ── Parse & Validate ──────────────────────────────────────────────────
 
-    // ---- Persist generation ----
+    const body = (await request.json()) as RequestBody;
+
+    const requirements = (body.requirements ?? "").trim();
+    const requirement_id = body.requirement_id || null;
+    const project_id = body.project_id || null;
+    const modelKey = (body.model as ModelKey) ?? DEFAULT_MODEL;
+    const testCaseCount = Number(body.testCaseCount ?? 10);
+    const testTypes = Array.isArray(body.testTypes)
+      ? body.testTypes
+      : ["happy-path"];
+    const template = body.template ?? "";
+    const title = (body.title ?? "").trim();
+    const description = body.description ?? null;
+    const application_url = (body.application_url ?? "").trim();
+
+    if (!requirements) {
+      return NextResponse.json(
+        { error: "Requirements are required", field: "requirements" },
+        { status: 400 },
+      );
+    }
+    if (!title) {
+      return NextResponse.json(
+        { error: "Generation title is required", field: "title" },
+        { status: 400 },
+      );
+    }
+    if (testCaseCount < 1 || testCaseCount > 50) {
+      return NextResponse.json(
+        {
+          error: "Test case count must be between 1 and 50",
+          field: "testCaseCount",
+        },
+        { status: 400 },
+      );
+    }
+    if (testTypes.length === 0) {
+      return NextResponse.json(
+        {
+          error: "At least one test type must be selected",
+          field: "testTypes",
+        },
+        { status: 400 },
+      );
+    }
+
+    // ── Quota ─────────────────────────────────────────────────────────────
+
+    try {
+      await checkUsageQuota(user.id, testCaseCount);
+    } catch (e) {
+      return NextResponse.json(
+        {
+          error: e instanceof Error ? e.message : "Usage limit exceeded",
+          upgradeRequired: true,
+        },
+        { status: 429 },
+      );
+    }
+
+    // ── Generate ──────────────────────────────────────────────────────────
+
+    const prompt = buildPrompt({
+      requirements,
+      testCaseCount,
+      testTypes,
+      application_url,
+      template,
+    });
+
+    let llmResult: LLMResult;
+    try {
+      llmResult = await callWithFallback(AI_MODELS[modelKey], prompt);
+    } catch {
+      return NextResponse.json(
+        {
+          error: "Generation temporarily unavailable. Please try again later.",
+        },
+        { status: 503 },
+      );
+    }
+
+    // ── Structure ─────────────────────────────────────────────────────────
+
+    const testCases = (await structureTestCases(llmResult.text)).slice(
+      0,
+      testCaseCount,
+    );
+
+    // ── Persist Generation Record ─────────────────────────────────────────
+
     const { data: generation, error: genError } = await supabase
       .from("test_case_generations")
       .insert({
         user_id: user.id,
         title,
         description,
-        ai_provider: usedProvider === "anthropic" ? "anthropic" : "openai",
-        ai_model: usedModel,
-        prompt_used: promptUsed,
+        ai_provider: llmResult.provider,
+        ai_model: llmResult.model,
+        prompt_used: prompt,
       })
       .select()
       .single();
@@ -672,11 +713,12 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     if (genError || !generation) {
       return NextResponse.json(
         { error: "Failed to save generation" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
-    // ---- Persist cases ----
+    // ── Persist Test Cases ────────────────────────────────────────────────
+
     const rows = testCases.map((tc) => ({
       generation_id: generation.id,
       requirement_id,
@@ -705,17 +747,24 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     if (tcError || !savedCases) {
       return NextResponse.json(
         { error: "Failed to save test cases" },
-        { status: 500 }
+        { status: 500 },
       );
     }
+
+    // Best-effort usage recording — failure here must not break the response.
+    await recordSuccessfulGeneration(user.id, savedCases.length).catch(
+      () => {},
+    );
+
+    // ── Response ──────────────────────────────────────────────────────────
 
     return NextResponse.json({
       success: true,
       generation_id: generation.id,
       test_cases: savedCases,
       count: savedCases.length,
-      provider_used: usedProvider,
-      model_used: usedModel,
+      provider_used: llmResult.provider,
+      model_used: llmResult.model,
       statistics: {
         total: savedCases.length,
         negative: savedCases.filter((tc) => tc.is_negative_test).length,
@@ -728,12 +777,11 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     console.error("Unexpected error:", error);
     return NextResponse.json(
       { error: "Unexpected error. Please try again." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-// ----- Export model info for frontend -----
 export async function GET() {
   return NextResponse.json({
     models: AI_MODELS,
