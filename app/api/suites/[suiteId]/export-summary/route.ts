@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { resolveSuiteKind } from "@/lib/suites/resolve-suite";
 import { normalizeApiSpec, isValidApiSpec } from "@/lib/exports/api-normalize";
 
 export const runtime = "nodejs";
@@ -35,15 +34,26 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const resolved = await resolveSuiteKind(supabase, suiteId, user.id);
-  if (!resolved.kind) {
+  // Get the suite with its kind
+  const { data: suite, error: suiteError } = await supabase
+    .from("suites")
+    .select("id, kind, user_id")
+    .eq("id", suiteId)
+    .single();
+
+  if (suiteError || !suite) {
     return NextResponse.json({ error: "Suite not found" }, { status: 404 });
   }
 
-  // ---- REGULAR SUITE: test_suites -> test_suite_cases -> test_cases ----
-  if (resolved.kind === "regular") {
-    const { data: rows, error } = await supabase
-      .from("test_suite_cases")
+  // Check authorization
+  if (suite.user_id !== user.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // ---- REGULAR SUITE ----
+  if (suite.kind === "regular") {
+    const { data: items, error } = await supabase
+      .from("suite_items")
       .select(
         `
         id,
@@ -60,14 +70,14 @@ export async function GET(
 
     if (error) {
       return NextResponse.json(
-        { error: "Failed to load suite cases", details: error.message },
+        { error: "Failed to load suite items", details: error.message },
         { status: 500 },
       );
     }
 
-    const cases = (rows ?? [])
-      .map((r: any) =>
-        Array.isArray(r.test_cases) ? r.test_cases[0] : r.test_cases,
+    const cases = (items ?? [])
+      .map((item: any) =>
+        Array.isArray(item.test_cases) ? item.test_cases[0] : item.test_cases,
       )
       .filter(Boolean) as Array<{
       id: string;
@@ -76,9 +86,6 @@ export async function GET(
       automation_metadata?: any;
     }>;
 
-    // Define "API case" for regular suites:
-    // - either test_type === "api"
-    // - or automation_metadata.api exists
     const apiCases = cases.filter((tc) => {
       const t = String(tc.test_type ?? "").toLowerCase();
       return t === "api" || !!tc.automation_metadata?.api;
@@ -99,31 +106,58 @@ export async function GET(
     });
   }
 
-  // ---- CROSS-PLATFORM SUITE: platform_test_cases ----
-  const { data: apiRows, error: apiErr } = await supabase
-    .from("platform_test_cases")
-    .select("id, title, automation_metadata")
-    .eq("suite_id", suiteId)
-    .eq("platform", "api");
+  // ---- CROSS-PLATFORM SUITE ----
+  if (suite.kind === "cross-platform") {
+    const { data: items, error: itemsError } = await supabase
+      .from("suite_items")
+      .select(
+        `
+        id,
+        platform_test_case_id,
+        platform_test_cases (
+          id,
+          title,
+          automation_metadata,
+          platform
+        )
+      `,
+      )
+      .eq("suite_id", suiteId);
 
-  if (apiErr) {
-    return NextResponse.json(
-      { error: "Failed to load platform cases", details: apiErr.message },
-      { status: 500 },
-    );
+    if (itemsError) {
+      return NextResponse.json(
+        { error: "Failed to load suite items", details: itemsError.message },
+        { status: 500 },
+      );
+    }
+
+    // Filter for API platform cases
+    const apiCases = (items ?? [])
+      .map((item: any) =>
+        Array.isArray(item.platform_test_cases)
+          ? item.platform_test_cases[0]
+          : item.platform_test_cases,
+      )
+      .filter((tc: any) => tc && tc.platform === "api");
+
+    const apiCasesFound = apiCases.length;
+    const apiCasesMissingMetadata = apiCases.filter((tc: any) => {
+      const api = normalizeApiSpec(tc?.automation_metadata?.api);
+      return !isValidApiSpec(api);
+    }).length;
+
+    return NextResponse.json({
+      suiteId,
+      suiteKind: "cross-platform",
+      apiCasesFound,
+      apiCasesMissingMetadata,
+      readyForPostmanExport: apiCasesFound > 0 && apiCasesMissingMetadata === 0,
+    });
   }
 
-  const apiCasesFound = apiRows?.length ?? 0;
-  const apiCasesMissingMetadata = (apiRows ?? []).filter((row: any) => {
-    const api = normalizeApiSpec(row?.automation_metadata?.api);
-    return !isValidApiSpec(api);
-  }).length;
-
-  return NextResponse.json({
-    suiteId,
-    suiteKind: "cross-platform",
-    apiCasesFound,
-    apiCasesMissingMetadata,
-    readyForPostmanExport: apiCasesFound > 0 && apiCasesMissingMetadata === 0,
-  });
+  // Unknown suite kind
+  return NextResponse.json(
+    { error: "Unknown suite kind", kind: suite.kind },
+    { status: 400 },
+  );
 }

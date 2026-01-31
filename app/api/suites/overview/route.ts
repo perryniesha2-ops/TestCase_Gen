@@ -1,3 +1,4 @@
+// app/api/suites/overview/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -18,12 +19,12 @@ export async function GET(req: Request) {
 
     // 1) base suites + projects
     const { data: suites, error: suitesErr } = await supabase
-      .from("test_suites")
+      .from("suites")
       .select(
         `
         *,
         projects:project_id(id, name, color, icon)
-      `
+      `,
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
@@ -41,33 +42,58 @@ export async function GET(req: Request) {
 
     // 2) counts per suite (single query)
     const { data: suiteCases, error: casesErr } = await supabase
-      .from("test_suite_cases")
-      .select("suite_id, test_case_id")
+      .from("suite_items")
+      .select("suite_id, test_case_id, platform_test_case_id")
       .in("suite_id", suiteIds);
 
     if (casesErr) {
       return NextResponse.json({ error: casesErr.message }, { status: 500 });
     }
 
-    // 3) eligible (has steps) - single query using join
-    // This matches your current eligibility logic: test_cases.test_steps length > 0
-    const { data: suiteCaseWithSteps, error: stepsErr } = await supabase
-      .from("test_suite_cases")
-      .select(
-        `
+    // 3) eligible cases with steps - separate queries for each type
+    // Regular test cases
+    const { data: regularCasesWithSteps, error: regularStepsErr } =
+      await supabase
+        .from("suite_items")
+        .select(
+          `
         suite_id,
         test_case_id,
         test_cases:test_case_id(id, test_steps)
-      `
-      )
-      .in("suite_id", suiteIds);
+      `,
+        )
+        .in("suite_id", suiteIds)
+        .not("test_case_id", "is", null);
 
-    if (stepsErr) {
-      return NextResponse.json({ error: stepsErr.message }, { status: 500 });
+    if (regularStepsErr) {
+      return NextResponse.json(
+        { error: regularStepsErr.message },
+        { status: 500 },
+      );
+    }
+
+    // Cross-platform test cases (note: uses 'steps' not 'test_steps')
+    const { data: platformCasesWithSteps, error: platformStepsErr } =
+      await supabase
+        .from("suite_items")
+        .select(
+          `
+        suite_id,
+        platform_test_case_id,
+        platform_test_cases:platform_test_case_id(id, steps)
+      `,
+        )
+        .in("suite_id", suiteIds)
+        .not("platform_test_case_id", "is", null);
+
+    if (platformStepsErr) {
+      return NextResponse.json(
+        { error: platformStepsErr.message },
+        { status: 500 },
+      );
     }
 
     // 4) execution stats per suite (single query)
-    // We count all executions associated with suite_id
     const { data: executions, error: execErr } = await supabase
       .from("test_executions")
       .select("suite_id, execution_status")
@@ -113,7 +139,7 @@ export async function GET(req: Request) {
       else if (row.execution_status === "blocked") s.blocked += 1;
     }
 
-    // 5) Compose response: keep suite list stable for UI
+    // 5) Compose response
     const suitesOut = (suites ?? []).map((suite: any) => {
       const test_case_count = countBySuite[suite.id] ?? 0;
 
@@ -134,7 +160,7 @@ export async function GET(req: Request) {
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message ?? "Unexpected error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -99,8 +99,8 @@ export function BulkUpdateDialog({
       if (!user) return;
 
       const { data, error } = await supabase
-        .from("test_suites")
-        .select("id, name, suite_type, status, created_at, project_id")
+        .from("suites")
+        .select("id, name, suite_type, kind, status, created_at, project_id")
         .eq("user_id", user.id)
         .order("name");
 

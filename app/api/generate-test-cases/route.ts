@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import { checkAndRecordUsage } from "@/lib/usage-tracker";
+import {
+  checkAndRecordUsage,
+  recordSuccessfulGeneration,
+} from "@/lib/usage-tracker";
 
 export const runtime = "nodejs";
 
@@ -372,22 +375,22 @@ function buildPromptFromTestTypes(params: {
       type === "happy-path"
         ? "Happy Path"
         : type === "negative"
-        ? "Negative"
-        : type === "security"
-        ? "Security"
-        : type === "boundary"
-        ? "Boundary"
-        : type === "edge-case"
-        ? "Edge Case"
-        : type === "performance"
-        ? "Performance"
-        : type === "integration"
-        ? "Integration"
-        : type === "regression"
-        ? "Regression"
-        : type === "smoke"
-        ? "Smoke"
-        : type;
+          ? "Negative"
+          : type === "security"
+            ? "Security"
+            : type === "boundary"
+              ? "Boundary"
+              : type === "edge-case"
+                ? "Edge Case"
+                : type === "performance"
+                  ? "Performance"
+                  : type === "integration"
+                    ? "Integration"
+                    : type === "regression"
+                      ? "Regression"
+                      : type === "smoke"
+                        ? "Smoke"
+                        : type;
     distributionText += `- ${count} ${label} test${count > 1 ? "s" : ""}\n`;
   });
 
@@ -480,13 +483,13 @@ export async function POST(request: Request) {
     if (!requirements) {
       return NextResponse.json(
         { error: "Requirements are required", field: "requirements" },
-        { status: 400 }
+        { status: 400 },
       );
     }
     if (!title) {
       return NextResponse.json(
         { error: "Generation title is required", field: "title" },
-        { status: 400 }
+        { status: 400 },
       );
     }
     if (testCaseCount <= 0 || testCaseCount > 50) {
@@ -495,7 +498,7 @@ export async function POST(request: Request) {
           error: "Test case count must be between 1 and 50",
           field: "testCaseCount",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
     if (testTypes.length === 0) {
@@ -504,7 +507,7 @@ export async function POST(request: Request) {
           error: "At least one test type must be selected",
           field: "testTypes",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -515,7 +518,7 @@ export async function POST(request: Request) {
       const msg = e instanceof Error ? e.message : "Usage limit exceeded";
       return NextResponse.json(
         { error: msg, upgradeRequired: true },
-        { status: 429 }
+        { status: 429 },
       );
     }
 
@@ -589,7 +592,7 @@ export async function POST(request: Request) {
             error:
               "Generation temporarily unavailable. Please try again later.",
           },
-          { status: 503 }
+          { status: 503 },
         );
       }
     }
@@ -640,14 +643,14 @@ Return ONLY valid JSON, no markdown, no explanation.`;
       testCases = Array.isArray(parsed.test_cases)
         ? parsed.test_cases
         : Array.isArray(parsed.testCases)
-        ? parsed.testCases
-        : [];
+          ? parsed.testCases
+          : [];
     } catch {
       const match = rawText.match(/\[[\s\S]*\]/);
       if (!match) {
         return NextResponse.json(
           { error: "Failed to structure test cases. Please regenerate." },
-          { status: 500 }
+          { status: 500 },
         );
       }
       testCases = JSON.parse(match[0]) as GeneratedTestCase[];
@@ -672,7 +675,7 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     if (genError || !generation) {
       return NextResponse.json(
         { error: "Failed to save generation" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -705,9 +708,13 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     if (tcError || !savedCases) {
       return NextResponse.json(
         { error: "Failed to save test cases" },
-        { status: 500 }
+        { status: 500 },
       );
     }
+
+    try {
+      await recordSuccessfulGeneration(user.id, savedCases.length);
+    } catch (recordError) {}
 
     return NextResponse.json({
       success: true,
@@ -728,7 +735,7 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     console.error("Unexpected error:", error);
     return NextResponse.json(
       { error: "Unexpected error. Please try again." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

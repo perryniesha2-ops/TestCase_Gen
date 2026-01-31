@@ -5,6 +5,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/auth-context";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Loader2,
   ArrowLeft,
@@ -24,9 +25,9 @@ import type { PlatformType } from "@/lib/exports/export-strategy";
 type ExportCounts = {
   apiCasesFound: number;
   apiCasesMissingMetadata: number;
+  suiteKind?: string;
 };
 
-// NEW: Add suite kind type
 type SuiteKind = "regular" | "cross-platform";
 
 export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
@@ -36,9 +37,10 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
   const details = useSuiteDetails(suiteId, user?.id, { enabled: true });
   const [runOpen, setRunOpen] = React.useState(false);
 
-  // NEW: Track suite kind and platforms
+  // Track suite kind and platforms
   const [suiteKind, setSuiteKind] = React.useState<SuiteKind>("regular");
   const [platforms, setPlatforms] = React.useState<PlatformType[]>([]);
+  const [metadataLoading, setMetadataLoading] = React.useState(true);
 
   const [exportCounts, setExportCounts] = React.useState<ExportCounts>({
     apiCasesFound: 0,
@@ -49,10 +51,14 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
     string | null
   >(null);
 
-  // NEW: Fetch suite kind and platforms
+  // Determine if suite can be automated (only regular suites)
+  const canAutomate = suiteKind === "regular";
+
+  // Fetch suite kind and platforms
   const fetchSuiteMetadata = React.useCallback(async () => {
     if (!user?.id || !suiteId) return;
 
+    setMetadataLoading(true);
     try {
       const res = await fetch(`/api/suites/${suiteId}/metadata`, {
         method: "GET",
@@ -64,6 +70,10 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
 
         setSuiteKind(data.kind || "regular");
         setPlatforms(data.platforms || []);
+        console.log("✅ Suite metadata loaded:", {
+          kind: data.kind,
+          platforms: data.platforms,
+        });
       } else {
         console.error(
           "❌ Metadata fetch failed:",
@@ -73,6 +83,8 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
       }
     } catch (e) {
       console.error("❌ Failed to fetch suite metadata:", e);
+    } finally {
+      setMetadataLoading(false);
     }
   }, [user?.id, suiteId]);
 
@@ -104,7 +116,10 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
       setExportCounts({
         apiCasesFound: Number(data.apiCasesFound ?? 0),
         apiCasesMissingMetadata: Number(data.apiCasesMissingMetadata ?? 0),
+        suiteKind: data.suiteKind,
       });
+
+      console.log("✅ Export summary loaded:", data);
     } catch (e) {
       setExportCountsError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -128,7 +143,7 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
 
     setDeleting(true);
     try {
-      const res = await fetch(`/api/suites/${details.suite.id}`, {
+      const res = await fetch(`/api/suites/${suiteId}/delete`, {
         method: "DELETE",
       });
 
@@ -187,7 +202,6 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
           </Button>
 
           <div className="flex items-center gap-2">
-            {/* NEW: Add UnifiedExportButton here */}
             <UnifiedExportButton
               suiteId={suiteId}
               suiteKind={suiteKind}
@@ -204,19 +218,22 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
               Run tests
             </Button>
 
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-2"
-              onClick={() =>
-                details.suite &&
-                router.push(`/automation/suites/${details.suite.id}`)
-              }
-              disabled={!details.suite}
-            >
-              <Code2 className="h-4 w-4" />
-              Automation
-            </Button>
+            {/* Only show Automation button for regular suites */}
+            {canAutomate && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2"
+                onClick={() =>
+                  details.suite &&
+                  router.push(`/automation/suites/${details.suite.id}`)
+                }
+                disabled={!details.suite}
+              >
+                <Code2 className="h-4 w-4" />
+                Automation
+              </Button>
+            )}
 
             <Button
               size="sm"
@@ -235,37 +252,93 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
           </div>
         </div>
 
-        <div className="text-sm text-muted-foreground">{suiteName}</div>
+        {/* Suite name with kind badge */}
+        <div className="flex items-center gap-2">
+          <div className="text-sm text-muted-foreground">{suiteName}</div>
+          {!metadataLoading && (
+            <>
+              <Badge variant="outline" className="capitalize">
+                {suiteKind}
+              </Badge>
+              {suiteKind === "cross-platform" && platforms.length > 0 && (
+                <div className="flex items-center gap-1">
+                  {platforms.map((platform) => (
+                    <Badge
+                      key={platform}
+                      variant="secondary"
+                      className="capitalize text-xs"
+                    >
+                      {platform}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Optional: Keep the old SuiteExportsCard for additional info */}
-      {suiteKind === "regular" && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
+      {/* Export Summary Card - Show for all suite types */}
+      {!metadataLoading && (
+        <div className="border rounded-lg p-4 bg-card">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold">
+                {suiteKind === "cross-platform"
+                  ? "Cross-Platform Export Summary"
+                  : "Export Summary"}
+              </h3>
+              {exportCountsLoading && (
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+              )}
+            </div>
+
             <Button
               size="sm"
-              variant="outline"
-              className="gap-2"
+              variant="ghost"
+              className="gap-2 h-8"
               onClick={() => void fetchExportSummary()}
               disabled={exportCountsLoading}
             >
               {exportCountsLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
-                <RefreshCcw className="h-4 w-4" />
+                <RefreshCcw className="h-3 w-3" />
               )}
               Refresh
             </Button>
           </div>
 
-          {exportCountsLoading && (
-            <div className="text-xs text-muted-foreground">
-              Refreshing export counts…
+          {exportCountsError ? (
+            <div className="text-sm text-destructive">
+              Error: {exportCountsError}
             </div>
-          )}
-          {exportCountsError && (
-            <div className="text-xs text-destructive">
-              Export summary error: {exportCountsError}
+          ) : (
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-muted-foreground">
+                  {suiteKind === "cross-platform"
+                    ? "Platform Cases Found:"
+                    : "API Cases Found:"}
+                </span>
+                <span className="ml-2 font-medium">
+                  {exportCounts.apiCasesFound}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Missing Metadata:</span>
+                <span className="ml-2 font-medium">
+                  {exportCounts.apiCasesMissingMetadata}
+                </span>
+              </div>
+              {suiteKind === "cross-platform" && platforms.length > 0 && (
+                <div className="col-span-2">
+                  <span className="text-muted-foreground">Platforms:</span>
+                  <span className="ml-2 font-medium">
+                    {platforms.join(", ")}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>

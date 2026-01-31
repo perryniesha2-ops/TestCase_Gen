@@ -8,13 +8,7 @@ export type ExecutionStatus =
   | "blocked"
   | "skipped";
 
-export type ApprovalStatus =
-  | "draft"
-  | "active"
-  | "archived"
-  | "pending"
-  | "approved"
-  | "rejected";
+export type ApprovalStatus = "draft" | "active" | "archived" | "pending";
 
 export type Priority = "low" | "medium" | "high" | "critical";
 
@@ -53,29 +47,25 @@ export interface TestCase {
 export interface CrossPlatformTestCase {
   id: string;
   suite_id: string;
-  user_id?: string; // ✅ Added
+  user_id?: string;
   platform: string;
   framework: string;
   title: string;
   description: string;
-  preconditions: string[] | string; // ✅ Support both formats
+  preconditions: string[] | string;
   steps: string[];
   expected_results: string[];
   automation_hints?: string[];
-  automation_metadata?: Record<string, any>; // ✅ Added for API metadata
-  project_id?: string | null; // ✅ Add this
-  projects?: Project; // ✅ Add this for joined data
+  automation_metadata?: Record<string, any>;
+  project_id?: string | null;
+  projects?: Project;
   priority: Priority;
   execution_status: ExecutionStatus;
   status: ApprovalStatus;
   created_at: string;
-  updated_at?: string; // ✅ Added
-  approved_at?: string; // ✅ Added
-  approved_by?: string; // ✅ Added
-  cross_platform_test_suites?: {
-    requirement: string;
-    user_id: string;
-  };
+  updated_at?: string;
+  approved_at?: string;
+  approved_by?: string;
 }
 
 // ✅ NEW: Combined type for unified table
@@ -164,13 +154,6 @@ export interface Generation {
   title: string;
 }
 
-export interface CrossPlatformSuite {
-  id: string;
-  requirement: string;
-  platforms: string[];
-  generated_at: string;
-}
-
 export const platformIcons = {
   web: "Monitor",
   mobile: "Smartphone",
@@ -199,6 +182,7 @@ export interface TestSuite {
   id: string;
   name: string;
   description?: string | null;
+  kind: string;
   suite_type: "manual" | "automated" | "regression" | "smoke" | "integration";
   status: "draft" | "active" | "completed" | "archived";
   planned_start_date?: string;
@@ -347,7 +331,6 @@ export type TestCasesOverviewResponse = {
 
   // optional compatibility fields
   generations: Generation[];
-  crossPlatformSuites: CrossPlatformSuite[];
 };
 
 // ✅ NEW: Export types for dialog components

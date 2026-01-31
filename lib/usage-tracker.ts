@@ -33,25 +33,22 @@ const DEBUG = process.env.DEBUG_USAGE_TRACKER === "1";
 
 function redactId(id: string | undefined | null) {
   if (!id) return "redacted";
-  // keep first 6 chars max
   return id.slice(0, 6) + "…";
 }
 function dlog(msg: string, meta?: Record<string, unknown>) {
   if (!DEBUG) return;
   try {
-    // Only log redacted, non-PII metadata
     const safe = meta
       ? JSON.stringify(
           Object.fromEntries(
             Object.entries(meta).map(([k, v]) =>
               /id|email|token|key/i.test(k)
                 ? [k, typeof v === "string" ? redactId(v) : "redacted"]
-                : [k, v]
-            )
-          )
+                : [k, v],
+            ),
+          ),
         )
       : "";
-    // eslint-disable-next-line no-console
   } catch {
     // swallow logging errors
   }
@@ -70,14 +67,15 @@ class UsageTrackerService implements UsageTracker {
       .single();
 
     if (error) {
-      // Avoid leaking table/column names or SQL in logs returned to clients
       dlog("getCurrentUsage error", { userId, error: error.code });
       return null;
     }
     return data;
   }
 
-  private async getUserSubscription(userId: string): Promise<UserSubscription | null> {
+  private async getUserSubscription(
+    userId: string,
+  ): Promise<UserSubscription | null> {
     const supabase = await createClient();
 
     const { data, error } = await supabase
@@ -93,7 +91,10 @@ class UsageTrackerService implements UsageTracker {
     return data;
   }
 
-  async canGenerateTestCases(userId: string, count: number = 1): Promise<UsageResult> {
+  async canGenerateTestCases(
+    userId: string,
+    count: number = 1,
+  ): Promise<UsageResult> {
     try {
       const [usage, subscription] = await Promise.all([
         this.getCurrentUsage(userId),
@@ -104,13 +105,14 @@ class UsageTrackerService implements UsageTracker {
         return { allowed: false, remaining: 0, error: "User not found" };
       }
 
-      // Plan limits (promotion for free: 20)
-      const planLimits: Record<UserSubscription["subscription_tier"], number> = {
-        free: 20,
-        pro: 500,
-        team: 2000,
-        enterprise: -1, // unlimited
-      };
+      // Plan limits
+      const planLimits: Record<UserSubscription["subscription_tier"], number> =
+        {
+          free: 20,
+          pro: 500,
+          team: 2000,
+          enterprise: -1, // unlimited
+        };
 
       const monthlyLimit = planLimits[subscription.subscription_tier] ?? 10;
 
@@ -131,13 +133,19 @@ class UsageTrackerService implements UsageTracker {
         error: `Monthly limit exceeded. You have ${remaining} test cases remaining.`,
       };
     } catch (e) {
-      // Do not leak stack traces or DB details to callers
       dlog("canGenerateTestCases fatal", { userId: redactId(userId) });
-      return { allowed: false, remaining: 0, error: "Failed to check usage limits" };
+      return {
+        allowed: false,
+        remaining: 0,
+        error: "Failed to check usage limits",
+      };
     }
   }
 
-  async recordTestCaseGeneration(userId: string, count: number = 1): Promise<void> {
+  async recordTestCaseGeneration(
+    userId: string,
+    count: number = 1,
+  ): Promise<void> {
     try {
       const supabase = await createClient();
       const currentMonth = new Date().toISOString().slice(0, 7);
@@ -191,7 +199,6 @@ class UsageTrackerService implements UsageTracker {
         }
       }
     } catch (e) {
-      // Keep server logs minimal; let the caller handle UI messaging
       dlog("recordTestCaseGeneration fatal", { userId: redactId(userId) });
       throw new Error("Failed to record usage");
     }
@@ -215,12 +222,13 @@ class UsageTrackerService implements UsageTracker {
         .eq("month", currentMonth);
 
       if (error) {
-        dlog("recordApiCall update error", { userId: redactId(userId), code: error.code });
-        // non-fatal: don't throw to avoid breaking primary flows
+        dlog("recordApiCall update error", {
+          userId: redactId(userId),
+          code: error.code,
+        });
       }
     } catch {
       dlog("recordApiCall fatal", { userId: redactId(userId) });
-      // swallow
     }
   }
 
@@ -232,14 +240,47 @@ class UsageTrackerService implements UsageTracker {
 // Singleton
 export const usageTracker = new UsageTrackerService();
 
-/** Convenience for API handlers: enforce and increment in one call. */
+/**
+ * CRITICAL: Only check quota, DO NOT record usage.
+ * Usage should be recorded ONLY after successful generation.
+ */
+export async function checkUsageQuota(
+  userId: string,
+  testCasesCount: number = 1,
+): Promise<void> {
+  const result = await usageTracker.canGenerateTestCases(
+    userId,
+    testCasesCount,
+  );
+  if (!result.allowed) {
+    throw new Error(result.error || "Usage limit exceeded");
+  }
+}
+
+/**
+ * Record successful generation.
+ * Call this ONLY after test cases have been successfully generated and saved.
+ */
+export async function recordSuccessfulGeneration(
+  userId: string,
+  testCasesCount: number = 1,
+): Promise<void> {
+  await usageTracker.recordTestCaseGeneration(userId, testCasesCount);
+}
+
+// DEPRECATED: Use checkUsageQuota + recordSuccessfulGeneration instead
 export async function checkAndRecordUsage(
   userId: string,
-  testCasesCount: number = 1
+  testCasesCount: number = 1,
 ): Promise<UsageResult> {
-  const result = await usageTracker.canGenerateTestCases(userId, testCasesCount);
+  console.warn(
+    "checkAndRecordUsage is deprecated. Use checkUsageQuota + recordSuccessfulGeneration",
+  );
+  const result = await usageTracker.canGenerateTestCases(
+    userId,
+    testCasesCount,
+  );
   if (!result.allowed) {
-    // Return a clean error up the stack—no internal details
     throw new Error(result.error || "Usage limit exceeded");
   }
   await usageTracker.recordTestCaseGeneration(userId, testCasesCount);

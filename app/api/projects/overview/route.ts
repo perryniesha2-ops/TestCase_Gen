@@ -52,10 +52,7 @@ export async function GET() {
       { data: reqRows, error: reqErr },
       { data: tmplRows, error: tmplErr },
     ] = await Promise.all([
-      supabase
-        .from("test_suites")
-        .select("project_id")
-        .in("project_id", projectIds),
+      supabase.from("suites").select("project_id").in("project_id", projectIds),
 
       supabase
         .from("requirements")

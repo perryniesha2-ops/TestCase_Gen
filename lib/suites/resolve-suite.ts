@@ -11,25 +11,17 @@ export async function resolveSuiteKind(
   | { kind: "cross-platform"; suite: { id: string; user_id: string } }
   | { kind: null; suite: null }
 > {
-  // 1) Regular suite
-  const regular = await supabase
-    .from("test_suites")
-    .select("id, user_id")
+  const { data } = await supabase
+    .from("suites")
+    .select("id, user_id, kind")
     .eq("id", suiteId)
     .eq("user_id", userId)
     .maybeSingle();
 
-  if (regular.data) return { kind: "regular", suite: regular.data };
+  if (!data) return { kind: null, suite: null };
 
-  // 2) Cross-platform suite
-  const cross = await supabase
-    .from("cross_platform_test_suites")
-    .select("id, user_id")
-    .eq("id", suiteId)
-    .eq("user_id", userId)
-    .maybeSingle();
+  const kind: SuiteKind =
+    data.kind === "cross-platform" ? "cross-platform" : "regular";
 
-  if (cross.data) return { kind: "cross-platform", suite: cross.data };
-
-  return { kind: null, suite: null };
+  return { kind, suite: { id: data.id, user_id: data.user_id } };
 }

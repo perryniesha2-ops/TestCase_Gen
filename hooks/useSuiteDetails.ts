@@ -82,16 +82,18 @@ export function useSuiteDetails(
     setProjects((data as Project[]) || []);
   }, [supabase, userId]);
 
+  // ✅ UPDATED: Fetch from unified suites table with kind field
   const fetchSuite = useCallback(async () => {
     if (!userId || !suiteId) return;
 
     const { data, error } = await supabase
-      .from("test_suites")
+      .from("suites")
       .select(
         `
         id,
         name,
         description,
+        kind,
         suite_type,
         status,
         created_at,
@@ -114,7 +116,7 @@ export function useSuiteDetails(
     if (!userId || !suiteId) return;
 
     const { data, error } = await supabase
-      .from("test_suite_cases")
+      .from("suite_items")
       .select(
         `
         id,
@@ -201,14 +203,24 @@ export function useSuiteDetails(
     setSuiteTestCases(transformed);
   }, [supabase, suiteId, userId]);
 
+  // ✅ UPDATED: Filter available test cases based on suite kind
   const fetchAvailableTestCases = useCallback(async () => {
-    if (!userId) return;
+    if (!userId || !suiteId) return;
+
+    // First, get the suite's kind to determine which test cases to show
+    const { data: suiteData } = await supabase
+      .from("suites")
+      .select("kind")
+      .eq("id", suiteId)
+      .single();
+
+    const suiteKind = suiteData?.kind || "regular";
 
     // Get IDs of cases already in this suite
     const { data: suiteCases } = await supabase
-      .from("test_suite_cases")
+      .from("suite_items")
       .select("test_case_id, platform_test_case_id")
-      .eq("suite_id", suiteId || "");
+      .eq("suite_id", suiteId);
 
     const assignedRegularIds = (suiteCases || [])
       .map((sc) => sc.test_case_id)
@@ -218,56 +230,59 @@ export function useSuiteDetails(
       .map((sc) => sc.platform_test_case_id)
       .filter(Boolean);
 
-    // Fetch regular test cases
-    const regularQuery = supabase
-      .from("test_cases")
-      .select(
-        "id, title, description, test_type, priority, status, execution_status",
-      )
-      .eq("status", "active")
-      .eq("user_id", userId)
-      .order("title", { ascending: true });
+    let combined: TestCase[] = [];
 
-    if (assignedRegularIds.length > 0) {
-      regularQuery.not("id", "in", `(${assignedRegularIds.join(",")})`);
-    }
+    // ✅ ONLY fetch test cases matching the suite's kind
+    if (suiteKind === "regular") {
+      // Fetch regular test cases only
+      const regularQuery = supabase
+        .from("test_cases")
+        .select(
+          "id, title, description, test_type, priority, status, execution_status",
+        )
+        .eq("status", "active")
+        .eq("user_id", userId)
+        .order("title", { ascending: true });
 
-    const { data: regularData, error: regularError } = await regularQuery;
+      if (assignedRegularIds.length > 0) {
+        regularQuery.not("id", "in", `(${assignedRegularIds.join(",")})`);
+      }
 
-    if (regularError) {
-      console.error("Error fetching regular test cases:", regularError);
-    }
+      const { data: regularData, error: regularError } = await regularQuery;
 
-    // Fetch approved cross-platform test cases
-    const platformQuery = supabase
-      .from("platform_test_cases")
-      .select("id, title, description, platform, framework, priority, status")
-      .eq("status", "active")
-      .eq("user_id", userId)
-      .order("title", { ascending: true });
+      if (regularError) {
+        console.error("Error fetching regular test cases:", regularError);
+      }
 
-    if (assignedPlatformIds.length > 0) {
-      platformQuery.not("id", "in", `(${assignedPlatformIds.join(",")})`);
-    }
-
-    const { data: platformData, error: platformError } = await platformQuery;
-
-    if (platformError) {
-      console.error("Error fetching platform test cases:", platformError);
-    }
-
-    // Combine both types
-    const combined: TestCase[] = [
-      ...(regularData || []).map((tc) => ({
+      combined = (regularData || []).map((tc) => ({
         ...tc,
         _caseType: "regular" as const,
-      })),
-      ...(platformData || []).map((tc) => ({
+      }));
+    } else if (suiteKind === "cross-platform") {
+      // Fetch cross-platform test cases only
+      const platformQuery = supabase
+        .from("platform_test_cases")
+        .select("id, title, description, platform, framework, priority, status")
+        .eq("status", "active")
+        .eq("user_id", userId)
+        .order("title", { ascending: true });
+
+      if (assignedPlatformIds.length > 0) {
+        platformQuery.not("id", "in", `(${assignedPlatformIds.join(",")})`);
+      }
+
+      const { data: platformData, error: platformError } = await platformQuery;
+
+      if (platformError) {
+        console.error("Error fetching platform test cases:", platformError);
+      }
+
+      combined = (platformData || []).map((tc) => ({
         ...tc,
         test_type: tc.platform, // Map platform to test_type for consistency
         _caseType: "cross-platform" as const,
-      })),
-    ];
+      }));
+    }
 
     setAvailableTestCases(combined);
   }, [supabase, userId, suiteId]);
@@ -309,6 +324,7 @@ export function useSuiteDetails(
     return () => abortRef.current?.abort();
   }, [reloadAll]);
 
+  // ✅ UPDATED: Save to unified suites table
   const saveSuiteDetails = useCallback(
     async (patch: {
       name: string;
@@ -322,7 +338,7 @@ export function useSuiteDetails(
       setLoading(true);
       try {
         const { error } = await supabase
-          .from("test_suites")
+          .from("suites")
           .update({
             name: patch.name.trim(),
             description: patch.description?.trim() || null,
@@ -390,9 +406,7 @@ export function useSuiteDetails(
           estimated_duration_minutes: 30,
         };
 
-        const { error } = await supabase
-          .from("test_suite_cases")
-          .insert(insertData);
+        const { error } = await supabase.from("suite_items").insert(insertData);
 
         if (error) {
           if ((error as any).code === "23505") {
@@ -426,7 +440,7 @@ export function useSuiteDetails(
       setLoading(true);
       try {
         const { error } = await supabase
-          .from("test_suite_cases")
+          .from("suite_items")
           .delete()
           .eq("id", suiteTestCaseId);
 
@@ -449,7 +463,7 @@ export function useSuiteDetails(
     async (suiteTestCaseId: string, priority: string) => {
       try {
         const { error } = await supabase
-          .from("test_suite_cases")
+          .from("suite_items")
           .update({ priority })
           .eq("id", suiteTestCaseId);
 

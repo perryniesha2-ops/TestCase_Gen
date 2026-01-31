@@ -5,7 +5,7 @@ import type {
   TestCase,
   CrossPlatformTestCase,
   Generation,
-  CrossPlatformSuite,
+  TestSuite, // Changed from CrossPlatformSuite
   TestSession,
   Project,
   ExecutionStatus,
@@ -28,13 +28,10 @@ type UseTestCaseDataResult = {
   crossPlatformCases: CrossPlatformTestCase[];
   projects: Project[];
   currentSession: TestSession | null;
-
-  // Added
   executionByCaseId: ExecutionByCaseId;
 
-  // Keep if you still use them elsewhere; otherwise you can remove later
-  generations: Record<string, Generation>;
-  crossPlatformSuites: Record<string, CrossPlatformSuite>;
+  // Legacy - kept for backward compatibility, can be removed if not used
+  generations: Generation[]; // Changed from Record to array
 
   refresh: () => Promise<void>;
 };
@@ -52,20 +49,15 @@ export function useTestCaseData({
   >([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentSession, setCurrentSession] = useState<TestSession | null>(
-    null
+    null,
   );
 
   const [executionByCaseId, setExecutionByCaseId] = useState<ExecutionByCaseId>(
-    {}
+    {},
   );
 
-  // Optional legacy state (keep for now)
-  const [generations, setGenerations] = useState<Record<string, Generation>>(
-    {}
-  );
-  const [crossPlatformSuites, setCrossPlatformSuites] = useState<
-    Record<string, CrossPlatformSuite>
-  >({});
+  // Legacy state - kept for backward compatibility
+  const [generations, setGenerations] = useState<Generation[]>([]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -75,8 +67,6 @@ export function useTestCaseData({
       if (sessionId) qs.set("session", sessionId);
       if (selectedProject) qs.set("project", selectedProject);
 
-      // IMPORTANT: this path must match your route file location.
-      // If your route is app/api/test-cases/overview/route.ts then this is correct:
       const res = await fetch(`/api/test-cases/overview?${qs.toString()}`, {
         cache: "no-store",
       });
@@ -94,9 +84,17 @@ export function useTestCaseData({
       setCurrentSession(payload.currentSession ?? null);
       setExecutionByCaseId(payload.executionByCaseId ?? {});
 
-      // If your overview route does NOT return these, they will remain empty (fine)
-      setGenerations(payload.generations ?? {});
-      setCrossPlatformSuites(payload.crossPlatformSuites ?? {});
+      // Legacy - generations are now returned as an array
+      setGenerations(payload.generations ?? []);
+    } catch (error) {
+      console.error("Error fetching test case data:", error);
+      // Reset to empty states on error
+      setProjects([]);
+      setTestCases([]);
+      setCrossPlatformCases([]);
+      setCurrentSession(null);
+      setExecutionByCaseId({});
+      setGenerations([]);
     } finally {
       setLoading(false);
     }
@@ -114,7 +112,6 @@ export function useTestCaseData({
     currentSession,
     executionByCaseId,
     generations,
-    crossPlatformSuites,
     refresh,
   };
 }

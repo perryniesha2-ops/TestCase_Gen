@@ -250,7 +250,7 @@ export function TestSessionExecution({
 
       // ✅ Fetch both test_case_id AND platform_test_case_id
       const { data: suiteLinks, error: linksError } = await supabase
-        .from("test_suite_cases")
+        .from("suite_items")
         .select(
           "id, test_case_id, platform_test_case_id, sequence_order, priority, estimated_duration_minutes",
         )
@@ -307,17 +307,26 @@ export function TestSessionExecution({
           throw error;
         }
 
-        // ✅ Transform to match regular test case structure
-        crossPlatformTestCases = (data || []).map((tc) => ({
-          id: tc.id,
-          title: tc.title,
-          description: tc.description,
-          test_type: tc.platform || "cross-platform",
-          test_steps: tc.steps || [],
-          expected_result: Array.isArray(tc.expected_results)
-            ? tc.expected_results.join(", ")
-            : tc.expected_results || "",
-        }));
+        // ✅ Transform steps strings into the object shape the UI expects
+        crossPlatformTestCases = (data || []).map((tc) => {
+          const steps: string[] = tc.steps || [];
+          const expectedResults: string[] = Array.isArray(tc.expected_results)
+            ? tc.expected_results
+            : [];
+
+          return {
+            id: tc.id,
+            title: tc.title,
+            description: tc.description,
+            test_type: tc.platform || "cross-platform",
+            test_steps: steps.map((step, index) => ({
+              step_number: index + 1,
+              action: step,
+              expected: expectedResults[index] || "",
+            })),
+            expected_result: expectedResults.join("\n") || "",
+          };
+        });
       }
 
       const testCaseMap = new Map<string, any>();
