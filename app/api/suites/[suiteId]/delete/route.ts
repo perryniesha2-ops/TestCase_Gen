@@ -37,10 +37,7 @@ export async function DELETE(req: NextRequest, ctx: unknown) {
       (await getSuiteIdFromContext(ctx)) ?? extractSuiteIdFromUrl(req);
 
     if (!suiteId) {
-      return NextResponse.json(
-        { error: "Missing suiteId", debug: { url: req.url } },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing suiteId" }, { status: 400 });
     }
 
     const supabase = await createClient();
@@ -205,12 +202,6 @@ export async function DELETE(req: NextRequest, ctx: unknown) {
         { status: 500 },
       );
     }
-
-    // Log deletion stats (helpful for debugging)
-    console.log(`Suite deleted successfully:`, {
-      suiteId,
-      ...deleteStats,
-    });
 
     return NextResponse.json({
       success: true,

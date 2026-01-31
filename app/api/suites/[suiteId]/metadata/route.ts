@@ -25,8 +25,6 @@ export async function GET(
     const params = await context.params;
     const suiteId = params.suiteId;
 
-    console.log("📋 Metadata request for suite:", suiteId, "by user:", user.id);
-
     // 1. Get suite kind
     const { data: suite, error: suiteError } = await supabase
       .from("suites")
@@ -34,12 +32,6 @@ export async function GET(
       .eq("id", suiteId)
       .eq("user_id", user.id)
       .single();
-
-    console.log("📊 Suite query result:", {
-      found: !!suite,
-      error: suiteError?.message,
-      kind: suite?.kind,
-    });
 
     if (suiteError || !suite) {
       console.error("❌ Suite not found:", {
@@ -65,12 +57,6 @@ export async function GET(
         .eq("suite_id", suiteId)
         .not("platform_test_case_id", "is", null);
 
-      console.log("📊 Platform cases query result:", {
-        count: platformCases?.length || 0,
-        error: platformError?.message,
-        sample: platformCases?.[0],
-      });
-
       if (platformError) {
         console.error("❌ Error fetching platforms:", platformError);
       } else if (platformCases && platformCases.length > 0) {
@@ -88,14 +74,8 @@ export async function GET(
         });
 
         platforms = Array.from(platformSet);
-        console.log("✅ Unique platforms detected:", platforms);
       }
     }
-
-    console.log("✅ Returning metadata:", {
-      kind: suite.kind,
-      platforms,
-    });
 
     return NextResponse.json({
       kind: suite.kind || "regular",

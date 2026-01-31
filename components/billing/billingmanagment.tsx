@@ -224,7 +224,7 @@ function usagePct(u?: UserProfile["usage"]): number {
   if (u.monthly_limit <= 0) return 0;
   return Math.min(
     100,
-    Math.round((u.test_cases_generated / u.monthly_limit) * 100)
+    Math.round((u.test_cases_generated / u.monthly_limit) * 100),
   );
 }
 
@@ -238,7 +238,7 @@ export default function BillingPage() {
   const [isYearly, setIsYearly] = React.useState(false);
   const [contactSheetOpen, setContactSheetOpen] = React.useState(false);
   const [selectedPlan, setSelectedPlan] = React.useState<"team" | "enterprise">(
-    "team"
+    "team",
   );
   const router = useRouter();
   const { user: authUser } = useAuth();
@@ -265,7 +265,7 @@ export default function BillingPage() {
             api_calls_used,
             monthly_limit_test_cases
           )
-        `
+        `,
         )
         .eq("id", authUser.id)
         .single();
@@ -302,10 +302,10 @@ export default function BillingPage() {
               (profile.subscription_tier === "pro"
                 ? 500
                 : profile.subscription_tier === "team"
-                ? 2000
-                : profile.subscription_tier === "enterprise"
-                ? -1
-                : 20),
+                  ? 2000
+                  : profile.subscription_tier === "enterprise"
+                    ? -1
+                    : 20),
           },
         };
         return realProfile;
@@ -334,8 +334,6 @@ export default function BillingPage() {
     const sessionId = searchParams.get("session_id");
 
     if (success === "true" && sessionId) {
-      console.log("✅ Checkout successful, refreshing data...");
-
       // Show success message
       toast.success("🎉 Subscription activated! Updating your account...");
 
@@ -348,7 +346,7 @@ export default function BillingPage() {
 
         if (userData) {
           toast.success(
-            `Welcome to ${userData.subscription_tier.toUpperCase()} plan!`
+            `Welcome to ${userData.subscription_tier.toUpperCase()} plan!`,
           );
         }
 
@@ -458,7 +456,7 @@ export default function BillingPage() {
             <span
               className={cn(
                 "text-sm",
-                !isYearly ? "font-medium" : "text-muted-foreground"
+                !isYearly ? "font-medium" : "text-muted-foreground",
               )}
             >
               Monthly
@@ -467,7 +465,7 @@ export default function BillingPage() {
             <span
               className={cn(
                 "text-sm",
-                isYearly ? "font-medium" : "text-muted-foreground"
+                isYearly ? "font-medium" : "text-muted-foreground",
               )}
             >
               Yearly
@@ -678,7 +676,7 @@ function PlanCard({
       className={cn(
         "relative",
         plan.popular && "ring-2 ring-primary",
-        isCurrent && "border-primary"
+        isCurrent && "border-primary",
       )}
     >
       {plan.popular && (
@@ -690,7 +688,7 @@ function PlanCard({
         <Icon
           className={cn(
             "mx-auto mb-4 h-12 w-12",
-            plan.popular ? "text-primary" : "text-muted-foreground"
+            plan.popular ? "text-primary" : "text-muted-foreground",
           )}
         />
         <CardTitle className="text-2xl">{plan.name}</CardTitle>

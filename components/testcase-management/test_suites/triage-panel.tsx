@@ -105,13 +105,13 @@ function computeSuiteScore(rows: TriageRow[]) {
   const eligible = eligibleRows.length;
 
   const likelihood10 = avg(
-    eligibleRows.map((r) => avg([clamp10(r.confidence), clamp10(r.value)]))
+    eligibleRows.map((r) => avg([clamp10(r.confidence), clamp10(r.value)])),
   );
 
   const readiness10 = avg(
     eligibleRows.map((r) =>
-      avg([clamp10(r.confidence), clamp10(10 - r.effort)])
-    )
+      avg([clamp10(r.confidence), clamp10(10 - r.effort)]),
+    ),
   );
 
   const eligibilityPct = total ? Math.round((eligible / total) * 100) : 0;
@@ -196,21 +196,16 @@ export function TriagePanel({
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<TriageRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [debugText, setDebugText] = useState<string>("(debug not started)");
 
   const load = useCallback(async () => {
-    setDebugText(`load() called • suiteId="${suiteId}"`);
-
     if (!suiteId) {
       setRows([]);
       setLoading(false);
-      setDebugText("ABORT: missing suiteId prop");
       return;
     }
 
     setLoading(true);
     const url = `/api/suites/${suiteId}/triage`;
-    setDebugText(`fetching ${url}`);
 
     try {
       const res = await fetch(url, { method: "GET", cache: "no-store" });
@@ -227,11 +222,10 @@ export function TriagePanel({
           toast.error("Please sign in to view triage data");
         else
           toast.error(
-            `Failed to load triage data: ${res.status} ${res.statusText}`
+            `Failed to load triage data: ${res.status} ${res.statusText}`,
           );
 
         if (payload && "error" in (payload as any)) {
-          setDebugText(`error payload: ${(payload as any).error}`);
         }
 
         setRows([]);
@@ -240,12 +234,10 @@ export function TriagePanel({
 
       const nextRows = payload?.rows ?? [];
       setRows(nextRows);
-      setDebugText(`ok • rows=${nextRows.length}`);
     } catch (e) {
       console.error("[triage] fetch error", e);
       toast.error("Failed to load triage data");
       setRows([]);
-      setDebugText(`catch: ${(e as Error)?.message ?? "unknown error"}`);
     } finally {
       setLoading(false);
     }

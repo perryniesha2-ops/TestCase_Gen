@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import {
-  checkAndRecordUsage,
+  checkUsageQuota,
   recordSuccessfulGeneration,
 } from "@/lib/usage-tracker";
 
@@ -604,7 +604,7 @@ export async function POST(request: Request) {
     const requestedTotal = testCaseCount * platforms.length;
 
     try {
-      await checkAndRecordUsage(user.id, requestedTotal);
+      await checkUsageQuota(user.id, requestedTotal);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Usage limit exceeded";
       return NextResponse.json(

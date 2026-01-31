@@ -29,14 +29,12 @@ interface UsageTracker {
 }
 
 /** ---- Minimal, safe logging helpers ---- */
-const DEBUG = process.env.DEBUG_USAGE_TRACKER === "1";
 
 function redactId(id: string | undefined | null) {
   if (!id) return "redacted";
   return id.slice(0, 6) + "…";
 }
 function dlog(msg: string, meta?: Record<string, unknown>) {
-  if (!DEBUG) return;
   try {
     const safe = meta
       ? JSON.stringify(
@@ -49,9 +47,7 @@ function dlog(msg: string, meta?: Record<string, unknown>) {
           ),
         )
       : "";
-  } catch {
-    // swallow logging errors
-  }
+  } catch {}
 }
 
 class UsageTrackerService implements UsageTracker {
@@ -257,32 +253,9 @@ export async function checkUsageQuota(
   }
 }
 
-/**
- * Record successful generation.
- * Call this ONLY after test cases have been successfully generated and saved.
- */
 export async function recordSuccessfulGeneration(
   userId: string,
   testCasesCount: number = 1,
 ): Promise<void> {
   await usageTracker.recordTestCaseGeneration(userId, testCasesCount);
-}
-
-// DEPRECATED: Use checkUsageQuota + recordSuccessfulGeneration instead
-export async function checkAndRecordUsage(
-  userId: string,
-  testCasesCount: number = 1,
-): Promise<UsageResult> {
-  console.warn(
-    "checkAndRecordUsage is deprecated. Use checkUsageQuota + recordSuccessfulGeneration",
-  );
-  const result = await usageTracker.canGenerateTestCases(
-    userId,
-    testCasesCount,
-  );
-  if (!result.allowed) {
-    throw new Error(result.error || "Usage limit exceeded");
-  }
-  await usageTracker.recordTestCaseGeneration(userId, testCasesCount);
-  return result;
 }

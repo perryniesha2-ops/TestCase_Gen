@@ -67,26 +67,17 @@ export async function GET(
   }
 
   const resolved = await resolveSuiteKind(supabase, suiteId, user.id);
-  console.log("🔍🔍🔍 RESOLVED KIND:", resolved); // ✅ CRITICAL DEBUG
 
   if (!resolved.kind) {
     return NextResponse.json({ error: "Suite not found" }, { status: 404 });
   }
-  console.log(
-    "🔍🔍🔍 WHICH BRANCH?",
-    resolved.kind === "regular" ? "REGULAR" : "CROSS-PLATFORM",
-  ); // ✅ CRITICAL DEBUG
 
   try {
     let result: ExportResult;
 
     if (resolved.kind === "regular") {
-      console.log("📝 ❌ HITTING REGULAR SUITE EXPORT");
-
       result = await exportRegularSuite(supabase, suiteId, format, user.id);
     } else {
-      console.log("🌐 ✅ HITTING CROSS-PLATFORM SUITE EXPORT");
-
       if (!platform) {
         return NextResponse.json(
           { error: "Platform parameter required for cross-platform suites" },
@@ -187,12 +178,6 @@ async function exportCrossPlatformSuite(
   format: ExportFormat,
   userId: string,
 ): Promise<ExportResult> {
-  console.log("🔍 Starting cross-platform export:", {
-    suiteId,
-    platform,
-    format,
-  });
-
   // Get suite info
   const { data: suite, error: suiteErr } = await supabase
     .from("suites")
@@ -200,12 +185,6 @@ async function exportCrossPlatformSuite(
     .eq("id", suiteId)
     .eq("user_id", userId)
     .single();
-
-  console.log("📋 Suite data:", {
-    found: !!suite,
-    error: suiteErr?.message,
-    suite,
-  });
 
   if (suiteErr || !suite) {
     throw new Error(suiteErr?.message || "Suite not found");
@@ -239,12 +218,6 @@ async function exportCrossPlatformSuite(
     .not("platform_test_case_id", "is", null)
     .order("sequence_order", { ascending: true });
 
-  console.log("📊 Raw query result:", {
-    rowCount: rows?.length || 0,
-    error: fetchError?.message,
-    firstRow: rows?.[0],
-  });
-
   if (fetchError) {
     console.error("❌ Database fetch error:", fetchError);
     throw new Error(`Failed to fetch test cases: ${fetchError.message}`);
@@ -257,38 +230,20 @@ async function exportCrossPlatformSuite(
         ? r.platform_test_cases[0]
         : r.platform_test_cases;
 
-      console.log(`🔎 Row ${index}:`, {
-        hasTestCase: !!tc,
-        platform: tc?.platform,
-        title: tc?.title,
-      });
-
       if (!tc) return null;
       return { seq: r.sequence_order ?? 0, tc };
     })
     .filter(Boolean);
 
-  console.log("🎯 All cases extracted:", {
-    count: allCases.length,
-    platforms: [...new Set(allCases.map((c: any) => c.tc.platform))],
-  });
-
   // Filter by platform
   const platformCases = allCases
     .filter((item: any) => {
       const matches = item.tc.platform === platform;
-      console.log(
-        `  ${item.tc.title}: platform=${item.tc.platform}, matches=${matches}`,
-      );
+
       return matches;
     })
     .sort((a: any, b: any) => (a.seq ?? 0) - (b.seq ?? 0))
     .map((x: any) => x.tc);
-
-  console.log("✅ Platform-filtered cases:", {
-    requestedPlatform: platform,
-    filteredCount: platformCases.length,
-  });
 
   if (platformCases.length === 0) {
     console.error("❌ No test cases found after filtering:", {
@@ -302,13 +257,6 @@ async function exportCrossPlatformSuite(
         `Available platforms: ${[...new Set(allCases.map((c: any) => c.tc.platform))].join(", ")}`,
     );
   }
-
-  // DEBUG
-  console.log("📤 About to export:", {
-    format,
-    testCaseCount: platformCases.length,
-    firstCase: platformCases[0],
-  });
 
   const suiteName = safeSlug(suite.name || `suite-${suiteId.slice(0, 8)}`);
 
@@ -333,7 +281,6 @@ function exportApiCases(
   suiteName: string,
   format: ExportFormat,
 ) {
-  console.log(`📤 Exporting ${testCases.length} API test cases as ${format}`);
   switch (format) {
     case "postman":
       return exportToPostman(testCases, suiteName);
@@ -353,7 +300,6 @@ function exportWebCases(
   suiteName: string,
   format: ExportFormat,
 ) {
-  console.log(`📤 Exporting ${testCases.length} web test cases as ${format}`);
   switch (format) {
     case "selenium":
       return exportToSelenium(testCases, suiteName);
@@ -371,9 +317,6 @@ function exportMobileCases(
   suiteName: string,
   format: ExportFormat,
 ) {
-  console.log(
-    `📤 Exporting ${testCases.length} mobile test cases as ${format}`,
-  );
   switch (format) {
     case "appium":
       return exportToAppium(testCases, suiteName);
@@ -393,9 +336,6 @@ function exportAccessibilityCases(
   suiteName: string,
   format: ExportFormat,
 ) {
-  console.log(
-    `📤 Exporting ${testCases.length} accessibility test cases as ${format}`,
-  );
   switch (format) {
     case "axe":
       return exportToAxe(testCases, suiteName);
@@ -413,9 +353,6 @@ function exportPerformanceCases(
   suiteName: string,
   format: ExportFormat,
 ) {
-  console.log(
-    `📤 Exporting ${testCases.length} performance test cases as ${format}`,
-  );
   switch (format) {
     case "jmeter":
       return exportToJMeter(testCases, suiteName);

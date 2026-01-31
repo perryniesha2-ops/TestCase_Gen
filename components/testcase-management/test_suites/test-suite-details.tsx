@@ -70,10 +70,6 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
 
         setSuiteKind(data.kind || "regular");
         setPlatforms(data.platforms || []);
-        console.log("✅ Suite metadata loaded:", {
-          kind: data.kind,
-          platforms: data.platforms,
-        });
       } else {
         console.error(
           "❌ Metadata fetch failed:",
@@ -118,8 +114,6 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
         apiCasesMissingMetadata: Number(data.apiCasesMissingMetadata ?? 0),
         suiteKind: data.suiteKind,
       });
-
-      console.log("✅ Export summary loaded:", data);
     } catch (e) {
       setExportCountsError(e instanceof Error ? e.message : "Unknown error");
     } finally {

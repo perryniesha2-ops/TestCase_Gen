@@ -39,18 +39,7 @@ export function UnifiedExportButton({
   const [exporting, setExporting] = useState(false);
   const [open, setOpen] = useState(false);
 
-  // Debug: Log props on mount and when they change
-  useEffect(() => {
-    console.log("🔍 UnifiedExportButton props:", {
-      suiteId,
-      suiteKind,
-      platforms,
-      regularFormatsCount: REGULAR_SUITE_FORMATS?.length || 0,
-      platformOptionsKeys: Object.keys(PLATFORM_EXPORT_OPTIONS || {}),
-    });
-  }, [suiteId, suiteKind, platforms]);
-
-  // components/test-suites/UnifiedExportButton.tsx
+  useEffect(() => {}, [suiteId, suiteKind, platforms]);
 
   const handleExport = async (
     format: ExportFormat,
@@ -61,17 +50,9 @@ export function UnifiedExportButton({
       const params = new URLSearchParams({ format });
       if (platform) params.set("platform", platform);
 
-      console.log("🚀 Starting export:", { format, platform, suiteId });
-
       const response = await fetch(
         `/api/suites/${suiteId}/export?${params.toString()}`,
       );
-
-      console.log("📡 Export response:", {
-        status: response.status,
-        ok: response.ok,
-        statusText: response.statusText,
-      });
 
       if (!response.ok) {
         // Get the error details
@@ -97,10 +78,6 @@ export function UnifiedExportButton({
 
       // Download file
       const blob = await response.blob();
-      console.log("📦 Received blob:", {
-        size: blob.size,
-        type: blob.type,
-      });
 
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
