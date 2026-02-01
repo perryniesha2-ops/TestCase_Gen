@@ -32,6 +32,8 @@ import {
   Users,
   Mail,
   RefreshCw,
+  AlertTriangle,
+  Calendar,
 } from "lucide-react";
 import {
   Accordion,
@@ -39,9 +41,10 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { PricingContactSheet } from "../billing/pricingcontact";
-
-// ------------------------- Types -------------------------
+import { UpgradePrompt } from "@/components/billing/upgradePrompt";
+import { CancelSubscriptionDialog } from "@/components/billing/cancelsubscriptiondialog";
 
 type Tier = "free" | "pro" | "team" | "enterprise";
 
@@ -228,6 +231,168 @@ function usagePct(u?: UserProfile["usage"]): number {
   );
 }
 
+function SubscriptionManagementSection({
+  user,
+  onUpdate,
+}: {
+  user: UserProfile;
+  onUpdate: () => void;
+}) {
+  const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false);
+  const [reactivating, setReactivating] = React.useState(false);
+  const router = useRouter();
+
+  const isCancelledButActive =
+    (user as any).cancel_at_period_end && user.subscription_status === "active";
+
+  const currentPeriodEnd = (user as any).current_period_end;
+  const trialEndsAt = (user as any).trial_ends_at;
+
+  const isOnTrial = user.subscription_status === "trial";
+  const dateToShow = isOnTrial && trialEndsAt ? trialEndsAt : currentPeriodEnd;
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  const handleReactivate = async () => {
+    setReactivating(true);
+    try {
+      const response = await fetch("/api/billing/reactivate", {
+        method: "POST",
+      });
+
+      if (!response.ok) throw new Error("Failed to reactivate");
+
+      document.cookie = "user_tier=; Max-Age=0; path=/";
+      document.cookie = "tier_cache_time=; Max-Age=0; path=/";
+
+      toast.success("Subscription reactivated!");
+      onUpdate();
+    } catch (error) {
+      toast.error("Failed to reactivate subscription");
+    } finally {
+      setReactivating(false);
+    }
+  };
+
+  return (
+    <>
+      {/* Cancellation Alert - Compact */}
+      {isCancelledButActive && (
+        <Alert className="mb-6 border-orange-200 bg-orange-50">
+          <AlertTriangle className="h-4 w-4 text-orange-600" />
+          <AlertDescription>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="font-medium text-orange-900">
+                  Subscription ends {dateToShow && formatDate(dateToShow)}
+                </p>
+                <p className="text-sm text-orange-700 mt-0.5">
+                  You'll keep Pro access until then, after which you'll move to
+                  Free.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReactivate}
+                disabled={reactivating}
+                className="shrink-0"
+              >
+                {reactivating ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Reactivate
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Subscription Card - Super Compact */}
+      <Card className="mb-10">
+        <CardContent className="py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            {/* Left: Plan Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                <h3 className="text-base font-semibold">
+                  {user.subscription_tier.toUpperCase()} Plan
+                </h3>
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "text-xs",
+                    user.subscription_status === "trial" &&
+                      "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100",
+                    user.subscription_status === "active" &&
+                      "bg-green-50 text-green-700 border-green-200 hover:bg-green-100",
+                  )}
+                >
+                  {user.subscription_status === "trial" ? (
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" />
+                      Free Trial
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <Check className="h-3 w-3" />
+                      Active
+                    </span>
+                  )}
+                </Badge>
+              </div>
+
+              {dateToShow && (
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Calendar className="h-3.5 w-3.5" />
+                  <span>
+                    {isCancelledButActive
+                      ? "Access until"
+                      : isOnTrial
+                        ? "Trial ends"
+                        : "Renews"}{" "}
+                    <span className="font-medium text-foreground">
+                      {formatDate(dateToShow)}
+                    </span>
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Cancel Button */}
+            {!isCancelledButActive && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCancelDialogOpen(true)}
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
+              >
+                Cancel subscription
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Cancel Dialog */}
+      <CancelSubscriptionDialog
+        open={cancelDialogOpen}
+        onOpenChange={setCancelDialogOpen}
+        currentPeriodEnd={currentPeriodEnd}
+        planName={user.subscription_tier}
+      />
+    </>
+  );
+}
+
 // ------------------------- Page -------------------------
 
 export default function BillingPage() {
@@ -328,12 +493,17 @@ export default function BillingPage() {
     }
   }, [fetchUserData, authUser]);
 
-  // Check for successful checkout and refetch data
+  // ⭐ NEW: Check for successful checkout and handle redirect back to feature
   React.useEffect(() => {
     const success = searchParams.get("success");
     const sessionId = searchParams.get("session_id");
+    const redirect = searchParams.get("redirect"); // ⭐ Get redirect param
 
     if (success === "true" && sessionId) {
+      // Clear tier cache so middleware fetches fresh subscription status
+      document.cookie = "user_tier=; Max-Age=0; path=/";
+      document.cookie = "tier_cache_time=; Max-Age=0; path=/";
+
       // Show success message
       toast.success("🎉 Subscription activated! Updating your account...");
 
@@ -350,8 +520,15 @@ export default function BillingPage() {
           );
         }
 
-        // Clean up URL
-        router.replace("/billing", { scroll: false });
+        // ⭐ NEW: Redirect back to the feature they wanted after upgrade
+        if (redirect) {
+          setTimeout(() => {
+            router.push(redirect);
+          }, 1000);
+        } else {
+          // Clean up URL if no redirect
+          router.replace("/billing", { scroll: false });
+        }
       }, 2000); // 2 second delay
 
       return () => clearTimeout(refetchTimer);
@@ -425,7 +602,8 @@ export default function BillingPage() {
       />
 
       <div className="container mx-auto max-w-6xl px-4 py-10">
-        <PromotionalBanner />
+        {/* ⭐ NEW: Show upgrade prompt when redirected from Pro-only routes */}
+        <UpgradePrompt />
 
         {/* Header */}
         <div className="mb-10 text-center">
@@ -544,6 +722,12 @@ export default function BillingPage() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* Subscription Management*/}
+
+        {user && user.subscription_tier !== "free" && (
+          <SubscriptionManagementSection user={user} onUpdate={handleRefresh} />
         )}
 
         {/* Plans */}

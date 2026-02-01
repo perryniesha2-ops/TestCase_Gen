@@ -118,6 +118,11 @@ async function handleSubscriptionCreated(
     const mappedStatus = mapSubscriptionStatus(subscription.status);
 
     const subscriptionData = subscription as any;
+    console.log("📅 Raw Stripe data:", {
+      current_period_start: subscriptionData.current_period_start, // Should be a number
+      current_period_end: subscriptionData.current_period_end, // Should be a number
+      trial_end: subscriptionData.trial_end, // Should be a number
+    });
 
     // Update user profile
     const { error: profileError } = await supabaseAdmin
