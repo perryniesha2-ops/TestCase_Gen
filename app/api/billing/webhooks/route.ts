@@ -1,16 +1,18 @@
-// app/api/billing/webhooks/route.ts
+// app/api/billing/webhooks/route.ts - CORRECTED VERSION
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import Stripe from "stripe";
+import { createEmailService } from "@/lib/email-service";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2026-01-28.clover",
+  apiVersion: "2025-12-15.clover",
 });
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
 
-// IMPORTANT: Use service role for admin operations
+const emailService = createEmailService();
+
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -119,9 +121,9 @@ async function handleSubscriptionCreated(
 
     const subscriptionData = subscription as any;
     console.log("📅 Raw Stripe data:", {
-      current_period_start: subscriptionData.current_period_start, // Should be a number
-      current_period_end: subscriptionData.current_period_end, // Should be a number
-      trial_end: subscriptionData.trial_end, // Should be a number
+      current_period_start: subscriptionData.current_period_start,
+      current_period_end: subscriptionData.current_period_end,
+      trial_end: subscriptionData.trial_end,
     });
 
     // Update user profile
@@ -151,6 +153,42 @@ async function handleSubscriptionCreated(
     }
 
     console.log("✅ User profile updated");
+
+    // ✅ FIX 2: Wrap email sending in try-catch (non-critical, shouldn't break webhook)
+    if (mappedStatus === "trial" && emailService) {
+      try {
+        const { data: profile } = await supabaseAdmin
+          .from("user_profiles")
+          .select("email, full_name")
+          .eq("id", userId)
+          .single();
+
+        if (profile) {
+          const trialEndDate = subscriptionData.trial_end
+            ? new Date(subscriptionData.trial_end * 1000).toLocaleDateString(
+                "en-US",
+                {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                },
+              )
+            : "in 14 days";
+
+          await emailService.sendTrialStartedEmail({
+            to: profile.email,
+            userName: profile.full_name || undefined,
+            trialEndDate,
+            planName: planId.toUpperCase(),
+          });
+
+          console.log("✅ Trial started email sent to", profile.email);
+        }
+      } catch (emailError) {
+        console.error("⚠️ Failed to send trial started email:", emailError);
+        // Don't throw - email failure shouldn't break webhook
+      }
+    }
 
     // Create billing event
     await createBillingEvent({
@@ -186,7 +224,6 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     const planId = subscription.metadata?.plan_id || "pro";
     const mappedStatus = mapSubscriptionStatus(subscription.status);
 
-    // FIXED: Type-safe access
     const subscriptionData = subscription as any;
 
     const { error } = await supabaseAdmin
@@ -238,9 +275,16 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   }
 
   try {
-    // FIXED: Type-safe access
     const subscriptionData = subscription as any;
 
+    // ❌ FIX 3: Get user info BEFORE updating to free tier (for email)
+    const { data: userProfile } = await supabaseAdmin
+      .from("user_profiles")
+      .select("email, full_name, subscription_tier")
+      .eq("id", userId)
+      .single();
+
+    // Update to free tier
     const { error } = await supabaseAdmin
       .from("user_profiles")
       .update({
@@ -255,6 +299,25 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     if (error) {
       console.error("❌ Error canceling subscription:", error);
       throw error;
+    }
+
+    // ✅ Send subscription ended email
+    if (userProfile && emailService) {
+      try {
+        await emailService.sendSubscriptionEndedEmail({
+          to: userProfile.email,
+          userName: userProfile.full_name || undefined,
+          planName: userProfile.subscription_tier.toUpperCase(),
+        });
+
+        console.log("✅ Subscription ended email sent to", userProfile.email);
+      } catch (emailError) {
+        console.error(
+          "⚠️ Failed to send subscription ended email:",
+          emailError,
+        );
+        // Don't throw - email failure shouldn't break webhook
+      }
     }
 
     // Create billing event
@@ -277,7 +340,6 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
 }
 
 async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
-  // FIXED: Type-safe subscription extraction
   let subscriptionId: string | null = null;
 
   if ("subscription" in invoice && invoice.subscription) {
@@ -306,20 +368,63 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
     }
 
     // Ensure subscription is active
-    const { error } = await supabaseAdmin
-      .from("user_profiles")
-      .update({
-        subscription_status: "active",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", userId);
 
-    if (error) {
-      console.error("❌ Error updating payment status:", error);
-    }
-
-    // FIXED: Type-safe invoice access
     const invoiceData = invoice as any;
+
+    // ✅ FIX 2: Wrap email sending in try-catch
+    if (emailService) {
+      try {
+        const { data: profile } = await supabaseAdmin
+          .from("user_profiles")
+          .select("email, full_name, subscription_status")
+          .eq("id", userId)
+          .single();
+
+        const previousStatus = profile?.subscription_status;
+
+        await supabaseAdmin
+          .from("user_profiles")
+          .update({
+            subscription_status: "active",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", userId);
+
+        const isTrialConversion =
+          previousStatus === "trial" &&
+          invoiceData.billing_reason === "subscription_cycle" &&
+          invoiceData.amount_paid > 0;
+
+        if (isTrialConversion && profile) {
+          const subscriptionData = subscription as any;
+          const nextBillingDate = subscriptionData.current_period_end
+            ? new Date(
+                subscriptionData.current_period_end * 1000,
+              ).toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })
+            : "next month";
+
+          const amount = invoiceData.amount_paid
+            ? `$${(invoiceData.amount_paid / 100).toFixed(2)}`
+            : "$15.00";
+
+          await emailService.sendWelcomeToProEmail({
+            to: profile.email,
+            userName: profile.full_name || undefined,
+            nextBillingDate,
+            amount,
+          });
+
+          console.log("✅ Welcome to Pro email sent to", profile.email);
+        }
+      } catch (emailError) {
+        console.error("⚠️ Failed to send welcome email:", emailError);
+        // Don't throw - email failure shouldn't break webhook
+      }
+    }
 
     // Create billing event
     await createBillingEvent({
@@ -345,7 +450,6 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
-  // FIXED: Type-safe subscription extraction
   let subscriptionId: string | null = null;
 
   if ("subscription" in invoice && invoice.subscription) {
@@ -386,7 +490,6 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
       console.error("❌ Error updating payment failure:", error);
     }
 
-    // FIXED: Type-safe invoice access
     const invoiceData = invoice as any;
 
     // Create billing event

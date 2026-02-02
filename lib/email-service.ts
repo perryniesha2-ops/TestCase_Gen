@@ -14,6 +14,40 @@ export interface ConfirmationEmailData {
   userName?: string;
 }
 
+export interface TrialStartedEmailData {
+  to: string;
+  userName?: string;
+  trialEndDate: string;
+  planName: string;
+}
+
+export interface TrialEndingSoonEmailData {
+  to: string;
+  userName?: string;
+  trialEndDate: string;
+  daysLeft: number;
+}
+
+export interface SubscriptionCancelledEmailData {
+  to: string;
+  userName?: string;
+  accessUntilDate: string;
+  planName: string;
+}
+
+export interface SubscriptionEndedEmailData {
+  to: string;
+  userName?: string;
+  planName: string;
+}
+
+export interface WelcomeToProEmailData {
+  to: string;
+  userName?: string;
+  nextBillingDate: string;
+  amount: string;
+}
+
 // Shared email styles matching your shadcn slate theme
 const EMAIL_STYLES = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -459,6 +493,514 @@ export class EmailService {
       return true;
     } catch (error) {
       console.error("Confirmation email send failed:", error);
+      return false;
+    }
+  }
+
+  async sendTrialStartedEmail(data: TrialStartedEmailData): Promise<boolean> {
+    const userName = data.userName || "there";
+    const dashboardUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard`;
+
+    const emailHtml = `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Welcome to ${data.planName} - SynthQA</title>
+        <style>${EMAIL_STYLES}</style>
+      </head>
+      <body>
+        <div class="email-wrapper">
+          <div class="email-container">
+            <div class="email-header">
+              <div class="logo-container">
+                ${LOGO_SVG}
+                <div class="logo-text">SynthQA</div>
+              </div>
+              <div class="header-subtitle">AI-Powered Test Case Generator</div>
+            </div>
+            
+            <div class="email-content">
+              <div class="greeting">Welcome to ${data.planName}! 🎉</div>
+              
+              <p class="body-text">
+                Hi ${userName}, your 14-day ${data.planName} trial has started! 
+                You now have access to all premium features.
+              </p>
+              
+              <div class="info-box">
+                <div class="info-box-title">
+                  <span>✨</span>
+                  What's included in ${data.planName}
+                </div>
+                <div class="feature-list">
+                  <div class="feature-item">
+                    <span class="checkmark">✓</span>
+                    500 AI-generated test cases per month
+                  </div>
+                  <div class="feature-item">
+                    <span class="checkmark">✓</span>
+                    All AI models (GPT-4, Claude Opus)
+                  </div>
+                  <div class="feature-item">
+                    <span class="checkmark">✓</span>
+                    Cross-platform test generation
+                  </div>
+                  <div class="feature-item">
+                    <span class="checkmark">✓</span>
+                    Export to multiple formats
+                  </div>
+                  <div class="feature-item">
+                    <span class="checkmark">✓</span>
+                    Priority email support
+                  </div>
+                </div>
+              </div>
+              
+              <div class="button-container">
+                <a href="${dashboardUrl}" class="button">Start Testing</a>
+              </div>
+              
+              <div class="warning-box">
+                <div class="warning-box-title">📅 Your Trial Details</div>
+                <div class="warning-box-text">
+                  Your trial ends on <strong>${data.trialEndDate}</strong>. After that, 
+                  you'll be charged $15/month. You can cancel anytime before then at no charge.
+                </div>
+              </div>
+              
+              <div class="divider"></div>
+              
+              <p class="body-text">
+                <strong>Need help getting started?</strong> Check out our 
+                <a href="${process.env.NEXT_PUBLIC_SITE_URL}/docs" style="color: #14b8a6; text-decoration: none;">documentation</a> 
+                or reply to this email.
+              </p>
+            </div>
+            
+            <div class="email-footer">
+              <p class="footer-brand">SynthQA</p>
+              <p class="footer-text">AI-Powered Test Case Generator</p>
+              <p class="footer-text">
+                © ${new Date().getFullYear()} SynthQA. All rights reserved.
+              </p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+    try {
+      const resend = this.getResend();
+      const { error } = await resend.emails.send({
+        from: process.env.RESEND_FROM || "SynthQA <notifications@synthqa.com>",
+        to: data.to,
+        subject: `Welcome to ${data.planName}! Your trial has started 🎉`,
+        html: emailHtml,
+      });
+
+      if (error) {
+        console.error("Trial started email error:", error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error("Trial started email send failed:", error);
+      return false;
+    }
+  }
+
+  async sendTrialEndingSoonEmail(
+    data: TrialEndingSoonEmailData,
+  ): Promise<boolean> {
+    const userName = data.userName || "there";
+    const billingUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/billing`;
+
+    const emailHtml = `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Your trial ends in ${data.daysLeft} days - SynthQA</title>
+        <style>${EMAIL_STYLES}</style>
+      </head>
+      <body>
+        <div class="email-wrapper">
+          <div class="email-container">
+            <div class="email-header">
+              <div class="logo-container">
+                ${LOGO_SVG}
+                <div class="logo-text">SynthQA</div>
+              </div>
+              <div class="header-subtitle">AI-Powered Test Case Generator</div>
+            </div>
+            
+            <div class="email-content">
+              <div class="greeting">Your trial ends in ${data.daysLeft} days</div>
+              
+              <p class="body-text">
+                Hi ${userName}, just a friendly reminder that your Pro trial ends on 
+                <strong>${data.trialEndDate}</strong>.
+              </p>
+              
+              <p class="body-text">
+                After that, you'll be charged <strong>$15/month</strong> to keep your Pro features.
+              </p>
+              
+              <div class="button-container">
+                <a href="${billingUrl}" class="button">Continue with Pro</a>
+              </div>
+              
+              <div class="info-box">
+                <div class="info-box-title">
+                  <span>🤔</span>
+                  Not ready to commit?
+                </div>
+                <div class="info-box-text">
+                  No problem! You can cancel anytime before ${data.trialEndDate} and you won't be charged. 
+                  You'll be moved to our Free plan (20 test cases/month).
+                </div>
+              </div>
+              
+              <div class="divider"></div>
+              
+              <p class="body-text" style="text-align: center;">
+                <a href="${billingUrl}" style="color: #64748b; text-decoration: underline; font-size: 14px;">
+                  Cancel subscription
+                </a>
+              </p>
+              
+              <p class="body-text" style="margin-top: 32px;">
+                Questions? Just reply to this email and we'll help you out.
+              </p>
+            </div>
+            
+            <div class="email-footer">
+              <p class="footer-brand">SynthQA</p>
+              <p class="footer-text">
+                © ${new Date().getFullYear()} SynthQA. All rights reserved.
+              </p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+    try {
+      const resend = this.getResend();
+      const { error } = await resend.emails.send({
+        from: process.env.RESEND_FROM || "SynthQA <notifications@synthqa.com>",
+        to: data.to,
+        subject: `Your Pro trial ends in ${data.daysLeft} days`,
+        html: emailHtml,
+      });
+
+      if (error) {
+        console.error("Trial ending email error:", error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error("Trial ending email send failed:", error);
+      return false;
+    }
+  }
+
+  async sendWelcomeToProEmail(data: WelcomeToProEmailData): Promise<boolean> {
+    const userName = data.userName || "there";
+    const dashboardUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard`;
+
+    const emailHtml = `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Welcome to SynthQA Pro! - SynthQA</title>
+        <style>${EMAIL_STYLES}</style>
+      </head>
+      <body>
+        <div class="email-wrapper">
+          <div class="email-container">
+            <div class="email-header">
+              <div class="logo-container">
+                ${LOGO_SVG}
+                <div class="logo-text">SynthQA</div>
+              </div>
+              <div class="header-subtitle">AI-Powered Test Case Generator</div>
+            </div>
+            
+            <div class="email-content">
+              <div class="greeting">Welcome to SynthQA Pro! 🎉</div>
+              
+              <p class="body-text">
+                Hi ${userName}, your trial is over and you're now a Pro member!
+              </p>
+              
+              <div class="info-box">
+                <div class="info-box-title">
+                  <span>💳</span>
+                  Billing Details
+                </div>
+                <div class="info-box-text">
+                  You were charged <strong>${data.amount}</strong> for your first month.<br>
+                  Next billing date: <strong>${data.nextBillingDate}</strong>
+                </div>
+              </div>
+              
+              <div class="button-container">
+                <a href="${dashboardUrl}" class="button">Go to Dashboard</a>
+              </div>
+              
+              <p class="body-text">
+                You'll continue to have access to all Pro features. 
+                You can manage your subscription anytime from your billing page.
+              </p>
+              
+              <div class="divider"></div>
+              
+              <p class="body-text">
+                Thank you for choosing SynthQA Pro! We're excited to help you build better tests.
+              </p>
+            </div>
+            
+            <div class="email-footer">
+              <p class="footer-brand">SynthQA</p>
+              <p class="footer-text">
+                © ${new Date().getFullYear()} SynthQA. All rights reserved.
+              </p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+    try {
+      const resend = this.getResend();
+      const { error } = await resend.emails.send({
+        from: process.env.RESEND_FROM || "SynthQA <notifications@synthqa.com>",
+        to: data.to,
+        subject: "Welcome to SynthQA Pro! 🎉",
+        html: emailHtml,
+      });
+
+      if (error) {
+        console.error("Welcome to Pro email error:", error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error("Welcome to Pro email send failed:", error);
+      return false;
+    }
+  }
+
+  async sendSubscriptionCancelledEmail(
+    data: SubscriptionCancelledEmailData,
+  ): Promise<boolean> {
+    const userName = data.userName || "there";
+    const billingUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/billing`;
+
+    const emailHtml = `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Subscription Cancelled - SynthQA</title>
+        <style>${EMAIL_STYLES}</style>
+      </head>
+      <body>
+        <div class="email-wrapper">
+          <div class="email-container">
+            <div class="email-header">
+              <div class="logo-container">
+                ${LOGO_SVG}
+                <div class="logo-text">SynthQA</div>
+              </div>
+              <div class="header-subtitle">AI-Powered Test Case Generator</div>
+            </div>
+            
+            <div class="email-content">
+              <div class="greeting">Subscription Cancelled</div>
+              
+              <p class="body-text">
+                Hi ${userName}, your ${data.planName} subscription has been cancelled.
+              </p>
+              
+              <div class="warning-box">
+                <div class="warning-box-title">📅 What happens next</div>
+                <div class="warning-box-text">
+                  You'll keep full ${data.planName} access until <strong>${data.accessUntilDate}</strong>. 
+                  After that, you'll be moved to the Free plan (20 test cases/month).
+                </div>
+              </div>
+              
+              <p class="body-text">
+                Changed your mind? You can reactivate your subscription anytime:
+              </p>
+              
+              <div class="button-container">
+                <a href="${billingUrl}" class="button">Reactivate Subscription</a>
+              </div>
+              
+              <div class="divider"></div>
+              
+              <p class="body-text">
+                We'd love to hear why you cancelled (optional). Your feedback helps us improve:
+              </p>
+              
+              <p class="body-text" style="text-align: center;">
+                <a href="${billingUrl}?feedback=true" style="color: #14b8a6; text-decoration: underline;">
+                  Give Feedback
+                </a>
+              </p>
+              
+              <p class="body-text" style="margin-top: 32px;">
+                Thanks for trying SynthQA Pro. We hope to see you again soon!
+              </p>
+            </div>
+            
+            <div class="email-footer">
+              <p class="footer-brand">SynthQA</p>
+              <p class="footer-text">
+                © ${new Date().getFullYear()} SynthQA. All rights reserved.
+              </p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+    try {
+      const resend = this.getResend();
+      const { error } = await resend.emails.send({
+        from: process.env.RESEND_FROM || "SynthQA <notifications@synthqa.com>",
+        to: data.to,
+        subject: "Subscription Cancelled - SynthQA",
+        html: emailHtml,
+      });
+
+      if (error) {
+        console.error("Subscription cancelled email error:", error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error("Subscription cancelled email send failed:", error);
+      return false;
+    }
+  }
+
+  // 5. Subscription Ended (Period Expired)
+  async sendSubscriptionEndedEmail(
+    data: SubscriptionEndedEmailData,
+  ): Promise<boolean> {
+    const userName = data.userName || "there";
+    const billingUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/billing`;
+
+    const emailHtml = `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Your subscription has ended - SynthQA</title>
+        <style>${EMAIL_STYLES}</style>
+      </head>
+      <body>
+        <div class="email-wrapper">
+          <div class="email-container">
+            <div class="email-header">
+              <div class="logo-container">
+                ${LOGO_SVG}
+                <div class="logo-text">SynthQA</div>
+              </div>
+              <div class="header-subtitle">AI-Powered Test Case Generator</div>
+            </div>
+            
+            <div class="email-content">
+              <div class="greeting">Your subscription has ended</div>
+              
+              <p class="body-text">
+                Hi ${userName}, your ${data.planName} subscription has ended. 
+                You're now on our Free plan.
+              </p>
+              
+              <div class="info-box">
+                <div class="info-box-title">
+                  <span>📊</span>
+                  What's included in Free
+                </div>
+                <div class="feature-list">
+                  <div class="feature-item">
+                    <span class="checkmark">✓</span>
+                    20 AI-generated test cases per month
+                  </div>
+                  <div class="feature-item">
+                    <span class="checkmark">✓</span>
+                    Unlimited manual test cases
+                  </div>
+                  <div class="feature-item">
+                    <span class="checkmark">✓</span>
+                    Basic test execution tracking
+                  </div>
+                  <div class="feature-item">
+                    <span class="checkmark">✓</span>
+                    Export to CSV
+                  </div>
+                </div>
+              </div>
+              
+              <p class="body-text">
+                Miss ${data.planName} features? You can resubscribe anytime:
+              </p>
+              
+              <div class="button-container">
+                <a href="${billingUrl}" class="button">Upgrade to ${data.planName}</a>
+              </div>
+              
+              <div class="divider"></div>
+              
+              <p class="body-text">
+                Thanks for using SynthQA! We hope to see you back on ${data.planName} soon.
+              </p>
+            </div>
+            
+            <div class="email-footer">
+              <p class="footer-brand">SynthQA</p>
+              <p class="footer-text">
+                © ${new Date().getFullYear()} SynthQA. All rights reserved.
+              </p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+    try {
+      const resend = this.getResend();
+      const { error } = await resend.emails.send({
+        from: process.env.RESEND_FROM || "SynthQA <notifications@synthqa.com>",
+        to: data.to,
+        subject: "Your subscription has ended - SynthQA",
+        html: emailHtml,
+      });
+
+      if (error) {
+        console.error("Subscription ended email error:", error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error("Subscription ended email send failed:", error);
       return false;
     }
   }

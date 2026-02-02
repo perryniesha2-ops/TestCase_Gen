@@ -1,36 +1,109 @@
 // app/api/billing/cancel/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createEmailService } from "@/lib/email-service";
 import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2026-01-28.clover",
+  apiVersion: "2025-11-17.clover",
 });
 
+// Helper: Format Unix timestamp to readable date
+function formatDate(unixTimestamp: number | null): string {
+  if (!unixTimestamp) return "the end of your billing cycle";
+
+  return new Date(unixTimestamp * 1000).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+// Helper: Log billing event
+async function logBillingEvent(
+  supabase: any,
+  data: {
+    userId: string;
+    eventType: string;
+    subscriptionId: string;
+    metadata?: any;
+  },
+) {
+  try {
+    await supabase.from("billing_events").insert({
+      user_id: data.userId,
+      event_type: data.eventType,
+      subscription_id: data.subscriptionId,
+      metadata: data.metadata || {},
+      created_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("⚠️ Failed to log billing event:", error);
+    // Don't throw - this is non-critical
+  }
+}
+
+// Helper: Send cancellation email
+async function sendCancellationEmail(
+  email: string,
+  userName: string | null,
+  planName: string,
+  accessUntilDate: string,
+) {
+  try {
+    const emailService = createEmailService();
+    if (!emailService) {
+      console.warn(
+        "⚠️ Email service not configured - skipping cancellation email",
+      );
+      return;
+    }
+
+    await emailService.sendSubscriptionCancelledEmail({
+      to: email,
+      userName: userName || undefined,
+      accessUntilDate,
+      planName: planName.toUpperCase(),
+    });
+
+    console.log("✅ Cancellation email sent to:", email);
+  } catch (error) {
+    console.error("⚠️ Failed to send cancellation email:", error);
+    // Don't throw - email failure shouldn't block cancellation
+  }
+}
+
 export async function POST(request: NextRequest) {
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🚫 Cancel subscription request");
 
   try {
     const supabase = await createClient();
 
-    // Get authenticated user
+    // 1. Authenticate user
     const {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      console.log("❌ Unauthorized - no user found");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user profile with subscription info
+    console.log("👤 User:", user.id);
+
+    // 2. Get user profile with subscription info
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
-      .select("subscription_id, stripe_customer_id, subscription_tier")
+      .select(
+        "subscription_id, stripe_customer_id, subscription_tier, email, full_name",
+      )
       .eq("id", user.id)
       .single();
 
     if (profileError || !profile) {
+      console.error("❌ Profile not found:", profileError);
       return NextResponse.json(
         { error: "User profile not found" },
         { status: 404 },
@@ -38,17 +111,21 @@ export async function POST(request: NextRequest) {
     }
 
     if (!profile.subscription_id) {
+      console.log("⚠️ No active subscription");
       return NextResponse.json(
         { error: "No active subscription found" },
         { status: 400 },
       );
     }
 
-    // Get feedback from request (optional)
+    console.log("📦 Subscription:", profile.subscription_id);
+    console.log("💳 Plan:", profile.subscription_tier);
+
+    // 3. Get optional feedback from request
     const body = await request.json().catch(() => ({}));
     const { reasons = [], feedback = null } = body;
 
-    // Cancel subscription at period end (user keeps access until then)
+    // 4. Cancel subscription in Stripe (at period end)
     const subscription = await stripe.subscriptions.update(
       profile.subscription_id,
       {
@@ -61,18 +138,16 @@ export async function POST(request: NextRequest) {
       },
     );
 
-    console.log(
-      "✅ Subscription set to cancel at period end:",
-      subscription.id,
-    );
+    console.log("✅ Stripe subscription updated - will cancel at period end");
 
-    // Extract period end safely (it's a Unix timestamp) - use type assertion to fix TS error
-    const subscriptionData = subscription as any;
-    const currentPeriodEnd = subscriptionData.current_period_end
-      ? new Date(subscriptionData.current_period_end * 1000).toISOString()
-      : null;
+    // 5. Extract period end date (type-safe)
+    const sub = subscription as any;
+    const periodEndTimestamp = sub.current_period_end;
+    const accessUntilDate = formatDate(periodEndTimestamp);
 
-    // Update user profile - mark as cancelled but keep subscription active until period end
+    console.log("📅 Access until:", accessUntilDate);
+
+    // 6. Update database
     const { error: updateError } = await supabase
       .from("user_profiles")
       .update({
@@ -82,37 +157,51 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id);
 
     if (updateError) {
-      console.error("❌ Error updating profile:", updateError);
-      // Don't fail the request - subscription is already cancelled in Stripe
+      console.error("⚠️ Database update warning:", updateError);
+      // Don't fail - Stripe is the source of truth
+    } else {
+      console.log("✅ Database updated");
     }
 
-    // Log cancellation event (optional - for analytics)
-    try {
-      await supabase.from("billing_events").insert({
-        user_id: user.id,
-        event_type: "subscription_cancelled",
-        subscription_id: profile.subscription_id,
-        metadata: {
-          cancel_at_period_end: true,
-          current_period_end: currentPeriodEnd,
-          reasons,
-          feedback,
-        },
-        created_at: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.error("Failed to log cancellation event:", e);
-      // Don't fail the request
-    }
+    // 7. Log cancellation event
+    await logBillingEvent(supabase, {
+      userId: user.id,
+      eventType: "subscription_cancelled",
+      subscriptionId: profile.subscription_id,
+      metadata: {
+        cancel_at_period_end: true,
+        current_period_end: periodEndTimestamp
+          ? new Date(periodEndTimestamp * 1000).toISOString()
+          : null,
+        reasons,
+        feedback,
+        plan: profile.subscription_tier,
+      },
+    });
 
+    // 8. Send cancellation email
+    await sendCancellationEmail(
+      profile.email,
+      profile.full_name,
+      profile.subscription_tier,
+      accessUntilDate,
+    );
+
+    console.log("🎉 Cancellation completed successfully");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+    // 9. Return success response
     return NextResponse.json({
       success: true,
       message: "Subscription cancelled successfully",
       cancel_at_period_end: true,
-      current_period_end: subscriptionData.current_period_end,
+      current_period_end: periodEndTimestamp,
+      access_until: accessUntilDate,
     });
   } catch (error: any) {
     console.error("❌ Cancellation error:", error);
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
     return NextResponse.json(
       {
         error: "Failed to cancel subscription",
