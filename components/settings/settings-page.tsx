@@ -359,7 +359,7 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [router, supabase, setNextTheme]);
+  }, [router, supabase]);
 
   useEffect(() => {
     void fetchUserProfile();
