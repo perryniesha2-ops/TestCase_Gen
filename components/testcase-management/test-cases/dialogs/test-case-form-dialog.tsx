@@ -193,7 +193,7 @@ export function TestCaseFormDialog({
   useEffect(() => {
     if (!open) return;
 
-    if (mode === "edit" && testCase && projects.length > 0) {
+    if (mode === "edit" && testCase) {
       setIsLoadingEditData(true);
 
       if (isRegularTestCase(testCase)) {
