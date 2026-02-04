@@ -3,8 +3,13 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { toast } from "sonner";
 import { useTheme as useNextTheme } from "next-themes";
+import {
+  toastSuccess,
+  toastError,
+  toastInfo,
+  toastWarning,
+} from "@/lib/utils/toast-utils";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +62,7 @@ import {
   CanonicalTestType,
   TestTypeMultiselect,
 } from "../generator/testtype-multiselect";
+import { Toaster } from "sonner";
 
 // ============================================================================
 // TYPES
@@ -280,7 +286,7 @@ export default function SettingsPage() {
 
       if (error) {
         console.error("Error loading profile:", error);
-        toast.error("Failed to load user profile");
+        toastError("Failed to load user profile");
         return;
       }
 
@@ -309,7 +315,7 @@ export default function SettingsPage() {
 
         if (upsertError) {
           console.error("Error creating user profile:", upsertError);
-          toast.error("Failed to initialize user profile");
+          toastError("Failed to initialize user profile");
           return;
         }
 
@@ -355,7 +361,7 @@ export default function SettingsPage() {
       setNextTheme(prefs.theme);
     } catch (err) {
       console.error("Error fetching user profile:", err);
-      toast.error("Failed to load user profile");
+      toastError("Failed to load user profile");
     } finally {
       setLoading(false);
     }
@@ -375,11 +381,11 @@ export default function SettingsPage() {
       if (!file || !user) return;
 
       if (file.size > 5 * 1024 * 1024) {
-        toast.error("File size must be less than 5MB");
+        toastError("File size must be less than 5MB");
         return;
       }
       if (!file.type.startsWith("image/")) {
-        toast.error("File must be an image");
+        toastError("File must be an image");
         return;
       }
 
@@ -408,10 +414,10 @@ export default function SettingsPage() {
         setUser((prev) =>
           prev ? { ...prev, avatar_url: data.publicUrl } : prev,
         );
-        toast.success("Avatar updated successfully!");
+        toastSuccess("Avatar updated successfully!");
       } catch (err) {
         console.error("Error uploading avatar:", err);
-        toast.error("Failed to upload avatar");
+        toastError("Failed to upload avatar");
       } finally {
         setUploadingAvatar(false);
       }
@@ -428,10 +434,10 @@ export default function SettingsPage() {
       if (error) throw error;
 
       setUser((prev) => (prev ? { ...prev, avatar_url: undefined } : prev));
-      toast.success("Avatar removed successfully!");
+      toastSuccess("Avatar removed successfully!");
     } catch (err) {
       console.error("Error removing avatar:", err);
-      toast.error("Failed to remove avatar");
+      toastError("Failed to remove avatar");
     }
   }, [user, fullName, supabase]);
 
@@ -479,12 +485,11 @@ export default function SettingsPage() {
 
       setNextTheme(themePref);
 
-      toast.success("Profile updated successfully!", {
+      toastSuccess("Profile updated successfully!", {
         description: "Your defaults will be used in the test case generator",
       });
     } catch (err) {
-      console.error("Error updating profile:", err);
-      toast.error("Failed to update profile");
+      toastError("Failed to update profile");
     } finally {
       setSaving(false);
     }
@@ -509,7 +514,7 @@ export default function SettingsPage() {
       const { data: auth } = await supabase.auth.getUser();
       const authUser = auth.user;
       if (!authUser) {
-        toast.error("You must be signed in to generate an API key.");
+        toastError("You must be signed in to generate an API key.");
         return;
       }
 
@@ -528,12 +533,11 @@ export default function SettingsPage() {
       setApiKeyPlain(apiKey);
       setApiKeyVisible(true);
 
-      toast.success("API key generated!", {
+      toastSuccess("API key generated!", {
         description: "Copy this key now — you won't see it again.",
       });
     } catch (err) {
-      console.error("generateApiKey error:", err);
-      toast.error("Failed to generate API key");
+      toastError("Failed to generate API key");
     } finally {
       setApiKeyLoading(false);
     }
@@ -543,23 +547,23 @@ export default function SettingsPage() {
     if (!apiKeyPlain) return;
     try {
       await navigator.clipboard.writeText(apiKeyPlain);
-      toast.success("Copied to clipboard");
+      toastSuccess("Copied to clipboard");
     } catch {
-      toast.error("Failed to copy");
+      toastError("Failed to copy");
     }
   }, [apiKeyPlain]);
 
   const handleChangePassword = useCallback(async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
-      toast.error("Please fill in all password fields");
+      toastError("Please fill in all password fields");
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast.error("New passwords do not match");
+      toastError("New passwords do not match");
       return;
     }
     if (newPassword.length < 6) {
-      toast.error("Password must be at least 6 characters");
+      toastError("Password must be at least 6 characters");
       return;
     }
 
@@ -573,10 +577,9 @@ export default function SettingsPage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      toast.success("Password updated successfully!");
+      toastSuccess("Password updated successfully!");
     } catch (err) {
-      console.error("Error updating password:", err);
-      toast.error("Failed to update password");
+      toastError("Failed to update password");
     } finally {
       setSaving(false);
     }
@@ -1197,9 +1200,9 @@ export default function SettingsPage() {
                             await navigator.clipboard.writeText(
                               `${window.location.origin}/api/automation/webhook/results`,
                             );
-                            toast.success("Webhook URL copied to clipboard");
+                            toastSuccess("Webhook URL copied to clipboard");
                           } catch {
-                            toast.error("Failed to copy");
+                            toastError("Failed to copy");
                           }
                         }}
                       >

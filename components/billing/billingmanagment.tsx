@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -41,6 +40,12 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  toastSuccess,
+  toastError,
+  toastInfo,
+  toastWarning,
+} from "@/lib/utils/toast-utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { PricingContactSheet } from "../billing/pricingcontact";
 import { UpgradePrompt } from "@/components/billing/upgradePrompt";
@@ -266,10 +271,10 @@ function SubscriptionManagementSection({
       document.cookie = "user_tier=; Max-Age=0; path=/";
       document.cookie = "tier_cache_time=; Max-Age=0; path=/";
 
-      toast.success("Subscription reactivated!");
+      toastSuccess("Subscription reactivated!");
       onUpdate();
     } catch (error) {
-      toast.error("Failed to reactivate subscription");
+      toastError("Failed to reactivate subscription");
     } finally {
       setReactivating(false);
     }
@@ -471,7 +476,7 @@ export default function BillingPage() {
         return realProfile;
       }
     } catch (e) {
-      toast.error("Failed to load billing information");
+      toastError("Failed to load billing information");
       return null;
     }
   }, [authUser, router, supabase]);
@@ -500,7 +505,7 @@ export default function BillingPage() {
       document.cookie = "tier_cache_time=; Max-Age=0; path=/";
 
       // Show success message
-      toast.success("🎉 Subscription activated! Updating your account...");
+      toastSuccess("🎉 Subscription activated! Updating your account...");
 
       // Refetch data after a short delay to allow webhook to process
       const refetchTimer = setTimeout(async () => {
@@ -510,7 +515,7 @@ export default function BillingPage() {
         setRefetching(false);
 
         if (userData) {
-          toast.success(
+          toastSuccess(
             `Welcome to ${userData.subscription_tier.toUpperCase()} plan!`,
           );
         }
@@ -536,7 +541,7 @@ export default function BillingPage() {
     const userData = await fetchUserData();
     setUser(userData);
     setRefetching(false);
-    toast.success("Data refreshed!");
+    toastSuccess("Data refreshed!");
   };
 
   async function handleSubscribe(planId: Tier) {
@@ -552,7 +557,7 @@ export default function BillingPage() {
       }
 
       if (planId === "free") {
-        toast.success("You're already on the free plan!");
+        toastSuccess("You're already on the free plan!");
         setBillingLoading(false);
         return;
       }
@@ -568,7 +573,7 @@ export default function BillingPage() {
       window.location.href = checkoutUrl as string;
     } catch (e) {
       console.error(e);
-      toast.error("Failed to start subscription. Please try again.");
+      toastError("Failed to start subscription. Please try again.");
     } finally {
       setBillingLoading(false);
     }

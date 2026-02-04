@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
@@ -20,17 +20,6 @@ import {
   Clock,
 } from "lucide-react";
 
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  Legend,
-} from "recharts";
-
 type ProjectRow = {
   id: string;
   user_id: string;
@@ -43,100 +32,94 @@ type ProjectRow = {
   updated_at: string | null;
 };
 
-type DashboardPayload = {
-  project: ProjectRow;
-  metrics: {
-    requirements_count: number;
-    test_cases_count: number;
-    test_suites_count: number;
-    templates_count: number;
-    total_executions: number;
-    passed_executions: number;
-    failed_executions: number;
-    blocked_executions: number;
-    skipped_executions: number;
-    pass_rate: number;
-  };
-  execution_timeseries: Array<{
-    date: string;
-    passed: number;
-    failed: number;
-    blocked: number;
-    skipped: number;
-    total: number;
-  }>;
-  top_problem_tests: Array<{
-    test_case_id: string;
-    test_title: string;
-    total_executions: number;
-    pass_rate: number;
-    avg_execution_time: number;
-    last_failure_date: string | null;
-    failure_frequency: number;
-    last_failure_reason: string | null;
-  }>;
-  suites_summary: Array<{
-    suite_id: string;
-    name: string;
-    suite_type: string;
-    status: string;
-    test_case_count: number;
-    total: number;
-    passed: number;
-    failed: number;
-    skipped: number;
-    blocked: number;
-  }>;
-  meta: {
-    days: number;
-    suite_id: string | null;
-    generated_at: string;
-    by_type?: any;
-  };
-};
+type ProjectDashboardRpc = {
+  project_id: string;
+  days: number;
 
-function fmtDateLabel(isoOrDate: string) {
-  // iso may come as "2026-01-22"
-  const d = new Date(isoOrDate);
-  if (Number.isNaN(d.getTime())) return isoOrDate;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
+  counts: {
+    templates: number;
+    requirements: number;
+    test_cases: number;
+    platform_test_cases: number;
+    test_cases_total: number;
+    suites: number;
+  };
+
+  executions: {
+    regular: {
+      total: number;
+      passed: number;
+      failed: number;
+      blocked: number;
+      skipped: number;
+      not_run: number;
+      in_progress: number;
+      pass_rate: number;
+      by_type: {
+        manual: {
+          total: number;
+          passed: number;
+          failed: number;
+          blocked: number;
+          skipped: number;
+        };
+        automated: {
+          total: number;
+          passed: number;
+          failed: number;
+          blocked: number;
+          skipped: number;
+        };
+      };
+    };
+    platform: {
+      total: number;
+      passed: number;
+      failed: number;
+      blocked: number;
+      skipped: number;
+      not_run: number;
+      pass_rate: number;
+    };
+  };
+
+  avg_duration_minutes: number;
+  last_execution_at: string | null;
+};
 
 export function ProjectPageClient({ projectId }: { projectId: string }) {
   const supabase = useMemo(() => createClient(), []);
   const { user, loading: authLoading } = useAuth();
 
   const [project, setProject] = useState<ProjectRow | null>(null);
+  const [dashboard, setDashboard] = useState<ProjectDashboardRpc | null>(null);
   const [loading, setLoading] = useState(true);
-  const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
 
-  useEffect(() => {
-    if (!user) return;
-    void loadProject();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, projectId]);
-
-  async function loadProject() {
+  const loadProject = useCallback(async () => {
     if (!user) return;
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc("project_dashboard", {
-        p_project_id: projectId,
-        p_days: 30,
-      });
+      const [{ data: dash, error: dashErr }, { data: proj, error: projErr }] =
+        await Promise.all([
+          supabase.rpc("project_dashboard", {
+            p_project_id: projectId,
+            p_days: 30,
+          }),
+          supabase
+            .from("projects")
+            .select(
+              "id,user_id,name,description,status,color,icon,created_at,updated_at",
+            )
+            .eq("id", projectId)
+            .single(),
+        ]);
 
-      if (error) {
-        toast.error(error.message || "Failed to load project dashboard");
-        setDashboard(null);
-        setProject(null);
-        return;
-      }
+      if (dashErr) throw dashErr;
+      if (projErr) throw projErr;
 
-      // data is JSON (your RPC returns json)
-      const payload = data as DashboardPayload | null;
-
-      if (!payload || !payload.project) {
+      const payload = dash as ProjectDashboardRpc | null;
+      if (!payload) {
         toast.error("Project dashboard returned no data.");
         setDashboard(null);
         setProject(null);
@@ -144,18 +127,41 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
       }
 
       setDashboard(payload);
-      setProject(payload.project);
-    } catch (e) {
+      setProject(proj as ProjectRow);
+    } catch (e: any) {
       console.error(e);
-      toast.error("Failed to load project dashboard");
+      toast.error(e?.message || "Failed to load project dashboard");
       setDashboard(null);
       setProject(null);
     } finally {
       setLoading(false);
     }
-  }
+  }, [projectId, supabase, user]);
 
-  const m = dashboard?.metrics;
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) return;
+    void loadProject();
+  }, [authLoading, loadProject, user]);
+
+  // ---- derived values (new RPC shape) ----
+  const c = dashboard?.counts;
+  const reg = dashboard?.executions?.regular;
+  const plat = dashboard?.executions?.platform;
+
+  const totalExecutions = (reg?.total ?? 0) + (plat?.total ?? 0);
+  const passedExecutions = (reg?.passed ?? 0) + (plat?.passed ?? 0);
+  const failedExecutions = (reg?.failed ?? 0) + (plat?.failed ?? 0);
+  const blockedExecutions = (reg?.blocked ?? 0) + (plat?.blocked ?? 0);
+  const skippedExecutions = (reg?.skipped ?? 0) + (plat?.skipped ?? 0);
+
+  // weighted combined pass rate
+  const combinedPassRate =
+    totalExecutions > 0
+      ? Math.round((100 * passedExecutions) / totalExecutions)
+      : 0;
+
+  const daysLabel = dashboard?.days ?? 30;
 
   return (
     <div className="flex w-full">
@@ -201,14 +207,17 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{project.status ?? "—"}</Badge>
-                    {dashboard?.meta?.days ? (
-                      <Badge variant="secondary">
-                        {dashboard.meta.days}d view
-                      </Badge>
-                    ) : null}
-                    {dashboard?.metrics ? (
-                      <Badge variant="secondary">
-                        {dashboard.metrics.pass_rate}% pass rate
+
+                    <Badge variant="secondary">{daysLabel}d view</Badge>
+
+                    <Badge variant="secondary">
+                      {combinedPassRate}% pass rate
+                    </Badge>
+
+                    {dashboard?.last_execution_at ? (
+                      <Badge variant="secondary" className="truncate">
+                        Last run:{" "}
+                        {new Date(dashboard.last_execution_at).toLocaleString()}
                       </Badge>
                     ) : null}
                   </div>
@@ -237,11 +246,21 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                       Test cases <ArrowRight className="h-4 w-4" />
                     </Link>
                   </Button>
+
+                  <Button asChild variant="outline" className="gap-2">
+                    <Link
+                      href={`/test-cases?project=${encodeURIComponent(
+                        projectId,
+                      )}&runStatus=failed`}
+                    >
+                      View failures <XCircle className="h-4 w-4" />
+                    </Link>
+                  </Button>
                 </div>
               </div>
 
-              {/* KPI Cards */}
-              {m ? (
+              {/* KPI Cards (now based on counts + combined executions) */}
+              {dashboard ? (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -252,10 +271,11 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">
-                        {m.total_executions}
+                        {totalExecutions}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {m.pass_rate}% pass rate
+                        {combinedPassRate}% pass rate · Avg{" "}
+                        {dashboard.avg_duration_minutes ?? 0}m
                       </p>
                     </CardContent>
                   </Card>
@@ -269,10 +289,10 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">
-                        {m.passed_executions}
+                        {passedExecutions}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Failed: {m.failed_executions}
+                        Failed: {failedExecutions}
                       </p>
                     </CardContent>
                   </Card>
@@ -286,12 +306,11 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">
-                        {(m.blocked_executions ?? 0) +
-                          (m.skipped_executions ?? 0)}
+                        {blockedExecutions + skippedExecutions}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Blocked: {m.blocked_executions} · Skipped:{" "}
-                        {m.skipped_executions}
+                        Blocked: {blockedExecutions} · Skipped:{" "}
+                        {skippedExecutions}
                       </p>
                     </CardContent>
                   </Card>
@@ -304,137 +323,58 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                       <Clock className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
-                        {m.test_suites_count}
-                      </div>
+                      <div className="text-2xl font-bold">{c?.suites ?? 0}</div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {m.test_cases_count} cases · {m.requirements_count} reqs
-                        · {m.templates_count} templates
+                        {c?.test_cases_total ?? 0} cases ·{" "}
+                        {c?.requirements ?? 0} reqs · {c?.templates ?? 0}{" "}
+                        templates
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {c?.test_cases ?? 0} regular ·{" "}
+                        {c?.platform_test_cases ?? 0} platform
                       </p>
                     </CardContent>
                   </Card>
                 </div>
               ) : null}
 
-              {/* Timeseries Chart */}
+              {/* IMPORTANT: These sections depended on fields your RPC no longer returns.
+                  Keep placeholders so the page remains functional without breaking. */}
+
               <Card>
                 <CardHeader>
                   <CardTitle>Execution trend</CardTitle>
                 </CardHeader>
-                <CardContent className="h-[320px]">
-                  {dashboard?.execution_timeseries?.length ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={dashboard.execution_timeseries}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis
-                          dataKey="date"
-                          tickFormatter={fmtDateLabel}
-                          minTickGap={16}
-                        />
-                        <YAxis allowDecimals={false} />
-                        <Tooltip
-                          labelFormatter={(v) => fmtDateLabel(String(v))}
-                        />
-                        <Legend />
-                        <Line type="monotone" dataKey="total" dot={false} />
-                        <Line type="monotone" dataKey="passed" dot={false} />
-                        <Line type="monotone" dataKey="failed" dot={false} />
-                        <Line type="monotone" dataKey="blocked" dot={false} />
-                        <Line type="monotone" dataKey="skipped" dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No execution data in the selected range.
-                    </p>
-                  )}
+                <CardContent className="text-sm text-muted-foreground">
+                  Execution trend timeseries is not included in the current{" "}
+                  <code className="text-xs">project_dashboard</code> payload.
+                  Add <code className="text-xs">execution_timeseries</code> to
+                  the RPC if you want to render the chart here.
                 </CardContent>
               </Card>
 
-              {/* Top failing tests */}
               <Card>
                 <CardHeader>
                   <CardTitle>Top problem tests</CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm">
-                  {dashboard?.top_problem_tests?.length ? (
-                    <div className="space-y-3">
-                      {dashboard.top_problem_tests.map((t) => (
-                        <div
-                          key={t.test_case_id}
-                          className="flex items-start justify-between gap-4 border rounded-lg p-3"
-                        >
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">
-                              {t.test_title}
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              Pass rate: {t.pass_rate}% · Runs:{" "}
-                              {t.total_executions} · Avg: {t.avg_execution_time}
-                              m
-                            </div>
-                            {t.last_failure_reason ? (
-                              <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                                Last failure: {t.last_failure_reason}
-                              </div>
-                            ) : null}
-                          </div>
-
-                          <div className="flex items-center gap-2 shrink-0">
-                            <Badge variant="outline">
-                              {t.failure_frequency}% fail
-                            </Badge>
-                            <Button asChild size="sm" variant="outline">
-                              <Link href={`/test-cases/${t.test_case_id}`}>
-                                Open
-                              </Link>
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground">
-                      No failures detected for this project in the selected
-                      range.
-                    </p>
-                  )}
+                <CardContent className="text-sm text-muted-foreground">
+                  Top problem tests are not included in the current{" "}
+                  <code className="text-xs">project_dashboard</code> payload.
+                  Add <code className="text-xs">top_problem_tests</code> to the
+                  RPC (and include platform cases if desired) to render this
+                  section.
                 </CardContent>
               </Card>
 
-              {/* Suites summary */}
               <Card>
                 <CardHeader>
                   <CardTitle>Suites</CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm">
-                  {dashboard?.suites_summary?.length ? (
-                    <div className="space-y-2">
-                      {dashboard.suites_summary.slice(0, 10).map((s) => (
-                        <div
-                          key={s.suite_id}
-                          className="flex items-center justify-between border rounded-lg p-3"
-                        >
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">{s.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {s.test_case_count} cases · {s.total} runs ·{" "}
-                              {s.passed} passed · {s.failed} failed
-                            </div>
-                          </div>
-                          <Button asChild size="sm" variant="outline">
-                            <Link href={`/test-suites/${s.suite_id}`}>
-                              Open
-                            </Link>
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground">
-                      No suites found for this project.
-                    </p>
-                  )}
+                <CardContent className="text-sm text-muted-foreground">
+                  Suite summary is not included in the current{" "}
+                  <code className="text-xs">project_dashboard</code> payload.
+                  Add <code className="text-xs">suites_summary</code> to the RPC
+                  to render it here.
                 </CardContent>
               </Card>
 
@@ -485,6 +425,7 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
             </>
           )}
         </main>
+        <div className="h-4" />
       </div>
     </div>
   );
