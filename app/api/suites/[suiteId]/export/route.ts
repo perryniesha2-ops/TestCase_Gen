@@ -190,7 +190,6 @@ async function exportCrossPlatformSuite(
     throw new Error(suiteErr?.message || "Suite not found");
   }
 
-  // ✅ Get test cases via suite_items
   const { data: rows, error: fetchError } = await supabase
     .from("suite_items")
     .select(

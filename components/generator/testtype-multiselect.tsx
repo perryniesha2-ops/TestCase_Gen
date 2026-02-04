@@ -151,15 +151,13 @@ function isCanonicalTestType(v: unknown): v is CanonicalTestType {
 }
 
 interface TestTypeMultiselectProps {
-  value: CanonicalTestType[]; // ✅ now strongly typed
+  value: CanonicalTestType[];
   onChange: (value: CanonicalTestType[]) => void;
   disabled?: boolean;
   placeholder?: string;
 
-  /** filter + recommended defaults based on platform */
   platform?: PlatformId | null;
 
-  /** when platform changes, auto-apply recommended if empty */
   autoApplyRecommendedOnPlatformChange?: boolean;
 }
 

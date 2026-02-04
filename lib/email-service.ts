@@ -574,7 +574,7 @@ export class EmailService {
               
               <p class="body-text">
                 <strong>Need help getting started?</strong> Check out our 
-                <a href="${process.env.NEXT_PUBLIC_SITE_URL}/docs" style="color: #14b8a6; text-decoration: none;">documentation</a> 
+                <a href="${process.env.NEXT_PUBLIC_SITE_URL}/docs/guides" style="color: #14b8a6; text-decoration: none;">documentation</a> 
                 or reply to this email.
               </p>
             </div>

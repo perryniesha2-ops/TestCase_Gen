@@ -152,9 +152,6 @@ async function handleSubscriptionCreated(
       throw profileError;
     }
 
-    console.log("✅ User profile updated");
-
-    // ✅ FIX 2: Wrap email sending in try-catch (non-critical, shouldn't break webhook)
     if (mappedStatus === "trial" && emailService) {
       try {
         const { data: profile } = await supabaseAdmin
@@ -181,13 +178,8 @@ async function handleSubscriptionCreated(
             trialEndDate,
             planName: planId.toUpperCase(),
           });
-
-          console.log("✅ Trial started email sent to", profile.email);
         }
-      } catch (emailError) {
-        console.error("⚠️ Failed to send trial started email:", emailError);
-        // Don't throw - email failure shouldn't break webhook
-      }
+      } catch (emailError) {}
     }
 
     // Create billing event
@@ -301,7 +293,6 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
       throw error;
     }
 
-    // ✅ Send subscription ended email
     if (userProfile && emailService) {
       try {
         await emailService.sendSubscriptionEndedEmail({
@@ -309,8 +300,6 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
           userName: userProfile.full_name || undefined,
           planName: userProfile.subscription_tier.toUpperCase(),
         });
-
-        console.log("✅ Subscription ended email sent to", userProfile.email);
       } catch (emailError) {
         console.error(
           "⚠️ Failed to send subscription ended email:",
@@ -371,7 +360,6 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
 
     const invoiceData = invoice as any;
 
-    // ✅ FIX 2: Wrap email sending in try-catch
     if (emailService) {
       try {
         const { data: profile } = await supabaseAdmin
@@ -417,13 +405,8 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
             nextBillingDate,
             amount,
           });
-
-          console.log("✅ Welcome to Pro email sent to", profile.email);
         }
-      } catch (emailError) {
-        console.error("⚠️ Failed to send welcome email:", emailError);
-        // Don't throw - email failure shouldn't break webhook
-      }
+      } catch (emailError) {}
     }
 
     // Create billing event

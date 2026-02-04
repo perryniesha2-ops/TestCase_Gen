@@ -65,8 +65,6 @@ async function sendCancellationEmail(
       accessUntilDate,
       planName: planName.toUpperCase(),
     });
-
-    console.log("✅ Cancellation email sent to:", email);
   } catch (error) {
     console.error("⚠️ Failed to send cancellation email:", error);
     // Don't throw - email failure shouldn't block cancellation
@@ -74,9 +72,6 @@ async function sendCancellationEmail(
 }
 
 export async function POST(request: NextRequest) {
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("🚫 Cancel subscription request");
-
   try {
     const supabase = await createClient();
 
@@ -138,8 +133,6 @@ export async function POST(request: NextRequest) {
       },
     );
 
-    console.log("✅ Stripe subscription updated - will cancel at period end");
-
     // 5. Extract period end date (type-safe)
     const sub = subscription as any;
     const periodEndTimestamp = sub.current_period_end;
@@ -187,9 +180,6 @@ export async function POST(request: NextRequest) {
       accessUntilDate,
     );
 
-    console.log("🎉 Cancellation completed successfully");
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
     // 9. Return success response
     return NextResponse.json({
       success: true,
@@ -199,9 +189,6 @@ export async function POST(request: NextRequest) {
       access_until: accessUntilDate,
     });
   } catch (error: any) {
-    console.error("❌ Cancellation error:", error);
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
     return NextResponse.json(
       {
         error: "Failed to cancel subscription",

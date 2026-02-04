@@ -450,7 +450,7 @@ export default function SettingsPage() {
         test_case_defaults: {
           model: defaultModel,
           count: defaultCount,
-          test_types: defaultTestTypes, // ✅ Now properly defined
+          test_types: defaultTestTypes,
         },
       };
 

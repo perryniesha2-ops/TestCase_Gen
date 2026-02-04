@@ -1,8 +1,8 @@
+// app/api/dashboard/metrics/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
-
 export const dynamic = "force-dynamic";
 
 type ExecutionStatus =
@@ -17,7 +17,7 @@ export async function GET() {
   try {
     const supabase = await createClient();
 
-    // Server-side auth (real verification)
+    // Server-side auth
     const {
       data: { user },
       error: authErr,
@@ -32,7 +32,7 @@ export async function GET() {
     // -------------------------
     const { data: testCases, error: tcErr } = await supabase
       .from("test_cases")
-      .select("id")
+      .select("id, execution_status")
       .eq("user_id", user.id)
       .neq("status", "archived");
 
@@ -71,7 +71,7 @@ export async function GET() {
       else if (s === "failed") counts.failed++;
       else if (s === "blocked") counts.blocked++;
       else if (s === "skipped") counts.skipped++;
-      else counts.not_run++; // includes not_run + in_progress for dashboard
+      else counts.not_run++;
     }
 
     const total = testCaseIds.length;
@@ -107,11 +107,14 @@ export async function GET() {
 
     const testedSet = new Set(linked.map((x) => x.requirement_id));
 
-    const by_priority = requirements.reduce((acc, r) => {
-      const key = String(r.priority ?? "medium").toLowerCase();
-      acc[key] = (acc[key] ?? 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    const by_priority = requirements.reduce(
+      (acc, r) => {
+        const key = String(r.priority ?? "medium").toLowerCase();
+        acc[key] = (acc[key] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
     const reqTotal = requirements.length;
     const reqTested = testedSet.size;
@@ -130,11 +133,11 @@ export async function GET() {
           created_at,
           test_case_id,
           test_cases ( title )
-        `
+        `,
       )
       .eq("executed_by", user.id)
       .order("created_at", { ascending: false })
-      .limit(5);
+      .limit(10);
 
     if (raErr) {
       return NextResponse.json({ error: raErr.message }, { status: 500 });
@@ -151,22 +154,279 @@ export async function GET() {
         status: exec.execution_status,
       })) ?? [];
 
-    // One response payload for the UI
+    // -------------------------
+    // 4) Health Score
+    // -------------------------
+    const health_score = calculateHealthScore({
+      passRate: pass_rate,
+      coverage: coverage_percentage,
+      failedCount: counts.failed,
+      totalTests: total,
+      notRunCount: counts.not_run,
+    });
+
+    // -------------------------
+    // 5) Execution Timeline (Last 7 days)
+    // -------------------------
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const { data: executionHistory, error: ehErr } = await supabase
+      .from("test_executions")
+      .select("created_at, execution_status")
+      .eq("executed_by", user.id)
+      .gte("created_at", sevenDaysAgo.toISOString())
+      .order("created_at", { ascending: true });
+
+    if (ehErr) {
+      console.error("Execution history error:", ehErr);
+    }
+
+    const execution_timeline = groupExecutionsByDay(executionHistory ?? []);
+
+    // -------------------------
+    // 6) Priority Failures
+    // -------------------------
+    const { data: priorityFailedTests, error: pfErr } = await supabase
+      .from("test_cases")
+      .select("id, title, priority, execution_status")
+      .eq("user_id", user.id)
+      .eq("execution_status", "failed")
+      .in("priority", ["critical", "high"])
+      .order("priority", { ascending: true })
+      .limit(5);
+
+    if (pfErr) {
+      console.error("Priority failures error:", pfErr);
+    }
+
+    const priority_failures =
+      (priorityFailedTests ?? []).map((test) => ({
+        id: test.id,
+        title: test.title,
+        priority: test.priority,
+        failed_count: 1, // You could enhance this with actual count from executions table
+      })) ?? [];
+
+    // -------------------------
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const { data: recentExecutions, error: reErr } = await supabase
+      .from("test_executions")
+      .select("test_case_id, execution_status, test_cases(title)")
+      .eq("executed_by", user.id)
+      .gte("created_at", thirtyDaysAgo.toISOString());
+
+    if (reErr) {
+      console.error("Flaky tests error:", reErr);
+    }
+
+    const transformedExecutions = (recentExecutions ?? []).map((exec: any) => ({
+      test_case_id: exec.test_case_id,
+      execution_status: exec.execution_status,
+      test_cases: Array.isArray(exec.test_cases)
+        ? (exec.test_cases[0] ?? null)
+        : exec.test_cases,
+    }));
+
+    const flaky_tests = calculateFlakyTests(transformedExecutions);
+
+    // -------------------------
+    // 8) Trends (compare with last week)
+    // -------------------------
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+    const { data: previousTestCases } = await supabase
+      .from("test_cases")
+      .select("id")
+      .eq("user_id", user.id)
+      .neq("status", "archived")
+      .lt("created_at", sevenDaysAgo.toISOString());
+
+    const previousTotal = (previousTestCases ?? []).length;
+    const trend = calculateTrend(total, previousTotal);
+    const trend_value = calculateTrendPercentage(total, previousTotal);
+
+    const { data: previousReqs } = await supabase
+      .from("requirements")
+      .select("id")
+      .eq("user_id", user.id)
+      .lt("created_at", sevenDaysAgo.toISOString());
+
+    const previousReqTotal = (previousReqs ?? []).length;
+    const reqTrend = calculateTrend(reqTotal, previousReqTotal);
+
+    // -------------------------
+    // Response
+    // -------------------------
     return NextResponse.json({
-      test_cases: { total, ...counts, pass_rate },
+      test_cases: {
+        total,
+        ...counts,
+        pass_rate,
+        trend,
+        trend_value,
+      },
       requirements: {
         total: reqTotal,
         tested: reqTested,
         coverage_percentage,
         by_priority,
+        trend: reqTrend,
       },
       recent_activity,
+      health_score,
+      execution_timeline,
+      flaky_tests,
+      priority_failures,
+      coverage_gaps: [], // Optional: implement if you have coverage gap logic
     });
   } catch (e: any) {
-    console.error("dashboard metrics route error:", e);
+    console.error("Dashboard metrics error:", e);
     return NextResponse.json(
       { error: e?.message ?? "Unexpected error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
+}
+
+// -------------------------
+// Helper Functions
+// -------------------------
+
+function calculateHealthScore(params: {
+  passRate: number;
+  coverage: number;
+  failedCount: number;
+  totalTests: number;
+  notRunCount: number;
+}): number {
+  const { passRate, coverage, failedCount, totalTests, notRunCount } = params;
+
+  if (totalTests === 0) return 100; // No tests = perfect health (or could be 0)
+
+  if (notRunCount === totalTests) return 0;
+
+  const executedTests = totalTests - notRunCount;
+
+  if (executedTests === 0) {
+    return Math.round(coverage * 0.5);
+  }
+
+  // Weighted scoring
+  const passRateScore = passRate * 0.4; // 40% weight
+  const coverageScore = coverage * 0.3; // 30% weight
+  const failurePenalty =
+    totalTests > 0 ? (failedCount / totalTests) * 100 * 0.3 : 0; // 30% weight
+
+  const score = passRateScore + coverageScore - failurePenalty;
+
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function calculateTrend(
+  current: number,
+  previous: number,
+): "up" | "down" | "stable" {
+  if (current > previous) return "up";
+  if (current < previous) return "down";
+  return "stable";
+}
+
+function calculateTrendPercentage(current: number, previous: number): number {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+function groupExecutionsByDay(
+  executions: Array<{ created_at: string; execution_status: string }>,
+) {
+  const groups = new Map<string, { passed: number; failed: number }>();
+
+  executions.forEach((exec) => {
+    const date = new Date(exec.created_at).toISOString().split("T")[0];
+    if (!groups.has(date)) {
+      groups.set(date, { passed: 0, failed: 0 });
+    }
+    const group = groups.get(date)!;
+    if (exec.execution_status === "passed") group.passed++;
+    else if (exec.execution_status === "failed") group.failed++;
+  });
+
+  // Fill in missing days with zeros
+  const result: Array<{
+    date: string;
+    passed: number;
+    failed: number;
+    total: number;
+  }> = [];
+  const today = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
+    const dateStr = date.toISOString().split("T")[0];
+    const group = groups.get(dateStr) || { passed: 0, failed: 0 };
+    result.push({
+      date: dateStr,
+      passed: group.passed,
+      failed: group.failed,
+      total: group.passed + group.failed,
+    });
+  }
+
+  return result;
+}
+
+function calculateFlakyTests(
+  executions: Array<{
+    test_case_id: string;
+    execution_status: string;
+    test_cases: { title: string } | null;
+  }>,
+): Array<{ id: string; title: string; flakiness_score: number }> {
+  const testResults = new Map<
+    string,
+    { title: string; passed: number; failed: number; total: number }
+  >();
+
+  executions.forEach((exec) => {
+    if (!testResults.has(exec.test_case_id)) {
+      testResults.set(exec.test_case_id, {
+        title: exec.test_cases?.title ?? "Unknown Test",
+        passed: 0,
+        failed: 0,
+        total: 0,
+      });
+    }
+    const result = testResults.get(exec.test_case_id)!;
+    result.total++;
+    if (exec.execution_status === "passed") result.passed++;
+    else if (exec.execution_status === "failed") result.failed++;
+  });
+
+  // Find tests with both passes and failures
+  const flakyTests: Array<{
+    id: string;
+    title: string;
+    flakiness_score: number;
+  }> = [];
+
+  testResults.forEach((result, testId) => {
+    if (result.passed > 0 && result.failed > 0 && result.total >= 3) {
+      // Only consider flaky if executed at least 3 times
+      const flakiness = Math.round((result.failed / result.total) * 100);
+      flakyTests.push({
+        id: testId,
+        title: result.title,
+        flakiness_score: flakiness,
+      });
+    }
+  });
+
+  // Sort by flakiness score descending
+  return flakyTests
+    .sort((a, b) => b.flakiness_score - a.flakiness_score)
+    .slice(0, 5);
 }

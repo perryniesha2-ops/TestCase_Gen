@@ -16,13 +16,12 @@ import { Loader2 } from "lucide-react";
 import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
 
 interface DeleteTestCaseDialogProps {
-  testCase: (TestCase | CrossPlatformTestCase) | null; // ✅ Accept both types
+  testCase: (TestCase | CrossPlatformTestCase) | null;
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-// ✅ Type guard
 function isRegularTestCase(
   tc: TestCase | CrossPlatformTestCase,
 ): tc is TestCase {
@@ -44,7 +43,6 @@ export function DeleteTestCaseDialog({
     try {
       const supabase = createClient();
 
-      // ✅ Determine which table to delete from
       const table = isRegularTestCase(testCase)
         ? "test_cases"
         : "platform_test_cases";

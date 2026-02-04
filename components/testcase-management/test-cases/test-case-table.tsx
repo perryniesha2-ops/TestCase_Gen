@@ -11,6 +11,7 @@ import { FlaskConical, Layers, Loader2 } from "lucide-react";
 import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
 
 import { TestCaseToolbar } from "./toolbars/TestCaseToolbar";
+import type { RunStatusFilter } from "./toolbars/TestCaseToolbar";
 import { UnifiedTestCaseTable } from "./UnifiedTestCaseTable";
 import { BulkActionsToolbar } from "./toolbars/BulkActionsToolbar";
 
@@ -39,6 +40,9 @@ export function TabbedTestCaseTable() {
   // UI filters/pagination
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedProject, setSelectedProject] = useState("");
+
+  const [runStatusFilter, setRunStatusFilter] = useState<RunStatusFilter[]>([]);
+
   const [currentPage, setCurrentPage] = useState(1);
   const [crossPlatformCurrentPage, setCrossPlatformCurrentPage] = useState(1);
 
@@ -86,6 +90,30 @@ export function TabbedTestCaseTable() {
   } = useExecutions({ sessionId });
 
   // Seed execution statuses
+  useEffect(() => {
+    // Example URL: /test-cases?runStatus=failed,blocked
+    const raw = searchParams.get("runStatus") ?? "";
+    if (!raw) return;
+
+    const allowed = new Set<RunStatusFilter>([
+      "passed",
+      "failed",
+      "skipped",
+      "blocked",
+    ]);
+    const parsed = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .filter((s): s is RunStatusFilter => allowed.has(s as RunStatusFilter));
+
+    if (parsed.length > 0) {
+      setRunStatusFilter(parsed);
+      setCurrentPage(1);
+      setCrossPlatformCurrentPage(1);
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     if (loading) return;
 
@@ -143,23 +171,47 @@ export function TabbedTestCaseTable() {
 
   const itemsPerPage = 10;
 
+  const getRunStatus = useCallback(
+    (id: string) => {
+      return (execution[id]?.status ?? "not_run") as string;
+    },
+    [execution],
+  );
+
+  const matchesRunStatusFilter = useCallback(
+    (testCaseId: string) => {
+      if (runStatusFilter.length === 0) return true;
+      const status = getRunStatus(testCaseId);
+      return runStatusFilter.includes(status as RunStatusFilter);
+    },
+    [getRunStatus, runStatusFilter],
+  );
+
   const filteredTestCases = useMemo(() => {
     const term = searchTerm.toLowerCase();
-    return regularCasesWithType.filter(
-      (tc) =>
+    return regularCasesWithType.filter((tc) => {
+      const matchesText =
         tc.title.toLowerCase().includes(term) ||
-        tc.description.toLowerCase().includes(term),
-    );
-  }, [regularCasesWithType, searchTerm]);
+        tc.description.toLowerCase().includes(term);
+
+      if (!matchesText) return false;
+
+      return matchesRunStatusFilter(tc.id);
+    });
+  }, [regularCasesWithType, searchTerm, matchesRunStatusFilter]);
 
   const filteredCrossPlatformCases = useMemo(() => {
     const term = searchTerm.toLowerCase();
-    return crossPlatformCasesWithType.filter(
-      (tc) =>
+    return crossPlatformCasesWithType.filter((tc) => {
+      const matchesText =
         tc.title.toLowerCase().includes(term) ||
-        tc.description.toLowerCase().includes(term),
-    );
-  }, [crossPlatformCasesWithType, searchTerm]);
+        tc.description.toLowerCase().includes(term);
+
+      if (!matchesText) return false;
+
+      return matchesRunStatusFilter(tc.id);
+    });
+  }, [crossPlatformCasesWithType, searchTerm, matchesRunStatusFilter]);
 
   const totalPages = Math.ceil(filteredTestCases.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -210,7 +262,7 @@ export function TabbedTestCaseTable() {
     return colors[color] || "text-gray-500";
   }, []);
 
-  // Metrics
+  // Metrics (unchanged — note these include statuses beyond the filter options)
   const regularMetrics = useMemo(() => {
     return {
       total: filteredTestCases.length,
@@ -399,6 +451,12 @@ export function TabbedTestCaseTable() {
           />
         }
         getProjectColor={getProjectColor}
+        runStatusFilter={runStatusFilter}
+        onRunStatusFilterChange={(next) => {
+          setRunStatusFilter(next);
+          setCurrentPage(1);
+          setCrossPlatformCurrentPage(1);
+        }}
       />
 
       <Tabs defaultValue="regular" className="w-full">

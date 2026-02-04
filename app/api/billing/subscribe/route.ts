@@ -153,8 +153,6 @@ export async function POST(request: NextRequest) {
         .from("user_profiles")
         .update({ stripe_customer_id: customerId })
         .eq("id", userId);
-
-      console.log("✅ Saved customer ID to database");
     }
 
     // Create Stripe checkout session

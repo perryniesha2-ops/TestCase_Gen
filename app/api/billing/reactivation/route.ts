@@ -72,8 +72,6 @@ export async function POST(request: NextRequest) {
       },
     );
 
-    console.log("✅ Stripe subscription reactivated");
-
     // 4. Update database
     const { error: updateError } = await supabase
       .from("user_profiles")
@@ -86,7 +84,7 @@ export async function POST(request: NextRequest) {
     if (updateError) {
       console.error("⚠️ Database update warning:", updateError);
     } else {
-      console.log("✅ Database updated");
+      console.log("Database updated");
     }
 
     // 5. Log reactivation event

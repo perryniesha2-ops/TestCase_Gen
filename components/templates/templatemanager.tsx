@@ -320,7 +320,7 @@ export function TemplateManager() {
       category: template.category,
       model: template.template_content.model,
       testCaseCount: template.template_content.testCaseCount,
-      test_types: toCanonicalTestTypes(template.test_types ?? []), // ✅ Convert here
+      test_types: toCanonicalTestTypes(template.test_types ?? []),
       includeEdgeCases: template.template_content.includeEdgeCases ?? true,
       includeNegativeTests:
         template.template_content.includeNegativeTests ?? true,

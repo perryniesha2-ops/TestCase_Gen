@@ -417,9 +417,6 @@ async function callWithFallback(
         });
         const text = extractAnthropicText(res.content);
 
-        // ✅ Log the raw response for debugging
-        console.log(`✅ Anthropic generated ${text.length} characters`);
-
         return {
           text,
           provider: "anthropic",
@@ -433,9 +430,6 @@ async function callWithFallback(
         max_tokens: maxTokens,
       });
       const text = res.choices?.[0]?.message?.content ?? "";
-
-      // ✅ Log the raw response for debugging
-      console.log(`✅ OpenAI generated ${text.length} characters`);
 
       return {
         text,
@@ -455,7 +449,7 @@ async function callWithFallback(
 
 async function structureTestCases(
   rawText: string,
-  expectedCount: number, // ✅ Added parameter
+  expectedCount: number,
 ): Promise<GeneratedTestCase[]> {
   const prompt = `Convert the following test cases into a structured JSON array. Each test case should have this exact format:
 
@@ -509,7 +503,6 @@ Return ONLY valid JSON, no markdown, no explanation.`;
 
     const cases = parsed.test_cases ?? parsed.testCases ?? [];
 
-    // ✅ Log if count doesn't match
     if (cases.length !== expectedCount) {
       console.warn(
         `⚠️ structureTestCases: Expected ${expectedCount} test cases, got ${cases.length}`,
@@ -561,7 +554,7 @@ function buildPrompt(params: {
 
   const distribution = testTypes
     .map((type, i) => {
-      const count = perType + (i < remainder ? 1 : 0); // ✅ Distribute remainder more evenly
+      const count = perType + (i < remainder ? 1 : 0);
       const label = TEST_TYPE_LABELS[type] ?? type;
       return `- ${count} ${label} test${count !== 1 ? "s" : ""}`;
     })
@@ -750,15 +743,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ Pass expected count to structuring
     let testCases = await structureTestCases(llmResult.text, testCaseCount);
 
-    // ✅ If we got fewer than expected, try one retry with a clearer prompt
     if (testCases.length < testCaseCount) {
-      console.warn(
-        `⚠️ First attempt: Got ${testCases.length}/${testCaseCount} test cases. Retrying...`,
-      );
-
       const retryPrompt = `${prompt}
 
 CRITICAL CORRECTION: The previous generation only produced ${testCases.length} test cases but we need EXACTLY ${testCaseCount}.
@@ -784,13 +771,7 @@ Generate the FULL ${testCaseCount} test cases now. Do not skip any.`;
       }
     }
 
-    // ✅ Ensure we don't exceed the requested count
     testCases = testCases.slice(0, testCaseCount);
-
-    // ✅ Log final count
-    console.log(
-      `✅ Final result: ${testCases.length}/${testCaseCount} test cases`,
-    );
 
     const { data: generation, error: genError } = await supabase
       .from("test_case_generations")

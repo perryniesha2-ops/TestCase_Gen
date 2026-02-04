@@ -65,8 +65,8 @@ interface TestCase {
 
 interface SuiteTestCase {
   id: string;
-  test_case_id: string | null; // ✅ Can be null for cross-platform
-  platform_test_case_id: string | null; // ✅ Added
+  test_case_id: string | null;
+  platform_test_case_id: string | null;
   sequence_order: number;
   priority: string;
   estimated_duration_minutes: number;
@@ -248,7 +248,6 @@ export function TestSessionExecution({
     try {
       const supabase = createClient();
 
-      // ✅ Fetch both test_case_id AND platform_test_case_id
       const { data: suiteLinks, error: linksError } = await supabase
         .from("suite_items")
         .select(
@@ -268,7 +267,6 @@ export function TestSessionExecution({
         return [];
       }
 
-      // ✅ Split into regular and cross-platform IDs
       const regularTestCaseIds = suiteLinks
         .filter((link) => link.test_case_id)
         .map((link) => link.test_case_id);
@@ -277,7 +275,6 @@ export function TestSessionExecution({
         .filter((link) => link.platform_test_case_id)
         .map((link) => link.platform_test_case_id);
 
-      // ✅ Fetch regular test cases
       let regularTestCases: any[] = [];
       if (regularTestCaseIds.length > 0) {
         const { data, error } = await supabase
@@ -294,7 +291,6 @@ export function TestSessionExecution({
         regularTestCases = data || [];
       }
 
-      // ✅ Fetch cross-platform test cases
       let crossPlatformTestCases: any[] = [];
       if (crossPlatformTestCaseIds.length > 0) {
         const { data, error } = await supabase
@@ -307,7 +303,6 @@ export function TestSessionExecution({
           throw error;
         }
 
-        // ✅ Transform steps strings into the object shape the UI expects
         crossPlatformTestCases = (data || []).map((tc) => {
           const steps: string[] = tc.steps || [];
           const expectedResults: string[] = Array.isArray(tc.expected_results)
@@ -335,7 +330,6 @@ export function TestSessionExecution({
 
       const transformed: SuiteTestCase[] = suiteLinks
         .map((link) => {
-          // ✅ Get the test case ID (could be from either FK)
           const actualTestCaseId =
             link.test_case_id || link.platform_test_case_id;
           const testCase = testCaseMap.get(actualTestCaseId);
@@ -523,12 +517,10 @@ export function TestSessionExecution({
         return;
       }
 
-      // ✅ Determine which FK to use
       const actualTestCaseId =
         testCase.test_case_id || testCase.platform_test_case_id;
       const isRegular = !!testCase.test_case_id;
 
-      // ✅ Check for existing execution with correct FK
       let existingQuery = supabase
         .from("test_executions")
         .select(
@@ -573,12 +565,11 @@ export function TestSessionExecution({
         return;
       }
 
-      // ✅ Create execution with correct FK (actual null, not "null")
       const { data: created, error: createError } = await supabase
         .from("test_executions")
         .insert({
-          test_case_id: isRegular ? actualTestCaseId : null, // ✅ null for cross-platform
-          platform_test_case_id: isRegular ? null : actualTestCaseId, // ✅ ID for cross-platform
+          test_case_id: isRegular ? actualTestCaseId : null,
+          platform_test_case_id: isRegular ? null : actualTestCaseId,
           suite_id: suite.id,
           session_id: currentSessionId,
           executed_by: user.id,

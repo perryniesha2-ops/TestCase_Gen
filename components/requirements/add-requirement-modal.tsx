@@ -520,30 +520,24 @@ export function AddRequirementModal({
         Array.isArray(parsed.acceptance_criteria) &&
         parsed.acceptance_criteria.length > 0
       ) {
-        // ✅ Store the result for later use
         let finalCriteria: string[] = [];
 
         setAcceptanceCriteria((prev) => {
-          // Keep existing non-empty criteria
           const existing = prev.filter((c) => c.trim() !== "");
 
-          // Combine with new parsed criteria
           const combined = [...existing, ...parsed.acceptance_criteria];
 
-          // Remove duplicates (case-insensitive)
           const unique = combined.filter(
             (item, index, self) =>
               index ===
               self.findIndex((t) => t.toLowerCase() === item.toLowerCase()),
           );
 
-          // ✅ Store for toast message
           finalCriteria = unique;
 
           return unique;
         });
 
-        // ✅ Use setTimeout to let state update, then show toast
         setTimeout(() => {
           toastSuccess(
             `Added ${parsed.acceptance_criteria.length} new criteria.`,

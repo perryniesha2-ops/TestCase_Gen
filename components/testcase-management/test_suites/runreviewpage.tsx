@@ -127,7 +127,6 @@ export function RunReviewPage({ runId }: { runId: string }) {
         return;
       }
 
-      // ✅ Fetch run without the bad join
       const { data: runData, error: runError } = await supabase
         .from("test_run_sessions")
         .select("*")
@@ -136,7 +135,6 @@ export function RunReviewPage({ runId }: { runId: string }) {
 
       if (runError) throw runError;
 
-      // ✅ Resolve the suite separately
       let suiteName = "Unknown Suite";
       let projectId: string | null = null;
       if (runData.suite_id) {
@@ -165,7 +163,6 @@ export function RunReviewPage({ runId }: { runId: string }) {
 
       setRun(runWithStats);
 
-      // ✅ Fetch executions without joins
       const { data: execsRaw, error: execError } = await supabase
         .from("test_executions")
         .select(
@@ -197,7 +194,6 @@ export function RunReviewPage({ runId }: { runId: string }) {
 
       const execs = execsRaw ?? [];
 
-      // ✅ Batch resolve regular test cases
       const regularIds = [
         ...new Set(execs.map((e: any) => e.test_case_id).filter(Boolean)),
       ];
@@ -215,7 +211,6 @@ export function RunReviewPage({ runId }: { runId: string }) {
         );
       }
 
-      // ✅ Batch resolve platform test cases
       const platformIds = [
         ...new Set(
           execs.map((e: any) => e.platform_test_case_id).filter(Boolean),
@@ -251,7 +246,6 @@ export function RunReviewPage({ runId }: { runId: string }) {
         }
       }
 
-      // ✅ Map using whichever FK is set
       const mapped: ExecutionHistoryRow[] = execs.map((e: any) => {
         const testCase = e.test_case_id
           ? regularMap.get(e.test_case_id)
@@ -291,7 +285,6 @@ export function RunReviewPage({ runId }: { runId: string }) {
 
       setRows(mapped);
 
-      // ✅ Load integrations using the projectId we already resolved
       if (projectId) {
         const { data: intData } = await supabase
           .from("integrations")

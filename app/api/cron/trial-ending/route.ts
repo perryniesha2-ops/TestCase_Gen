@@ -63,7 +63,6 @@ export async function GET(request: NextRequest) {
     }
 
     if (!users || users.length === 0) {
-      console.log("✅ No trials ending in 3 days");
       return NextResponse.json({
         success: true,
         message: "No trials ending soon",

@@ -587,7 +587,6 @@ export function ExecutionHistory() {
 
       const sessions = (sessionsRaw ?? []) as Array<any>;
 
-      // ✅ Batch resolve suites
       const suiteIds = [
         ...new Set(sessions.map((s) => s.suite_id).filter(Boolean)),
       ];
@@ -691,7 +690,6 @@ export function ExecutionHistory() {
         }
       }
 
-      // ✅ Use suiteMap instead of r.test_suites
       const mapped: RunWithStats[] = filtered.map((r) => {
         const suite = suiteMap.get(r.suite_id);
         return {
@@ -810,7 +808,6 @@ export function ExecutionHistory() {
 
       const execs = (execsRaw ?? []) as any[];
 
-      // ✅ Batch resolve suites
       const suiteIds = [
         ...new Set(execs.map((e) => e.suite_id).filter(Boolean)),
       ];
@@ -826,7 +823,6 @@ export function ExecutionHistory() {
         (suites ?? []).forEach((s: any) => suiteMap.set(s.id, s));
       }
 
-      // ✅ Batch resolve regular test cases
       const regularIds = [
         ...new Set(execs.map((e) => e.test_case_id).filter(Boolean)),
       ];
@@ -842,7 +838,6 @@ export function ExecutionHistory() {
         (cases ?? []).forEach((c: any) => regularMap.set(c.id, c));
       }
 
-      // ✅ Batch resolve cross-platform test cases
       const platformIds = [
         ...new Set(execs.map((e) => e.platform_test_case_id).filter(Boolean)),
       ];
@@ -863,7 +858,6 @@ export function ExecutionHistory() {
 
       const base: ExecutionHistoryRow[] = execs.map((e) => {
         const suite = suiteMap.get(e.suite_id);
-        // ✅ Look up test case from whichever FK is set
         const testCase = e.test_case_id
           ? regularMap.get(e.test_case_id)
           : platformMap.get(e.platform_test_case_id);
@@ -1239,7 +1233,6 @@ export function ExecutionHistory() {
 
       const execs = (execsRaw ?? []) as any[];
 
-      // ✅ Same three batch lookups as fetchHistory
       const suiteIds = [
         ...new Set(execs.map((e) => e.suite_id).filter(Boolean)),
       ];
