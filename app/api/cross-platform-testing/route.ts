@@ -6,6 +6,7 @@ import OpenAI from "openai";
 import {
   checkUsageQuota,
   recordSuccessfulGeneration,
+  UsageQuotaError,
 } from "@/lib/usage-tracker";
 
 export const runtime = "nodejs";
@@ -606,11 +607,33 @@ export async function POST(request: Request) {
     try {
       await checkUsageQuota(user.id, requestedTotal);
     } catch (e) {
+      if (e instanceof UsageQuotaError) {
+        return NextResponse.json(
+          {
+            error: e.message,
+            remaining: e.remaining,
+            requested: e.requested,
+            used: e.used,
+            limit: e.limit,
+            upgradeRequired: true,
+            usage: {
+              requested: requestedTotal,
+              perPlatform: testCaseCount,
+              platforms: platforms.length,
+            },
+          },
+          { status: 429 },
+        );
+      }
+
+      // Generic error fallback
       const msg = e instanceof Error ? e.message : "Usage limit exceeded";
       return NextResponse.json(
         {
           error: msg,
           upgradeRequired: true,
+          remaining: 0,
+          requested: requestedTotal,
           usage: {
             requested: requestedTotal,
             perPlatform: testCaseCount,
@@ -816,6 +839,7 @@ Return plain text test cases (no JSON).`;
       message: `Successfully generated ${totalInserted} cross-platform test cases across ${successfulPlatforms} platform(s)`,
     });
   } catch (error) {
+    console.error("Cross-platform generation error:", error);
     return NextResponse.json(
       {
         error: "Unexpected error. Please try again.",

@@ -236,10 +236,40 @@ class UsageTrackerService implements UsageTracker {
 // Singleton
 export const usageTracker = new UsageTrackerService();
 
-/**
- * CRITICAL: Only check quota, DO NOT record usage.
- * Usage should be recorded ONLY after successful generation.
- */
+export async function recordSuccessfulGeneration(
+  userId: string,
+  testCasesCount: number = 1,
+): Promise<void> {
+  await usageTracker.recordTestCaseGeneration(userId, testCasesCount);
+}
+
+// lib/usage-tracker.ts
+
+// Create a custom error class that includes remaining count
+export class UsageQuotaError extends Error {
+  public remaining: number;
+  public requested: number;
+  public used: number;
+  public limit: number;
+
+  constructor(
+    message: string,
+    data: {
+      remaining: number;
+      requested: number;
+      used: number;
+      limit: number;
+    },
+  ) {
+    super(message);
+    this.name = "UsageQuotaError";
+    this.remaining = data.remaining;
+    this.requested = data.requested;
+    this.used = data.used;
+    this.limit = data.limit;
+  }
+}
+
 export async function checkUsageQuota(
   userId: string,
   testCasesCount: number = 1,
@@ -248,14 +278,28 @@ export async function checkUsageQuota(
     userId,
     testCasesCount,
   );
-  if (!result.allowed) {
-    throw new Error(result.error || "Usage limit exceeded");
-  }
-}
 
-export async function recordSuccessfulGeneration(
-  userId: string,
-  testCasesCount: number = 1,
-): Promise<void> {
-  await usageTracker.recordTestCaseGeneration(userId, testCasesCount);
+  if (!result.allowed) {
+    const usage = await usageTracker.getUserUsage(userId);
+    const subscription = await (usageTracker as any).getUserSubscription(
+      userId,
+    );
+
+    const planLimits: Record<string, number> = {
+      free: 20,
+      pro: 500,
+      team: 2000,
+      enterprise: -1,
+    };
+
+    const limit = planLimits[subscription?.subscription_tier ?? "free"] ?? 20;
+    const used = usage?.test_cases_generated ?? 0;
+
+    throw new UsageQuotaError(result.error || "Usage limit exceeded", {
+      remaining: result.remaining,
+      requested: testCasesCount,
+      used,
+      limit,
+    });
+  }
 }

@@ -70,10 +70,14 @@ type CrossPlatformResponse = {
   details?: string;
   requestId?: string;
   upgradeRequired?: boolean;
+  remaining?: number;
+  requested?: number;
+  used?: number;
+  limit?: number;
   usage?: {
-    remaining: number;
-    generated: number;
     requested: number;
+    perPlatform: number;
+    platforms: number;
   };
 };
 
@@ -454,7 +458,7 @@ export function CrossPlatformGeneratorForm() {
   useEffect(() => {
     if (title.trim()) return;
     if (finalRequirementText.trim().length < 12) return;
-    setTitle("Cross-Platform Test Suite");
+    setTitle("");
   }, [finalRequirementText, title]);
 
   const ensureDefaultFramework = useCallback((platform: PlatformId) => {
@@ -647,16 +651,32 @@ export function CrossPlatformGeneratorForm() {
         }
 
         if (res.status === 429) {
-          toast.error("Monthly usage limit reached", {
-            description: `You have ${
-              data.usage?.remaining ?? 0
-            } test cases remaining.`,
-            duration: 8000,
-            action: {
-              label: "Upgrade",
-              onClick: () => router.push("/billing"),
-            },
-          });
+          const remaining = data.remaining ?? 0;
+          const requested = data.requested ?? requestedTotal;
+          const used = data.used ?? 0;
+          const limit = data.limit ?? 50;
+
+          console.log("Quota exceeded:", { remaining, requested, used, limit });
+
+          if (remaining === 0) {
+            toast.error("Monthly usage limit reached", {
+              description: `You have used all ${limit} of your monthly test cases. Upgrade to Pro for 500 test cases/month.`,
+              duration: 8000,
+              action: {
+                label: "Upgrade",
+                onClick: () => router.push("/billing"),
+              },
+            });
+          } else {
+            toast.error("Not enough test cases remaining", {
+              description: `You requested ${requested} test cases (${data.usage?.perPlatform ?? 0} per platform × ${data.usage?.platforms ?? 0} platforms) but only have ${remaining} remaining. (${used}/${limit} used).`,
+              duration: 8000,
+              action: {
+                label: "Upgrade",
+                onClick: () => router.push("/billing"),
+              },
+            });
+          }
           return;
         }
 
