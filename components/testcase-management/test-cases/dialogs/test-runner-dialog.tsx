@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +32,10 @@ import {
   Clock,
   RotateCcw,
   Play,
+  Pause,
+  Save,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import type {
   TestCase,
@@ -40,34 +46,26 @@ import type {
 } from "@/types/test-cases";
 
 type CaseType = "regular" | "cross-platform";
-
 type ExecutionRow = TestExecution[string] | undefined;
 
 interface TestRunnerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-
   testCase: TestCase | CrossPlatformTestCase;
   caseType: CaseType;
-
   executionRow: ExecutionRow;
-
-  // ✅ Updated callbacks to include caseType parameter
   onSaveProgress: (
     testCaseId: string,
     updates: Partial<TestExecution[string]>,
     caseType: CaseType,
   ) => Promise<void> | void;
-
   onFinalize: (
     testCaseId: string,
     status: ExecutionStatus,
     details: ExecutionDetails,
     caseType: CaseType,
   ) => Promise<void> | void;
-
   onReset: (testCaseId: string, caseType: CaseType) => Promise<void> | void;
-
   onToggleStep?: (
     testCaseId: string,
     stepNumber: number,
@@ -75,12 +73,15 @@ interface TestRunnerDialogProps {
   ) => void;
 }
 
-function formatDurationMinutes(startedAt?: string | null) {
+function formatDuration(startedAt?: string | null): string {
   if (!startedAt) return "—";
   const start = new Date(startedAt).getTime();
   const now = Date.now();
-  const mins = Math.max(0, Math.round((now - start) / 60000));
-  return `${mins}m`;
+  const seconds = Math.max(0, Math.floor((now - start) / 1000));
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
 }
 
 export function TestRunnerDialog(props: TestRunnerDialogProps) {
@@ -96,28 +97,31 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
     onToggleStep,
   } = props;
 
-  const [environment, setEnvironment] = useState<string>("staging");
-  const [browser, setBrowser] = useState<string>("");
-  const [osVersion, setOsVersion] = useState<string>("");
-  const [notes, setNotes] = useState<string>("");
+  // Form state
+  const [environment, setEnvironment] = useState("staging");
+  const [browser, setBrowser] = useState("");
+  const [osVersion, setOsVersion] = useState("");
+  const [notes, setNotes] = useState("");
 
-  // Finalization flow
+  // UI state
+  const [saving, setSaving] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [finalStatus, setFinalStatus] = useState<ExecutionStatus | null>(null);
-  const [finalReason, setFinalReason] = useState<string>("");
-
-  // Fail-step flow (optional)
+  const [finalReason, setFinalReason] = useState("");
   const [failStepNumber, setFailStepNumber] = useState<number | null>(null);
-  const [failStepReason, setFailStepReason] = useState<string>("");
+  const [failStepReason, setFailStepReason] = useState("");
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Tick for duration display (lightweight)
+  // Duration ticker
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (!open) return;
-    const t = setInterval(() => setTick((x) => x + 1), 15000);
-    return () => clearInterval(t);
-  }, [open]);
+    if (!open || !executionRow?.started_at) return;
+    const interval = setInterval(() => setTick((x) => x + 1), 1000);
+    return () => clearInterval(interval);
+  }, [open, executionRow?.started_at]);
 
-  // ✅ Parse steps based on case type
+  // Parse steps
   const steps = useMemo(() => {
     if (caseType === "regular") {
       const tc = testCase as TestCase;
@@ -139,7 +143,13 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
   const failedSteps = executionRow?.failedSteps || [];
   const status = executionRow?.status || "not_run";
 
-  // ✅ Reset form when dialog opens
+  // Progress calculation
+  const progress = useMemo(() => {
+    if (steps.length === 0) return 0;
+    return Math.round((completed.length / steps.length) * 100);
+  }, [completed.length, steps.length]);
+
+  // Initialize form when dialog opens
   useEffect(() => {
     if (!open || !testCase) return;
 
@@ -147,117 +157,227 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
     setBrowser(executionRow?.browser || "");
     setOsVersion(executionRow?.os_version || "");
     setNotes(executionRow?.notes || "");
-
     setFinalStatus(null);
     setFinalReason("");
     setFailStepNumber(null);
     setFailStepReason("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, testCase?.id]);
+    setHasUnsavedChanges(false);
+  }, [open, testCase?.id, executionRow]);
 
-  // ✅ Start or resume execution - passes caseType
-  async function startOrResume() {
-    await onSaveProgress(
-      testCase.id,
-      {
-        status: "in_progress",
-        test_environment: environment,
-        browser,
-        os_version: osVersion,
-        notes,
-      },
-      caseType,
-    );
-  }
+  // Track unsaved changes
+  useEffect(() => {
+    const hasChanges =
+      environment !== (executionRow?.test_environment || "staging") ||
+      browser !== (executionRow?.browser || "") ||
+      osVersion !== (executionRow?.os_version || "") ||
+      notes !== (executionRow?.notes || "");
+    setHasUnsavedChanges(hasChanges);
+  }, [environment, browser, osVersion, notes, executionRow]);
 
-  // ✅ Save metadata only - passes caseType
-  async function saveMetaOnly() {
-    await onSaveProgress(
-      testCase.id,
-      {
-        test_environment: environment,
-        browser,
-        os_version: osVersion,
-        notes,
-      },
-      caseType,
-    );
-  }
+  // Auto-save when marking steps (debounced)
+  const autoSave = useCallback(async () => {
+    if (!hasUnsavedChanges) return;
+    try {
+      await onSaveProgress(
+        testCase.id,
+        {
+          test_environment: environment,
+          browser,
+          os_version: osVersion,
+          notes,
+        },
+        caseType,
+      );
+      setHasUnsavedChanges(false);
+    } catch (e) {
+      console.error("Auto-save failed:", e);
+    }
+  }, [
+    hasUnsavedChanges,
+    testCase.id,
+    environment,
+    browser,
+    osVersion,
+    notes,
+    caseType,
+    onSaveProgress,
+  ]);
 
-  // ✅ Toggle step completion - passes caseType
-  async function toggleStep(stepNumber: number) {
-    // If parent wants to own toggle logic, use it:
+  // Start or resume execution
+  const handleStartOrResume = async () => {
+    setSaving(true);
+    try {
+      await onSaveProgress(
+        testCase.id,
+        {
+          status: "in_progress",
+          test_environment: environment,
+          browser,
+          os_version: osVersion,
+          notes,
+        },
+        caseType,
+      );
+      toast.success("Test execution started");
+      setHasUnsavedChanges(false);
+    } catch (e: any) {
+      console.error("Start/resume failed:", e);
+      toast.error(e?.message || "Failed to start test execution");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Save metadata only
+  const handleSaveMetadata = async () => {
+    setSaving(true);
+    try {
+      await onSaveProgress(
+        testCase.id,
+        {
+          test_environment: environment,
+          browser,
+          os_version: osVersion,
+          notes,
+        },
+        caseType,
+      );
+      toast.success("Execution details saved");
+      setHasUnsavedChanges(false);
+    } catch (e: any) {
+      console.error("Save metadata failed:", e);
+      toast.error(e?.message || "Failed to save execution details");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Toggle step completion
+  const handleToggleStep = async (stepNumber: number) => {
     if (onToggleStep) {
       onToggleStep(testCase.id, stepNumber, caseType);
       return;
     }
 
-    // Otherwise do it locally with onSaveProgress:
     const isCompleted = completed.includes(stepNumber);
     const updated = isCompleted
       ? completed.filter((n) => n !== stepNumber)
       : [...completed, stepNumber];
 
-    await onSaveProgress(
-      testCase.id,
-      {
-        completedSteps: updated,
-        status: status === "not_run" ? "in_progress" : status,
-      },
-      caseType,
-    );
-  }
+    try {
+      await onSaveProgress(
+        testCase.id,
+        {
+          completedSteps: updated,
+          status: status === "not_run" ? "in_progress" : status,
+        },
+        caseType,
+      );
+      // Auto-save metadata if there are unsaved changes
+      if (hasUnsavedChanges) {
+        await autoSave();
+      }
+    } catch (e: any) {
+      console.error("Toggle step failed:", e);
+      toast.error("Failed to update step");
+    }
+  };
 
-  // ✅ Mark a step as failed - passes caseType
-  async function commitFailStep() {
+  // Mark step as failed
+  const handleCommitFailStep = async () => {
     if (!failStepNumber) return;
 
-    const nextFailed = [
-      ...failedSteps.filter((fs) => fs.step_number !== failStepNumber),
-      {
-        step_number: failStepNumber,
-        failure_reason: failStepReason || "Step failed",
-      },
-    ];
+    setSaving(true);
+    try {
+      const nextFailed = [
+        ...failedSteps.filter((fs) => fs.step_number !== failStepNumber),
+        {
+          step_number: failStepNumber,
+          failure_reason: failStepReason || "Step failed",
+        },
+      ];
 
-    await onSaveProgress(
-      testCase.id,
-      {
-        failedSteps: nextFailed,
-        status: status === "not_run" ? "in_progress" : status,
-        test_environment: environment,
-        browser,
-        os_version: osVersion,
-        notes,
-      },
-      caseType,
-    );
+      await onSaveProgress(
+        testCase.id,
+        {
+          failedSteps: nextFailed,
+          status: status === "not_run" ? "in_progress" : status,
+          test_environment: environment,
+          browser,
+          os_version: osVersion,
+          notes,
+        },
+        caseType,
+      );
 
-    setFailStepNumber(null);
-    setFailStepReason("");
-  }
+      toast.success(`Step ${failStepNumber} marked as failed`);
+      setFailStepNumber(null);
+      setFailStepReason("");
+      setHasUnsavedChanges(false);
+    } catch (e: any) {
+      console.error("Mark step failed:", e);
+      toast.error(e?.message || "Failed to mark step as failed");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  // ✅ Finalize execution with status - passes caseType
-  async function finalize(statusToSet: ExecutionStatus) {
+  // Finalize execution
+  const handleFinalize = async (statusToSet: ExecutionStatus) => {
     const needsReason =
       statusToSet === "failed" ||
       statusToSet === "blocked" ||
       statusToSet === "skipped";
 
-    const details: ExecutionDetails = {
-      notes,
-      failure_reason: needsReason ? finalReason : "",
-      environment,
-      browser,
-      os_version: osVersion,
-    };
+    if (needsReason && !finalReason.trim()) {
+      toast.error("Please provide a reason");
+      return;
+    }
 
-    await onFinalize(testCase.id, statusToSet, details, caseType);
-    onOpenChange(false);
-  }
+    setFinalizing(true);
+    try {
+      const details: ExecutionDetails = {
+        notes,
+        failure_reason: needsReason ? finalReason : "",
+        environment,
+        browser,
+        os_version: osVersion,
+      };
+
+      await onFinalize(testCase.id, statusToSet, details, caseType);
+      toast.success(`Test marked as ${statusToSet}`);
+      onOpenChange(false);
+    } catch (e: any) {
+      console.error("Finalize failed:", e);
+      toast.error(e?.message || "Failed to finalize test execution");
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
+  // Reset execution
+  const handleReset = async () => {
+    if (
+      !confirm(
+        "Reset this test execution? All progress and notes will be cleared.",
+      )
+    )
+      return;
+
+    setResetting(true);
+    try {
+      await onReset(testCase.id, caseType);
+      toast.success("Test execution reset");
+    } catch (e: any) {
+      console.error("Reset failed:", e);
+      toast.error(e?.message || "Failed to reset test execution");
+    } finally {
+      setResetting(false);
+    }
+  };
 
   // Status icon helper
-  function statusIcon(s: ExecutionStatus) {
+  const getStatusIcon = (s: ExecutionStatus) => {
     switch (s) {
       case "passed":
         return <CheckCircle2 className="h-4 w-4 text-green-600" />;
@@ -268,52 +388,73 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
       case "skipped":
         return <Circle className="h-4 w-4 text-gray-400" />;
       case "in_progress":
-        return <Clock className="h-4 w-4 text-blue-600" />;
+        return <Clock className="h-4 w-4 text-blue-600 animate-pulse" />;
       default:
         return <Circle className="h-4 w-4 text-gray-400" />;
     }
-  }
+  };
 
   const progressText = `${completed.length}/${steps.length}`;
+  const isExecuting = status === "in_progress";
+  const isFinished = ["passed", "failed", "blocked", "skipped"].includes(
+    status,
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
-        onInteractOutside={(e) => e.preventDefault()}
-      >
+      <DialogContent className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0">
         <DialogHeader className="p-6 border-b">
-          <DialogTitle className="flex items-center gap-2 min-w-0">
-            {statusIcon(status)}
-            <span className="truncate">Run Test: {testCase.title}</span>
-          </DialogTitle>
-          <DialogDescription className="flex flex-wrap items-center gap-3">
-            <Badge variant="secondary">
-              {caseType === "regular" ? "Regular" : "Cross-Platform"}
-            </Badge>
-            {"test_type" in testCase ? (
-              <Badge variant="outline">{testCase.test_type}</Badge>
-            ) : null}
-            {"platform" in testCase ? (
-              <Badge variant="outline">{testCase.platform}</Badge>
-            ) : null}
-            <span className="text-xs text-muted-foreground">
-              Progress: {progressText}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Duration: {formatDurationMinutes(executionRow?.started_at)}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Status: {status}
-            </span>
-          </DialogDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <DialogTitle className="flex items-center gap-2 mb-2">
+                {getStatusIcon(status)}
+                <span className="truncate">{testCase.title}</span>
+              </DialogTitle>
+              <DialogDescription className="flex flex-wrap items-center gap-3">
+                <Badge variant="secondary">
+                  {caseType === "regular" ? "Regular" : "Cross-Platform"}
+                </Badge>
+                {"test_type" in testCase && (
+                  <Badge variant="outline">{testCase.test_type}</Badge>
+                )}
+                {"platform" in testCase && (
+                  <Badge variant="outline">{testCase.platform}</Badge>
+                )}
+                <Badge
+                  variant={status === "in_progress" ? "default" : "secondary"}
+                >
+                  {status.replace("_", " ")}
+                </Badge>
+              </DialogDescription>
+            </div>
+            {hasUnsavedChanges && (
+              <Badge variant="outline" className="shrink-0">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                Unsaved
+              </Badge>
+            )}
+          </div>
+
+          {/* Progress Bar */}
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Progress</span>
+              <div className="flex items-center gap-3">
+                <span className="font-medium">{progressText} steps</span>
+                <span className="text-muted-foreground">
+                  {formatDuration(executionRow?.started_at)}
+                </span>
+              </div>
+            </div>
+            <Progress value={progress} className="h-2" />
+          </div>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Execution Metadata */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label>Environment</Label>
+              <Label>Environment *</Label>
               <Select value={environment} onValueChange={setEnvironment}>
                 <SelectTrigger>
                   <SelectValue />
@@ -352,134 +493,179 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              placeholder="Notes while running..."
+              placeholder="Add notes about this test execution..."
             />
           </div>
 
           {/* Test Steps */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Steps</h3>
-              <Button variant="outline" size="sm" onClick={saveMetaOnly}>
-                Save Notes/Meta
+              <h3 className="font-semibold">Test Steps</h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveMetadata}
+                disabled={saving || !hasUnsavedChanges}
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save Details
               </Button>
             </div>
 
-            {steps.map((s) => {
-              const isCompleted = completed.includes(s.stepNumber);
-              const failed = failedSteps.find(
-                (fs) => fs.step_number === s.stepNumber,
-              );
+            {steps.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No steps defined for this test case
+              </div>
+            ) : (
+              steps.map((s) => {
+                const isCompleted = completed.includes(s.stepNumber);
+                const failed = failedSteps.find(
+                  (fs) => fs.step_number === s.stepNumber,
+                );
 
-              return (
-                <div
-                  key={s.stepNumber}
-                  className={`rounded-lg border p-3 ${
-                    failed ? "bg-red-50 border-red-200" : "bg-background"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={isCompleted}
-                      onCheckedChange={() => toggleStep(s.stepNumber)}
-                      className="mt-1"
-                    />
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs bg-muted px-2 py-1 rounded">
-                          Step {s.stepNumber}
-                        </span>
-                        <span
-                          className={
-                            isCompleted
-                              ? "line-through text-muted-foreground"
-                              : ""
-                          }
-                        >
-                          {s.action}
-                        </span>
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-2 pl-16">
-                        <span className="font-semibold">Expected:</span>{" "}
-                        {s.expected}
-                      </div>
-
-                      {failed ? (
-                        <div className="mt-2 ml-16 text-sm text-red-700 bg-red-100 p-2 rounded">
-                          <span className="font-semibold">Failed:</span>{" "}
-                          {failed.failure_reason}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                      onClick={() => {
-                        setFailStepNumber(s.stepNumber);
-                        setFailStepReason(failed?.failure_reason || "");
-                      }}
-                    >
-                      Fail step
-                    </Button>
-                  </div>
-
-                  {/* Step Failure Input */}
-                  {failStepNumber === s.stepNumber ? (
-                    <div className="mt-3 ml-8 space-y-2">
-                      <Label className="text-sm">Step failure reason</Label>
-                      <Textarea
-                        value={failStepReason}
-                        onChange={(e) => setFailStepReason(e.target.value)}
-                        rows={2}
-                        placeholder="What failed and why?"
+                return (
+                  <div
+                    key={s.stepNumber}
+                    className={`rounded-lg border p-4 transition-colors ${
+                      failed
+                        ? "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                        : isCompleted
+                          ? "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800"
+                          : "bg-background"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={isCompleted}
+                        onCheckedChange={() => handleToggleStep(s.stepNumber)}
+                        className="mt-1"
+                        disabled={saving}
                       />
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={commitFailStep}>
-                          Save step failure
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setFailStepNumber(null);
-                            setFailStepReason("");
-                          }}
-                        >
-                          Cancel
-                        </Button>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge
+                            variant="outline"
+                            className="font-mono text-xs"
+                          >
+                            Step {s.stepNumber}
+                          </Badge>
+                          <span
+                            className={
+                              isCompleted
+                                ? "line-through text-muted-foreground"
+                                : "font-medium"
+                            }
+                          >
+                            {s.action}
+                          </span>
+                        </div>
+                        <div className="text-sm text-muted-foreground mt-2">
+                          <span className="font-semibold">Expected:</span>{" "}
+                          {s.expected}
+                        </div>
+
+                        {failed && (
+                          <div className="mt-2 text-sm text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-900/30 p-2 rounded">
+                            <span className="font-semibold">Failed:</span>{" "}
+                            {failed.failure_reason}
+                          </div>
+                        )}
                       </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => {
+                          setFailStepNumber(s.stepNumber);
+                          setFailStepReason(failed?.failure_reason || "");
+                        }}
+                        disabled={saving}
+                      >
+                        {failed ? "Edit Failure" : "Mark Failed"}
+                      </Button>
                     </div>
-                  ) : null}
-                </div>
-              );
-            })}
+
+                    {/* Step Failure Input */}
+                    {failStepNumber === s.stepNumber && (
+                      <div className="mt-3 ml-8 space-y-2 animate-in fade-in duration-200">
+                        <Label className="text-sm">Failure reason</Label>
+                        <Textarea
+                          value={failStepReason}
+                          onChange={(e) => setFailStepReason(e.target.value)}
+                          rows={2}
+                          placeholder="Describe what failed and why..."
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={handleCommitFailStep}
+                            disabled={saving || !failStepReason.trim()}
+                          >
+                            {saving ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : null}
+                            Save Failure
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setFailStepNumber(null);
+                              setFailStepReason("");
+                            }}
+                            disabled={saving}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
         {/* Footer Actions */}
         <DialogFooter className="p-6 border-t flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={startOrResume}
-              className="gap-2"
-              disabled={status === "passed" || status === "failed"}
-            >
-              <Play className="h-4 w-4" />
-              {status === "in_progress" ? "Resume" : "Start"}
-            </Button>
+            {!isFinished && (
+              <Button
+                variant="outline"
+                onClick={handleStartOrResume}
+                disabled={saving || finalizing || resetting}
+                className="gap-2"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : isExecuting ? (
+                  <Pause className="h-4 w-4" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                {isExecuting ? "Update" : "Start"}
+              </Button>
+            )}
 
             <Button
               variant="ghost"
-              onClick={async () => {
-                await onReset(testCase.id, caseType);
-              }}
+              onClick={handleReset}
+              disabled={saving || finalizing || resetting}
               className="gap-2"
             >
-              <RotateCcw className="h-4 w-4" />
+              {resetting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw className="h-4 w-4" />
+              )}
               Reset
             </Button>
           </div>
@@ -487,16 +673,14 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
           <div className="flex flex-col gap-2 sm:items-end">
             {/* Final Status Reason Input */}
             {finalStatus &&
-            (finalStatus === "failed" ||
-              finalStatus === "blocked" ||
-              finalStatus === "skipped") ? (
+            ["failed", "blocked", "skipped"].includes(finalStatus) ? (
               <div className="w-full sm:w-[420px] space-y-2">
                 <Label>
                   {finalStatus === "failed"
-                    ? "Failure reason"
+                    ? "Why did the test fail?"
                     : finalStatus === "blocked"
-                      ? "Blocked reason"
-                      : "Skipped reason"}
+                      ? "Why is the test blocked?"
+                      : "Why is the test being skipped?"}
                 </Label>
                 <Textarea
                   value={finalReason}
@@ -506,16 +690,20 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
                     finalStatus === "failed"
                       ? "Describe what went wrong..."
                       : finalStatus === "blocked"
-                        ? "Dependency, env issue, missing access, etc."
-                        : "Out of scope, not applicable, etc."
+                        ? "e.g., Environment issue, missing dependency..."
+                        : "e.g., Out of scope, not applicable..."
                   }
+                  autoFocus
                 />
                 <div className="flex gap-2 justify-end">
                   <Button
-                    onClick={() => finalize(finalStatus)}
-                    disabled={!finalReason.trim()}
+                    onClick={() => handleFinalize(finalStatus)}
+                    disabled={finalizing || !finalReason.trim()}
                   >
-                    Save {finalStatus}
+                    {finalizing ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : null}
+                    Confirm {finalStatus}
                   </Button>
                   <Button
                     variant="ghost"
@@ -523,6 +711,7 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
                       setFinalStatus(null);
                       setFinalReason("");
                     }}
+                    disabled={finalizing}
                   >
                     Cancel
                   </Button>
@@ -534,7 +723,8 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
                 <Button
                   variant="outline"
                   className="gap-2"
-                  onClick={() => finalize("passed")}
+                  onClick={() => handleFinalize("passed")}
+                  disabled={saving || finalizing || resetting}
                 >
                   <CheckCircle2 className="h-4 w-4" />
                   Pass
@@ -544,6 +734,7 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
                   variant="destructive"
                   className="gap-2"
                   onClick={() => setFinalStatus("failed")}
+                  disabled={saving || finalizing || resetting}
                 >
                   <XCircle className="h-4 w-4" />
                   Fail
@@ -553,6 +744,7 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
                   variant="secondary"
                   className="gap-2"
                   onClick={() => setFinalStatus("blocked")}
+                  disabled={saving || finalizing || resetting}
                 >
                   <AlertTriangle className="h-4 w-4" />
                   Block
@@ -562,6 +754,7 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
                   variant="outline"
                   className="gap-2"
                   onClick={() => setFinalStatus("skipped")}
+                  disabled={saving || finalizing || resetting}
                 >
                   <Circle className="h-4 w-4" />
                   Skip

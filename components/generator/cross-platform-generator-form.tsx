@@ -660,7 +660,7 @@ export function CrossPlatformGeneratorForm() {
 
           if (remaining === 0) {
             toast.error("Monthly usage limit reached", {
-              description: `You have used all ${limit} of your monthly test cases. Upgrade to Pro for 500 test cases/month.`,
+              description: `You have used all ${limit} of your test cases. Upgrade to Pro for 500 test cases/month.`,
               duration: 8000,
               action: {
                 label: "Upgrade",
