@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { SuiteDetailsTabs } from "@/components/testcase-management/test_suites/SuiteDetailsTabs";
+import { SuiteDetailsTabs } from "@/components/testcase-management/test_suites/testsuitedetails";
 import { useSuiteDetails } from "@/hooks/useSuiteDetails";
 import { TestSessionExecution } from "@/components/testcase-management/test_suites/testsessionexecution";
 import { UnifiedExportButton } from "@/components/testcase-management/test_suites/unifiedExportButton";

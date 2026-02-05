@@ -12,7 +12,7 @@ import {
 import { Loader2 } from "lucide-react";
 import type { TestSuite } from "@/types/test-cases";
 import { useSuiteDetails } from "@/hooks/useSuiteDetails";
-import { SuiteDetailsTabs } from "@/components/testcase-management/test_suites/SuiteDetailsTabs";
+import { SuiteDetailsTabs } from "@/components/testcase-management/test_suites/testsuitedetails";
 
 type Props = {
   suite: TestSuite; // can be "lite" but must include id/name at minimum

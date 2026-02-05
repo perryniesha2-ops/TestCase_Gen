@@ -239,8 +239,10 @@ export function TestCaseDetailsPageClient({
   const handleRun = async () => {
     if (!testCase) return;
 
+    const type = isCrossPlatform ? "cross-platform" : "regular";
+
     try {
-      await hydrateOne(testCase.id);
+      await hydrateOne(testCase.id, type);
     } catch (e) {
       console.warn("hydrateOne failed (non-fatal):", e);
     }
@@ -573,9 +575,11 @@ export function TestCaseDetailsPageClient({
         testCase={testCase}
         caseType={caseType}
         executionRow={execution[testCase.id]}
-        onSaveProgress={saveProgress}
-        onFinalize={saveResult}
-        onReset={reset}
+        onSaveProgress={(id, updates) => saveProgress(id, updates, caseType)}
+        onFinalize={(id, status, details) =>
+          saveResult(id, status, details, caseType)
+        }
+        onReset={(id) => reset(id, caseType)}
         onToggleStep={toggleStep}
       />
     </>

@@ -18,7 +18,19 @@ import {
   XCircle,
   AlertTriangle,
   Clock,
+  Zap,
+  TrendingUp,
 } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 type ProjectRow = {
   id: string;
@@ -35,7 +47,6 @@ type ProjectRow = {
 type ProjectDashboardRpc = {
   project_id: string;
   days: number;
-
   counts: {
     templates: number;
     requirements: number;
@@ -44,7 +55,6 @@ type ProjectDashboardRpc = {
     test_cases_total: number;
     suites: number;
   };
-
   executions: {
     regular: {
       total: number;
@@ -82,9 +92,36 @@ type ProjectDashboardRpc = {
       pass_rate: number;
     };
   };
-
   avg_duration_minutes: number;
   last_execution_at: string | null;
+};
+
+type ExecutionTimeline = Array<{
+  date: string;
+  passed: number;
+  failed: number;
+  total: number;
+}>;
+
+type ProblemTest = {
+  id: string;
+  title: string;
+  type: string;
+  test_case_type: "regular" | "platform";
+  priority: string;
+  failure_count: number;
+  flakiness_score: number;
+};
+
+type Suite = {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  test_case_count: number;
+  last_run_at: string | null;
+  pass_rate: number;
+  created_at: string;
 };
 
 export function ProjectPageClient({ projectId }: { projectId: string }) {
@@ -93,6 +130,9 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
 
   const [project, setProject] = useState<ProjectRow | null>(null);
   const [dashboard, setDashboard] = useState<ProjectDashboardRpc | null>(null);
+  const [timeline, setTimeline] = useState<ExecutionTimeline>([]);
+  const [problemTests, setProblemTests] = useState<ProblemTest[]>([]);
+  const [suites, setSuites] = useState<Suite[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadProject = useCallback(async () => {
@@ -100,34 +140,46 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
 
     setLoading(true);
     try {
-      const [{ data: dash, error: dashErr }, { data: proj, error: projErr }] =
-        await Promise.all([
-          supabase.rpc("project_dashboard", {
-            p_project_id: projectId,
-            p_days: 30,
-          }),
-          supabase
-            .from("projects")
-            .select(
-              "id,user_id,name,description,status,color,icon,created_at,updated_at",
-            )
-            .eq("id", projectId)
-            .single(),
-        ]);
+      const [
+        { data: dash, error: dashErr },
+        { data: proj, error: projErr },
+        { data: timelineData, error: timelineErr },
+        { data: problemsData, error: problemsErr },
+        { data: suitesData, error: suitesErr },
+      ] = await Promise.all([
+        supabase.rpc("project_dashboard", {
+          p_project_id: projectId,
+          p_days: 30,
+        }),
+        supabase
+          .from("projects")
+          .select(
+            "id,user_id,name,description,status,color,icon,created_at,updated_at",
+          )
+          .eq("id", projectId)
+          .single(),
+        supabase.rpc("project_execution_timeline", {
+          p_project_id: projectId,
+          p_days: 30,
+        }),
+        supabase.rpc("project_top_problem_tests", {
+          p_project_id: projectId,
+          p_days: 30,
+          p_limit: 10,
+        }),
+        supabase.rpc("project_suites_summary", {
+          p_project_id: projectId,
+        }),
+      ]);
 
       if (dashErr) throw dashErr;
       if (projErr) throw projErr;
 
-      const payload = dash as ProjectDashboardRpc | null;
-      if (!payload) {
-        toast.error("Project dashboard returned no data.");
-        setDashboard(null);
-        setProject(null);
-        return;
-      }
-
-      setDashboard(payload);
+      setDashboard(dash as ProjectDashboardRpc);
       setProject(proj as ProjectRow);
+      setTimeline((timelineData as ExecutionTimeline) || []);
+      setProblemTests((problemsData as ProblemTest[]) || []);
+      setSuites((suitesData as Suite[]) || []);
     } catch (e: any) {
       console.error(e);
       toast.error(e?.message || "Failed to load project dashboard");
@@ -144,7 +196,7 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
     void loadProject();
   }, [authLoading, loadProject, user]);
 
-  // ---- derived values (new RPC shape) ----
+  // Derived values
   const c = dashboard?.counts;
   const reg = dashboard?.executions?.regular;
   const plat = dashboard?.executions?.platform;
@@ -155,13 +207,27 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
   const blockedExecutions = (reg?.blocked ?? 0) + (plat?.blocked ?? 0);
   const skippedExecutions = (reg?.skipped ?? 0) + (plat?.skipped ?? 0);
 
-  // weighted combined pass rate
   const combinedPassRate =
     totalExecutions > 0
       ? Math.round((100 * passedExecutions) / totalExecutions)
       : 0;
 
   const daysLabel = dashboard?.days ?? 30;
+
+  function getPriorityBadgeClass(priority: string) {
+    switch (priority) {
+      case "critical":
+        return "bg-red-500/10 text-red-700 border-red-200";
+      case "high":
+        return "bg-orange-500/10 text-orange-700 border-orange-200";
+      case "medium":
+        return "bg-yellow-500/10 text-yellow-700 border-yellow-200";
+      case "low":
+        return "bg-blue-500/10 text-blue-700 border-blue-200";
+      default:
+        return "bg-gray-500/10 text-gray-700 border-gray-200";
+    }
+  }
 
   return (
     <div className="flex w-full">
@@ -207,13 +273,10 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{project.status ?? "—"}</Badge>
-
                     <Badge variant="secondary">{daysLabel}d view</Badge>
-
                     <Badge variant="secondary">
                       {combinedPassRate}% pass rate
                     </Badge>
-
                     {dashboard?.last_execution_at ? (
                       <Badge variant="secondary" className="truncate">
                         Last run:{" "}
@@ -227,7 +290,7 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                   <Button asChild variant="outline" className="gap-2">
                     <Link href={`/projects/${projectId}/settings/integrations`}>
                       <Settings className="h-4 w-4" />
-                      Integrations
+                      Settings
                     </Link>
                   </Button>
 
@@ -247,30 +310,34 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                     </Link>
                   </Button>
 
-                  <Button asChild variant="outline" className="gap-2">
-                    <Link
-                      href={`/test-cases?project=${encodeURIComponent(
-                        projectId,
-                      )}&runStatus=failed`}
-                    >
-                      View failures <XCircle className="h-4 w-4" />
-                    </Link>
-                  </Button>
+                  {failedExecutions > 0 && (
+                    <Button asChild variant="outline" className="gap-2">
+                      <Link
+                        href={`/test-cases?project=${encodeURIComponent(
+                          projectId,
+                        )}&runStatus=failed`}
+                      >
+                        View failures <XCircle className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                  )}
                 </div>
               </div>
 
-              {/* KPI Cards (now based on counts + combined executions) */}
+              {/* KPI Cards */}
               {dashboard ? (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <Card>
+                  <Card className="border-slate-200 dark:border-slate-800 hover:shadow-md transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">
                         Executions
                       </CardTitle>
-                      <Activity className="h-4 w-4 text-muted-foreground" />
+                      <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800">
+                        <Activity className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">
                         {totalExecutions}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
@@ -280,15 +347,17 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-green-200 dark:border-green-800 hover:shadow-md transition-shadow bg-green-50/50 dark:bg-green-950/20">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium">
+                      <CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">
                         Passed
                       </CardTitle>
-                      <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                      <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900">
+                        <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-3xl font-bold text-green-900 dark:text-green-100">
                         {passedExecutions}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
@@ -297,15 +366,17 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-red-200 dark:border-red-800 hover:shadow-md transition-shadow bg-red-50/50 dark:bg-red-950/20">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium">
+                      <CardTitle className="text-sm font-medium text-red-700 dark:text-red-300">
                         Blocked / Skipped
                       </CardTitle>
-                      <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                      <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900">
+                        <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-3xl font-bold text-red-900 dark:text-red-100">
                         {blockedExecutions + skippedExecutions}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
@@ -315,12 +386,14 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-blue-200 dark:border-blue-800 hover:shadow-md transition-shadow bg-blue-50/50 dark:bg-blue-950/20">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium">
+                      <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-300">
                         Artifacts
                       </CardTitle>
-                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
+                        <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                      </div>
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">{c?.suites ?? 0}</div>
@@ -338,47 +411,200 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                 </div>
               ) : null}
 
-              {/* IMPORTANT: These sections depended on fields your RPC no longer returns.
-                  Keep placeholders so the page remains functional without breaking. */}
-
+              {/* Execution Trend Chart */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Execution trend</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" />
+                    Execution Trend (Last {daysLabel} Days)
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  Execution trend timeseries is not included in the current{" "}
-                  <code className="text-xs">project_dashboard</code> payload.
-                  Add <code className="text-xs">execution_timeseries</code> to
-                  the RPC if you want to render the chart here.
+                <CardContent>
+                  {timeline && timeline.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={timeline}>
+                        <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                        <XAxis
+                          dataKey="date"
+                          style={{ fontSize: "12px" }}
+                          tickFormatter={(value) => {
+                            const date = new Date(value);
+                            return `${date.getMonth() + 1}/${date.getDate()}`;
+                          }}
+                        />
+                        <YAxis style={{ fontSize: "12px" }} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "rgba(255, 255, 255, 0.95)",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: "8px",
+                          }}
+                        />
+                        <Legend />
+                        <Line
+                          type="monotone"
+                          dataKey="passed"
+                          stroke="#10b981"
+                          strokeWidth={2}
+                          dot={{ fill: "#10b981", r: 4 }}
+                          name="Passed"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="failed"
+                          stroke="#ef4444"
+                          strokeWidth={2}
+                          dot={{ fill: "#ef4444", r: 4 }}
+                          name="Failed"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-[300px] flex items-center justify-center">
+                      <div className="text-center space-y-2">
+                        <Activity className="h-8 w-8 mx-auto text-muted-foreground opacity-50" />
+                        <p className="text-sm text-muted-foreground">
+                          No execution data in the last {daysLabel} days
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
+              {/* Top Problem Tests */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Top problem tests</CardTitle>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-orange-600" />
+                    Top Problem Tests
+                  </CardTitle>
+                  {problemTests.length > 0 && (
+                    <Link
+                      href={`/test-cases?project=${encodeURIComponent(projectId)}&runStatus=failed`}
+                    >
+                      <Button variant="ghost" size="sm">
+                        View All <ArrowRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </Link>
+                  )}
                 </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  Top problem tests are not included in the current{" "}
-                  <code className="text-xs">project_dashboard</code> payload.
-                  Add <code className="text-xs">top_problem_tests</code> to the
-                  RPC (and include platform cases if desired) to render this
-                  section.
+                <CardContent>
+                  {problemTests && problemTests.length > 0 ? (
+                    <div className="space-y-3">
+                      {problemTests.map((test) => (
+                        <Link
+                          key={test.id}
+                          href={`/test-cases/${test.id}`}
+                          className="block"
+                        >
+                          <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent transition-colors">
+                            <XCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {test.title}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs ${getPriorityBadgeClass(test.priority)}`}
+                                >
+                                  {test.priority}
+                                </Badge>
+                                <Badge variant="secondary" className="text-xs">
+                                  {test.type}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  Failed {test.failure_count}x
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {test.flakiness_score}% flaky
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 space-y-2">
+                      <CheckCircle className="h-8 w-8 mx-auto text-green-600 opacity-50" />
+                      <p className="text-sm text-muted-foreground">
+                        No failed tests in the last {daysLabel} days
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
+              {/* Test Suites */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Suites</CardTitle>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Test Suites</CardTitle>
+                  {suites.length > 0 && (
+                    <Link
+                      href={`/test-library?project=${encodeURIComponent(projectId)}`}
+                    >
+                      <Button variant="ghost" size="sm">
+                        View All <ArrowRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </Link>
+                  )}
                 </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  Suite summary is not included in the current{" "}
-                  <code className="text-xs">project_dashboard</code> payload.
-                  Add <code className="text-xs">suites_summary</code> to the RPC
-                  to render it here.
+                <CardContent>
+                  {suites && suites.length > 0 ? (
+                    <div className="space-y-3">
+                      {suites.slice(0, 5).map((suite) => (
+                        <div
+                          key={suite.id}
+                          className="flex items-start justify-between p-3 border rounded-lg hover:bg-accent transition-colors"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {suite.name}
+                            </p>
+                            {suite.description && (
+                              <p className="text-xs text-muted-foreground truncate">
+                                {suite.description}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="secondary" className="text-xs">
+                                {suite.test_case_count} tests
+                              </Badge>
+                              <Badge variant="secondary" className="text-xs">
+                                {suite.pass_rate}% pass rate
+                              </Badge>
+                              {suite.last_run_at && (
+                                <span className="text-xs text-muted-foreground">
+                                  Last run:{" "}
+                                  {new Date(
+                                    suite.last_run_at,
+                                  ).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 space-y-2">
+                      <Clock className="h-8 w-8 mx-auto text-muted-foreground opacity-50" />
+                      <p className="text-sm text-muted-foreground">
+                        No test suites yet
+                      </p>
+                      <Link href="/test-library">
+                        <Button variant="outline" size="sm">
+                          Create Suite
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
-              {/* Project details */}
+              {/* Project Details */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <Card className="lg:col-span-2">
                   <CardHeader>
@@ -386,15 +612,24 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                   </CardHeader>
                   <CardContent className="text-sm text-muted-foreground space-y-3">
                     <p>
-                      Use this project as the container for requirements, test
-                      cases, suites, and integrations.
+                      This project contains {c?.test_cases_total ?? 0} test
+                      cases, {c?.requirements ?? 0} requirements, and{" "}
+                      {c?.suites ?? 0} test suites. Track execution trends,
+                      identify problem tests, and manage your testing workflow
+                      all in one place.
                     </p>
+                    {totalExecutions === 0 && (
+                      <p className="text-sm text-orange-600">
+                        No tests have been executed yet. Run your test suites to
+                        start tracking metrics.
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Project details</CardTitle>
+                    <CardTitle>Project Details</CardTitle>
                   </CardHeader>
                   <CardContent className="text-sm text-muted-foreground space-y-2">
                     <div>

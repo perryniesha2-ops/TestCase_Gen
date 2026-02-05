@@ -2,7 +2,7 @@
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteFooter } from "@/components/pagecomponents/site-footer";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
-import { TestCaseDetailsPageClient } from "@/components/testcase-management/test-cases/TestCaseDetailsPageClient";
+import { TestCaseDetailsPageClient } from "@/components/testcase-management/test-cases/testcasedetails";
 
 type PageProps = {
   params: { testCaseId: string } | Promise<{ testCaseId: string }>;

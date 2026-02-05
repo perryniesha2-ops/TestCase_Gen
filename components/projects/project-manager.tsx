@@ -503,49 +503,102 @@ export function ProjectManager() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
+        {/* Total Projects - Neutral/Primary */}
+        <Card className="border-slate-200 dark:border-slate-800 hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Projects
             </CardTitle>
-            <FolderOpen className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800">
+              <FolderOpen className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{projects.length}</div>
+            <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">
+              {projects.length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              All projects including archived
+            </p>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Active Projects - Blue/Primary (In Progress) */}
+        <Card className="border-blue-200 dark:border-blue-800 hover:shadow-md transition-shadow bg-blue-50/50 dark:bg-blue-950/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Active</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-300">
+              Active Projects
+            </CardTitle>
+            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
+              <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{activeProjects.length}</div>
+            <div className="text-3xl font-bold text-blue-900 dark:text-blue-100">
+              {activeProjects.length}
+            </div>
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+              Currently in progress
+            </p>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Completed Projects - Green/Success */}
+        <Card className="border-green-200 dark:border-green-800 hover:shadow-md transition-shadow bg-green-50/50 dark:bg-green-950/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">
+              Completed Projects
+            </CardTitle>
+            <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900">
+              <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{completedProjects.length}</div>
+            <div className="text-3xl font-bold text-green-900 dark:text-green-100">
+              {completedProjects.length}
+            </div>
+            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+              Successfully finished
+            </p>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Total Items - Purple/Info */}
+        <Card className="border-purple-200 dark:border-purple-800 hover:shadow-md transition-shadow bg-purple-50/50 dark:bg-purple-950/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Items</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-purple-700 dark:text-purple-300">
+              Total Items
+            </CardTitle>
+            <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900">
+              <Package className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalItems}</div>
+            <div className="text-3xl font-bold text-purple-900 dark:text-purple-100">
+              {totalItems}
+            </div>
+            <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+              Suites, requirements & templates
+            </p>
+            <div className="flex gap-2 mt-2 text-xs text-muted-foreground">
+              <span>
+                {projects.reduce((sum, p) => sum + p.test_suites_count, 0)}{" "}
+                suites
+              </span>
+              <span>·</span>
+              <span>
+                {projects.reduce((sum, p) => sum + p.requirements_count, 0)}{" "}
+                reqs
+              </span>
+              <span>·</span>
+              <span>
+                {projects.reduce((sum, p) => sum + p.templates_count, 0)}{" "}
+                templates
+              </span>
+            </div>
           </CardContent>
         </Card>
       </div>
-
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
           <div className="relative">

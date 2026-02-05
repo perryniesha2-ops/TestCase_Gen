@@ -52,17 +52,27 @@ interface TestRunnerDialogProps {
 
   executionRow: ExecutionRow;
 
+  // ✅ Updated callbacks to include caseType parameter
   onSaveProgress: (
     testCaseId: string,
-    updates: Partial<TestExecution[string]>
+    updates: Partial<TestExecution[string]>,
+    caseType: CaseType,
   ) => Promise<void> | void;
+
   onFinalize: (
     testCaseId: string,
     status: ExecutionStatus,
-    details: ExecutionDetails
+    details: ExecutionDetails,
+    caseType: CaseType,
   ) => Promise<void> | void;
-  onReset: (testCaseId: string) => Promise<void> | void;
-  onToggleStep?: (testCaseId: string, stepNumber: number) => void;
+
+  onReset: (testCaseId: string, caseType: CaseType) => Promise<void> | void;
+
+  onToggleStep?: (
+    testCaseId: string,
+    stepNumber: number,
+    caseType: CaseType,
+  ) => void;
 }
 
 function formatDurationMinutes(startedAt?: string | null) {
@@ -107,6 +117,7 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
     return () => clearInterval(t);
   }, [open]);
 
+  // ✅ Parse steps based on case type
   const steps = useMemo(() => {
     if (caseType === "regular") {
       const tc = testCase as TestCase;
@@ -128,6 +139,7 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
   const failedSteps = executionRow?.failedSteps || [];
   const status = executionRow?.status || "not_run";
 
+  // ✅ Reset form when dialog opens
   useEffect(() => {
     if (!open || !testCase) return;
 
@@ -143,29 +155,40 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, testCase?.id]);
 
+  // ✅ Start or resume execution - passes caseType
   async function startOrResume() {
-    await onSaveProgress(testCase.id, {
-      status: "in_progress",
-      test_environment: environment,
-      browser,
-      os_version: osVersion,
-      notes,
-    });
+    await onSaveProgress(
+      testCase.id,
+      {
+        status: "in_progress",
+        test_environment: environment,
+        browser,
+        os_version: osVersion,
+        notes,
+      },
+      caseType,
+    );
   }
 
+  // ✅ Save metadata only - passes caseType
   async function saveMetaOnly() {
-    await onSaveProgress(testCase.id, {
-      test_environment: environment,
-      browser,
-      os_version: osVersion,
-      notes,
-    });
+    await onSaveProgress(
+      testCase.id,
+      {
+        test_environment: environment,
+        browser,
+        os_version: osVersion,
+        notes,
+      },
+      caseType,
+    );
   }
 
+  // ✅ Toggle step completion - passes caseType
   async function toggleStep(stepNumber: number) {
     // If parent wants to own toggle logic, use it:
     if (onToggleStep) {
-      onToggleStep(testCase.id, stepNumber);
+      onToggleStep(testCase.id, stepNumber, caseType);
       return;
     }
 
@@ -175,12 +198,17 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
       ? completed.filter((n) => n !== stepNumber)
       : [...completed, stepNumber];
 
-    await onSaveProgress(testCase.id, {
-      completedSteps: updated,
-      status: status === "not_run" ? "in_progress" : status,
-    });
+    await onSaveProgress(
+      testCase.id,
+      {
+        completedSteps: updated,
+        status: status === "not_run" ? "in_progress" : status,
+      },
+      caseType,
+    );
   }
 
+  // ✅ Mark a step as failed - passes caseType
   async function commitFailStep() {
     if (!failStepNumber) return;
 
@@ -192,24 +220,30 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
       },
     ];
 
-    await onSaveProgress(testCase.id, {
-      failedSteps: nextFailed,
-      status: status === "not_run" ? "in_progress" : status,
-      test_environment: environment,
-      browser,
-      os_version: osVersion,
-      notes,
-    });
+    await onSaveProgress(
+      testCase.id,
+      {
+        failedSteps: nextFailed,
+        status: status === "not_run" ? "in_progress" : status,
+        test_environment: environment,
+        browser,
+        os_version: osVersion,
+        notes,
+      },
+      caseType,
+    );
 
     setFailStepNumber(null);
     setFailStepReason("");
   }
 
+  // ✅ Finalize execution with status - passes caseType
   async function finalize(statusToSet: ExecutionStatus) {
     const needsReason =
       statusToSet === "failed" ||
       statusToSet === "blocked" ||
       statusToSet === "skipped";
+
     const details: ExecutionDetails = {
       notes,
       failure_reason: needsReason ? finalReason : "",
@@ -218,10 +252,11 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
       os_version: osVersion,
     };
 
-    await onFinalize(testCase.id, statusToSet, details);
+    await onFinalize(testCase.id, statusToSet, details, caseType);
     onOpenChange(false);
   }
 
+  // Status icon helper
   function statusIcon(s: ExecutionStatus) {
     switch (s) {
       case "passed":
@@ -247,7 +282,6 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
         className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
         onInteractOutside={(e) => e.preventDefault()}
       >
-        {" "}
         <DialogHeader className="p-6 border-b">
           <DialogTitle className="flex items-center gap-2 min-w-0">
             {statusIcon(status)}
@@ -274,8 +308,9 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
             </span>
           </DialogDescription>
         </DialogHeader>
+
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Meta */}
+          {/* Execution Metadata */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>Environment</Label>
@@ -321,7 +356,7 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
             />
           </div>
 
-          {/* Steps */}
+          {/* Test Steps */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Steps</h3>
@@ -333,7 +368,7 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
             {steps.map((s) => {
               const isCompleted = completed.includes(s.stepNumber);
               const failed = failedSteps.find(
-                (fs) => fs.step_number === s.stepNumber
+                (fs) => fs.step_number === s.stepNumber,
               );
 
               return (
@@ -391,6 +426,7 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
                     </Button>
                   </div>
 
+                  {/* Step Failure Input */}
                   {failStepNumber === s.stepNumber ? (
                     <div className="mt-3 ml-8 space-y-2">
                       <Label className="text-sm">Step failure reason</Label>
@@ -422,7 +458,8 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
             })}
           </div>
         </div>
-        {/* Footer */}
+
+        {/* Footer Actions */}
         <DialogFooter className="p-6 border-t flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-2">
             <Button
@@ -438,7 +475,7 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
             <Button
               variant="ghost"
               onClick={async () => {
-                await onReset(testCase.id);
+                await onReset(testCase.id, caseType);
               }}
               className="gap-2"
             >
@@ -448,6 +485,7 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
           </div>
 
           <div className="flex flex-col gap-2 sm:items-end">
+            {/* Final Status Reason Input */}
             {finalStatus &&
             (finalStatus === "failed" ||
               finalStatus === "blocked" ||
@@ -457,8 +495,8 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
                   {finalStatus === "failed"
                     ? "Failure reason"
                     : finalStatus === "blocked"
-                    ? "Blocked reason"
-                    : "Skipped reason"}
+                      ? "Blocked reason"
+                      : "Skipped reason"}
                 </Label>
                 <Textarea
                   value={finalReason}
@@ -468,8 +506,8 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
                     finalStatus === "failed"
                       ? "Describe what went wrong..."
                       : finalStatus === "blocked"
-                      ? "Dependency, env issue, missing access, etc."
-                      : "Out of scope, not applicable, etc."
+                        ? "Dependency, env issue, missing access, etc."
+                        : "Out of scope, not applicable, etc."
                   }
                 />
                 <div className="flex gap-2 justify-end">
@@ -491,6 +529,7 @@ export function TestRunnerDialog(props: TestRunnerDialogProps) {
                 </div>
               </div>
             ) : (
+              /* Finalization Buttons */
               <div className="flex flex-wrap gap-2 justify-end">
                 <Button
                   variant="outline"
