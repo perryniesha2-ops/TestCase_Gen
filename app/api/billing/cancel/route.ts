@@ -4,10 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createEmailService } from "@/lib/email-service";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2026-01-28.clover",
-});
-
 // Helper: Format Unix timestamp to readable date
 function formatDate(unixTimestamp: number | null): string {
   if (!unixTimestamp) return "the end of your billing cycle";
@@ -19,6 +15,17 @@ function formatDate(unixTimestamp: number | null): string {
   });
 }
 
+function getStripeClient() {
+  const apiKey = process.env.STRIPE_SECRET_KEY;
+
+  if (!apiKey) {
+    throw new Error("STRIPE_SECRET_KEY is not configured");
+  }
+
+  return new Stripe(apiKey, {
+    apiVersion: "2026-01-28.clover",
+  });
+}
 // Helper: Log billing event
 async function logBillingEvent(
   supabase: any,
@@ -74,6 +81,7 @@ async function sendCancellationEmail(
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
+    const stripe = getStripeClient();
 
     // 1. Authenticate user
     const {
