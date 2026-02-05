@@ -24,8 +24,6 @@ const priceIds = {
 };
 
 export async function POST(request: NextRequest) {
-  console.log("📋 Subscribe route called");
-
   try {
     const body = await request.json();
     const { planId, isYearly, userId } = body;

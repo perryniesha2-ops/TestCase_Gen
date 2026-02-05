@@ -5,9 +5,17 @@ import { headers } from "next/headers";
 import Stripe from "stripe";
 import { createEmailService } from "@/lib/email-service";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2026-01-28.clover",
-});
+function getStripeClient() {
+  const apiKey = process.env.STRIPE_SECRET_KEY;
+
+  if (!apiKey) {
+    throw new Error("STRIPE_SECRET_KEY is not configured");
+  }
+
+  return new Stripe(apiKey, {
+    apiVersion: "2026-01-28.clover",
+  });
+}
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
 
@@ -25,7 +33,7 @@ const supabaseAdmin = createClient(
 );
 
 export async function POST(request: NextRequest) {
-  console.log("\n🎣 Webhook received");
+  const stripe = getStripeClient();
 
   try {
     const body = await request.text();
@@ -46,7 +54,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 
-    // Handle the event
+    // Handle the event - PASS stripe to handlers
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
@@ -82,13 +90,13 @@ export async function POST(request: NextRequest) {
 
       case "invoice.payment_succeeded": {
         const invoice = event.data.object as Stripe.Invoice;
-        await handleInvoicePaymentSucceeded(invoice);
+        await handleInvoicePaymentSucceeded(invoice, stripe); // ← Add stripe
         break;
       }
 
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
-        await handleInvoicePaymentFailed(invoice);
+        await handleInvoicePaymentFailed(invoice, stripe); // ← Add stripe
         break;
       }
 
@@ -152,6 +160,9 @@ async function handleSubscriptionCreated(
       throw profileError;
     }
 
+    console.log("✅ User profile updated");
+
+    // ✅ FIX 2: Wrap email sending in try-catch (non-critical, shouldn't break webhook)
     if (mappedStatus === "trial" && emailService) {
       try {
         const { data: profile } = await supabaseAdmin
@@ -178,8 +189,13 @@ async function handleSubscriptionCreated(
             trialEndDate,
             planName: planId.toUpperCase(),
           });
+
+          console.log("✅ Trial started email sent to", profile.email);
         }
-      } catch (emailError) {}
+      } catch (emailError) {
+        console.error("⚠️ Failed to send trial started email:", emailError);
+        // Don't throw - email failure shouldn't break webhook
+      }
     }
 
     // Create billing event
@@ -293,6 +309,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
       throw error;
     }
 
+    // ✅ Send subscription ended email
     if (userProfile && emailService) {
       try {
         await emailService.sendSubscriptionEndedEmail({
@@ -300,6 +317,8 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
           userName: userProfile.full_name || undefined,
           planName: userProfile.subscription_tier.toUpperCase(),
         });
+
+        console.log("✅ Subscription ended email sent to", userProfile.email);
       } catch (emailError) {
         console.error(
           "⚠️ Failed to send subscription ended email:",
@@ -328,7 +347,10 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   }
 }
 
-async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
+async function handleInvoicePaymentSucceeded(
+  invoice: Stripe.Invoice,
+  stripe: Stripe,
+) {
   let subscriptionId: string | null = null;
 
   if ("subscription" in invoice && invoice.subscription) {
@@ -360,6 +382,7 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
 
     const invoiceData = invoice as any;
 
+    // ✅ FIX 2: Wrap email sending in try-catch
     if (emailService) {
       try {
         const { data: profile } = await supabaseAdmin
@@ -405,8 +428,13 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
             nextBillingDate,
             amount,
           });
+
+          console.log("✅ Welcome to Pro email sent to", profile.email);
         }
-      } catch (emailError) {}
+      } catch (emailError) {
+        console.error("⚠️ Failed to send welcome email:", emailError);
+        // Don't throw - email failure shouldn't break webhook
+      }
     }
 
     // Create billing event
@@ -432,7 +460,10 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
   }
 }
 
-async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+async function handleInvoicePaymentFailed(
+  invoice: Stripe.Invoice,
+  stripe: Stripe,
+) {
   let subscriptionId: string | null = null;
 
   if ("subscription" in invoice && invoice.subscription) {
