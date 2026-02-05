@@ -1279,11 +1279,10 @@ export function TestSessionExecution({
                           <CardContent className="flex-1 overflow-y-auto">
                             <ScreenshotUpload
                               executionId={currentExecutionId}
-                              testCaseId={
-                                currentTest.test_case_id ||
-                                currentTest.platform_test_case_id ||
-                                ""
-                              }
+                              testCaseId={currentTest.test_case_id || undefined} // ← Separate prop
+                              platformTestCaseId={
+                                currentTest.platform_test_case_id || undefined
+                              } // ← Separate prop
                               attachments={attachments}
                               targetUrl={targetUrl}
                               onUploadComplete={(attachment) =>

@@ -2,7 +2,7 @@
 console.log("[SynthQA Extension] service worker started");
 
 const CHANNEL = "synthqa-evidence-extension";
-const ARMED_KEY = "armedByTabId"; // { [tabId]: { url, executionId, testCaseId, stepNumber, synthqaTabId, updatedAt } }
+const ARMED_KEY = "armedByTabId";
 
 // -------------------------
 // Utilities
@@ -90,6 +90,7 @@ async function armTargetTab({
   url,
   executionId,
   testCaseId,
+  platformTestCaseId,
   stepNumber,
 }) {
   const map = await getArmedMap();
@@ -97,6 +98,7 @@ async function armTargetTab({
     url,
     executionId: executionId ?? null,
     testCaseId: testCaseId ?? null,
+    platformTestCaseId: platformTestCaseId ?? null,
     stepNumber: stepNumber ?? null,
     synthqaTabId,
     updatedAt: Date.now(),
@@ -289,11 +291,11 @@ async function cropDataUrl(fullDataUrl, rectCssPx) {
 
   const sw = Math.max(
     1,
-    Math.min(maxW - sx, Math.floor(rectCssPx.width * dpr))
+    Math.min(maxW - sx, Math.floor(rectCssPx.width * dpr)),
   );
   const sh = Math.max(
     1,
-    Math.min(maxH - sy, Math.floor(rectCssPx.height * dpr))
+    Math.min(maxH - sy, Math.floor(rectCssPx.height * dpr)),
   );
 
   const canvas = new OffscreenCanvas(sw, sh);
@@ -341,7 +343,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // -----------------------
       if (message?.command === "CAPTURE_SCREENSHOT") {
         const targetUrl = normalizeUrl(
-          message?.payload?.targetUrl || message?.payload?.url
+          message?.payload?.targetUrl || message?.payload?.url,
         );
         if (!targetUrl)
           return sendResponse({ ok: false, error: "Missing targetUrl" });
@@ -361,12 +363,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           url: targetUrl,
           executionId: message?.payload?.executionId,
           testCaseId: message?.payload?.testCaseId,
+          platformTestCaseId: message?.payload?.platformTestCaseId,
           stepNumber: message?.payload?.stepNumber,
         });
 
         const dataUrl = await chrome.tabs.captureVisibleTab(
           targetTab.windowId ?? null,
-          { format: "png" }
+          { format: "png" },
         );
 
         return sendResponse({
@@ -377,6 +380,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             fileName: `screenshot-${Date.now()}.png`,
             capturedTabId: targetTab.id,
             url: targetUrl,
+            testCaseId: message?.payload?.testCaseId || null,
+            platformTestCaseId: message?.payload?.platformTestCaseId || null,
           },
         });
       }
@@ -386,7 +391,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // -----------------------
       if (message?.command === "CAPTURE_REGION") {
         const targetUrl = normalizeUrl(
-          message?.payload?.targetUrl || message?.payload?.url
+          message?.payload?.targetUrl || message?.payload?.url,
         );
         if (!targetUrl)
           return sendResponse({ ok: false, error: "Missing targetUrl" });
@@ -406,6 +411,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           url: targetUrl,
           executionId: message?.payload?.executionId,
           testCaseId: message?.payload?.testCaseId,
+          platformTestCaseId: message?.payload?.platformTestCaseId,
           stepNumber: message?.payload?.stepNumber,
         });
 
@@ -415,7 +421,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // 2) Capture visible tab (full viewport)
         const fullDataUrl = await chrome.tabs.captureVisibleTab(
           targetTab.windowId ?? null,
-          { format: "png" }
+          { format: "png" },
         );
 
         // 3) Crop
@@ -429,6 +435,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             fileName: `screenshot-region-${Date.now()}.png`,
             capturedTabId: targetTab.id,
             url: targetUrl,
+            testCaseId: message?.payload?.testCaseId || null,
+            platformTestCaseId: message?.payload?.platformTestCaseId || null,
           },
         });
       }
