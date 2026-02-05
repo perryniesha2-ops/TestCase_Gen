@@ -4,9 +4,17 @@ import { createClient } from "@/lib/supabase/server";
 import { headers } from "next/headers";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2026-01-28.clover",
-});
+function getStripeClient() {
+  const apiKey = process.env.STRIPE_SECRET_KEY;
+
+  if (!apiKey) {
+    throw new Error("STRIPE_SECRET_KEY is not configured");
+  }
+
+  return new Stripe(apiKey, {
+    apiVersion: "2026-01-28.clover",
+  });
+}
 
 const priceIds = {
   pro_monthly: process.env.STRIPE_PRO_MONTHLY_PRICE_ID,
@@ -40,6 +48,8 @@ export async function POST(request: NextRequest) {
 
     // Get user from Supabase
     const supabase = await createClient();
+    const stripe = getStripeClient();
+
     const {
       data: { user },
       error: authError,
