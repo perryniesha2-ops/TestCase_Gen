@@ -8,7 +8,6 @@ import React, {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AddRequirementModal } from "@/components/requirements/add-requirement-modal";
@@ -28,6 +27,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  toastSuccess,
+  toastError,
+  toastInfo,
+  toastWarning,
+} from "@/lib/utils/toast-utils";
+
 import { RequirementsTable } from "./requirements-table";
 import { RequirementDetailsDialog } from "./requirement-details-dialog";
 import { LinkTestCasesDialog } from "./link-test-cases-dialog";
@@ -195,7 +201,7 @@ export function RequirementsList({
       } catch (err: any) {
         if (seq !== reqFetchSeq.current) return;
         console.error("fetchRequirementsList error:", err);
-        toast.error(err?.message ?? "Failed to load requirements");
+        toastError(err?.message ?? "Failed to load requirements");
       } finally {
         if (seq !== reqFetchSeq.current) return;
         setInitialLoading(false);
@@ -221,7 +227,7 @@ export function RequirementsList({
         await fetchRequirementsList({ initial: true });
       } catch (err: any) {
         console.error("Initial load error:", err);
-        toast.error(err?.message ?? "Failed to load requirements");
+        toastError(err?.message ?? "Failed to load requirements");
         setInitialLoading(false);
       }
     })();
@@ -290,13 +296,13 @@ export function RequirementsList({
 
         await deleteRequirement(requirement.id);
 
-        toast.success("Requirement deleted");
+        toastSuccess("Requirement deleted");
 
         // Refresh to keep counts/pages correct (especially if page becomes empty)
         await fetchRequirementsList();
       } catch (err: any) {
         console.error("deleteRequirement error:", err);
-        toast.error(err?.message ?? "Failed to delete requirement");
+        toastError(err?.message ?? "Failed to delete requirement");
         await fetchRequirementsList();
       }
     },
@@ -304,7 +310,7 @@ export function RequirementsList({
   );
 
   const handleExport = useCallback(() => {
-    toast.info("Export functionality coming soon");
+    toastInfo("Export functionality coming soon");
   }, []);
 
   const onProjectChange = useCallback((projectId: string) => {

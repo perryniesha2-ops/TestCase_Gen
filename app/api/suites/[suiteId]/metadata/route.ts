@@ -21,7 +21,6 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // ✅ CRITICAL: Await params in Next.js 15+
     const params = await context.params;
     const suiteId = params.suiteId;
 

@@ -61,7 +61,6 @@ export function useBulkActions(
     setSelectedIds(new Set());
   }
 
-  // ✅ Unified bulk update (updates both tables)
   async function bulkUpdate(
     updates: Partial<TestCase> & { status?: BulkStatus },
   ) {
@@ -102,7 +101,6 @@ export function useBulkActions(
     }
   }
 
-  // ✅ Unified bulk delete (deletes from both tables)
   async function bulkDelete() {
     const { regularIds, crossIds } = splitSelected;
     const total = regularIds.length + crossIds.length;
@@ -136,7 +134,6 @@ export function useBulkActions(
     }
   }
 
-  // ✅ Unified add-to-suite (inserts the correct FK column depending on type)
   async function bulkAddToSuite(suiteId: string) {
     const { regularIds, crossIds } = splitSelected;
     const total = regularIds.length + crossIds.length;
@@ -199,7 +196,6 @@ export function useBulkActions(
     }
   }
 
-  // ✅ Unified export (already basically works)
   function bulkExport() {
     const ids = selectedList;
     const selectedCases = testCases.filter((tc) => ids.includes(tc.id));

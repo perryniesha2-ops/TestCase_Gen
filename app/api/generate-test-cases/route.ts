@@ -6,6 +6,7 @@ import OpenAI from "openai";
 import {
   checkUsageQuota,
   recordSuccessfulGeneration,
+  UsageQuotaError,
 } from "@/lib/usage-tracker";
 
 export const runtime = "nodejs";
@@ -63,8 +64,6 @@ type Priority = "low" | "medium" | "high" | "critical";
 
 const DEFAULT_MODEL: ModelKey = "claude-sonnet-4-5";
 
-// Full model strings — not the short keys — so these are safe to pass directly
-// to the provider clients when the primary model fails.
 const FALLBACK_MODELS = {
   anthropic: "claude-sonnet-4-5-20250514",
   openai: "gpt-4o-2024-11-20",
@@ -390,10 +389,6 @@ interface LLMResult {
   model: string;
 }
 
-/**
- * Calls the requested model, then automatically retries on the other provider
- * using its fallback model if the primary call throws. Throws if both fail.
- */
 async function callWithFallback(
   model: string,
   prompt: string,
@@ -401,7 +396,6 @@ async function callWithFallback(
 ): Promise<LLMResult> {
   const isAnthropic = model.startsWith("claude");
 
-  // Ordered list: primary first, fallback second.
   const providers: Array<{ type: "anthropic" | "openai"; model: string }> =
     isAnthropic
       ? [
@@ -421,8 +415,10 @@ async function callWithFallback(
           max_tokens: maxTokens,
           messages: [{ role: "user", content: prompt }],
         });
+        const text = extractAnthropicText(res.content);
+
         return {
-          text: extractAnthropicText(res.content),
+          text,
           provider: "anthropic",
           model: provider.model,
         };
@@ -433,28 +429,27 @@ async function callWithFallback(
         messages: [{ role: "user", content: prompt }],
         max_tokens: maxTokens,
       });
+      const text = res.choices?.[0]?.message?.content ?? "";
+
       return {
-        text: res.choices?.[0]?.message?.content ?? "",
+        text,
         provider: "openai",
         model: provider.model,
       };
-    } catch {
-      continue; // try next provider
+    } catch (err) {
+      console.error(`❌ ${provider.type} failed:`, err);
+      continue;
     }
   }
 
   throw new Error("All LLM providers failed");
 }
 
-// ─── Test Case Structuring ───────────────────────────────────────────────────
+// ─── Enhanced structuring with retry ────────────────────────────────────────
 
-/**
- * Sends raw LLM output to GPT-4o-mini with json_object mode to produce a
- * typed array of GeneratedTestCase.  Falls back to a regex extraction of a
- * bare JSON array from rawText if the structured call fails entirely.
- */
 async function structureTestCases(
   rawText: string,
+  expectedCount: number,
 ): Promise<GeneratedTestCase[]> {
   const prompt = `Convert the following test cases into a structured JSON array. Each test case should have this exact format:
 
@@ -476,7 +471,10 @@ async function structureTestCases(
   "tags": ["string"]
 }
 
-IMPORTANT: Correctly identify and flag each test based on its type.
+IMPORTANT: 
+- Correctly identify and flag each test based on its type
+- You should extract EXACTLY ${expectedCount} test cases from the text below
+- Do not skip any test cases
 
 Return a JSON object with a "test_cases" key containing the array, e.g. {"test_cases": [...]}
 
@@ -499,15 +497,40 @@ Return ONLY valid JSON, no markdown, no explanation.`;
       testCases?: GeneratedTestCase[];
     };
 
-    return parsed.test_cases ?? parsed.testCases ?? [];
-  } catch {
-    // Last resort: pull a bare JSON array out of the raw text.
+    if (!content) {
+      console.warn("⚠️ structureTestCases: Empty response from OpenAI");
+    }
+
+    const cases = parsed.test_cases ?? parsed.testCases ?? [];
+
+    if (cases.length !== expectedCount) {
+      console.warn(
+        `⚠️ structureTestCases: Expected ${expectedCount} test cases, got ${cases.length}`,
+      );
+    }
+
+    return cases;
+  } catch (error) {
+    console.error("❌ structureTestCases: JSON parsing failed:", error);
+
+    // Last resort: pull a bare JSON array out of the raw text
     const match = rawText.match(/\[[\s\S]*\]/);
-    if (!match) return [];
+    if (!match) {
+      console.error("❌ structureTestCases: No JSON array found in fallback");
+      return [];
+    }
 
     try {
-      return JSON.parse(match[0]) as GeneratedTestCase[];
-    } catch {
+      const fallbackCases = JSON.parse(match[0]) as GeneratedTestCase[];
+      console.warn(
+        `⚠️ structureTestCases: Used fallback parsing, got ${fallbackCases.length} cases (expected ${expectedCount})`,
+      );
+      return fallbackCases;
+    } catch (fallbackError) {
+      console.error(
+        "❌ structureTestCases: Fallback parsing failed:",
+        fallbackError,
+      );
       return [];
     }
   }
@@ -525,13 +548,13 @@ function buildPrompt(params: {
   const { requirements, testCaseCount, testTypes, application_url, template } =
     params;
 
-  // Distribute cases as evenly as possible; remainder goes to the first type.
+  // Distribute cases as evenly as possible
   const perType = Math.floor(testCaseCount / testTypes.length);
   const remainder = testCaseCount % testTypes.length;
 
   const distribution = testTypes
     .map((type, i) => {
-      const count = perType + (i === 0 ? remainder : 0);
+      const count = perType + (i < remainder ? 1 : 0);
       const label = TEST_TYPE_LABELS[type] ?? type;
       return `- ${count} ${label} test${count !== 1 ? "s" : ""}`;
     })
@@ -552,8 +575,12 @@ function buildPrompt(params: {
 
   return `${AUTOMATION_GUIDELINES}
 
-TEST CASE DISTRIBUTION (${testCaseCount} total across ${testTypes.length} type${testTypes.length !== 1 ? "s" : ""}):
+CRITICAL: You MUST generate EXACTLY ${testCaseCount} test cases total. This is a hard requirement.
+
+TEST CASE DISTRIBUTION:
 ${distribution}
+
+IMPORTANT: The above shows the TARGET distribution, but your PRIMARY goal is to generate EXACTLY ${testCaseCount} total test cases. If you cannot hit the exact distribution, adjust the numbers while maintaining ${testCaseCount} total.
 
 ${typeInstructions}
 
@@ -584,16 +611,17 @@ CRITICAL REQUIREMENTS:
 - Use FULL URLs for navigation steps
 - Break complex actions into individual steps
 - Each step should map to a single Playwright command
-- CORRECTLY FLAG each test with appropriate boolean values based on the test type`;
-}
+- CORRECTLY FLAG each test with appropriate boolean values based on the test type
 
+REMINDER: Generate EXACTLY ${testCaseCount} test cases. No more, no less.`;
+}
 // ─── Route Handlers ──────────────────────────────────────────────────────────
+
+// ─── Update POST handler ────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
-
-    // ── Auth ──────────────────────────────────────────────────────────────
 
     const {
       data: { user },
@@ -603,8 +631,6 @@ export async function POST(request: Request) {
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    // ── Parse & Validate ──────────────────────────────────────────────────
 
     const body = (await request.json()) as RequestBody;
 
@@ -652,21 +678,50 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── Quota ─────────────────────────────────────────────────────────────
-
     try {
       await checkUsageQuota(user.id, testCaseCount);
     } catch (e) {
+      let remaining = 0;
+      try {
+        const { data: usage } = await supabase
+          .from("user_usage_tracking")
+          .select("test_cases_generated, test_case_limit")
+          .eq("user_id", user.id)
+          .single();
+
+        if (usage) {
+          const limit = usage.test_case_limit || 50; // Default free tier limit
+          const used = usage.test_cases_generated || 0;
+          remaining = Math.max(0, limit - used);
+        }
+
+        if (e instanceof UsageQuotaError) {
+          return NextResponse.json(
+            {
+              error: e.message,
+              remaining: e.remaining,
+              requested: e.requested,
+              used: e.used,
+              limit: e.limit,
+              upgradeRequired: true,
+            },
+            { status: 429 },
+          );
+        }
+      } catch (usageError) {
+        console.error("Error fetching remaining usage:", usageError);
+      }
+
       return NextResponse.json(
         {
           error: e instanceof Error ? e.message : "Usage limit exceeded",
           upgradeRequired: true,
+          remaining,
+          requested: testCaseCount,
         },
         { status: 429 },
       );
     }
-
-    // ── Generate ──────────────────────────────────────────────────────────
 
     const prompt = buildPrompt({
       requirements,
@@ -688,14 +743,35 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── Structure ─────────────────────────────────────────────────────────
+    let testCases = await structureTestCases(llmResult.text, testCaseCount);
 
-    const testCases = (await structureTestCases(llmResult.text)).slice(
-      0,
-      testCaseCount,
-    );
+    if (testCases.length < testCaseCount) {
+      const retryPrompt = `${prompt}
 
-    // ── Persist Generation Record ─────────────────────────────────────────
+CRITICAL CORRECTION: The previous generation only produced ${testCases.length} test cases but we need EXACTLY ${testCaseCount}.
+Generate the FULL ${testCaseCount} test cases now. Do not skip any.`;
+
+      try {
+        const retryResult = await callWithFallback(
+          AI_MODELS[modelKey],
+          retryPrompt,
+        );
+        const retryCases = await structureTestCases(
+          retryResult.text,
+          testCaseCount,
+        );
+
+        if (retryCases.length >= testCases.length) {
+          testCases = retryCases;
+          llmResult = retryResult; // Update to use retry result
+        }
+      } catch (retryError) {
+        console.error("❌ Retry failed:", retryError);
+        // Continue with original results
+      }
+    }
+
+    testCases = testCases.slice(0, testCaseCount);
 
     const { data: generation, error: genError } = await supabase
       .from("test_case_generations")
@@ -716,8 +792,6 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
-
-    // ── Persist Test Cases ────────────────────────────────────────────────
 
     const rows = testCases.map((tc) => ({
       generation_id: generation.id,
@@ -751,18 +825,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Best-effort usage recording — failure here must not break the response.
     await recordSuccessfulGeneration(user.id, savedCases.length).catch(
       () => {},
     );
-
-    // ── Response ──────────────────────────────────────────────────────────
 
     return NextResponse.json({
       success: true,
       generation_id: generation.id,
       test_cases: savedCases,
       count: savedCases.length,
+      requested_count: testCaseCount, // ✅ Show what was requested
       provider_used: llmResult.provider,
       model_used: llmResult.model,
       statistics: {

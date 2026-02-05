@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,6 +24,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { X, Plus, Loader2, FolderOpen } from "lucide-react";
+import {
+  toastSuccess,
+  toastError,
+  toastInfo,
+  toastWarning,
+} from "@/lib/utils/toast-utils";
 
 import type { Requirement, Project } from "@/types/requirements";
 
@@ -147,16 +152,16 @@ export function EditRequirementModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!user) {
-      toast.error("Please log in to update requirements");
+      toastError("Please log in to update requirements");
       return;
     }
 
     if (!formData.title.trim()) {
-      toast.error("Title is required");
+      toastError("Title is required");
       return;
     }
     if (!formData.description.trim()) {
-      toast.error("Description is required");
+      toastError("Description is required");
       return;
     }
 
@@ -187,12 +192,12 @@ export function EditRequirementModal({
 
       if (error) throw error;
 
-      toast.success("Requirement updated successfully");
+      toastSuccess("Requirement updated successfully");
       onSuccess();
       onOpenChange(false);
     } catch (error) {
       console.error("Error updating requirement:", error);
-      toast.error("Failed to update requirement");
+      toastError("Failed to update requirement");
     } finally {
       setLoading(false);
     }

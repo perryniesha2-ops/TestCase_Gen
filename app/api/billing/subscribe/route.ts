@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2025-11-17.clover",
+  apiVersion: "2026-01-28.clover",
 });
 
 const priceIds = {
@@ -153,8 +153,6 @@ export async function POST(request: NextRequest) {
         .from("user_profiles")
         .update({ stripe_customer_id: customerId })
         .eq("id", userId);
-
-      console.log("✅ Saved customer ID to database");
     }
 
     // Create Stripe checkout session

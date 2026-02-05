@@ -9,5 +9,11 @@
         }
       ]
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/trial-ending",
+      "schedule": "0 9 * * *"
+    }
   ]
 }

@@ -25,7 +25,7 @@ import {
 
 import {
   TestTypeMultiselect,
-  type CanonicalTestType, // ✅ import the canonical union type from your multiselect file
+  type CanonicalTestType,
 } from "@/components/generator/testtype-multiselect";
 import { ProjectSelect } from "@/components/projects/project-select";
 
@@ -53,10 +53,7 @@ export type TemplateFormData = {
   testCaseCount: number;
   includeEdgeCases: boolean;
   includeNegativeTests: boolean;
-
-  // ✅ was string[]
   test_types: CanonicalTestType[];
-
   project_id: string | null;
 };
 
@@ -246,7 +243,6 @@ export function TemplateEditorDialog({
 
               <TestTypeMultiselect
                 value={formData.test_types}
-                // ✅ IMPORTANT: do NOT force value: string[]
                 onChange={(next) =>
                   setFormData((p) => ({ ...p, test_types: next }))
                 }

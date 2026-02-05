@@ -41,7 +41,7 @@ export interface TestCase {
   is_negative_test: boolean;
   is_security_test: boolean;
   is_boundary_test: boolean;
-  user_id?: string; // ✅ Added for consistency
+  user_id?: string;
 }
 
 export interface CrossPlatformTestCase {
@@ -68,12 +68,10 @@ export interface CrossPlatformTestCase {
   approved_by?: string;
 }
 
-// ✅ NEW: Combined type for unified table
 export type CombinedTestCase = (TestCase | CrossPlatformTestCase) & {
   _caseType?: "regular" | "cross-platform";
 };
 
-// ✅ NEW: Type guards
 export function isRegularTestCase(
   tc: CombinedTestCase,
 ): tc is TestCase & { _caseType?: "regular" } {
@@ -208,12 +206,11 @@ export interface TestSuite {
   };
 }
 
-// ✅ NEW: Suite-TestCase relationship supporting both types
 export interface SuiteTestCase {
   id: string;
   suite_id: string;
-  test_case_id: string | null; // For regular test cases
-  platform_test_case_id: string | null; // For cross-platform test cases
+  test_case_id: string | null;
+  platform_test_case_id: string | null;
   sequence_order: number;
   priority: Priority;
   estimated_duration_minutes: number;
@@ -333,10 +330,8 @@ export type TestCasesOverviewResponse = {
   generations: Generation[];
 };
 
-// ✅ NEW: Export types for dialog components
 export type AnyTestCase = TestCase | CrossPlatformTestCase;
 
-// ✅ NEW: Helper to get case type from object
 export function getCaseType(tc: AnyTestCase): "regular" | "cross-platform" {
   if ("test_steps" in tc && "test_type" in tc) {
     return "regular";

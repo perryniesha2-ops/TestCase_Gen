@@ -376,7 +376,7 @@ export function SuiteReports({
       let query = supabase
         .from("test_executions")
         .select(
-          "test_case_id, platform_test_case_id, execution_status, started_at, completed_at, failure_reason, created_at", // ✅ added platform_test_case_id
+          "test_case_id, platform_test_case_id, execution_status, started_at, completed_at, failure_reason, created_at",
         )
         .gte("created_at", cutoffDate);
 
@@ -392,7 +392,6 @@ export function SuiteReports({
         return;
       }
 
-      // ✅ Separate regular and platform test case IDs
       const regularIds = [
         ...new Set(executions.map((e: any) => e.test_case_id).filter(Boolean)),
       ];
@@ -402,7 +401,6 @@ export function SuiteReports({
         ),
       ];
 
-      // ✅ Batch fetch both tables
       const titleMap = new Map<string, string>();
 
       if (regularIds.length > 0) {
@@ -421,7 +419,6 @@ export function SuiteReports({
         (cases ?? []).forEach((c: any) => titleMap.set(c.id, c.title));
       }
 
-      // ✅ Group by whichever ID is set
       const testCaseGroups = executions.reduce(
         (acc: Record<string, any[]>, exec: any) => {
           const id = exec.test_case_id || exec.platform_test_case_id;
@@ -470,7 +467,7 @@ export function SuiteReports({
 
           return {
             test_case_id: testCaseId,
-            test_title: titleMap.get(testCaseId) || "Unknown Test", // ✅ uses combined map
+            test_title: titleMap.get(testCaseId) || "Unknown Test",
             total_executions: totalExecs,
             pass_rate: Math.round(passRate),
             avg_execution_time: Math.round(avgTime * 10) / 10,

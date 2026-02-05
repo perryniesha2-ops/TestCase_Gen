@@ -4,7 +4,6 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,6 +24,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { X, Target, CheckCircle, Link as LinkIcon } from "lucide-react";
+import {
+  toastSuccess,
+  toastError,
+  toastInfo,
+  toastWarning,
+} from "@/lib/utils/toast-utils";
+
 import type {
   Requirement,
   TestCase,
@@ -122,7 +128,7 @@ export function LinkTestCasesDialog({
 
       if (error) throw error;
 
-      toast.success("Test case linked successfully");
+      toastSuccess("Test case linked successfully");
       await fetchLinkedTestCases();
       onLinked();
 
@@ -134,7 +140,7 @@ export function LinkTestCasesDialog({
       });
     } catch (error) {
       console.error("Error linking test case:", error);
-      toast.error("Failed to link test case");
+      toastError("Failed to link test case");
     } finally {
       setLoading(false);
     }
@@ -152,12 +158,11 @@ export function LinkTestCasesDialog({
 
       if (error) throw error;
 
-      toast.success("Test case unlinked");
+      toastSuccess("Test case unlinked");
       await fetchLinkedTestCases();
       onLinked();
     } catch (error) {
-      console.error("Error unlinking test case:", error);
-      toast.error("Failed to unlink test case");
+      toastError("Failed to unlink test case");
     } finally {
       setLoading(false);
     }
@@ -231,7 +236,7 @@ export function LinkTestCasesDialog({
 
       if (error) throw error;
 
-      toast.success(
+      toastSuccess(
         `Linked ${ids.length} test case${ids.length > 1 ? "s" : ""}`,
       );
       await fetchLinkedTestCases();
@@ -246,7 +251,7 @@ export function LinkTestCasesDialog({
       });
     } catch (error) {
       console.error("Error linking selected test cases:", error);
-      toast.error("Failed to link selected test cases");
+      toastError("Failed to link selected test cases");
     } finally {
       setLoading(false);
     }

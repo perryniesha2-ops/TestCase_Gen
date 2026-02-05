@@ -143,8 +143,6 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`✅ Imported: ${imported}, ❌ Failed: ${failed}`);
-
     return NextResponse.json({
       success: true,
       imported,

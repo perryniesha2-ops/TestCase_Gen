@@ -95,7 +95,7 @@ class SynthQAReporter implements Reporter {
       if (!response.ok) {
         console.error("Failed to send results:", response.statusText);
       } else {
-        console.log("✅ Test results sent to SynthQA");
+        console.log("Test results sent to SynthQA");
       }
     } catch (error) {
       console.error("Error sending results:", error);

@@ -32,16 +32,14 @@ interface BulkActionsToolbarProps {
   selectedIds: Set<string>;
   allTestCases: CombinedTestCase[];
   type: "regular" | "cross-platform";
-
   // Selection handlers
   onSelectAll: () => void;
   onDeselectAll: () => void;
-
   // Unified actions for both regular and cross-platform
   onBulkUpdate?: (updates: any) => Promise<void>;
-  onBulkDelete?: () => Promise<void>; // ✅ Fixed: no ids parameter
-  onBulkAddToSuite?: (suiteId: string) => Promise<void>; // ✅ Fixed: only suiteId
-  onBulkExport?: () => void; // ✅ Fixed: no ids parameter
+  onBulkDelete?: () => Promise<void>;
+  onBulkAddToSuite?: (suiteId: string) => Promise<void>;
+  onBulkExport?: () => void;
 }
 
 export function BulkActionsToolbar({

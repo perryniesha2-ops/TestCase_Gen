@@ -12,12 +12,9 @@ type UseExecutionsArgs = {
   sessionId: string | null;
 };
 
-type HydrateArgs = {
-  testCaseIds: string[];
-  crossPlatformIds: string[];
-};
-
 type ExecutionRow = NonNullable<TestExecution[string]>;
+
+type CaseType = "regular" | "cross-platform";
 
 const FINAL_STATUSES: ExecutionStatus[] = [
   "passed",
@@ -41,7 +38,7 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
       completedSteps: [],
       failedSteps: [],
     }),
-    []
+    [],
   );
 
   const ensureRow = useCallback(
@@ -57,21 +54,29 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
 
       return defaultRow;
     },
-    [defaultRow]
+    [defaultRow],
   );
 
+  // ✅ Updated to support both regular and cross-platform
   const hydrateOne = useCallback(
-    async (testCaseId: string) => {
+    async (testCaseId: string, caseType: CaseType = "regular") => {
       const supabase = createClient();
 
+      // ✅ Select correct table based on case type
+      const table =
+        caseType === "regular" ? "test_executions" : "platform_test_executions";
+
       let query = supabase
-        .from("test_executions")
+        .from(table)
         .select("*")
         .eq("test_case_id", testCaseId)
         .order("created_at", { ascending: false })
         .limit(1);
 
-      if (sessionId) query = query.eq("session_id", sessionId);
+      // Session ID only applies to regular test executions (suite sessions)
+      if (sessionId && caseType === "regular") {
+        query = query.eq("session_id", sessionId);
+      }
 
       const { data, error } = await query;
       if (error) throw error;
@@ -97,23 +102,32 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
           status: row.execution_status,
           completedSteps: row.completed_steps || [],
           failedSteps: row.failed_steps || [],
-          notes: row.execution_notes,
+          notes: row.notes || row.execution_notes, // ✅ Support both column names
           failure_reason: row.failure_reason,
           started_at: row.started_at,
           completed_at: row.completed_at,
-          duration_minutes: row.duration_minutes,
+          duration_minutes:
+            row.duration_minutes || row.duration_seconds
+              ? Math.round(row.duration_seconds / 60)
+              : undefined,
           test_environment: row.test_environment,
           browser: row.browser,
           os_version: row.os_version,
+          device_type: row.device_type, // ✅ Platform-specific field
           attachments: row.attachments || [],
         },
       }));
     },
-    [sessionId]
+    [sessionId],
   );
 
+  // ✅ Updated to support both regular and cross-platform
   const saveProgress = useCallback(
-    async (testCaseId: string, updates: Partial<TestExecution[string]>) => {
+    async (
+      testCaseId: string,
+      updates: Partial<TestExecution[string]>,
+      caseType: CaseType = "regular",
+    ) => {
       const supabase = createClient();
       const {
         data: { user },
@@ -129,8 +143,8 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
       const startedAt =
         nextStatus === "not_run"
           ? null
-          : current.started_at ??
-            (nextStatus === "in_progress" ? new Date().toISOString() : null);
+          : (current.started_at ??
+            (nextStatus === "in_progress" ? new Date().toISOString() : null));
 
       const completedAt = FINAL_STATUSES.includes(nextStatus)
         ? new Date().toISOString()
@@ -140,46 +154,55 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         updates.completedSteps ?? current.completedSteps ?? [];
       const failedSteps = updates.failedSteps ?? current.failedSteps ?? [];
 
-      const payload = {
+      // ✅ Select correct table
+      const table =
+        caseType === "regular" ? "test_executions" : "platform_test_executions";
+
+      // ✅ Build payload with fields common to both tables
+      const commonPayload = {
         test_case_id: testCaseId,
         executed_by: user.id,
-        session_id: sessionId || null,
-
         execution_status: nextStatus,
+        execution_type: "manual" as const,
         completed_steps: completedSteps,
         failed_steps: failedSteps,
-
-        execution_notes: updates.notes ?? current.notes ?? null,
+        notes: updates.notes ?? current.notes ?? null,
         failure_reason:
           updates.failure_reason ?? current.failure_reason ?? null,
-
         test_environment:
           updates.test_environment ?? current.test_environment ?? "staging",
         browser: updates.browser ?? current.browser ?? null,
         os_version: updates.os_version ?? current.os_version ?? null,
-
         started_at: startedAt,
         completed_at: completedAt,
-
-        // allow caller to persist duration/attachments
-        duration_minutes:
-          updates.duration_minutes ?? current.duration_minutes ?? null,
-        attachments:
-          (updates as any).attachments ?? (current as any).attachments ?? [],
-
         updated_at: new Date().toISOString(),
       };
+
+      // ✅ Add session_id only for regular tests
+      const payload =
+        caseType === "regular"
+          ? { ...commonPayload, session_id: sessionId || null }
+          : commonPayload;
+
+      // ✅ Calculate duration if completed
+      if (completedAt && startedAt) {
+        const durationSeconds = Math.round(
+          (new Date(completedAt).getTime() - new Date(startedAt).getTime()) /
+            1000,
+        );
+        (payload as any).duration_seconds = durationSeconds;
+      }
 
       // Upsert (update if id exists, else insert)
       if (current.id) {
         const { error } = await supabase
-          .from("test_executions")
+          .from(table)
           .update(payload)
           .eq("id", current.id);
         if (error) throw error;
       } else {
         const { data, error } = await supabase
-          .from("test_executions")
+          .from(table)
           .insert(payload)
           .select("id")
           .single();
@@ -195,6 +218,14 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         }));
       }
 
+      // ✅ Update the test case's execution_status
+      const testCaseTable =
+        caseType === "regular" ? "test_cases" : "platform_test_cases";
+      await supabase
+        .from(testCaseTable)
+        .update({ execution_status: nextStatus })
+        .eq("id", testCaseId);
+
       // Reflect updates locally (single source for UI)
       setExecution((prev) => ({
         ...prev,
@@ -203,23 +234,30 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
           status: nextStatus,
           completedSteps,
           failedSteps,
-          notes: payload.execution_notes ?? undefined,
-          failure_reason: payload.failure_reason ?? undefined,
-          test_environment: payload.test_environment ?? undefined,
-          browser: payload.browser ?? undefined,
-          os_version: payload.os_version ?? undefined,
-          started_at: payload.started_at ?? undefined,
-          completed_at: payload.completed_at ?? undefined,
-          duration_minutes: payload.duration_minutes ?? undefined,
-          attachments: payload.attachments ?? [],
+          notes: (payload as any).notes ?? undefined,
+          failure_reason: (payload as any).failure_reason ?? undefined,
+          test_environment: (payload as any).test_environment ?? undefined,
+          browser: (payload as any).browser ?? undefined,
+          os_version: (payload as any).os_version ?? undefined,
+          started_at: (payload as any).started_at ?? undefined,
+          completed_at: (payload as any).completed_at ?? undefined,
+          duration_minutes: (payload as any).duration_seconds
+            ? Math.round((payload as any).duration_seconds / 60)
+            : undefined,
+          attachments: (payload as any).attachments ?? [],
         },
       }));
     },
-    [ensureRow, sessionId]
+    [ensureRow, sessionId],
   );
 
+  // ✅ Updated to support both regular and cross-platform
   const toggleStep = useCallback(
-    async (testCaseId: string, stepNumber: number) => {
+    async (
+      testCaseId: string,
+      stepNumber: number,
+      caseType: CaseType = "regular",
+    ) => {
       const current = ensureRow(testCaseId);
 
       const isCompleted = (current.completedSteps || []).includes(stepNumber);
@@ -242,19 +280,25 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         },
       }));
 
-      await saveProgress(testCaseId, {
-        completedSteps: updatedSteps,
-        status: nextStatus,
-      });
+      await saveProgress(
+        testCaseId,
+        {
+          completedSteps: updatedSteps,
+          status: nextStatus,
+        },
+        caseType,
+      );
     },
-    [ensureRow, saveProgress]
+    [ensureRow, saveProgress],
   );
 
+  // ✅ Updated to support both regular and cross-platform
   const saveResult = useCallback(
     async (
       testCaseId: string,
       status: ExecutionStatus,
-      details: ExecutionDetails = {}
+      details: ExecutionDetails = {},
+      caseType: CaseType = "regular",
     ) => {
       const current = ensureRow(testCaseId);
 
@@ -263,35 +307,44 @@ export function useExecutions({ sessionId }: UseExecutionsArgs) {
         ? Math.round((Date.now() - new Date(startTime).getTime()) / 60000)
         : undefined;
 
-      await saveProgress(testCaseId, {
-        status,
-        duration_minutes: duration,
-
-        notes: details.notes,
-        failure_reason: details.failure_reason,
-
-        // your dialog uses "environment"; DB uses test_environment
-        test_environment:
-          (details as any).environment ?? current.test_environment ?? "staging",
-        browser: details.browser,
-        os_version: details.os_version,
-      });
+      await saveProgress(
+        testCaseId,
+        {
+          status,
+          duration_minutes: duration,
+          notes: details.notes,
+          failure_reason: details.failure_reason,
+          // your dialog uses "environment"; DB uses test_environment
+          test_environment:
+            (details as any).environment ??
+            current.test_environment ??
+            "staging",
+          browser: details.browser,
+          os_version: details.os_version,
+        },
+        caseType,
+      );
     },
-    [ensureRow, saveProgress]
+    [ensureRow, saveProgress],
   );
 
+  // ✅ Updated to support both regular and cross-platform
   const reset = useCallback(
-    async (testCaseId: string) => {
-      await saveProgress(testCaseId, {
-        status: "not_run",
-        completedSteps: [],
-        failedSteps: [],
-        notes: "",
-        failure_reason: "",
-        duration_minutes: undefined,
-      });
+    async (testCaseId: string, caseType: CaseType = "regular") => {
+      await saveProgress(
+        testCaseId,
+        {
+          status: "not_run",
+          completedSteps: [],
+          failedSteps: [],
+          notes: "",
+          failure_reason: "",
+          duration_minutes: undefined,
+        },
+        caseType,
+      );
     },
-    [saveProgress]
+    [saveProgress],
   );
 
   return {

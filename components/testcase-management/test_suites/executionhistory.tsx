@@ -587,7 +587,6 @@ export function ExecutionHistory() {
 
       const sessions = (sessionsRaw ?? []) as Array<any>;
 
-      // ✅ Batch resolve suites
       const suiteIds = [
         ...new Set(sessions.map((s) => s.suite_id).filter(Boolean)),
       ];
@@ -691,7 +690,6 @@ export function ExecutionHistory() {
         }
       }
 
-      // ✅ Use suiteMap instead of r.test_suites
       const mapped: RunWithStats[] = filtered.map((r) => {
         const suite = suiteMap.get(r.suite_id);
         return {
@@ -810,7 +808,6 @@ export function ExecutionHistory() {
 
       const execs = (execsRaw ?? []) as any[];
 
-      // ✅ Batch resolve suites
       const suiteIds = [
         ...new Set(execs.map((e) => e.suite_id).filter(Boolean)),
       ];
@@ -826,7 +823,6 @@ export function ExecutionHistory() {
         (suites ?? []).forEach((s: any) => suiteMap.set(s.id, s));
       }
 
-      // ✅ Batch resolve regular test cases
       const regularIds = [
         ...new Set(execs.map((e) => e.test_case_id).filter(Boolean)),
       ];
@@ -842,7 +838,6 @@ export function ExecutionHistory() {
         (cases ?? []).forEach((c: any) => regularMap.set(c.id, c));
       }
 
-      // ✅ Batch resolve cross-platform test cases
       const platformIds = [
         ...new Set(execs.map((e) => e.platform_test_case_id).filter(Boolean)),
       ];
@@ -863,7 +858,6 @@ export function ExecutionHistory() {
 
       const base: ExecutionHistoryRow[] = execs.map((e) => {
         const suite = suiteMap.get(e.suite_id);
-        // ✅ Look up test case from whichever FK is set
         const testCase = e.test_case_id
           ? regularMap.get(e.test_case_id)
           : platformMap.get(e.platform_test_case_id);
@@ -1239,7 +1233,6 @@ export function ExecutionHistory() {
 
       const execs = (execsRaw ?? []) as any[];
 
-      // ✅ Same three batch lookups as fetchHistory
       const suiteIds = [
         ...new Set(execs.map((e) => e.suite_id).filter(Boolean)),
       ];
@@ -1450,11 +1443,17 @@ export function ExecutionHistory() {
     <div className="space-y-4 text-sm">
       <Tabs defaultValue="runs" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="runs" className="gap-2">
+          <TabsTrigger
+            value="runs"
+            className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
             <ClipboardCheck className="h-4 w-4" />
             Runs (Post-run review)
           </TabsTrigger>
-          <TabsTrigger value="executions" className="gap-2">
+          <TabsTrigger
+            value="executions"
+            className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
             <ListChecks className="h-4 w-4" />
             Executions
           </TabsTrigger>
@@ -1462,41 +1461,39 @@ export function ExecutionHistory() {
 
         {/* ================== RUNS TAB ================== */}
         <TabsContent value="runs" className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-2xl font-bold">
-                  {runSummaryStats.totalRuns}
-                </div>
-                <p className="text-xs text-muted-foreground">Runs</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-2xl font-bold text-green-600">
-                  {runSummaryStats.completed}
-                </div>
-                <p className="text-xs text-muted-foreground">Completed</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-2xl font-bold text-red-600">
-                  {runSummaryStats.withFailures}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Runs with failures
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-2xl font-bold">
-                  {runSummaryStats.reviewed}
-                </div>
-                <p className="text-xs text-muted-foreground">Reviewed</p>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4 rounded-lg border shadow-sm">
+              <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                {runSummaryStats.totalRuns}
+              </div>
+              <div className="text-sm text-slate-600 dark:text-slate-400">
+                Runs
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 p-4 rounded-lg border border-green-200 dark:border-green-800 shadow-sm">
+              <div className="text-2xl font-bold text-green-700 dark:text-green-400">
+                {runSummaryStats.completed}
+              </div>
+              <div className="text-sm text-green-600 dark:text-green-500">
+                Completed
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 p-4 rounded-lg border border-red-200 dark:border-red-800 shadow-sm">
+              <div className="text-2xl font-bold text-red-700 dark:text-red-400">
+                {runSummaryStats.withFailures}
+              </div>
+              <div className="text-sm text-red-600 dark:text-red-500">
+                Runs with failures
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 p-4 rounded-lg border border-orange-200 dark:border-orange-800 shadow-sm">
+              <div className="text-2xl font-bold text-orange-700 dark:text-orange-400">
+                {runSummaryStats.reviewed}
+              </div>
+              <div className="text-sm text-orange-600 dark:text-orange-500">
+                Reviewed
+              </div>
+            </div>
           </div>
 
           <Card>
@@ -1737,39 +1734,39 @@ export function ExecutionHistory() {
 
         {/* ================== EXECUTIONS TAB ================== */}
         <TabsContent value="executions" className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{execStats.total}</div>
-                <p className="text-xs text-muted-foreground">
-                  Total Executions
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-2xl font-bold text-green-600">
-                  {execStats.passed}
-                </div>
-                <p className="text-xs text-muted-foreground">Passed</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-2xl font-bold text-red-600">
-                  {execStats.failed}
-                </div>
-                <p className="text-xs text-muted-foreground">Failed</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-2xl font-bold">
-                  {execStats.withEvidence}
-                </div>
-                <p className="text-xs text-muted-foreground">With Evidence</p>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4 rounded-lg border shadow-sm">
+              <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                {execStats.total}
+              </div>
+              <div className="text-sm text-slate-600 dark:text-slate-400">
+                Total Executions
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 p-4 rounded-lg border border-green-200 dark:border-green-800 shadow-sm">
+              <div className="text-2xl font-bold text-green-700 dark:text-green-400">
+                {execStats.passed}
+              </div>
+              <div className="text-sm text-green-600 dark:text-green-500">
+                Passed
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 p-4 rounded-lg border border-red-200 dark:border-red-800 shadow-sm">
+              <div className="text-2xl font-bold text-red-700 dark:text-red-400">
+                {execStats.failed}
+              </div>
+              <div className="text-sm text-red-600 dark:text-red-500">
+                Failed
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 p-4 rounded-lg border border-orange-200 dark:border-orange-800 shadow-sm">
+              <div className="text-2xl font-bold text-orange-700 dark:text-orange-400">
+                {execStats.withEvidence}
+              </div>
+              <div className="text-sm text-orange-600 dark:text-orange-500">
+                Executions With Evidence
+              </div>
+            </div>
           </div>
 
           <Card>
@@ -2162,6 +2159,7 @@ export function ExecutionHistory() {
           </Card>
         </TabsContent>
       </Tabs>
+      <div className="h-4" />
 
       {/* View Evidence Dialog */}
       <Dialog open={openView} onOpenChange={setOpenView}>

@@ -320,7 +320,7 @@ export function TemplateManager() {
       category: template.category,
       model: template.template_content.model,
       testCaseCount: template.template_content.testCaseCount,
-      test_types: toCanonicalTestTypes(template.test_types ?? []), // ✅ Convert here
+      test_types: toCanonicalTestTypes(template.test_types ?? []),
       includeEdgeCases: template.template_content.includeEdgeCases ?? true,
       includeNegativeTests:
         template.template_content.includeNegativeTests ?? true,
@@ -538,48 +538,88 @@ export function TemplateManager() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Total Templates - Neutral/Primary */}
+        <Card className="border-slate-200 dark:border-slate-800 hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Templates
             </CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800">
+              <FileText className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{templates.length}</div>
+            <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">
+              {templates.length}
+            </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {favoriteTemplates.length} favorites
+              {favoriteTemplates.length} marked as favorite
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Most Used Template - Purple/Popular */}
+        <Card className="border-purple-200 dark:border-purple-800 hover:shadow-md transition-shadow bg-purple-50/50 dark:bg-purple-950/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Most Used</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-purple-700 dark:text-purple-300">
+              Most Popular
+            </CardTitle>
+            <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900">
+              <TrendingUp className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-3xl font-bold text-purple-900 dark:text-purple-100">
               {mostUsedTemplate?.usage_count ?? 0}
             </div>
-            <p className="text-xs text-muted-foreground mt-1 truncate">
-              {mostUsedTemplate?.name ?? "No templates used yet"}
+            <p
+              className="text-xs text-purple-600 dark:text-purple-400 mt-1 truncate"
+              title={mostUsedTemplate?.name}
+            >
+              {mostUsedTemplate?.name ?? "No usage yet"}
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Favorite Templates - Amber/Gold */}
+        <Card className="border-amber-200 dark:border-amber-800 hover:shadow-md transition-shadow bg-amber-50/50 dark:bg-amber-950/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Recent Activity
+            <CardTitle className="text-sm font-medium text-amber-700 dark:text-amber-300">
+              Favorites
             </CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900">
+              <Star className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{createdThisWeekCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Created this week
+            <div className="text-3xl font-bold text-amber-900 dark:text-amber-100">
+              {favoriteTemplates.length}
+            </div>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              {templates.length > 0
+                ? `${Math.round((favoriteTemplates.length / templates.length) * 100)}% of all templates`
+                : "Mark templates as favorites"}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Recent Activity - Blue/Activity */}
+        <Card className="border-blue-200 dark:border-blue-800 hover:shadow-md transition-shadow bg-blue-50/50 dark:bg-blue-950/20">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-300">
+              Created This Week
+            </CardTitle>
+            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
+              <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-blue-900 dark:text-blue-100">
+              {createdThisWeekCount}
+            </div>
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+              Last 7 days activity
             </p>
           </CardContent>
         </Card>
