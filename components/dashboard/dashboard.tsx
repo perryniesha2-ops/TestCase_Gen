@@ -676,7 +676,7 @@ export function TestManagementDashboard() {
                     Run Tests
                   </Button>
                 </Link>
-                <Link href="/generator">
+                <Link href="/generate">
                   <Button size="sm">
                     <Plus className="h-4 w-4 mr-2" />
                     Generate Tests
