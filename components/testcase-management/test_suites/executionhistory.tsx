@@ -1771,8 +1771,6 @@ export function ExecutionHistory() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
-              <CardTitle>Execution History</CardTitle>
-
               <div className="flex flex-wrap items-center gap-3">
                 <Input
                   value={search}
@@ -1869,20 +1867,21 @@ export function ExecutionHistory() {
                 </div>
               ) : (
                 <>
-                  <Table>
+                  <Table className="text-xs">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-[40px]"></TableHead>
                         <TableHead>Date</TableHead>
-                        <TableHead>Suite</TableHead>
-                        <TableHead className="max-w-[360px] w-[360px]">
+                        <TableHead className="w-[100] max-w-[200ps]">
+                          Suite
+                        </TableHead>
+                        <TableHead className="w-[200px] max-w-[200px]">
                           Test Case
                         </TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Duration</TableHead>
-                        <TableHead>Evidence</TableHead>
                         <TableHead>Issue</TableHead>
-                        <TableHead className="w-[90px]">Actions</TableHead>
+                        <TableHead className="w-[70px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
 
@@ -1942,15 +1941,6 @@ export function ExecutionHistory() {
                               </TableCell>
 
                               <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                                  <span className="text-sm font-medium">
-                                    {r.evidence_count}
-                                  </span>
-                                </div>
-                              </TableCell>
-
-                              <TableCell>
                                 <IssueLink
                                   jiraKey={r.jira_issue_key}
                                   testrailId={r.testrail_defect_id}
@@ -1969,15 +1959,15 @@ export function ExecutionHistory() {
                                 />
                               </TableCell>
 
-                              <TableCell>
+                              <TableCell className="w-[60px]">
                                 <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="gap-1"
+                                  size="icon"
+                                  variant="ghost"
                                   onClick={() => openExecution(r)}
+                                  className="h-8 w-8"
+                                  title="View execution"
                                 >
                                   <Eye className="h-4 w-4" />
-                                  View
                                 </Button>
                               </TableCell>
                             </TableRow>

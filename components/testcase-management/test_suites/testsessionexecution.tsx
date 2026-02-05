@@ -37,7 +37,21 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Camera,
+  List,
 } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 // Import your types
 import type {
@@ -116,6 +130,7 @@ export function TestSessionExecution({
   const [failureReason, setFailureReason] = useState("");
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
   const [autoAdvance, setAutoAdvance] = useState(true);
+  const [showEvidenceDrawer, setShowEvidenceDrawer] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -816,7 +831,7 @@ export function TestSessionExecution({
           className="
             w-[95vw]
             sm:max-w-[95vw]
-            lg:max-w-[1200px]
+            lg:max-w-5xl
             h-[95vh]
             max-h-[95vh]
             flex
@@ -898,408 +913,359 @@ export function TestSessionExecution({
                   </CardContent>
                 </Card>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Current Test (2/3 width) */}
-                  <div className="lg:col-span-2">
-                    {currentTest && currentSession ? (
-                      <Card>
-                        <CardHeader>
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <CardTitle className="text-lg break-words">
-                                {currentTest.test_cases.title}
-                              </CardTitle>
-                              <CardDescription className="text-sm mt-1">
-                                Test {currentTestIndex + 1} of {totalTests} •{" "}
-                                {currentTest.test_cases.test_type}
-                              </CardDescription>
-                            </div>
-                            <Badge variant="outline" className="flex-shrink-0">
-                              {currentTest.priority}
-                            </Badge>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                          {isCurrentExecutionReadOnly &&
-                            currentExecutionStatus !== "in_progress" && (
-                              <Alert className="border-amber-300 bg-amber-50">
-                                <AlertTriangle className="h-4 w-4 text-amber-600" />
-                                <AlertTitle className="text-amber-900">
-                                  Result Locked
-                                </AlertTitle>
-                                <AlertDescription className="text-amber-800 text-xs">
-                                  This test was marked as{" "}
-                                  <span className="font-semibold uppercase">
-                                    {currentExecutionStatus}
-                                  </span>
-                                  . Use Previous/Next to navigate.
-                                </AlertDescription>
-                              </Alert>
-                            )}
+                {/* Action Buttons Row */}
+                <div className="flex gap-2 justify-end">
+                  {/* Test Queue Popover */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="gap-2">
+                        <List className="h-4 w-4" />
+                        Test Queue ({currentTestIndex + 1}/{totalTests})
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80" align="end">
+                      <div className="space-y-2">
+                        <h4 className="font-medium text-sm mb-3">Test Queue</h4>
+                        <div className="max-h-[400px] overflow-y-auto space-y-2">
+                          {suiteTestCases.map((testCase, index) => {
+                            const isCurrent = index === currentTestIndex;
+                            const isCompleted = index < completedCount;
 
-                          <div>
-                            <h4 className="font-medium mb-2">Description</h4>
-                            <p className="text-sm text-muted-foreground break-words">
-                              {currentTest.test_cases.description}
-                            </p>
-                          </div>
-
-                          <div>
-                            <div className="flex items-center justify-between mb-3">
-                              <h4 className="font-medium">Test Steps</h4>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  const allSteps =
-                                    currentTest.test_cases.test_steps || [];
-                                  if (completedSteps.size === allSteps.length) {
-                                    setCompletedSteps(new Set());
-                                  } else {
-                                    setCompletedSteps(
-                                      new Set(allSteps.map((_, idx) => idx)),
+                            return (
+                              <button
+                                key={testCase.id}
+                                type="button"
+                                onClick={async () => {
+                                  if (
+                                    !currentSession ||
+                                    index === currentTestIndex
+                                  )
+                                    return;
+                                  if (index < currentTestIndex) {
+                                    setCurrentTestIndex(index);
+                                    await startTestExecution(
+                                      index,
+                                      currentSession.id,
                                     );
                                   }
                                 }}
-                                disabled={isCurrentExecutionReadOnly}
+                                className={`
+                                  w-full text-left p-3 rounded-lg border transition-colors text-sm
+                                  ${
+                                    isCurrent
+                                      ? "bg-primary/10 border-primary/70 font-medium"
+                                      : isCompleted
+                                        ? "bg-emerald-500/10 border-emerald-500/60"
+                                        : "bg-muted/40 border-border/60 hover:bg-muted/60"
+                                  }
+                                `}
                               >
-                                Toggle All
-                              </Button>
-                            </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-xs text-muted-foreground">
+                                    {index + 1}
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium truncate">
+                                      {testCase.test_cases.title}
+                                    </p>
+                                    <p className="text-[10px] uppercase text-muted-foreground mt-0.5">
+                                      {testCase.test_cases.test_type}
+                                    </p>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
 
-                            {!currentTest.test_cases.test_steps ||
-                            currentTest.test_cases.test_steps.length === 0 ? (
-                              <div className="text-sm text-muted-foreground border border-dashed rounded-lg p-4">
-                                No test steps defined for this test case.
-                              </div>
-                            ) : (
-                              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-                                {currentTest.test_cases.test_steps.map(
-                                  (step, index) => {
-                                    return (
-                                      <div
-                                        key={index}
-                                        className="flex items-start gap-3 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                                      >
-                                        <Checkbox
-                                          checked={completedSteps.has(index)}
-                                          onCheckedChange={() =>
-                                            toggleStep(index)
-                                          }
-                                          disabled={isCurrentExecutionReadOnly}
-                                          className="mt-1"
-                                        />
-                                        <div className="flex-1 min-w-0 space-y-2">
-                                          <div className="flex items-start gap-2">
-                                            <Badge
-                                              variant="outline"
-                                              className="text-xs font-mono shrink-0"
-                                            >
-                                              Step{" "}
-                                              {step.step_number || index + 1}
-                                            </Badge>
-                                            <div className="flex-1 min-w-0">
-                                              <p
-                                                className={`text-sm font-medium break-words ${
-                                                  completedSteps.has(index)
-                                                    ? "line-through text-muted-foreground"
-                                                    : ""
-                                                }`}
-                                              >
-                                                {step.action}
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="pl-0">
-                                            <p className="text-xs text-muted-foreground break-words">
-                                              <span className="font-semibold">
-                                                Expected:{" "}
-                                              </span>
-                                              {step.expected}
-                                            </p>
-                                          </div>
+                  {/* Evidence Drawer Button */}
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => setShowEvidenceDrawer(true)}
+                  >
+                    <Camera className="h-4 w-4" />
+                    Evidence & Screenshots
+                    {attachments.length > 0 && (
+                      <Badge variant="secondary" className="ml-1">
+                        {attachments.length}
+                      </Badge>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Current Test - Full Width */}
+                {currentTest && currentSession ? (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="text-lg break-words">
+                            {currentTest.test_cases.title}
+                          </CardTitle>
+                          <CardDescription className="text-sm mt-1">
+                            Test {currentTestIndex + 1} of {totalTests} •{" "}
+                            {currentTest.test_cases.test_type}
+                          </CardDescription>
+                        </div>
+                        <Badge variant="outline" className="flex-shrink-0">
+                          {currentTest.priority}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      {isCurrentExecutionReadOnly &&
+                        currentExecutionStatus !== "in_progress" && (
+                          <Alert className="border-amber-300 bg-amber-50">
+                            <AlertTriangle className="h-4 w-4 text-amber-600" />
+                            <AlertTitle className="text-amber-900">
+                              Result Locked
+                            </AlertTitle>
+                            <AlertDescription className="text-amber-800 text-xs">
+                              This test was marked as{" "}
+                              <span className="font-semibold uppercase">
+                                {currentExecutionStatus}
+                              </span>
+                              . Use Previous/Next to navigate.
+                            </AlertDescription>
+                          </Alert>
+                        )}
+
+                      <div>
+                        <h4 className="font-medium mb-2">Description</h4>
+                        <p className="text-sm text-muted-foreground break-words">
+                          {currentTest.test_cases.description}
+                        </p>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-medium">Test Steps</h4>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const allSteps =
+                                currentTest.test_cases.test_steps || [];
+                              if (completedSteps.size === allSteps.length) {
+                                setCompletedSteps(new Set());
+                              } else {
+                                setCompletedSteps(
+                                  new Set(allSteps.map((_, idx) => idx)),
+                                );
+                              }
+                            }}
+                            disabled={isCurrentExecutionReadOnly}
+                          >
+                            Toggle All
+                          </Button>
+                        </div>
+
+                        {!currentTest.test_cases.test_steps ||
+                        currentTest.test_cases.test_steps.length === 0 ? (
+                          <div className="text-sm text-muted-foreground border border-dashed rounded-lg p-4">
+                            No test steps defined for this test case.
+                          </div>
+                        ) : (
+                          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                            {currentTest.test_cases.test_steps.map(
+                              (step, index) => {
+                                return (
+                                  <div
+                                    key={index}
+                                    className="flex items-start gap-3 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                                  >
+                                    <Checkbox
+                                      checked={completedSteps.has(index)}
+                                      onCheckedChange={() => toggleStep(index)}
+                                      disabled={isCurrentExecutionReadOnly}
+                                      className="mt-1"
+                                    />
+                                    <div className="flex-1 min-w-0 space-y-2">
+                                      <div className="flex items-start gap-2">
+                                        <Badge
+                                          variant="outline"
+                                          className="text-xs font-mono shrink-0"
+                                        >
+                                          Step {step.step_number || index + 1}
+                                        </Badge>
+                                        <div className="flex-1 min-w-0">
+                                          <p
+                                            className={`text-sm font-medium break-words ${
+                                              completedSteps.has(index)
+                                                ? "line-through text-muted-foreground"
+                                                : ""
+                                            }`}
+                                          >
+                                            {step.action}
+                                          </p>
                                         </div>
                                       </div>
-                                    );
-                                  },
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          <div>
-                            <h4 className="font-medium mb-2">
-                              Expected Result
-                            </h4>
-                            <div className="bg-muted p-3 rounded-lg">
-                              <p className="text-sm text-muted-foreground break-words">
-                                {currentTest.test_cases.expected_result}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="execution-notes">
-                              Execution Notes
-                            </Label>
-                            <Textarea
-                              id="execution-notes"
-                              value={executionNotes}
-                              onChange={(e) =>
-                                setExecutionNotes(e.target.value)
-                              }
-                              placeholder="Add notes about the test execution..."
-                              rows={3}
-                              className="resize-none"
-                              disabled={isCurrentExecutionReadOnly}
-                            />
-                          </div>
-
-                          <div className="space-y-3">
-                            <Label>Test Result</Label>
-                            <div className="flex flex-wrap gap-2">
-                              <Button
-                                onClick={() => completeTestExecution("passed")}
-                                disabled={isResultActionDisabled}
-                                className="bg-green-600 hover:bg-green-700"
-                              >
-                                {actionLoading ? (
-                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                ) : (
-                                  <CheckCircle className="h-4 w-4 mr-2" />
-                                )}
-                                Pass (P)
-                              </Button>
-                              <Button
-                                onClick={() => completeTestExecution("failed")}
-                                disabled={
-                                  isResultActionDisabled ||
-                                  !failureReason.trim()
-                                }
-                                variant="destructive"
-                              >
-                                {actionLoading ? (
-                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                ) : (
-                                  <XCircle className="h-4 w-4 mr-2" />
-                                )}
-                                Fail (F)
-                              </Button>
-                              <Button
-                                onClick={() => completeTestExecution("blocked")}
-                                disabled={isResultActionDisabled}
-                                variant="outline"
-                                className="text-orange-600"
-                              >
-                                {actionLoading ? (
-                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                ) : (
-                                  <AlertTriangle className="h-4 w-4 mr-2" />
-                                )}
-                                Blocked (B)
-                              </Button>
-                              <Button
-                                onClick={() => completeTestExecution("skipped")}
-                                disabled={isResultActionDisabled}
-                                variant="outline"
-                              >
-                                {actionLoading ? (
-                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                ) : (
-                                  <SkipForward className="h-4 w-4 mr-2" />
-                                )}
-                                Skip (S)
-                              </Button>
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor="failure-reason">
-                                Failure Reason (required for Fail)
-                              </Label>
-                              <Textarea
-                                id="failure-reason"
-                                value={failureReason}
-                                onChange={(e) =>
-                                  setFailureReason(e.target.value)
-                                }
-                                placeholder="Describe what went wrong..."
-                                rows={2}
-                                className="resize-none"
-                                disabled={isCurrentExecutionReadOnly}
-                              />
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <Checkbox
-                                id="auto-advance"
-                                checked={autoAdvance}
-                                onCheckedChange={(checked) =>
-                                  setAutoAdvance(!!checked)
-                                }
-                                disabled={isCurrentExecutionReadOnly}
-                              />
-                              <Label
-                                htmlFor="auto-advance"
-                                className="text-sm font-normal cursor-pointer"
-                              >
-                                Auto-advance to next test after marking result
-                              </Label>
-                            </div>
-
-                            <div className="text-xs text-muted-foreground pt-2 border-t">
-                              <strong>Keyboard Shortcuts:</strong>{" "}
-                              <kbd className="px-1.5 py-0.5 bg-muted rounded">
-                                P
-                              </kbd>{" "}
-                              Pass •{" "}
-                              <kbd className="px-1.5 py-0.5 bg-muted rounded">
-                                F
-                              </kbd>{" "}
-                              Fail •{" "}
-                              <kbd className="px-1.5 py-0.5 bg-muted rounded">
-                                B
-                              </kbd>{" "}
-                              Block •{" "}
-                              <kbd className="px-1.5 py-0.5 bg-muted rounded">
-                                S
-                              </kbd>{" "}
-                              Skip
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ) : (
-                      <Card>
-                        <CardContent className="py-12 text-center">
-                          <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-4" />
-                          <h3 className="text-lg font-semibold">
-                            Session Complete!
-                          </h3>
-                          <p className="text-muted-foreground">
-                            All test cases executed.
-                          </p>
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
-
-                  {/* Right rail: sticky queue + evidence */}
-                  <div className="lg:col-span-1">
-                    <div className="lg:sticky lg:top-4 space-y-4">
-                      {/* Test Queue */}
-                      <Card className="h-[360px] flex flex-col">
-                        <CardHeader className="flex-shrink-0 pb-3">
-                          <CardTitle className="text-sm font-medium">
-                            Test Queue
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex-1 overflow-hidden p-0">
-                          <div className="h-full overflow-y-auto px-4 pb-4">
-                            <div className="space-y-2">
-                              {suiteTestCases.map((testCase, index) => {
-                                const isCurrent = index === currentTestIndex;
-                                const isCompleted = index < completedCount;
-
-                                return (
-                                  <button
-                                    key={testCase.id}
-                                    type="button"
-                                    onClick={async () => {
-                                      if (
-                                        !currentSession ||
-                                        index === currentTestIndex
-                                      )
-                                        return;
-                                      if (index < currentTestIndex) {
-                                        setCurrentTestIndex(index);
-                                        await startTestExecution(
-                                          index,
-                                          currentSession.id,
-                                        );
-                                      }
-                                    }}
-                                    className={`
-                                      w-full text-left p-3 rounded-lg border transition-colors
-                                      ${
-                                        isCurrent
-                                          ? "bg-primary/10 border-primary/70"
-                                          : isCompleted
-                                            ? "bg-emerald-500/10 border-emerald-500/60"
-                                            : "bg-muted/40 border-border/60 hover:bg-muted/60"
-                                      }
-                                    `}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-mono text-xs text-muted-foreground">
-                                        {index + 1}
-                                      </span>
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-medium truncate">
-                                          {testCase.test_cases.title}
-                                        </p>
-                                        <p className="text-[10px] uppercase text-muted-foreground">
-                                          {testCase.test_cases.test_type}
+                                      <div className="pl-0">
+                                        <p className="text-xs text-muted-foreground break-words">
+                                          <span className="font-semibold">
+                                            Expected:{" "}
+                                          </span>
+                                          {step.expected}
                                         </p>
                                       </div>
                                     </div>
-                                  </button>
+                                  </div>
                                 );
-                              })}
-                            </div>
+                              },
+                            )}
                           </div>
-                        </CardContent>
-                      </Card>
+                        )}
+                      </div>
 
-                      {/* Evidence */}
-                      {currentTest && currentExecutionId && (
-                        <Card className="flex flex-col h-[420px]">
-                          <CardHeader className="pb-3">
-                            <div className="space-y-2">
-                              <Label htmlFor="target-url">Target URL</Label>
-                              <h1 className="text-xs text-muted-foreground">
-                                Enter the site you are testing. Use the
-                                extension to capture evidence from that page.
-                              </h1>
-                              <Input
-                                id="target-url"
-                                placeholder="https://app.example.com/login"
-                                value={targetUrl}
-                                onChange={(e) => setTargetUrl(e.target.value)}
-                              />
-                            </div>
-                            <div className="mt-2" />
-                            <CardTitle className="text-sm font-medium">
-                              Test Evidence
-                            </CardTitle>
-                            <CardDescription className="text-xs">
-                              Upload or capture screenshots for this test.
-                            </CardDescription>
-                          </CardHeader>
+                      <div>
+                        <h4 className="font-medium mb-2">Expected Result</h4>
+                        <div className="bg-muted p-3 rounded-lg">
+                          <p className="text-sm text-muted-foreground break-words">
+                            {currentTest.test_cases.expected_result}
+                          </p>
+                        </div>
+                      </div>
 
-                          <CardContent className="flex-1 overflow-y-auto">
-                            <ScreenshotUpload
-                              executionId={currentExecutionId}
-                              testCaseId={currentTest.test_case_id || undefined} // ← Separate prop
-                              platformTestCaseId={
-                                currentTest.platform_test_case_id || undefined
-                              } // ← Separate prop
-                              attachments={attachments}
-                              targetUrl={targetUrl}
-                              onUploadComplete={(attachment) =>
-                                setAttachments((prev) => [attachment, ...prev])
-                              }
-                              onDeleteAttachment={(attachmentId) =>
-                                setAttachments((prev) =>
-                                  prev.filter((a) => a.id !== attachmentId),
-                                )
-                              }
-                            />
-                          </CardContent>
-                        </Card>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="execution-notes">Execution Notes</Label>
+                        <Textarea
+                          id="execution-notes"
+                          value={executionNotes}
+                          onChange={(e) => setExecutionNotes(e.target.value)}
+                          placeholder="Add notes about the test execution..."
+                          rows={3}
+                          className="resize-none"
+                          disabled={isCurrentExecutionReadOnly}
+                        />
+                      </div>
+
+                      <div className="space-y-3">
+                        <Label>Test Result</Label>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            onClick={() => completeTestExecution("passed")}
+                            disabled={isResultActionDisabled}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            {actionLoading ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                            )}
+                            Pass (P)
+                          </Button>
+                          <Button
+                            onClick={() => completeTestExecution("failed")}
+                            disabled={
+                              isResultActionDisabled || !failureReason.trim()
+                            }
+                            variant="destructive"
+                          >
+                            {actionLoading ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <XCircle className="h-4 w-4 mr-2" />
+                            )}
+                            Fail (F)
+                          </Button>
+                          <Button
+                            onClick={() => completeTestExecution("blocked")}
+                            disabled={isResultActionDisabled}
+                            variant="outline"
+                            className="text-orange-600"
+                          >
+                            {actionLoading ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4 mr-2" />
+                            )}
+                            Blocked (B)
+                          </Button>
+                          <Button
+                            onClick={() => completeTestExecution("skipped")}
+                            disabled={isResultActionDisabled}
+                            variant="outline"
+                          >
+                            {actionLoading ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <SkipForward className="h-4 w-4 mr-2" />
+                            )}
+                            Skip (S)
+                          </Button>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="failure-reason">
+                            Failure Reason (required for Fail)
+                          </Label>
+                          <Textarea
+                            id="failure-reason"
+                            value={failureReason}
+                            onChange={(e) => setFailureReason(e.target.value)}
+                            placeholder="Describe what went wrong..."
+                            rows={2}
+                            className="resize-none"
+                            disabled={isCurrentExecutionReadOnly}
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="auto-advance"
+                            checked={autoAdvance}
+                            onCheckedChange={(checked) =>
+                              setAutoAdvance(!!checked)
+                            }
+                            disabled={isCurrentExecutionReadOnly}
+                          />
+                          <Label
+                            htmlFor="auto-advance"
+                            className="text-sm font-normal cursor-pointer"
+                          >
+                            Auto-advance to next test after marking result
+                          </Label>
+                        </div>
+
+                        <div className="text-xs text-muted-foreground pt-2 border-t">
+                          <strong>Keyboard Shortcuts:</strong>{" "}
+                          <kbd className="px-1.5 py-0.5 bg-muted rounded">
+                            P
+                          </kbd>{" "}
+                          Pass •{" "}
+                          <kbd className="px-1.5 py-0.5 bg-muted rounded">
+                            F
+                          </kbd>{" "}
+                          Fail •{" "}
+                          <kbd className="px-1.5 py-0.5 bg-muted rounded">
+                            B
+                          </kbd>{" "}
+                          Block •{" "}
+                          <kbd className="px-1.5 py-0.5 bg-muted rounded">
+                            S
+                          </kbd>{" "}
+                          Skip
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardContent className="py-12 text-center">
+                      <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold">
+                        Session Complete!
+                      </h3>
+                      <p className="text-muted-foreground">
+                        All test cases executed.
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
               </>
             )}
           </div>
@@ -1346,7 +1312,89 @@ export function TestSessionExecution({
         </DialogContent>
       </Dialog>
 
-      {/* Pause Dialog */}
+      {/* Evidence Drawer */}
+      <Sheet open={showEvidenceDrawer} onOpenChange={setShowEvidenceDrawer}>
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-2xl overflow-y-auto p-0"
+        >
+          <div className="p-6 sm:p-8">
+            <SheetHeader className="space-y-3">
+              <SheetTitle className="flex items-center gap-2">
+                <Camera className="h-5 w-5" />
+                Test Evidence & Screenshots
+              </SheetTitle>
+              <SheetDescription>
+                Capture or upload screenshots as evidence for the current test
+              </SheetDescription>
+            </SheetHeader>
+            <div className="mt-8 space-y-6"></div>
+
+            {/* Current Test Context */}
+            {currentTest && (
+              <div className="pt-6">
+                <p className="text-sm font-medium">Current Test</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {currentTest.test_cases.title}
+                </p>
+                <Badge variant="outline" className="text-xs">
+                  Test {currentTestIndex + 1} of {totalTests}
+                </Badge>
+              </div>
+            )}
+            <div className="h-4" />
+
+            {/* Target URL */}
+            <div className="space-y-2">
+              <Label
+                htmlFor="target-url-drawer"
+                className="text-sm font-medium"
+              >
+                Target URL
+              </Label>
+              <p className="text-xs text-muted-foreground right">
+                Enter the site you are testing. Use the extension to capture
+                evidence from that page.
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <Input
+                id="target-url-drawer"
+                placeholder="https://app.example.com/login"
+                value={targetUrl}
+                onChange={(e) => setTargetUrl(e.target.value)}
+                className="h-10 flex-1 max-w-lg"
+              />
+            </div>
+          </div>
+
+          {/* Screenshot Upload Component */}
+          {currentExecutionId && currentTest && (
+            <div className="pt-2">
+              <ScreenshotUpload
+                executionId={currentExecutionId}
+                testCaseId={currentTest.test_case_id || undefined}
+                platformTestCaseId={
+                  currentTest.platform_test_case_id || undefined
+                }
+                attachments={attachments}
+                targetUrl={targetUrl}
+                onUploadComplete={(attachment) =>
+                  setAttachments((prev) => [attachment, ...prev])
+                }
+                onDeleteAttachment={(attachmentId) =>
+                  setAttachments((prev) =>
+                    prev.filter((a) => a.id !== attachmentId),
+                  )
+                }
+              />
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Pause Dialog - Keep as is */}
       <Dialog open={showPauseDialog} onOpenChange={setShowPauseDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
