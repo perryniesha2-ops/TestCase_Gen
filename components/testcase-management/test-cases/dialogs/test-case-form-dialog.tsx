@@ -205,12 +205,18 @@ export function TestCaseFormDialog({
 
         setRegularFormData({
           title: testCase.title,
-          description: testCase.description,
+          description:
+            (testCase as any).description ??
+            (testCase as any).description_text ??
+            "",
           test_type: normalizedTestType,
           priority: testCase.priority,
           preconditions: testCase.preconditions || "",
           test_steps: testCase.test_steps,
-          expected_result: testCase.expected_result,
+          expected_result:
+            (testCase as any).expected_result ??
+            (testCase as any).expectedResult ??
+            "",
           status: testCase.status,
           project_id: testCase.project_id ? String(testCase.project_id) : null,
         });
