@@ -43,7 +43,8 @@ interface TestAttachment {
 
 interface ScreenshotUploadProps {
   executionId: string;
-  testCaseId: string;
+  testCaseId?: string; // ← Made optional
+  platformTestCaseId?: string; // ← NEW
   stepNumber?: number;
   onUploadComplete?: (attachment: TestAttachment) => void;
   attachments?: TestAttachment[];
@@ -80,6 +81,7 @@ async function createSignedUrl(filePath: string, expiresInSeconds: number) {
 export function ScreenshotUpload({
   executionId,
   testCaseId,
+  platformTestCaseId, // ← NEW
   stepNumber,
   targetUrl,
   onUploadComplete,
@@ -89,13 +91,27 @@ export function ScreenshotUpload({
   extensionInstalled: extensionInstalledProp,
   checkingExtension,
 }: ScreenshotUploadProps) {
+  // ✅ Validation: Must have exactly one case ID
+  useEffect(() => {
+    if (!testCaseId && !platformTestCaseId) {
+      console.error(
+        "ScreenshotUpload: Must provide either testCaseId or platformTestCaseId",
+      );
+    }
+    if (testCaseId && platformTestCaseId) {
+      console.error(
+        "ScreenshotUpload: Cannot provide both testCaseId and platformTestCaseId",
+      );
+    }
+  }, [testCaseId, platformTestCaseId]);
+
   const [uploading, setUploading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewFile, setPreviewFile] = useState<TestAttachment | null>(null);
   const [description, setDescription] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [extensionInstalled, setExtensionInstalled] = useState<boolean | null>(
-    null
+    null,
   );
   const resolvedExtensionInstalled =
     extensionInstalledProp ?? extensionInstalled;
@@ -106,7 +122,7 @@ export function ScreenshotUpload({
 
     if (!ALLOWED_TYPES.includes(file.type)) {
       toast.error(
-        "Invalid file type. Please upload an image (PNG, JPEG, GIF, or WebP)."
+        "Invalid file type. Please upload an image (PNG, JPEG, GIF, or WebP).",
       );
       return;
     }
@@ -119,6 +135,18 @@ export function ScreenshotUpload({
   }, []);
 
   async function uploadFile(file: File) {
+    // ✅ Validate case ID before upload
+    if (!testCaseId && !platformTestCaseId) {
+      toast.error("No test case ID provided. Cannot upload screenshot.");
+      return;
+    }
+    if (testCaseId && platformTestCaseId) {
+      toast.error(
+        "Invalid state: both testCaseId and platformTestCaseId provided.",
+      );
+      return;
+    }
+
     setUploading(true);
     try {
       const supabase = createClient();
@@ -130,6 +158,45 @@ export function ScreenshotUpload({
       if (!user) {
         toast.error("Please log in to upload files.");
         return;
+      }
+
+      // ✅ Verify the test case exists and belongs to user
+      if (testCaseId) {
+        const { data: testCase, error } = await supabase
+          .from("test_cases")
+          .select("id, user_id")
+          .eq("id", testCaseId)
+          .single();
+
+        if (error || !testCase) {
+          toast.error(`Test case not found: ${testCaseId}`);
+          return;
+        }
+
+        if (testCase.user_id !== user.id) {
+          toast.error("Unauthorized: Test case belongs to another user");
+          return;
+        }
+      }
+
+      if (platformTestCaseId) {
+        const { data: platformCase, error } = await supabase
+          .from("platform_test_cases")
+          .select("id, user_id")
+          .eq("id", platformTestCaseId)
+          .single();
+
+        if (error || !platformCase) {
+          toast.error(`Platform test case not found: ${platformTestCaseId}`);
+          return;
+        }
+
+        if (platformCase.user_id !== user.id) {
+          toast.error(
+            "Unauthorized: Platform test case belongs to another user",
+          );
+          return;
+        }
       }
 
       // Create storage path (user-owned folder)
@@ -145,12 +212,13 @@ export function ScreenshotUpload({
 
       if (uploadError) throw uploadError;
 
-      // Insert metadata into DB
+      // ✅ Insert metadata into DB with correct foreign key
       const { data: attachment, error: dbError } = await supabase
         .from("test_attachments")
         .insert({
           execution_id: executionId,
-          test_case_id: testCaseId,
+          test_case_id: testCaseId || null, // ← One will be null
+          platform_test_case_id: platformTestCaseId || null, // ← One will be null
           step_number: stepNumber ?? null,
           file_name: file.name, // original filename
           file_path: uploadData.path, // storage object path
@@ -178,7 +246,7 @@ export function ScreenshotUpload({
       toast.error(
         err?.message
           ? `Upload failed: ${err.message}`
-          : "Failed to upload screenshot."
+          : "Failed to upload screenshot.",
       );
     } finally {
       setUploading(false);
@@ -212,7 +280,7 @@ export function ScreenshotUpload({
       toast.error(
         err?.message
           ? `Delete failed: ${err.message}`
-          : "Failed to delete screenshot."
+          : "Failed to delete screenshot.",
       );
     }
   }
@@ -234,10 +302,16 @@ export function ScreenshotUpload({
       e.stopPropagation();
       void handleFileSelect(e.dataTransfer.files);
     },
-    [handleFileSelect]
+    [handleFileSelect],
   );
 
   async function captureFromExtension(mode: "full" | "region") {
+    // ✅ Validate case ID before capture
+    if (!testCaseId && !platformTestCaseId) {
+      toast.error("No test case ID provided. Cannot capture screenshot.");
+      return;
+    }
+
     const installed = ensureExtensionInstalled
       ? await ensureExtensionInstalled()
       : await detectExtensionInstalled();
@@ -246,7 +320,7 @@ export function ScreenshotUpload({
 
     if (!installed) {
       toast.error(
-        "Please install the SynthQA browser extension to capture screenshots."
+        "Please install the SynthQA browser extension to capture screenshots.",
       );
       return;
     }
@@ -261,13 +335,15 @@ export function ScreenshotUpload({
       const command =
         mode === "region" ? "CAPTURE_REGION" : "CAPTURE_SCREENSHOT";
 
+      // ✅ Pass both IDs to extension (one will be null)
       const resp = await extensionRequest<{
         dataUrl: string;
         mimeType?: string;
         fileName?: string;
       }>(command, {
         executionId,
-        testCaseId,
+        testCaseId: testCaseId || null, // ← Pass to extension
+        platformTestCaseId: platformTestCaseId || null, // ← Pass to extension
         stepNumber,
         targetUrl,
       });
@@ -281,13 +357,13 @@ export function ScreenshotUpload({
           }-${Date.now()}.png`,
         {
           type: resp.mimeType || blob.type || "image/png",
-        }
+        },
       );
 
       await uploadFile(file);
     } catch (e: any) {
       toast.error(
-        e?.message ? `Capture failed: ${e.message}` : "Capture failed"
+        e?.message ? `Capture failed: ${e.message}` : "Capture failed",
       );
     } finally {
       setUploading(false);
@@ -369,8 +445,8 @@ export function ScreenshotUpload({
                       resolvedExtensionInstalled === false
                         ? "Install the SynthQA browser extension to use Capture"
                         : !targetUrl?.trim()
-                        ? "Enter a target URL to capture screenshots"
-                        : undefined
+                          ? "Enter a target URL to capture screenshots"
+                          : undefined
                     }
                   >
                     <Camera className="h-4 w-4 mr-2" />
@@ -387,8 +463,8 @@ export function ScreenshotUpload({
                       extensionInstalled === false
                         ? "Install the SynthQA browser extension to use Capture"
                         : !targetUrl?.trim()
-                        ? "Enter a target URL to capture screenshots"
-                        : "Select a region on the page"
+                          ? "Enter a target URL to capture screenshots"
+                          : "Select a region on the page"
                     }
                   >
                     <Camera className="h-4 w-4 mr-2" />

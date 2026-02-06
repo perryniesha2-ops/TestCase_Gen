@@ -110,18 +110,17 @@ export async function DELETE(
   return NextResponse.json({ success: true });
 }
 
+// app/api/projects/[id]/route.ts - Add to GET handler
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-
   const url = new URL(req.url);
   const days = Math.max(
     1,
     Math.min(365, Number(url.searchParams.get("days") ?? 30)),
   );
-  const suiteId = url.searchParams.get("suiteId"); // optional
 
   const supabase = await createClient();
   const {
@@ -133,20 +132,45 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data, error } = await supabase.rpc("project_dashboard", {
-    p_project_id: id,
-    p_days: days,
-    p_suite_id: suiteId || null,
-    p_limit: 20,
-  });
+  // Get dashboard data
+  const { data: dashboardData, error: dashboardError } = await supabase.rpc(
+    "project_dashboard",
+    {
+      p_project_id: id,
+      p_days: days,
+    },
+  );
 
-  if (error) {
-    // If your RPC raises exceptions, Supabase returns them here
+  if (dashboardError) {
     return NextResponse.json(
-      { error: error.message, details: error.details ?? null },
+      { error: dashboardError.message },
       { status: 400 },
     );
   }
 
-  return NextResponse.json(data ?? {}, { status: 200 });
+  // Get suite stats
+  const { data: suiteStats, error: suiteError } = await supabase.rpc(
+    "project_suite_stats",
+    {
+      p_project_id: id,
+    },
+  );
+
+  // Get recent executions
+  const { data: recentExecutions, error: execError } = await supabase.rpc(
+    "project_recent_executions",
+    {
+      p_project_id: id,
+      p_limit: 20,
+    },
+  );
+
+  return NextResponse.json(
+    {
+      dashboard: dashboardData,
+      suites: suiteStats || [],
+      recent_executions: recentExecutions || [],
+    },
+    { status: 200 },
+  );
 }
