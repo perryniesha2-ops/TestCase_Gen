@@ -34,7 +34,6 @@ import {
 } from "@/lib/utils/requirement-helpers";
 
 import type { Requirement } from "@/types/requirements";
-import { RequirementActionsSheet } from "@/components/requirements/requirement-actions-sheet";
 
 interface RequirementsTableProps {
   requirements: Requirement[];
