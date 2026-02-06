@@ -62,7 +62,6 @@ import {
   CanonicalTestType,
   TestTypeMultiselect,
 } from "../generator/testtype-multiselect";
-import { Toaster } from "sonner";
 
 // ============================================================================
 // TYPES
@@ -111,8 +110,6 @@ const MODEL_KEYS = new Set<ModelKey>([
   "claude-sonnet-4-5",
   "claude-haiku-4-5",
   "claude-opus-4-5",
-  "gpt-5-mini",
-  "gpt-5.2",
   "gpt-4o",
   "gpt-4o-mini",
 ]);
@@ -121,17 +118,22 @@ const MODEL_LABELS: Record<ModelKey, string> = {
   "claude-sonnet-4-5": "Claude Sonnet 4.5",
   "claude-haiku-4-5": "Claude Haiku 4.5",
   "claude-opus-4-5": "Claude Opus 4.5",
-  "gpt-5-mini": "GPT-5 Mini",
-  "gpt-5.2": "GPT-5.2",
   "gpt-4o": "GPT-4o",
   "gpt-4o-mini": "GPT-4o Mini",
 };
 
 const MODEL_MIGRATIONS: Record<string, ModelKey> = {
+  // Anthropic legacy
   "claude-3-5-sonnet-20241022": "claude-sonnet-4-5",
   "claude-3-5-haiku-20241022": "claude-haiku-4-5",
+
+  // OpenAI legacy IDs -> keys
   "gpt-4o-2024-11-20": "gpt-4o",
   "gpt-4o-mini-2024-07-18": "gpt-4o-mini",
+
+  // GPT-5 keys (disabled) -> safe fallbacks
+  "gpt-5-mini": "gpt-4o-mini",
+  "gpt-5.2": "gpt-4o",
 };
 
 // ============================================================================
@@ -806,8 +808,6 @@ export default function SettingsPage() {
                       <SelectItem value="claude-opus-4-5">
                         Claude Opus 4.5
                       </SelectItem>
-                      <SelectItem value="gpt-5-mini">GPT-5 Mini</SelectItem>
-                      <SelectItem value="gpt-5.2">GPT-5.2</SelectItem>
                       <SelectItem value="gpt-4o">GPT-4o</SelectItem>
                       <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
                     </SelectContent>

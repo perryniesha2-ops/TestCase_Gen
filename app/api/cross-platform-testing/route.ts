@@ -8,6 +8,15 @@ import {
   recordSuccessfulGeneration,
   UsageQuotaError,
 } from "@/lib/usage-tracker";
+import {
+  getModelId,
+  isAnthropicModel,
+  getFallbackModel,
+  getDefaultModel,
+  isModelAllowed,
+  migrateModelKey,
+  type ModelKey,
+} from "@/lib/ai-models/config";
 
 export const runtime = "nodejs";
 
@@ -236,26 +245,6 @@ const COVERAGE_PROMPTS = {
 } as const;
 
 type CoverageKey = keyof typeof COVERAGE_PROMPTS;
-
-const AI_MODELS = {
-  "claude-sonnet-4-5": "claude-sonnet-4-5-20250514",
-  "claude-haiku-4-5": "claude-haiku-4-5-20250514",
-  "claude-opus-4-5": "claude-opus-4-5-20250514",
-
-  "gpt-5-mini": "gpt-5-mini",
-  "gpt-5.2": "gpt-5.2",
-  "gpt-4o": "gpt-4o-2024-11-20",
-  "gpt-4o-mini": "gpt-4o-mini-2024-07-18",
-
-  "claude-3-5-sonnet-20241022": "claude-3-5-sonnet-20241022",
-  "claude-3-5-haiku-20241022": "claude-3-5-haiku-20241022",
-} as const;
-
-type ModelKey = keyof typeof AI_MODELS;
-
-const DEFAULT_MODEL: ModelKey = "claude-sonnet-4-5";
-const FALLBACK_CLAUDE = "claude-sonnet-4-5-20250514";
-const FALLBACK_GPT = "gpt-4o-2024-11-20";
 
 // ----- Clients -----
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -555,7 +544,10 @@ export async function POST(request: Request) {
 
     const requirement = (body.requirement ?? "").trim();
     const platforms = Array.isArray(body.platforms) ? body.platforms : [];
-    const modelKey = (body.model as ModelKey) || DEFAULT_MODEL;
+    const rawModelKey = String(body.model ?? "").trim();
+    const modelKey: ModelKey = rawModelKey
+      ? migrateModelKey(rawModelKey)
+      : getDefaultModel();
     const testCaseCount = clampCount(Number(body.testCaseCount ?? 10), 1, 100);
     const coverage = (body.coverage as CoverageKey) || "comprehensive";
     const project_id = body.project_id || null;
@@ -589,12 +581,13 @@ export async function POST(request: Request) {
         );
       }
     }
-    if (!(modelKey in AI_MODELS)) {
+    if (!isModelAllowed(modelKey)) {
       return NextResponse.json(
         { error: "Unsupported AI model", field: "model" },
         { status: 400 },
       );
     }
+
     if (!(coverage in COVERAGE_PROMPTS)) {
       return NextResponse.json(
         { error: "Invalid coverage level", field: "coverage" },
@@ -644,15 +637,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Provider routing
-    const selectedModel = AI_MODELS[modelKey];
-    const isAnthropicModel = selectedModel.startsWith("claude");
-    const primary: "anthropic" | "openai" = isAnthropicModel
+    // Provider routing (from central config)
+    const selectedModelId = getModelId(modelKey);
+    const primary: "anthropic" | "openai" = isAnthropicModel(modelKey)
       ? "anthropic"
       : "openai";
-    const fallback: "anthropic" | "openai" = isAnthropicModel
-      ? "openai"
-      : "anthropic";
+
+    const fallbackProvider: "anthropic" | "openai" =
+      primary === "anthropic" ? "openai" : "anthropic";
+
+    const fallbackModelKey = getFallbackModel(fallbackProvider);
+    const fallbackModelId = getModelId(fallbackModelKey);
 
     let totalInserted = 0;
     const allInsertedCases: any[] = [];
@@ -704,30 +699,30 @@ Return plain text test cases (no JSON).`;
         try {
           if (primary === "anthropic") {
             const res = await anthropic.messages.create({
-              model: selectedModel,
+              model: selectedModelId,
               max_tokens: 4096,
               messages: [{ role: "user", content: promptUsed }],
             });
             rawText = anthropicTextFromContent(res.content);
           } else {
             const res = await openai.chat.completions.create({
-              model: selectedModel,
+              model: selectedModelId,
               messages: [{ role: "user", content: promptUsed }],
               max_tokens: 4096,
             });
             rawText = res.choices?.[0]?.message?.content ?? "";
           }
         } catch {
-          if (fallback === "anthropic") {
+          if (fallbackProvider === "anthropic") {
             const res = await anthropic.messages.create({
-              model: FALLBACK_CLAUDE,
+              model: fallbackModelId,
               max_tokens: 4096,
               messages: [{ role: "user", content: promptUsed }],
             });
             rawText = anthropicTextFromContent(res.content);
           } else {
             const res = await openai.chat.completions.create({
-              model: FALLBACK_GPT,
+              model: fallbackModelId,
               messages: [{ role: "user", content: promptUsed }],
               max_tokens: 4096,
             });
