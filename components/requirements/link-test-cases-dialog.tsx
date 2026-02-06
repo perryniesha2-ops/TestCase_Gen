@@ -23,20 +23,58 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { X, Target, CheckCircle, Link as LinkIcon } from "lucide-react";
 import {
-  toastSuccess,
-  toastError,
-  toastInfo,
-  toastWarning,
-} from "@/lib/utils/toast-utils";
+  X,
+  Target,
+  CheckCircle,
+  Link as LinkIcon,
+  Monitor,
+  Smartphone,
+  Globe,
+  Eye,
+  Zap,
+} from "lucide-react";
+import { toastSuccess, toastError } from "@/lib/utils/toast-utils";
 
-import type {
-  Requirement,
-  TestCase,
-  RequirementTestCase,
-} from "@/types/requirements";
+import type { Requirement } from "@/types/requirements";
 import { Checkbox } from "@/components/ui/checkbox";
+
+// Platform icons mapping
+const platformIcons = {
+  web: Monitor,
+  mobile: Smartphone,
+  api: Globe,
+  accessibility: Eye,
+  performance: Zap,
+};
+
+type TestCaseType = "regular" | "cross-platform";
+
+type UnifiedTestCase = {
+  id: string;
+  title: string;
+  type: TestCaseType;
+  test_type?: string; // for regular
+  platform?: string; // for cross-platform
+  framework?: string; // for cross-platform
+  priority: string;
+  status: string;
+};
+
+type LinkedTestCase = {
+  id: string;
+  requirement_id: string;
+  test_case_id: string;
+  coverage_type: string;
+  test_case_type: TestCaseType;
+  created_at: string;
+  // Joined data
+  test_case_title?: string;
+  test_case_test_type?: string;
+  test_case_platform?: string;
+  test_case_framework?: string;
+  test_case_priority?: string;
+};
 
 interface LinkTestCasesDialogProps {
   requirement: Requirement;
@@ -51,10 +89,8 @@ export function LinkTestCasesDialog({
   onOpenChange,
   onLinked,
 }: LinkTestCasesDialogProps) {
-  const [linkedTestCases, setLinkedTestCases] = useState<RequirementTestCase[]>(
-    [],
-  );
-  const [allTestCases, setAllTestCases] = useState<TestCase[]>([]);
+  const [linkedTestCases, setLinkedTestCases] = useState<LinkedTestCase[]>([]);
+  const [allTestCases, setAllTestCases] = useState<UnifiedTestCase[]>([]);
   const [selectedCoverageTypes, setSelectedCoverageTypes] = useState<
     Record<string, string>
   >({});
@@ -66,29 +102,97 @@ export function LinkTestCasesDialog({
   const { user } = useAuth();
 
   useEffect(() => {
-    if (user) {
-      if (open) {
-        fetchLinkedTestCases();
-        fetchAllTestCases();
-      }
+    if (user && open) {
+      fetchLinkedTestCases();
+      fetchAllTestCases();
     }
   }, [open, requirement.id, user]);
 
   async function fetchLinkedTestCases() {
     try {
       const supabase = createClient();
-      const { data, error } = await supabase
+
+      // Fetch links for regular test cases
+      const { data: regularLinks, error: regularError } = await supabase
         .from("requirement_test_cases")
         .select(
           `
-          *,
-          test_cases(id, title, test_type, priority, status)
+          id,
+          requirement_id,
+          test_case_id,
+          coverage_type,
+          created_at,
+          test_cases (
+            id,
+            title,
+            test_type,
+            priority,
+            status
+          )
         `,
         )
-        .eq("requirement_id", requirement.id);
+        .eq("requirement_id", requirement.id)
+        .not("test_cases", "is", null);
 
-      if (error) throw error;
-      setLinkedTestCases(data || []);
+      if (regularError) throw regularError;
+
+      // Fetch links for platform test cases
+      const { data: platformLinks, error: platformError } = await supabase
+        .from("requirement_platform_test_cases")
+        .select(
+          `
+          id,
+          requirement_id,
+          test_case_id,
+          coverage_type,
+          created_at,
+          platform_test_cases (
+            id,
+            title,
+            platform,
+            framework,
+            priority,
+            status
+          )
+        `,
+        )
+        .eq("requirement_id", requirement.id)
+        .not("platform_test_cases", "is", null);
+
+      if (platformError) throw platformError;
+
+      // Transform regular links
+      const transformedRegular: LinkedTestCase[] = (regularLinks || []).map(
+        (link: any) => ({
+          id: link.id,
+          requirement_id: link.requirement_id,
+          test_case_id: link.test_case_id,
+          coverage_type: link.coverage_type,
+          test_case_type: "regular" as const,
+          created_at: link.created_at,
+          test_case_title: link.test_cases?.title,
+          test_case_test_type: link.test_cases?.test_type,
+          test_case_priority: link.test_cases?.priority,
+        }),
+      );
+
+      // Transform platform links
+      const transformedPlatform: LinkedTestCase[] = (platformLinks || []).map(
+        (link: any) => ({
+          id: link.id,
+          requirement_id: link.requirement_id,
+          test_case_id: link.test_case_id,
+          coverage_type: link.coverage_type,
+          test_case_type: "cross-platform" as const,
+          created_at: link.created_at,
+          test_case_title: link.platform_test_cases?.title,
+          test_case_platform: link.platform_test_cases?.platform,
+          test_case_framework: link.platform_test_cases?.framework,
+          test_case_priority: link.platform_test_cases?.priority,
+        }),
+      );
+
+      setLinkedTestCases([...transformedRegular, ...transformedPlatform]);
     } catch (error) {
       console.error("Error fetching linked test cases:", error);
     }
@@ -100,61 +204,67 @@ export function LinkTestCasesDialog({
     try {
       const supabase = createClient();
 
-      const { data, error } = await supabase
+      // Fetch regular test cases
+      const { data: regularCases, error: regularError } = await supabase
         .from("test_cases")
-        .select(
-          "id, title, test_type, priority, status, created_at, updated_at",
-        )
+        .select("id, title, test_type, priority, status")
         .eq("user_id", user.id)
+        .neq("status", "archived")
         .order("title");
 
-      if (error) throw error;
-      setAllTestCases(data || []);
+      if (regularError) throw regularError;
+
+      // Fetch cross-platform test cases
+      const { data: platformCases, error: platformError } = await supabase
+        .from("platform_test_cases")
+        .select("id, title, platform, framework, priority, status")
+        .eq("user_id", user.id)
+        .neq("status", "archived")
+        .order("title");
+
+      if (platformError) throw platformError;
+
+      // Transform to unified format
+      const regularUnified: UnifiedTestCase[] = (regularCases || []).map(
+        (tc) => ({
+          id: tc.id,
+          title: tc.title,
+          type: "regular" as const,
+          test_type: tc.test_type,
+          priority: tc.priority,
+          status: tc.status,
+        }),
+      );
+
+      const platformUnified: UnifiedTestCase[] = (platformCases || []).map(
+        (tc) => ({
+          id: tc.id,
+          title: tc.title,
+          type: "cross-platform" as const,
+          platform: tc.platform,
+          framework: tc.framework,
+          priority: tc.priority,
+          status: tc.status,
+        }),
+      );
+
+      setAllTestCases([...regularUnified, ...platformUnified]);
     } catch (error) {
       console.error("Error fetching test cases:", error);
     }
   }
 
-  async function linkTestCase(testCaseId: string, coverageType: string) {
+  async function unlinkTestCase(linkId: string, testCaseType: TestCaseType) {
     try {
       setLoading(true);
       const supabase = createClient();
 
-      const { error } = await supabase.from("requirement_test_cases").insert({
-        requirement_id: requirement.id,
-        test_case_id: testCaseId,
-        coverage_type: coverageType,
-      });
+      const table =
+        testCaseType === "regular"
+          ? "requirement_test_cases"
+          : "requirement_platform_test_cases";
 
-      if (error) throw error;
-
-      toastSuccess("Test case linked successfully");
-      await fetchLinkedTestCases();
-      onLinked();
-
-      // Clear selection
-      setSelectedCoverageTypes((prev) => {
-        const updated = { ...prev };
-        delete updated[testCaseId];
-        return updated;
-      });
-    } catch (error) {
-      console.error("Error linking test case:", error);
-      toastError("Failed to link test case");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function unlinkTestCase(linkId: string) {
-    try {
-      setLoading(true);
-      const supabase = createClient();
-
-      const { error } = await supabase
-        .from("requirement_test_cases")
-        .delete()
-        .eq("id", linkId);
+      const { error } = await supabase.from(table).delete().eq("id", linkId);
 
       if (error) throw error;
 
@@ -180,7 +290,6 @@ export function LinkTestCasesDialog({
       return next;
     });
 
-    // ensure there is always a coverage value when selected
     if (checked) {
       setSelectedCoverageTypes((prev) => ({
         ...prev,
@@ -198,7 +307,6 @@ export function LinkTestCasesDialog({
     const next = new Set(availableTestCases.map((tc) => tc.id));
     setSelectedTestCaseIds(next);
 
-    // backfill default coverage for any newly-selected rows
     setSelectedCoverageTypes((prev) => {
       const updated = { ...prev };
       for (const tc of availableTestCases) {
@@ -224,17 +332,48 @@ export function LinkTestCasesDialog({
       setLoading(true);
       const supabase = createClient();
 
-      const payload = ids.map((testCaseId) => ({
-        requirement_id: requirement.id,
-        test_case_id: testCaseId,
-        coverage_type: selectedCoverageTypes[testCaseId] || "direct",
-      }));
+      // Group by type
+      const regularIds: string[] = [];
+      const platformIds: string[] = [];
 
-      const { error } = await supabase
-        .from("requirement_test_cases")
-        .insert(payload);
+      for (const id of ids) {
+        const testCase = allTestCases.find((tc) => tc.id === id);
+        if (testCase?.type === "regular") {
+          regularIds.push(id);
+        } else if (testCase?.type === "cross-platform") {
+          platformIds.push(id);
+        }
+      }
 
-      if (error) throw error;
+      // Insert regular test case links
+      if (regularIds.length > 0) {
+        const regularPayload = regularIds.map((testCaseId) => ({
+          requirement_id: requirement.id,
+          test_case_id: testCaseId,
+          coverage_type: selectedCoverageTypes[testCaseId] || "direct",
+        }));
+
+        const { error: regularError } = await supabase
+          .from("requirement_test_cases")
+          .insert(regularPayload);
+
+        if (regularError) throw regularError;
+      }
+
+      // Insert platform test case links
+      if (platformIds.length > 0) {
+        const platformPayload = platformIds.map((testCaseId) => ({
+          requirement_id: requirement.id,
+          test_case_id: testCaseId,
+          coverage_type: selectedCoverageTypes[testCaseId] || "direct",
+        }));
+
+        const { error: platformError } = await supabase
+          .from("requirement_platform_test_cases")
+          .insert(platformPayload);
+
+        if (platformError) throw platformError;
+      }
 
       toastSuccess(
         `Linked ${ids.length} test case${ids.length > 1 ? "s" : ""}`,
@@ -242,7 +381,6 @@ export function LinkTestCasesDialog({
       await fetchLinkedTestCases();
       onLinked();
 
-      // Clear selections & cleanup coverage map for those ids
       setSelectedTestCaseIds(new Set());
       setSelectedCoverageTypes((prev) => {
         const updated = { ...prev };
@@ -257,10 +395,13 @@ export function LinkTestCasesDialog({
     }
   }
 
-  const [openView, setOpenView] = useState(false);
-
-  function handleClose() {
-    setOpenView(false);
+  function getTestCaseIcon(testCase: UnifiedTestCase) {
+    if (testCase.type === "cross-platform" && testCase.platform) {
+      const Icon =
+        platformIcons[testCase.platform as keyof typeof platformIcons];
+      return Icon ? <Icon className="h-3 w-3" /> : null;
+    }
+    return null;
   }
 
   return (
@@ -323,21 +464,47 @@ export function LinkTestCasesDialog({
                     >
                       <div className="flex-1 space-y-1">
                         <div className="font-medium">
-                          {link.test_cases?.title}
+                          {link.test_case_title || "Unknown Test"}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline">
-                            {link.test_cases?.test_type}
+                          {/* Type Badge */}
+                          <Badge
+                            variant={
+                              link.test_case_type === "regular"
+                                ? "secondary"
+                                : "default"
+                            }
+                          >
+                            {link.test_case_type === "regular"
+                              ? link.test_case_test_type
+                              : link.test_case_platform}
                           </Badge>
+
+                          {/* Framework for cross-platform */}
+                          {link.test_case_type === "cross-platform" &&
+                            link.test_case_framework && (
+                              <Badge variant="outline">
+                                {link.test_case_framework}
+                              </Badge>
+                            )}
+
+                          {/* Coverage type */}
                           <Badge variant="outline">
                             {link.coverage_type} coverage
+                          </Badge>
+
+                          {/* Type indicator */}
+                          <Badge variant="outline" className="capitalize">
+                            {link.test_case_type}
                           </Badge>
                         </div>
                       </div>
                       <Button
                         size="sm"
                         variant="destructive"
-                        onClick={() => unlinkTestCase(link.id)}
+                        onClick={() =>
+                          unlinkTestCase(link.id, link.test_case_type)
+                        }
                         disabled={loading}
                       >
                         Unlink
@@ -417,11 +584,34 @@ export function LinkTestCasesDialog({
                           <div className="space-y-1">
                             <div className="font-medium">{testCase.title}</div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant="outline">
-                                {testCase.test_type}
-                              </Badge>
+                              {/* Type Badge */}
+                              {testCase.type === "regular" ? (
+                                <Badge variant="secondary">
+                                  {testCase.test_type}
+                                </Badge>
+                              ) : (
+                                <Badge variant="default" className="gap-1">
+                                  {getTestCaseIcon(testCase)}
+                                  {testCase.platform}
+                                </Badge>
+                              )}
+
+                              {/* Framework for cross-platform */}
+                              {testCase.type === "cross-platform" &&
+                                testCase.framework && (
+                                  <Badge variant="outline">
+                                    {testCase.framework}
+                                  </Badge>
+                                )}
+
+                              {/* Priority */}
                               <Badge variant="outline">
                                 {testCase.priority}
+                              </Badge>
+
+                              {/* Type indicator */}
+                              <Badge variant="outline" className="capitalize">
+                                {testCase.type}
                               </Badge>
                             </div>
                           </div>
@@ -437,7 +627,7 @@ export function LinkTestCasesDialog({
                                 [testCase.id]: value,
                               }));
                             }}
-                            disabled={loading || !isSelected} // optional: only editable when selected
+                            disabled={loading || !isSelected}
                           >
                             <SelectTrigger className="w-32">
                               <SelectValue />
@@ -460,9 +650,7 @@ export function LinkTestCasesDialog({
         <div className="border-t bg-background px-6 py-4">
           <DialogFooter className="gap-2 sm:gap-3">
             <DialogClose asChild>
-              <Button variant="outline" onClick={handleClose}>
-                Close
-              </Button>
+              <Button variant="outline">Close</Button>
             </DialogClose>
           </DialogFooter>
         </div>
