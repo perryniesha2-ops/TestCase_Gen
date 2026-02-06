@@ -315,18 +315,14 @@ export default function RequirementDetailsPageClient({
           {/* Details Card */}
           <Card>
             <CardHeader>
-              <CardTitle>Details</CardTitle>
+              <CardTitle>
+                {" "}
+                {requirement.description?.trim()
+                  ? requirement.description
+                  : "—"}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <div className="text-sm font-medium mb-1">Description</div>
-                <div className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
-                  {requirement.description?.trim()
-                    ? requirement.description
-                    : "—"}
-                </div>
-              </div>
-
               <Separator />
 
               <div>
@@ -355,7 +351,7 @@ export default function RequirementDetailsPageClient({
           {/* Meta Card */}
           <Card>
             <CardHeader>
-              <CardTitle>Metadata</CardTitle>
+              <CardTitle>Requirement Details</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -423,7 +419,11 @@ export default function RequirementDetailsPageClient({
 
                 <div className="space-y-1">
                   <span className="text-sm text-muted-foreground">
-                    Cross-Platform: {requirement.platform_test_case_count ?? 0}
+                    Cross-Platform:{" "}
+                  </span>
+                  <span className="text-sm font-medium">
+                    {" "}
+                    {requirement.platform_test_case_count ?? 0}
                   </span>
                 </div>
 

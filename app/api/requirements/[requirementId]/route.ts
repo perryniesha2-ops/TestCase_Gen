@@ -156,24 +156,38 @@ export async function GET(
       );
     }
 
-    // Linked tests (both types)
-    const { data: links, error: linksErr } = await supabase
+    // ✅ Fetch regular test case links
+    const { data: regularLinks, error: regularLinksErr } = await supabase
       .from("requirement_test_cases")
-      .select(
-        "id, requirement_id, test_case_id, platform_test_case_id, coverage_type, created_at",
-      )
+      .select("id, requirement_id, test_case_id, coverage_type, created_at")
       .eq("requirement_id", requirementId);
 
-    if (linksErr) {
-      return NextResponse.json({ error: linksErr.message }, { status: 500 });
+    if (regularLinksErr) {
+      return NextResponse.json(
+        { error: regularLinksErr.message },
+        { status: 500 },
+      );
     }
 
-    const regularIds = (links ?? [])
+    // ✅ Fetch platform test case links
+    const { data: platformLinks, error: platformLinksErr } = await supabase
+      .from("requirement_platform_test_cases")
+      .select("id, requirement_id, test_case_id, coverage_type, created_at")
+      .eq("requirement_id", requirementId);
+
+    if (platformLinksErr) {
+      return NextResponse.json(
+        { error: platformLinksErr.message },
+        { status: 500 },
+      );
+    }
+
+    const regularIds = (regularLinks ?? [])
       .map((l: any) => l.test_case_id as string | null)
       .filter(Boolean) as string[];
 
-    const platformIds = (links ?? [])
-      .map((l: any) => l.platform_test_case_id as string | null)
+    const platformIds = (platformLinks ?? [])
+      .map((l: any) => l.test_case_id as string | null)
       .filter(Boolean) as string[];
 
     // Fetch regular test cases (optional details)
@@ -212,29 +226,44 @@ export async function GET(
       (platformCases ?? []).map((tc: any) => [tc.id, tc]),
     );
 
-    const linked_tests = (links ?? []).map((l: any) => {
-      const regular = l.test_case_id ? regMap.get(l.test_case_id) : null;
-      const platform = l.platform_test_case_id
-        ? platMap.get(l.platform_test_case_id)
-        : null;
-
+    // ✅ Transform regular links
+    const transformedRegularLinks = (regularLinks ?? []).map((l: any) => {
+      const testCase = l.test_case_id ? regMap.get(l.test_case_id) : null;
       return {
         id: l.id,
         requirement_id: l.requirement_id,
         coverage_type: l.coverage_type,
         created_at: l.created_at,
         test_case_id: l.test_case_id,
-        platform_test_case_id: l.platform_test_case_id,
-        test_case: regular
-          ? { ...regular, _caseType: "regular" as const }
-          : null,
-        platform_test_case: platform
-          ? { ...platform, _caseType: "cross-platform" as const }
+        test_case_type: "regular" as const,
+        test_case: testCase
+          ? { ...testCase, _caseType: "regular" as const }
           : null,
       };
     });
 
-    // Coverage counts
+    // ✅ Transform platform links
+    const transformedPlatformLinks = (platformLinks ?? []).map((l: any) => {
+      const testCase = l.test_case_id ? platMap.get(l.test_case_id) : null;
+      return {
+        id: l.id,
+        requirement_id: l.requirement_id,
+        coverage_type: l.coverage_type,
+        created_at: l.created_at,
+        test_case_id: l.test_case_id,
+        test_case_type: "cross-platform" as const,
+        platform_test_case: testCase
+          ? { ...testCase, _caseType: "cross-platform" as const }
+          : null,
+      };
+    });
+
+    const linked_tests = [
+      ...transformedRegularLinks,
+      ...transformedPlatformLinks,
+    ];
+
+    // ✅ Coverage counts
     const regularCount = regularIds.length;
     const platformCount = platformIds.length;
     const test_case_count = regularCount + platformCount;
@@ -388,9 +417,14 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Optional: delete links first (if you didn't set ON DELETE CASCADE on requirement_id)
+    // ✅ Delete links from BOTH tables (if you didn't set ON DELETE CASCADE)
     await supabase
       .from("requirement_test_cases")
+      .delete()
+      .eq("requirement_id", requirementId);
+
+    await supabase
+      .from("requirement_platform_test_cases")
       .delete()
       .eq("requirement_id", requirementId);
 
