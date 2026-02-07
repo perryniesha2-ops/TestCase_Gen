@@ -25,12 +25,10 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  const hasBetaAccess = request.cookies.get("beta_auth")?.value === "true";
-
   const publicRoutes = [
     "/",
     "/login",
-    "/beta-login",
+    "/signup",
     "/forgot-password",
     "/reset-password",
     "/confirm-email",
@@ -45,7 +43,6 @@ export async function middleware(request: NextRequest) {
     "/test-cases",
   ];
 
-  // ⭐ Define Pro-only routes (require active subscription)
   const proOnlyRoutes = [
     "/automation",
     "/test-library",
@@ -56,7 +53,6 @@ export async function middleware(request: NextRequest) {
     "/project-manager",
     "/template-manager",
     "/test-runs",
-    "/automation",
   ];
 
   const isDocPage =
@@ -71,22 +67,6 @@ export async function middleware(request: NextRequest) {
   const isProOnlyRoute = proOnlyRoutes.some((route) =>
     pathname.startsWith(route),
   );
-
-  // Special handling for /signup
-  if (pathname === "/signup") {
-    if (!hasBetaAccess) {
-      const betaLoginUrl = new URL("/beta-login", request.url);
-      betaLoginUrl.searchParams.set("redirect", "/signup");
-      return NextResponse.redirect(betaLoginUrl);
-    }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) return NextResponse.redirect(new URL("/dashboard", request.url));
-
-    return response;
-  }
 
   // Get user session
   const {
@@ -122,18 +102,15 @@ export async function middleware(request: NextRequest) {
   }
 
   // Redirect authenticated users away from auth pages
-  if (user && (pathname === "/login" || pathname === "/beta-login")) {
+  if (user && pathname === "/login") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  // ⭐ NEW: Check subscription tier for Pro-only routes
+  // ⭐ Check subscription tier for Pro-only routes
   if (user && isProOnlyRoute) {
-    // Check if we have cached tier info (to avoid DB hit on every request)
     const cachedTier = request.cookies.get("user_tier")?.value;
-
     let userTier: string = cachedTier || "free";
 
-    // If no cache or cache is stale (older than 5 minutes), fetch from DB
     const tierCacheTime = request.cookies.get("tier_cache_time")?.value;
     const now = Date.now();
     const cacheAge = tierCacheTime ? now - parseInt(tierCacheTime) : Infinity;
@@ -149,8 +126,7 @@ export async function middleware(request: NextRequest) {
       userTier = profile?.subscription_tier || "free";
       const subscriptionStatus = profile?.subscription_status || "inactive";
 
-      // Cache the tier info in a cookie (5 min TTL)
-
+      // Cache tier info (5 min TTL)
       response.cookies.set("user_tier", userTier, {
         maxAge: CACHE_TTL / 1000,
         httpOnly: true,

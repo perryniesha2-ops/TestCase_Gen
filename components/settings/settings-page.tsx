@@ -238,7 +238,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   // Profile form
   const [fullName, setFullName] = useState("");
@@ -1024,52 +1023,6 @@ export default function SettingsPage() {
                   "Update Password"
                 )}
               </Button>
-            </CardContent>
-          </Card>
-
-          <Card className="border-destructive">
-            <CardHeader>
-              <CardTitle className="text-destructive">Danger Zone</CardTitle>
-              <CardDescription>
-                Irreversible and destructive actions
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Delete Account</p>
-                  <p className="text-sm text-muted-foreground">
-                    Permanently delete your account and all associated data
-                  </p>
-                </div>
-
-                <Dialog
-                  open={showDeleteDialog}
-                  onOpenChange={setShowDeleteDialog}
-                >
-                  <DialogTrigger asChild>
-                    <Button variant="destructive">Delete Account</Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Delete Account</DialogTitle>
-                      <DialogDescription>
-                        This action cannot be undone. This will permanently
-                        delete your account and remove all associated data.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowDeleteDialog(false)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button variant="destructive">Delete Account</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
