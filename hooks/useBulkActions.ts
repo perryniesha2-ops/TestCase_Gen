@@ -144,7 +144,7 @@ export function useBulkActions(
       const supabase = createClient();
 
       const { data: existingCases } = await supabase
-        .from("test_suite_cases")
+        .from("suite_items")
         .select("sequence_order")
         .eq("suite_id", suiteId)
         .order("sequence_order", { ascending: false })
@@ -171,7 +171,7 @@ export function useBulkActions(
         })),
       ];
 
-      const { error } = await supabase.from("test_suite_cases").insert(rows);
+      const { error } = await supabase.from("suite_items").insert(rows);
 
       if (error) {
         if ((error as any).code === "23505") {
