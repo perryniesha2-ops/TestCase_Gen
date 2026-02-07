@@ -33,13 +33,6 @@ import {
   toastInfo,
   toastWarning,
 } from "@/lib/utils/toast-utils";
-
-import { RequirementsTable } from "./requirements-table";
-import { RequirementDetailsDialog } from "./requirement-details-dialog";
-import { LinkTestCasesDialog } from "./link-test-cases-dialog";
-import { EditRequirementModal } from "./edit-requirement-modal";
-import { getProjectColor } from "@/lib/utils/requirement-helpers";
-import type { Project, Requirement } from "@/types/requirements";
 import {
   ChevronDown,
   FileDown,
@@ -49,6 +42,10 @@ import {
   Search,
   Upload,
 } from "lucide-react";
+
+import { RequirementsTable } from "./requirements-table";
+import { getProjectColor } from "@/lib/utils/requirement-helpers";
+import type { Project, Requirement } from "@/types/requirements";
 
 interface RequirementsListProps {
   onRequirementSelected?: (requirement: Requirement) => void;
@@ -132,13 +129,6 @@ export function RequirementsList({
   // ----- UI state -----
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Dialogs
-  const [selectedRequirement, setSelectedRequirement] =
-    useState<Requirement | null>(null);
-  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
-  const [showLinkDialog, setShowLinkDialog] = useState(false);
-  const [showEditDialog, setShowEditDialog] = useState(false);
 
   // Prevent race conditions when multiple fetches overlap
   const reqFetchSeq = useRef(0);
@@ -234,16 +224,14 @@ export function RequirementsList({
   }, [fetchProjects, fetchRequirementsList]);
 
   useEffect(() => {
-    setCurrentPage((prev) => (prev === 1 ? 1 : 1));
+    setCurrentPage(1);
   }, [selectedProject, debouncedSearch, statusFilter, priorityFilter]);
 
   useEffect(() => {
-    // Fetch when currentPage changes (and after filter changes reset it)
     fetchRequirementsList();
   }, [currentPage, fetchRequirementsList]);
 
   const handleRequirementAdded = useCallback(async () => {
-    // If you want the new item to appear, refresh the list (page 1 tends to be safest)
     setCurrentPage(1);
     await fetchRequirementsList();
     router.refresh();
@@ -255,21 +243,10 @@ export function RequirementsList({
         onRequirementSelected(requirement);
         return;
       }
-      setSelectedRequirement(requirement);
-      setShowDetailsDialog(true);
+      router.push(`/requirements/${requirement.id}`);
     },
-    [selectable, onRequirementSelected],
+    [selectable, onRequirementSelected, router],
   );
-
-  const handleOpenLinkDialog = useCallback((requirement: Requirement) => {
-    setSelectedRequirement(requirement);
-    setShowLinkDialog(true);
-  }, []);
-
-  const handleOpenEditDialog = useCallback((requirement: Requirement) => {
-    setSelectedRequirement(requirement);
-    setShowEditDialog(true);
-  }, []);
 
   const deleteRequirement = useCallback(async (requirementId: string) => {
     const res = await fetch(`/api/requirements/${requirementId}/delete`, {
@@ -425,8 +402,10 @@ export function RequirementsList({
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="draft">Draft</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="archived">Archived</SelectItem>
+            <SelectItem value="approved">Approved</SelectItem>
+            <SelectItem value="implemented">Implemented</SelectItem>
+            <SelectItem value="tested">Tested</SelectItem>
+            <SelectItem value="rejected">Rejected</SelectItem>
           </SelectContent>
         </Select>
 
@@ -459,7 +438,6 @@ export function RequirementsList({
         </div>
       )}
 
-      {/* Table */}
       <RequirementsTable
         requirements={requirements}
         selectable={selectable}
@@ -468,41 +446,8 @@ export function RequirementsList({
         totalCount={totalCount}
         itemsPerPage={pageSize}
         onRowClick={handleRowClick}
-        onOpenLinkDialog={handleOpenLinkDialog}
-        onOpenEditDialog={handleOpenEditDialog}
-        onDelete={handleDelete}
         onPageChange={setCurrentPage}
       />
-
-      {/* Details */}
-      {selectedRequirement && (
-        <RequirementDetailsDialog
-          requirement={selectedRequirement}
-          open={showDetailsDialog}
-          onOpenChange={setShowDetailsDialog}
-          onOpenLinkDialog={() => handleOpenLinkDialog(selectedRequirement)}
-        />
-      )}
-
-      {/* Edit */}
-      {selectedRequirement && (
-        <EditRequirementModal
-          requirement={selectedRequirement}
-          open={showEditDialog}
-          onOpenChange={setShowEditDialog}
-          onSuccess={fetchRequirementsList}
-        />
-      )}
-
-      {/* Link tests */}
-      {selectedRequirement && (
-        <LinkTestCasesDialog
-          requirement={selectedRequirement}
-          open={showLinkDialog}
-          onOpenChange={setShowLinkDialog}
-          onLinked={fetchRequirementsList}
-        />
-      )}
     </div>
   );
 }

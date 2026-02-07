@@ -806,10 +806,8 @@ export function GeneratorForm() {
                       <SelectItem value="claude-opus-4-5">
                         Claude Opus 4.5 (Max Quality)
                       </SelectItem>
-                      <SelectItem value="gpt-5-mini">
-                        GPT-5 Mini (Balanced)
-                      </SelectItem>
-                      <SelectItem value="gpt-5.2">GPT-5.2 (Premium)</SelectItem>
+
+                      {/* OpenAI (restricted to stable models) */}
                       <SelectItem value="gpt-4o">GPT-4o</SelectItem>
                       <SelectItem value="gpt-4o-mini">
                         GPT-4o Mini (Economical)

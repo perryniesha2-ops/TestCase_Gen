@@ -203,29 +203,109 @@ export function TestCaseDetailsPageClient({
     if (!testCase) return;
 
     const confirmed = window.confirm(
-      `Delete test case "${testCase.title}"?\n\nThis cannot be undone.`,
+      `Delete test case "${testCase.title}"?\n\nThis will also delete:\n• All linked suite assignments\n• All execution history\n• All requirement links\n• All attachments\n\nThis cannot be undone.`,
     );
     if (!confirmed) return;
 
     setDeleting(true);
     try {
       const supabase = createClient();
-      const table = isRegularTestCase(testCase)
-        ? "test_cases"
-        : "platform_test_cases";
+      const isRegular = isRegularTestCase(testCase);
+      const table = isRegular ? "test_cases" : "platform_test_cases";
+      const idColumn = isRegular ? "test_case_id" : "platform_test_case_id";
 
-      const { error } = await supabase
+      console.log("🗑️ Starting deletion process for test case:", testCase.id);
+
+      // Delete in order to respect foreign key constraints
+
+      // 1. Delete test attachments
+      console.log("1️⃣ Deleting attachments...");
+      const { error: attachmentsError } = await supabase
+        .from("test_attachments")
+        .delete()
+        .eq(idColumn, testCase.id);
+
+      if (attachmentsError) {
+        console.warn("⚠️ Failed to delete attachments:", attachmentsError);
+      } else {
+        console.log("✅ Attachments deleted");
+      }
+
+      // 2. Delete requirement links
+      console.log("2️⃣ Deleting requirement links...");
+      if (isRegular) {
+        const { error: reqLinksError } = await supabase
+          .from("requirement_test_cases")
+          .delete()
+          .eq("test_case_id", testCase.id);
+
+        if (reqLinksError) {
+          console.warn("⚠️ Failed to delete requirement links:", reqLinksError);
+        } else {
+          console.log("✅ Requirement links deleted");
+        }
+      } else {
+        const { error: reqLinksError } = await supabase
+          .from("requirement_platform_test_cases")
+          .delete()
+          .eq("test_case_id", testCase.id);
+
+        if (reqLinksError) {
+          console.warn(
+            "⚠️ Failed to delete platform requirement links:",
+            reqLinksError,
+          );
+        } else {
+          console.log("✅ Platform requirement links deleted");
+        }
+      }
+
+      // 3. Delete test executions
+      console.log("3️⃣ Deleting test executions...");
+      const { error: executionsError } = await supabase
+        .from("test_executions")
+        .delete()
+        .eq(idColumn, testCase.id);
+
+      if (executionsError) {
+        console.warn("⚠️ Failed to delete executions:", executionsError);
+      } else {
+        console.log("✅ Executions deleted");
+      }
+
+      // 4. Delete suite assignments
+      console.log("4️⃣ Deleting suite assignments...");
+      const { error: suiteItemsError } = await supabase
+        .from("suite_items")
+        .delete()
+        .eq(idColumn, testCase.id);
+
+      if (suiteItemsError) {
+        console.warn("⚠️ Failed to delete suite items:", suiteItemsError);
+      } else {
+        console.log("✅ Suite items deleted");
+      }
+
+      // 5. Finally, delete the test case itself
+      console.log("5️⃣ Deleting test case...");
+      const { error: deleteError } = await supabase
         .from(table)
         .delete()
         .eq("id", testCase.id);
 
-      if (error) throw error;
+      if (deleteError) {
+        throw deleteError;
+      }
 
-      toast.success("Test case deleted");
-      router.push("/test-library");
-    } catch (error) {
-      console.error("Delete error:", error);
-      toast.error("Failed to delete test case");
+      console.log("✅ Test case deleted successfully");
+      toast.success("Test case deleted successfully");
+      router.push("/test-cases");
+    } catch (error: any) {
+      console.error("❌ Delete error:", error);
+      toast.error(
+        error?.message ||
+          "Failed to delete test case. It may be linked to other records.",
+      );
     } finally {
       setDeleting(false);
     }
@@ -391,11 +471,11 @@ export function TestCaseDetailsPageClient({
 
         {/* Content Tabs */}
         <Tabs defaultValue="details" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          {/*<TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="execution">Execution History</TabsTrigger>
             <TabsTrigger value="automation">Automation</TabsTrigger>
-          </TabsList>
+          </TabsList>*/}
 
           <TabsContent value="details" className="space-y-6 mt-6">
             {/* Description */}
@@ -412,9 +492,11 @@ export function TestCaseDetailsPageClient({
                 <h3 className="text-lg font-semibold mb-3">Preconditions</h3>
                 {Array.isArray(testCase.preconditions) ? (
                   <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                    {testCase.preconditions.map((precond, idx) => (
-                      <li key={idx}>{precond}</li>
-                    ))}
+                    {testCase.preconditions.map(
+                      (precond: string, idx: number) => (
+                        <li key={idx}>{precond}</li>
+                      ),
+                    )}
                   </ul>
                 ) : (
                   <p className="text-muted-foreground">
@@ -496,7 +578,7 @@ export function TestCaseDetailsPageClient({
 
             {/* Metadata */}
             <div className="rounded-lg border bg-card p-6 shadow-sm">
-              <h3 className="text-lg font-semibold mb-4">Metadata</h3>
+              <h3 className="text-lg font-semibold mb-4">Details</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Created</p>

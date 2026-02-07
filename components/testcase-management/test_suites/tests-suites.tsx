@@ -417,9 +417,6 @@ export function TestSuitesPage() {
       <div className="flex items-center justify-between">
         <div />
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => void refreshSuites()}>
-            Refresh
-          </Button>
           <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
             <Plus className="h-4 w-4" />
             New Test Suite

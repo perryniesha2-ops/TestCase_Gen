@@ -8,6 +8,16 @@ import {
   recordSuccessfulGeneration,
   UsageQuotaError,
 } from "@/lib/usage-tracker";
+import {
+  getModelId,
+  isAnthropicModel,
+  getFallbackModel,
+  getDefaultModel,
+  isModelAllowed,
+  migrateModelKey,
+  type ModelKey,
+  AI_MODELS,
+} from "@/lib/ai-models/config";
 
 export const runtime = "nodejs";
 
@@ -49,25 +59,7 @@ interface RequestBody {
 
 // ─── AI Configuration ────────────────────────────────────────────────────────
 
-const AI_MODELS = {
-  "claude-sonnet-4-5": "claude-sonnet-4-5-20250514",
-  "claude-haiku-4-5": "claude-haiku-4-5-20250514",
-  "claude-opus-4-5": "claude-opus-4-5-20250514",
-  "gpt-5-mini": "gpt-5-mini",
-  "gpt-5.2": "gpt-5.2",
-  "gpt-4o": "gpt-4o-2024-11-20",
-  "gpt-4o-mini": "gpt-4o-mini-2024-07-18",
-} as const;
-
-type ModelKey = keyof typeof AI_MODELS;
 type Priority = "low" | "medium" | "high" | "critical";
-
-const DEFAULT_MODEL: ModelKey = "claude-sonnet-4-5";
-
-const FALLBACK_MODELS = {
-  anthropic: "claude-sonnet-4-5-20250514",
-  openai: "gpt-4o-2024-11-20",
-} as const;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
@@ -390,21 +382,31 @@ interface LLMResult {
 }
 
 async function callWithFallback(
-  model: string,
+  modelKey: ModelKey,
   prompt: string,
   maxTokens: number = 8000,
 ): Promise<LLMResult> {
-  const isAnthropic = model.startsWith("claude");
+  const primaryProvider: "anthropic" | "openai" = isAnthropicModel(modelKey)
+    ? "anthropic"
+    : "openai";
+
+  const primaryModelId = getModelId(modelKey);
+
+  const fallbackProvider: "anthropic" | "openai" =
+    primaryProvider === "anthropic" ? "openai" : "anthropic";
+
+  const fallbackKey = getFallbackModel(fallbackProvider);
+  const fallbackModelId = getModelId(fallbackKey);
 
   const providers: Array<{ type: "anthropic" | "openai"; model: string }> =
-    isAnthropic
+    primaryProvider === "anthropic"
       ? [
-          { type: "anthropic", model },
-          { type: "openai", model: FALLBACK_MODELS.openai },
+          { type: "anthropic", model: primaryModelId },
+          { type: "openai", model: fallbackModelId },
         ]
       : [
-          { type: "openai", model },
-          { type: "anthropic", model: FALLBACK_MODELS.anthropic },
+          { type: "openai", model: primaryModelId },
+          { type: "anthropic", model: fallbackModelId },
         ];
 
   for (const provider of providers) {
@@ -417,11 +419,7 @@ async function callWithFallback(
         });
         const text = extractAnthropicText(res.content);
 
-        return {
-          text,
-          provider: "anthropic",
-          model: provider.model,
-        };
+        return { text, provider: "anthropic", model: provider.model };
       }
 
       const res = await openai.chat.completions.create({
@@ -429,13 +427,9 @@ async function callWithFallback(
         messages: [{ role: "user", content: prompt }],
         max_tokens: maxTokens,
       });
-      const text = res.choices?.[0]?.message?.content ?? "";
 
-      return {
-        text,
-        provider: "openai",
-        model: provider.model,
-      };
+      const text = res.choices?.[0]?.message?.content ?? "";
+      return { text, provider: "openai", model: provider.model };
     } catch (err) {
       console.error(`❌ ${provider.type} failed:`, err);
       continue;
@@ -637,7 +631,17 @@ export async function POST(request: Request) {
     const requirements = (body.requirements ?? "").trim();
     const requirement_id = body.requirement_id || null;
     const project_id = body.project_id || null;
-    const modelKey = (body.model as ModelKey) ?? DEFAULT_MODEL;
+    const rawModelKey = String(body.model ?? "").trim();
+    const modelKey: ModelKey = rawModelKey
+      ? migrateModelKey(rawModelKey)
+      : getDefaultModel();
+
+    if (!isModelAllowed(modelKey)) {
+      return NextResponse.json(
+        { error: "Unsupported AI model", field: "model" },
+        { status: 400 },
+      );
+    }
     const testCaseCount = Number(body.testCaseCount ?? 10);
     const testTypes = Array.isArray(body.testTypes)
       ? body.testTypes
@@ -733,7 +737,7 @@ export async function POST(request: Request) {
 
     let llmResult: LLMResult;
     try {
-      llmResult = await callWithFallback(AI_MODELS[modelKey], prompt);
+      llmResult = await callWithFallback(modelKey, prompt);
     } catch {
       return NextResponse.json(
         {
@@ -752,10 +756,8 @@ CRITICAL CORRECTION: The previous generation only produced ${testCases.length} t
 Generate the FULL ${testCaseCount} test cases now. Do not skip any.`;
 
       try {
-        const retryResult = await callWithFallback(
-          AI_MODELS[modelKey],
-          retryPrompt,
-        );
+        const retryResult = await callWithFallback(modelKey, retryPrompt);
+
         const retryCases = await structureTestCases(
           retryResult.text,
           testCaseCount,
@@ -857,6 +859,6 @@ Generate the FULL ${testCaseCount} test cases now. Do not skip any.`;
 export async function GET() {
   return NextResponse.json({
     models: AI_MODELS,
-    defaultModel: DEFAULT_MODEL,
+    defaultModel: getDefaultModel(),
   });
 }

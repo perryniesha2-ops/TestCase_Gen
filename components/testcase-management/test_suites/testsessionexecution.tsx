@@ -25,7 +25,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Play,
   Pause,
@@ -60,9 +59,7 @@ import type {
   TestAttachment,
 } from "@/types/test-cases";
 import { ScreenshotUpload } from "../ScreenshotUpload";
-import { ExtensionRequiredCallout } from "@/components/extensions/extensionrequiredcallout";
-import { detectExtensionInstalled } from "@/lib/extensions/detectExtension";
-import { toastSuccess, toastError, toastInfo } from "@/lib/utils/toast-utils";
+import { toastSuccess, toastError } from "@/lib/utils/toast-utils";
 
 interface TestCase {
   id: string;
@@ -139,15 +136,11 @@ export function TestSessionExecution({
 
   const [currentExecutionStatus, setCurrentExecutionStatus] =
     useState<ExecutionStatus | null>(null);
-  const [isCurrentExecutionReadOnly, setIsCurrentExecutionReadOnly] =
-    useState(false);
 
   const [showExecutionDialog, setShowExecutionDialog] = useState(false);
   const [showPauseDialog, setShowPauseDialog] = useState(false);
   const [attachments, setAttachments] = useState<TestAttachment[]>([]);
   const [targetUrl, setTargetUrl] = useState<string>("");
-
-  const [extensionInstalled, setExtensionInstalled] = useState<boolean>(true);
 
   // Refs
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -173,12 +166,10 @@ export function TestSessionExecution({
   // When parent sets open=true, start session
   useEffect(() => {
     if (!open) {
-      // Reset when dialog closes
       sessionStartedRef.current = false;
       return;
     }
 
-    // Only start if we haven't already started a session
     if (!sessionStartedRef.current) {
       sessionStartedRef.current = true;
       void startNewSession();
@@ -212,7 +203,7 @@ export function TestSessionExecution({
 
       if (!showExecutionDialog) return;
       if (!currentTest || !currentSession || !currentExecutionId) return;
-      if (isCurrentExecutionReadOnly || actionLoading) return;
+      if (actionLoading) return;
 
       switch (e.key.toLowerCase()) {
         case "p":
@@ -247,7 +238,6 @@ export function TestSessionExecution({
     currentTest,
     currentSession,
     currentExecutionId,
-    isCurrentExecutionReadOnly,
     actionLoading,
     failureReason,
   ]);
@@ -417,12 +407,10 @@ export function TestSessionExecution({
   }
 
   async function startNewSession() {
-    // Prevent duplicate session creation
     if (isStartingSession) {
       return;
     }
 
-    // If we already have an active session, don't create another
     if (sessionId) {
       setShowExecutionDialog(true);
       return;
@@ -484,7 +472,6 @@ export function TestSessionExecution({
       setExecutionNotes("");
       setFailureReason("");
       setCurrentExecutionStatus("in_progress");
-      setIsCurrentExecutionReadOnly(false);
       setShowExecutionDialog(true);
 
       await startTestExecutionWithTestCase(tests[0], session.id);
@@ -574,9 +561,6 @@ export function TestSessionExecution({
           ),
         );
         setCurrentExecutionStatus(existing.execution_status as ExecutionStatus);
-        setIsCurrentExecutionReadOnly(
-          existing.execution_status !== "in_progress",
-        );
         return;
       }
 
@@ -608,7 +592,6 @@ export function TestSessionExecution({
       setFailureReason("");
       setCompletedSteps(new Set());
       setCurrentExecutionStatus("in_progress");
-      setIsCurrentExecutionReadOnly(false);
     } catch (error) {
       console.error("❌ startTestExecutionWithTestCase error:", error);
       toastError("Failed to start test execution");
@@ -617,10 +600,6 @@ export function TestSessionExecution({
 
   async function completeTestExecution(status: ExecutionStatus) {
     if (!currentExecutionId || !currentSession || !currentTest) {
-      return;
-    }
-
-    if (isCurrentExecutionReadOnly) {
       return;
     }
 
@@ -655,6 +634,9 @@ export function TestSessionExecution({
 
       if (error) throw error;
 
+      // ✅ Update the execution status locally
+      setCurrentExecutionStatus(status);
+
       const newCompleted = completedCount + 1;
       const newProgress = Math.round((newCompleted / totalTests) * 100);
 
@@ -686,14 +668,13 @@ export function TestSessionExecution({
       };
 
       setCurrentSession(updatedSession);
-      setCurrentExecutionStatus(status);
-      setIsCurrentExecutionReadOnly(true);
 
       toastSuccess(`Test ${status}`);
 
-      setExecutionNotes("");
-      setFailureReason("");
-      setCompletedSteps(new Set());
+      // ✅ Don't clear notes/reason anymore - let users edit
+      // setExecutionNotes("");
+      // setFailureReason("");
+      // setCompletedSteps(new Set());
 
       if (newProgress === 100) {
         await completeSession();
@@ -784,7 +765,6 @@ export function TestSessionExecution({
   async function endSession() {
     if (!currentSession) return;
 
-    // Only mark as completed if truly 100% done
     if (currentSession.progress_percentage === 100) {
       await completeSession();
     } else {
@@ -793,7 +773,6 @@ export function TestSessionExecution({
   }
 
   function toggleStep(stepIndex: number) {
-    if (isCurrentExecutionReadOnly) return;
     setCompletedSteps((prev) => {
       const next = new Set(prev);
       if (next.has(stepIndex)) {
@@ -806,11 +785,7 @@ export function TestSessionExecution({
   }
 
   const isResultActionDisabled =
-    !currentSession ||
-    !currentExecutionId ||
-    isCurrentExecutionReadOnly ||
-    actionLoading ||
-    testsLoading;
+    !currentSession || !currentExecutionId || actionLoading || testsLoading;
 
   return (
     <>
@@ -941,13 +916,11 @@ export function TestSessionExecution({
                                     index === currentTestIndex
                                   )
                                     return;
-                                  if (index < currentTestIndex) {
-                                    setCurrentTestIndex(index);
-                                    await startTestExecution(
-                                      index,
-                                      currentSession.id,
-                                    );
-                                  }
+                                  setCurrentTestIndex(index);
+                                  await startTestExecution(
+                                    index,
+                                    currentSession.id,
+                                  );
                                 }}
                                 className={`
                                   w-full text-left p-3 rounded-lg border transition-colors text-sm
@@ -1017,22 +990,7 @@ export function TestSessionExecution({
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                      {isCurrentExecutionReadOnly &&
-                        currentExecutionStatus !== "in_progress" && (
-                          <Alert className="border-amber-300 bg-amber-50">
-                            <AlertTriangle className="h-4 w-4 text-amber-600" />
-                            <AlertTitle className="text-amber-900">
-                              Result Locked
-                            </AlertTitle>
-                            <AlertDescription className="text-amber-800 text-xs">
-                              This test was marked as{" "}
-                              <span className="font-semibold uppercase">
-                                {currentExecutionStatus}
-                              </span>
-                              . Use Previous/Next to navigate.
-                            </AlertDescription>
-                          </Alert>
-                        )}
+                      {/* ✅ Removed the "Result Locked" alert */}
 
                       <div>
                         <h4 className="font-medium mb-2">Description</h4>
@@ -1058,7 +1016,6 @@ export function TestSessionExecution({
                                 );
                               }
                             }}
-                            disabled={isCurrentExecutionReadOnly}
                           >
                             Toggle All
                           </Button>
@@ -1081,7 +1038,6 @@ export function TestSessionExecution({
                                     <Checkbox
                                       checked={completedSteps.has(index)}
                                       onCheckedChange={() => toggleStep(index)}
-                                      disabled={isCurrentExecutionReadOnly}
                                       className="mt-1"
                                     />
                                     <div className="flex-1 min-w-0 space-y-2">
@@ -1139,7 +1095,6 @@ export function TestSessionExecution({
                           placeholder="Add notes about the test execution..."
                           rows={3}
                           className="resize-none"
-                          disabled={isCurrentExecutionReadOnly}
                         />
                       </div>
 
@@ -1210,7 +1165,6 @@ export function TestSessionExecution({
                             placeholder="Describe what went wrong..."
                             rows={2}
                             className="resize-none"
-                            disabled={isCurrentExecutionReadOnly}
                           />
                         </div>
 
@@ -1221,7 +1175,6 @@ export function TestSessionExecution({
                             onCheckedChange={(checked) =>
                               setAutoAdvance(!!checked)
                             }
-                            disabled={isCurrentExecutionReadOnly}
                           />
                           <Label
                             htmlFor="auto-advance"
@@ -1312,7 +1265,7 @@ export function TestSessionExecution({
         </DialogContent>
       </Dialog>
 
-      {/* Evidence Drawer */}
+      {/* Evidence Drawer - keeping as is */}
       <Sheet open={showEvidenceDrawer} onOpenChange={setShowEvidenceDrawer}>
         <SheetContent
           side="right"
@@ -1330,7 +1283,6 @@ export function TestSessionExecution({
             </SheetHeader>
             <div className="mt-8 space-y-6"></div>
 
-            {/* Current Test Context */}
             {currentTest && (
               <div className="pt-6">
                 <p className="text-sm font-medium">Current Test</p>
@@ -1344,7 +1296,6 @@ export function TestSessionExecution({
             )}
             <div className="h-4" />
 
-            {/* Target URL */}
             <div className="space-y-2">
               <Label
                 htmlFor="target-url-drawer"
@@ -1369,7 +1320,6 @@ export function TestSessionExecution({
             </div>
           </div>
 
-          {/* Screenshot Upload Component */}
           {currentExecutionId && currentTest && (
             <div className="pt-2">
               <ScreenshotUpload
@@ -1394,7 +1344,7 @@ export function TestSessionExecution({
         </SheetContent>
       </Sheet>
 
-      {/* Pause Dialog - Keep as is */}
+      {/* Pause Dialog - keeping as is */}
       <Dialog open={showPauseDialog} onOpenChange={setShowPauseDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
