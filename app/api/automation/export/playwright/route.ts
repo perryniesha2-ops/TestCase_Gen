@@ -208,19 +208,14 @@ function generateExecutableStep(step: TestStep): string {
         if (step.input_value !== undefined) {
           const url = step.input_value;
 
-          // Check if it's a full URL or a path
+          // ✅ FIX: Simple and predictable logic
           if (url.startsWith("http://") || url.startsWith("https://")) {
-            try {
-              const urlObj = new URL(url);
-              const path = urlObj.pathname + urlObj.search + urlObj.hash;
-              lines.push(`await page.goto(baseUrl + '${escapeString(path)}');`);
-            } catch {
-              // If parsing fails, use as-is
-              lines.push(`await page.goto('${escapeString(url)}');`);
-            }
+            // Full URL - use as-is (don't concatenate with baseUrl)
+            lines.push(`await page.goto('${escapeString(url)}');`);
           } else {
-            // Already a path
-            lines.push(`await page.goto(baseUrl + '${escapeString(url)}');`);
+            // Relative path - concatenate with baseUrl
+            const path = url.startsWith("/") ? url : `/${url}`;
+            lines.push(`await page.goto(baseUrl + '${escapeString(path)}');`);
           }
         }
         break;
@@ -238,7 +233,7 @@ function generateExecutableStep(step: TestStep): string {
       lines.push(`await page.waitForTimeout(${step.wait_time});`);
     }
 
-    // Generate assertion code
+    // Generate assertion code (unchanged - keep existing assertion logic)
     if (step.assertion?.type) {
       const target = step.assertion.target || step.selector;
       const escapedTarget = escapeString(target!);

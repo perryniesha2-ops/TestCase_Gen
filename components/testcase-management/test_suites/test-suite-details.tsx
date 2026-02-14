@@ -271,6 +271,7 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
           )}
         </div>
       </div>
+      <div className="h-4" />
 
       {/* Tabs */}
       {!details.suite ? (

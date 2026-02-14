@@ -1,4 +1,5 @@
 // lib/exports/web/selenium.ts
+
 export function exportToSelenium(testCases: any[], suiteName: string) {
   const className = suiteName.replace(/[^a-zA-Z0-9]/g, "");
 
@@ -44,7 +45,6 @@ export function exportToSelenium(testCases: any[], suiteName: string) {
       lines.push(`        # ${tc.description}`);
     }
 
-    // Preconditions
     if (tc.preconditions && Array.isArray(tc.preconditions)) {
       lines.push(`        # Preconditions:`);
       tc.preconditions.forEach((p: string) => {
@@ -56,12 +56,10 @@ export function exportToSelenium(testCases: any[], suiteName: string) {
     lines.push(`        driver = self.driver`);
     lines.push(``);
 
-    // Steps
     if (tc.steps && Array.isArray(tc.steps)) {
       tc.steps.forEach((step: string, stepIdx: number) => {
         lines.push(`        # Step ${stepIdx + 1}: ${step}`);
 
-        // Generate basic Selenium code based on step content
         if (
           step.toLowerCase().includes("navigate") ||
           step.toLowerCase().includes("open")
@@ -96,7 +94,6 @@ export function exportToSelenium(testCases: any[], suiteName: string) {
       });
     }
 
-    // Expected results as assertions
     if (tc.expected_results && Array.isArray(tc.expected_results)) {
       lines.push(`        # Expected results:`);
       tc.expected_results.forEach((result: string) => {
@@ -120,4 +117,1150 @@ export function exportToSelenium(testCases: any[], suiteName: string) {
     filename,
     mimeType: "text/x-python",
   };
+}
+
+// ============================================================================
+// JAVA/TESTNG EXPORT HELPERS
+// Used by: app/api/automation/export/selenium/route.ts
+// ============================================================================
+
+/**
+ * Generate SynthQA TestNG Reporter
+ *
+ * This reporter:
+ * - Collects test results during execution
+ * - Sends batch results to SynthQA webhook after suite completes
+ * - Supports pass/fail/skip status tracking
+ * - Includes failure reasons and stack traces
+ * - Auto-detects browser, OS, and framework versions
+ */
+/**
+ * Generate SynthQA TestNG Reporter
+ *
+ * This reporter:
+ * - Collects test results during execution
+ * - Sends batch results to SynthQA webhook after suite completes
+ * - Supports pass/fail/skip status tracking
+ * - Includes failure reasons and stack traces
+ * - Auto-detects browser, OS, and framework versions
+ */
+export function generateSeleniumReporter(): string {
+  return `package com.synthqa;
+
+import org.testng.*;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.*;
+
+/**
+ * TestNG listener that reports test execution results back to SynthQA.
+ * Matches the Playwright reporter pattern for consistent reporting.
+ */
+public class SynthQAReporter implements ITestListener, ISuiteListener {
+    
+    // Instance variables loaded after EnvLoader runs
+    private String webhookUrl;
+    private String apiKey;
+    private String suiteId;
+    
+    private final HttpClient httpClient = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(10))
+        .build();
+    
+    private final Gson gson = new GsonBuilder().create();
+    
+    private String sessionId;
+    private final List<Map<String, Object>> testResults = new ArrayList<>();
+    
+    @Override
+    public void onStart(ISuite suite) {
+        // Load environment variables HERE (after EnvLoader has run)
+        this.webhookUrl = System.getProperty("SYNTHQA_WEBHOOK_URL");
+        this.apiKey = System.getProperty("SYNTHQA_API_KEY");
+        this.suiteId = System.getProperty("SYNTHQA_SUITE_ID");
+        
+        sessionId = "run-" + System.currentTimeMillis();
+        
+        System.out.println("\\n╔════════════════════════════════════════════════════════════════╗");
+        if (webhookUrl != null && !webhookUrl.isEmpty()) {
+            System.out.println("║          SynthQA Test Reporting - ENABLED                      ║");
+            System.out.println("╚════════════════════════════════════════════════════════════════╝");
+            System.out.println("📊 Session ID: " + sessionId);
+            System.out.println("🌐 Webhook URL: " + maskUrl(webhookUrl));
+        } else {
+            System.out.println("║          SynthQA Test Reporting - DISABLED                     ║");
+            System.out.println("╚════════════════════════════════════════════════════════════════╝");
+            System.out.println("⚠️  SYNTHQA_WEBHOOK_URL not set - results will not sync");
+            System.out.println("   To enable: Add SYNTHQA_WEBHOOK_URL and SYNTHQA_API_KEY to .env");
+        }
+        System.out.println();
+    }
+    
+    @Override
+    public void onTestStart(ITestResult result) {
+        System.out.println("▶️  Starting: " + result.getMethod().getMethodName());
+    }
+    
+    @Override
+    public void onTestSuccess(ITestResult result) {
+        recordTestResult(result, "passed", null);
+    }
+    
+    @Override
+    public void onTestFailure(ITestResult result) {
+        String failureReason = result.getThrowable() != null 
+            ? result.getThrowable().getMessage() 
+            : "Test failed";
+        recordTestResult(result, "failed", failureReason);
+    }
+    
+    @Override
+    public void onTestSkipped(ITestResult result) {
+        recordTestResult(result, "skipped", "Test was skipped");
+    }
+    
+    @Override
+    public void onFinish(ISuite suite) {
+        if (webhookUrl == null || webhookUrl.isEmpty()) {
+            System.out.println("\\n⚠️  Skipping result upload (SYNTHQA_WEBHOOK_URL not set)");
+            System.out.println("   Configure .env file to enable result syncing");
+            printSummary();
+            return;
+        }
+        
+        int passed = (int) testResults.stream()
+            .filter(r -> "passed".equals(r.get("execution_status")))
+            .count();
+        int failed = (int) testResults.stream()
+            .filter(r -> "failed".equals(r.get("execution_status")))
+            .count();
+        int skipped = (int) testResults.stream()
+            .filter(r -> "skipped".equals(r.get("execution_status")))
+            .count();
+        
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("suite_id", suiteId);
+        payload.put("session_id", sessionId);
+        payload.put("framework", "selenium");
+        payload.put("test_results", testResults);
+        
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("total_tests", testResults.size());
+        metadata.put("passed_tests", passed);
+        metadata.put("failed_tests", failed);
+        metadata.put("skipped_tests", skipped);
+        metadata.put("overall_status", failed > 0 ? "failed" : "passed");
+        payload.put("metadata", metadata);
+        
+        sendToSynthQA(payload);
+        printSummary();
+    }
+    
+    private void recordTestResult(ITestResult result, String status, String failureReason) {
+        long duration = result.getEndMillis() - result.getStartMillis();
+        
+        Map<String, Object> testResult = new HashMap<>();
+        testResult.put("test_case_id", extractTestCaseId(result));
+        testResult.put("execution_status", status);
+        testResult.put("started_at", Instant.ofEpochMilli(result.getStartMillis()).toString());
+        testResult.put("completed_at", Instant.ofEpochMilli(result.getEndMillis()).toString());
+        testResult.put("duration_minutes", Math.max(duration / 60000.0, 0.01));
+        testResult.put("execution_notes", "passed".equals(status) ? "Test passed successfully" : null);
+        testResult.put("failure_reason", failureReason);
+        
+        if (result.getThrowable() != null) {
+            testResult.put("stack_trace", getStackTrace(result.getThrowable()));
+        }
+        
+        testResult.put("browser", System.getProperty("browser", "chrome"));
+        testResult.put("os_version", System.getProperty("os.name") + " " + System.getProperty("os.version"));
+        testResult.put("test_environment", System.getProperty("TEST_ENVIRONMENT"));
+        testResult.put("framework", "selenium");
+        testResult.put("framework_version", getSeleniumVersion());
+        
+        testResults.add(testResult);
+        
+        String emoji = "passed".equals(status) ? "✅" : "failed".equals(status) ? "❌" : "⏭️";
+        System.out.println(emoji + " " + status.toUpperCase() + ": " + 
+            result.getMethod().getMethodName() + " (" + formatDuration(duration) + ")");
+        
+        if (webhookUrl != null && !webhookUrl.isEmpty()) {
+            System.out.println("   └─ ✅ Reported to SynthQA");
+        }
+    }
+    
+    private void sendToSynthQA(Map<String, Object> payload) {
+        try {
+            System.out.println("\\n📤 Sending test results to SynthQA...");
+            
+            String jsonPayload = gson.toJson(payload);
+            
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(webhookUrl))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(15))
+                .POST(HttpRequest.BodyPublishers.ofString(jsonPayload));
+            
+            if (apiKey != null && !apiKey.isEmpty()) {
+                requestBuilder.header("Authorization", "Bearer " + apiKey);
+            } else {
+                System.err.println("⚠️  SYNTHQA_API_KEY not set - authentication may fail");
+            }
+            
+            HttpRequest request = requestBuilder.build();
+            HttpResponse<String> response = httpClient.send(request, 
+                HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                System.out.println("✅ Test results synced to SynthQA (" + testResults.size() + " tests)");
+            } else if (response.statusCode() == 401) {
+                System.err.println("❌ Authentication failed: Invalid API key");
+                System.err.println("   Get your API key from: https://app.synthqa.com/settings");
+            } else {
+                System.err.println("❌ Failed to send results: " + response.statusCode());
+                System.err.println("   Response: " + response.body());
+            }
+            
+        } catch (IOException | InterruptedException e) {
+            System.err.println("❌ Error sending results to SynthQA: " + e.getMessage());
+        }
+    }
+    
+    private void printSummary() {
+        int passed = (int) testResults.stream()
+            .filter(r -> "passed".equals(r.get("execution_status")))
+            .count();
+        int failed = (int) testResults.stream()
+            .filter(r -> "failed".equals(r.get("execution_status")))
+            .count();
+        int skipped = (int) testResults.stream()
+            .filter(r -> "skipped".equals(r.get("execution_status")))
+            .count();
+        
+        double passRate = testResults.isEmpty() ? 0 : (passed * 100.0 / testResults.size());
+        
+        System.out.println("\\n═══════════════════════════════════════════════════════════════");
+        System.out.println("📊 Test Run Summary");
+        System.out.println("═══════════════════════════════════════════════════════════════");
+        System.out.println("Total:   " + testResults.size());
+        System.out.println("Passed:  " + passed + " ✅");
+        System.out.println("Failed:  " + failed + " ❌");
+        System.out.println("Skipped: " + skipped + " ⏭️");
+        System.out.println("Pass Rate: " + String.format("%.2f%%", passRate));
+        System.out.println("═══════════════════════════════════════════════════════════════\\n");
+    }
+    
+    private String extractTestCaseId(ITestResult result) {
+        String description = result.getMethod().getDescription();
+        if (description != null && description.matches(
+            "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")) {
+            return description;
+        }
+        return null;
+    }
+    
+    private String getSeleniumVersion() {
+        try {
+            Package p = org.openqa.selenium.WebDriver.class.getPackage();
+            return p.getImplementationVersion() != null ? p.getImplementationVersion() : "unknown";
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
+    
+    private String getStackTrace(Throwable t) {
+        StringBuilder sb = new StringBuilder(t.toString()).append("\\n");
+        StackTraceElement[] elements = t.getStackTrace();
+        for (int i = 0; i < Math.min(5, elements.length); i++) {
+            sb.append("  at ").append(elements[i].toString()).append("\\n");
+        }
+        return sb.toString();
+    }
+    
+    private String formatDuration(long ms) {
+        long s = ms / 1000;
+        return s < 60 ? s + "s" : (s / 60) + "m " + (s % 60) + "s";
+    }
+    
+    private String maskUrl(String url) {
+        if (url == null) return "";
+        int lastSlash = url.lastIndexOf('/');
+        return lastSlash > 0 ? url.substring(0, lastSlash) + "/***" : url;
+    }
+}
+`;
+}
+
+/**
+ * Generate BaseTest class
+ * Provides WebDriver setup and teardown without authentication
+ */
+export function generateBaseTest(baseUrl: string): string {
+  return `package com.synthqa;
+
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chrome.ChromeOptions;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import io.github.bonigarcia.wdm.WebDriverManager;
+
+import java.time.Duration;
+
+/**
+ * Base test class providing WebDriver setup and teardown.
+ * Extend this class for tests that don't require authentication.
+ */
+public class BaseTest {
+    protected WebDriver driver;
+    protected String baseUrl;
+
+    static {
+        // Load .env file variables before anything else
+        EnvLoader.load();
+    }
+
+    @BeforeClass
+    public void setUpOnce() {
+        baseUrl = System.getProperty("BASE_URL", "${baseUrl}");
+        
+        // Auto-download and setup ChromeDriver
+        WebDriverManager.chromedriver().setup();
+        
+        ChromeOptions options = new ChromeOptions();
+        options.addArguments("--start-maximized");
+        options.addArguments("--disable-blink-features=AutomationControlled");
+        options.addArguments("--disable-dev-shm-usage");
+        options.addArguments("--no-sandbox");
+        
+        driver = new ChromeDriver(options);
+        driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+        driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(30));
+        
+        System.out.println("✅ WebDriver initialized");
+        System.out.println("🌐 Base URL: " + baseUrl);
+    }
+
+    @AfterClass
+    public void tearDownOnce() {
+        if (driver != null) {
+            driver.quit();
+            System.out.println("✅ WebDriver closed");
+        }
+    }
+}
+`;
+}
+
+/**
+ * Generate AuthenticatedBaseTest class
+ * Extends BaseTest with automatic login functionality
+ */
+export function generateAuthenticatedBaseTest(
+  loginSelectors: {
+    emailField: string;
+    passwordField: string;
+    submitButton: string;
+    postLoginUrl: string;
+  },
+  credentials: {
+    email: string;
+    password: string;
+  },
+): string {
+  return `package com.synthqa;
+
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.support.ui.WebDriverWait;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.testng.annotations.BeforeClass;
+import java.time.Duration;
+
+/**
+ * Base class for tests that require authentication.
+ * Automatically logs in before test class runs using credentials from .env file.
+ * 
+ * Tests extending this class will:
+ * 1. Initialize WebDriver (via BaseTest)
+ * 2. Load credentials from .env
+ * 3. Navigate to login page
+ * 4. Fill in credentials
+ * 5. Submit login form
+ * 6. Wait for redirect to dashboard
+ * 7. Run tests (already logged in)
+ */
+public class AuthenticatedBaseTest extends BaseTest {
+    
+    protected String testUserEmail;
+    protected String testUserPassword;
+    
+    @BeforeClass
+    public void authenticateUser() {
+        // Call parent setUp first to initialize driver
+        super.setUpOnce();
+        
+        loadCredentials();
+        performLogin();
+    }
+    
+    private void loadCredentials() {
+        testUserEmail = System.getProperty("TEST_USER_EMAIL", "${credentials.email}");
+        testUserPassword = System.getProperty("TEST_USER_PASSWORD", "${credentials.password}");
+        
+        System.out.println("🔐 Using test credentials: " + testUserEmail);
+    }
+    
+    private void performLogin() {
+        try {
+            System.out.println("🔐 Performing login...");
+            
+            // Navigate to login page
+            driver.get(baseUrl + "/login");
+            
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            
+            // Fill email field
+            WebElement emailField = wait.until(
+                ExpectedConditions.presenceOfElementLocated(
+                    By.cssSelector("${loginSelectors.emailField}")
+                )
+            );
+            emailField.clear();
+            emailField.sendKeys(testUserEmail);
+            
+            // Fill password field
+            WebElement passwordField = driver.findElement(
+                By.cssSelector("${loginSelectors.passwordField}")
+            );
+            passwordField.clear();
+            passwordField.sendKeys(testUserPassword);
+            
+            // Click submit button
+            WebElement submitButton = driver.findElement(
+                By.cssSelector("${loginSelectors.submitButton}")
+            );
+            submitButton.click();
+            
+            // Wait for redirect to dashboard
+            wait.until(ExpectedConditions.urlContains("${loginSelectors.postLoginUrl}"));
+            
+            System.out.println("✅ Login successful!");
+            
+        } catch (Exception e) {
+            System.err.println("❌ Login failed: " + e.getMessage());
+            System.err.println("   Check credentials in .env file");
+            System.err.println("   Verify login selectors match your application");
+            throw new RuntimeException("Authentication failed", e);
+        }
+    }
+}
+`;
+}
+
+/**
+ * Generate EnvLoader utility class
+ * Loads environment variables from .env file into system properties
+ */
+export function generateEnvLoader(): string {
+  return `package com.synthqa;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+/**
+ * Utility class to load environment variables from .env file.
+ * 
+ * Loads .env file from project root and sets values as system properties.
+ * This allows tests to access configuration via System.getProperty().
+ * 
+ * Format: KEY=value (one per line)
+ * Comments: Lines starting with # are ignored
+ * Empty lines: Ignored
+ */
+public class EnvLoader {
+    
+    static {
+        loadEnvFile();
+    }
+    
+    private static void loadEnvFile() {
+        Path envPath = Paths.get(".env");
+        
+        if (!Files.exists(envPath)) {
+            System.out.println("⚠️  No .env file found, using default values");
+            return;
+        }
+        
+        try (BufferedReader reader = new BufferedReader(new FileReader(envPath.toFile()))) {
+            String line;
+            int loaded = 0;
+            
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                
+                // Skip empty lines and comments
+                if (line.isEmpty() || line.startsWith("#")) {
+                    continue;
+                }
+                
+                // Parse KEY=value
+                int equalIndex = line.indexOf('=');
+                if (equalIndex > 0) {
+                    String key = line.substring(0, equalIndex).trim();
+                    String value = line.substring(equalIndex + 1).trim();
+                    
+                    // Remove surrounding quotes if present
+                    value = value.replaceAll("^\\"|\\"$", "");
+                    
+                    System.setProperty(key, value);
+                    loaded++;
+                }
+            }
+            
+            System.out.println("✅ Loaded " + loaded + " environment variables from .env");
+            
+        } catch (IOException e) {
+            System.err.println("⚠️  Error reading .env file: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Explicitly load .env file.
+     * Called automatically via static block, but can be called manually if needed.
+     */
+    public static void load() {
+        // Method intentionally empty - loading happens in static block
+    }
+}
+`;
+}
+
+/**
+ * Generate pom.xml with all required dependencies
+ */
+export function generatePomXml(): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.synthqa</groupId>
+    <artifactId>selenium-tests</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>SynthQA Selenium Tests</name>
+    <description>Automated test suite generated by SynthQA</description>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <selenium.version>4.16.1</selenium.version>
+        <testng.version>7.8.0</testng.version>
+    </properties>
+
+    <dependencies>
+        <!-- Selenium WebDriver -->
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-java</artifactId>
+            <version>\${selenium.version}</version>
+        </dependency>
+
+        <!-- TestNG Testing Framework -->
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <version>\${testng.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- WebDriverManager - Auto-download drivers -->
+        <dependency>
+            <groupId>io.github.bonigarcia</groupId>
+            <artifactId>webdrivermanager</artifactId>
+            <version>5.6.3</version>
+        </dependency>
+
+        <!-- Gson - JSON serialization for reporter -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.10.1</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Maven Compiler Plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                </configuration>
+            </plugin>
+
+            <!-- Maven Surefire Plugin - Runs TestNG tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.3</version>
+                <configuration>
+                    <suiteXmlFiles>
+                        <suiteXmlFile>testng.xml</suiteXmlFile>
+                    </suiteXmlFiles>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+`;
+}
+
+/**
+ * Generate testng.xml suite configuration
+ */
+export function generateTestNGXml(suiteName: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="${suiteName}">
+    <!-- SynthQA Reporter - Syncs results back to platform -->
+    <listeners>
+        <listener class-name="com.synthqa.SynthQAReporter"/>
+    </listeners>
+
+    <test name="All Tests">
+        <packages>
+            <!-- Run all tests in com.synthqa package -->
+            <package name="com.synthqa"/>
+        </packages>
+    </test>
+</suite>
+`;
+}
+
+/**
+ * Generate .env file with SynthQA integration
+ * Includes clear instructions for getting API key
+ */
+export function generateDotEnv(
+  baseUrl: string,
+  credentials: { email: string; password: string },
+  suiteId: string,
+  webhookUrl: string,
+  includeApiKey?: string,
+): string {
+  return `# ============================================================================
+# Application Configuration
+# ============================================================================
+# Your application's URL - update if different from default
+BASE_URL=${baseUrl}
+
+# ============================================================================
+# Test User Credentials
+# ============================================================================
+# Update these with your actual test account credentials
+TEST_USER_EMAIL=${credentials.email}
+TEST_USER_PASSWORD=${credentials.password}
+
+# ============================================================================
+# SynthQA Integration - Sync Results Back to Platform
+# ============================================================================
+
+# Webhook URL - Where test results are sent
+SYNTHQA_WEBHOOK_URL=${webhookUrl}
+
+# API Key - REQUIRED for result syncing
+# Get your API key:
+# 1. Go to: https://app.synthqa.com/settings
+# 2. Navigate to "Integrations" tab
+# 3. Click "Generate API Key" (if you don't have one)
+# 4. Copy your API key
+# 5. Paste it below (keep the quotes)
+SYNTHQA_API_KEY=${includeApiKey ? `"${includeApiKey}"` : '""  # ⚠️ REQUIRED: Paste your API key here'}
+
+# Suite ID - Auto-populated (do not change)
+SYNTHQA_SUITE_ID=${suiteId}
+
+# ============================================================================
+# Test Environment Configuration
+# ============================================================================
+TEST_ENVIRONMENT=local
+BROWSER=chrome
+`;
+}
+
+/**
+ * Generate .env.example template file
+ * Safe to commit to version control
+ */
+export function generateDotEnvExample(webhookUrl: string): string {
+  return `# ============================================================================
+# SynthQA Selenium Test Configuration
+# ============================================================================
+# Copy this file to .env and update the values
+
+# Application URL
+BASE_URL=http://localhost:3000
+
+# Test User Credentials
+TEST_USER_EMAIL=test@example.com
+TEST_USER_PASSWORD=password123
+
+# ============================================================================
+# SynthQA Integration
+# ============================================================================
+# Webhook URL - Where test results are sent
+SYNTHQA_WEBHOOK_URL=${webhookUrl}
+
+# API Key - Get from: https://app.synthqa.com/settings (Integrations tab)
+SYNTHQA_API_KEY=""
+
+# Suite ID - Auto-populated when you export
+SYNTHQA_SUITE_ID=your-suite-id-here
+
+# Environment
+TEST_ENVIRONMENT=local
+BROWSER=chrome
+`;
+}
+
+/**
+ * Generate .gitignore file
+ * Prevents committing sensitive data and build artifacts
+ */
+export function generateGitignore(): string {
+  return `# Build artifacts
+target/
+test-output/
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# Environment and secrets
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+`;
+}
+
+/**
+ * Generate comprehensive README with setup instructions
+ */
+export function generateReadme(
+  suiteName: string,
+  caseCount: number,
+  suiteId: string,
+): string {
+  return `# ${suiteName} - Selenium Tests
+
+Generated by SynthQA - AI-powered test automation 🤖
+
+## 📋 Suite Information
+
+- **Test Cases**: ${caseCount}
+- **Framework**: Selenium WebDriver + TestNG
+- **Language**: Java 17
+- **Generated**: ${new Date().toLocaleDateString()}
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+**Required:**
+- Java 17 or higher ([Download](https://adoptium.net/))
+- Maven 3.6+ ([Download](https://maven.apache.org/))
+
+**Verify installation:**
+\`\`\`bash
+java --version   # Should show 17+
+mvn --version    # Should show 3.6+
+\`\`\`
+
+### 1️⃣ Configure Test Credentials
+
+Edit the \`.env\` file in project root:
+
+\`\`\`bash
+# Update your application URL
+BASE_URL=http://localhost:3000
+
+# Update test user credentials
+TEST_USER_EMAIL=test@yourcompany.com
+TEST_USER_PASSWORD=yourpassword123
+\`\`\`
+
+### 2️⃣ Get Your SynthQA API Key
+
+**⚠️ REQUIRED** for results to sync back to SynthQA dashboard.
+
+**Steps:**
+
+1. **Go to Settings**: https://app.synthqa.com/settings
+2. **Click Integrations tab**
+3. **Generate API Key** (if you don't have one)
+4. **Copy your API key**
+5. **Paste into .env file**:
+
+\`\`\`bash
+SYNTHQA_API_KEY="synthQA..."  # Paste your key here
+\`\`\`
+
+**Without API key**: Tests will run locally but won't sync to dashboard ⚠️
+
+### 3️⃣ Install Dependencies
+
+\`\`\`bash
+mvn clean install
+\`\`\`
+
+This will:
+- Download all dependencies (Selenium, TestNG, etc.)
+- Compile Java files
+- Set up WebDriverManager (auto-downloads ChromeDriver)
+
+### 4️⃣ Run Tests
+
+\`\`\`bash
+# Run all tests
+mvn test
+
+# Run specific test
+mvn test -Dtest=LoginTest
+
+# Run with custom browser
+mvn test -Dbrowser=firefox
+\`\`\`
+
+### 5️⃣ View Results
+
+**Local**: Check \`target/surefire-reports/\` for detailed HTML reports
+
+**SynthQA Dashboard**: 
+🔗 https://app.synthqa.com/automation/suites/${suiteId}
+
+Results include:
+- ✅ Pass/Fail status
+- ⏱️ Execution duration
+- 🐛 Failure details with stack traces
+- 📊 Historical trends
+- 🔄 CI/CD integration data
+
+---
+
+## 📁 Project Structure
+
+\`\`\`
+.
+├── .env                           # Your configuration (git-ignored)
+├── .env.example                   # Configuration template (safe to commit)
+├── .gitignore                     # Prevents committing secrets
+├── pom.xml                        # Maven dependencies
+├── testng.xml                     # TestNG configuration
+├── README.md                      # This file
+└── src/test/java/com/synthqa/
+    ├── BaseTest.java              # Base for tests without login
+    ├── AuthenticatedBaseTest.java # Base with auto-login
+    ├── EnvLoader.java             # Loads .env variables
+    ├── SynthQAReporter.java       # Syncs results to SynthQA
+    └── [${caseCount} Test Files].java        # Your test cases
+\`\`\`
+
+---
+
+## 🔐 Authentication
+
+Tests automatically handle login - no manual code needed!
+
+### How It Works:
+
+1. **Tests extending \`AuthenticatedBaseTest\`**:
+   - Browser opens ✅
+   - Navigates to login page ✅
+   - Fills in credentials from \`.env\` ✅
+   - Submits login form ✅
+   - Waits for dashboard redirect ✅
+   - Runs test (already logged in!) ✅
+
+2. **Tests extending \`BaseTest\`**:
+   - No authentication
+   - For public pages or login tests
+
+### Customizing Login Flow
+
+If your login differs from the default, edit \`AuthenticatedBaseTest.java\`:
+
+\`\`\`java
+// Update selectors to match your login form
+By.cssSelector("input[name='email']")      // Email field
+By.cssSelector("input[name='password']")   // Password field
+By.cssSelector("button[type='submit']")    // Submit button
+
+// Update post-login URL
+wait.until(ExpectedConditions.urlContains("/dashboard"));
+\`\`\`
+
+---
+
+## 📊 Test Reporting
+
+### How It Works
+
+1. **Tests run** → TestNG executes your test suite
+2. **Reporter collects results** → \`SynthQAReporter\` gathers pass/fail data
+3. **Batch send** → All results sent to webhook after suite completes
+4. **Dashboard updates** → View in SynthQA UI instantly
+
+### What Gets Sent
+
+- Test case ID (links back to SynthQA)
+- Pass/Fail/Skip status
+- Execution duration (minutes)
+- Failure messages and stack traces
+- Environment info (browser, OS, framework version)
+- Session ID (groups related tests)
+
+### Console Output
+
+When reporting is enabled:
+
+\`\`\`
+╔════════════════════════════════════════════════════════════════╗
+║          SynthQA Test Reporting - ENABLED                      ║
+╚════════════════════════════════════════════════════════════════╝
+📊 Session ID: run-1707523456789
+🌐 Webhook URL: https://app.synthqa.com/***
+
+▶️  Starting: LoginTest
+✅ PASSED: LoginTest (3s)
+   └─ ✅ Reported to SynthQA
+
+📤 Sending test results to SynthQA...
+✅ Test results synced to SynthQA (1 tests)
+
+═══════════════════════════════════════════════════════════════
+📊 Test Run Summary
+═══════════════════════════════════════════════════════════════
+Total:   1
+Passed:  1 ✅
+Failed:  0 ❌
+Skipped: 0 ⏭️
+Pass Rate: 100.00%
+═══════════════════════════════════════════════════════════════
+\`\`\`
+
+### Troubleshooting Reporting
+
+**Problem**: Tests run but results don't appear in SynthQA?
+
+**Solutions**:
+1. ✅ Check \`SYNTHQA_API_KEY\` is set in \`.env\`
+2. ✅ Verify API key is valid (regenerate if needed)
+3. ✅ Check console for "Test results synced" message
+4. ✅ Ensure \`SYNTHQA_WEBHOOK_URL\` is correct
+
+**Problem**: "Invalid API key" error?
+
+**Solutions**:
+- Regenerate API key in SynthQA settings
+- Remove extra spaces from \`.env\` file
+- Make sure API key is wrapped in quotes
+
+**Problem**: No console output about reporting?
+
+**Solutions**:
+- Check \`.env\` file exists in project root
+- Verify \`SYNTHQA_WEBHOOK_URL\` is not empty
+- Run \`mvn clean install\` to rebuild
+
+---
+
+## 🔧 Troubleshooting
+
+### Tests Fail with "Element not found"
+
+**Cause**: Selectors don't match your application
+
+**Fix**: Update selectors in test files using browser DevTools:
+1. Open your app in Chrome
+2. Right-click element → Inspect
+3. Right-click in DevTools → Copy → Copy selector
+4. Paste in test file
+
+### Login Fails
+
+**Cause**: Wrong credentials or selectors
+
+**Fix**:
+1. ✅ Verify credentials in \`.env\` are correct
+2. ✅ Check selectors in \`AuthenticatedBaseTest.java\`
+3. ✅ Ensure your app is running at \`BASE_URL\`
+
+### "Class not found" or Compilation Errors
+
+**Cause**: Dependencies not installed
+
+**Fix**:
+\`\`\`bash
+mvn clean install
+\`\`\`
+
+### ChromeDriver Issues
+
+**Cause**: WebDriverManager couldn't download driver
+
+**Fix**: Check your internet connection and proxy settings
+
+### Environment Variables Not Loading
+
+**Cause**: \`.env\` file not found or formatted incorrectly
+
+**Fix**:
+1. Verify \`.env\` file exists in project root
+2. Check format: \`KEY=value\` (one per line)
+3. No spaces around \`=\`
+4. Rebuild: \`mvn clean install\`
+
+---
+
+## 🚢 CI/CD Integration
+
+### GitHub Actions
+
+Create \`.github/workflows/tests.yml\`:
+
+\`\`\`yaml
+name: Selenium Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: \${{ runner.os }}-m2-\${{ hashFiles('**/pom.xml') }}
+
+      - name: Run tests
+        run: mvn clean test
+        env:
+          BASE_URL: \${{ secrets.BASE_URL }}
+          TEST_USER_EMAIL: \${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: \${{ secrets.TEST_USER_PASSWORD }}
+          SYNTHQA_WEBHOOK_URL: \${{ secrets.SYNTHQA_WEBHOOK_URL }}
+          SYNTHQA_API_KEY: \${{ secrets.SYNTHQA_API_KEY }}
+          SYNTHQA_SUITE_ID: ${suiteId}
+          TEST_ENVIRONMENT: ci
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: target/surefire-reports/
+\`\`\`
+
+**GitHub Secrets to Add**:
+
+Go to: Repository → Settings → Secrets and variables → Actions
+
+Add these secrets:
+- \`BASE_URL\` - Your application URL
+- \`TEST_USER_EMAIL\` - Test account email
+- \`TEST_USER_PASSWORD\` - Test account password
+- \`SYNTHQA_WEBHOOK_URL\` - Webhook URL from \`.env\`
+- \`SYNTHQA_API_KEY\` - Your SynthQA API key ⚠️ **Important!**
+
+---
+
+## 📝 Best Practices
+
+### 1. Keep .env Secret
+- ✅ Never commit \`.env\` to git (already in \`.gitignore\`)
+- ✅ Use \`.env.example\` for team documentation
+- ✅ Rotate API keys regularly
+
+### 2. Update Selectors
+- ✅ Use stable selectors (\`data-testid\`, \`id\`)
+- ✅ Avoid brittle selectors (classes, XPath)
+- ✅ Keep selectors in test files up-to-date
+
+### 3. Organize Tests
+- ✅ One test per file
+- ✅ Clear test names
+- ✅ Add comments for complex logic
+
+### 4. Monitor Results
+- ✅ Check SynthQA dashboard after each run
+- ✅ Investigate failures quickly
+- ✅ Track trends over time
+
+---
+
+## 🆘 Support
+
+- **View Results**: https://app.synthqa.com/automation/suites/${suiteId}
+- **Get API Key**: https://app.synthqa.com/settings
+- **Documentation**: https://docs.synthqa.com
+- **Issues**: Contact SynthQA support
+
+---
+
+## 📜 License
+
+Generated by SynthQA - All rights reserved.
+
+---
+
+**Happy Testing!** 🎉
+
+Generated with ❤️ by SynthQA
+`;
 }

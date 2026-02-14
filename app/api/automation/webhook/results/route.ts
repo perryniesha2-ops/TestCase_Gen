@@ -1,4 +1,4 @@
-// /app/api/automation/webhook/results/route.ts
+// app/api/automation/webhook/results/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -7,6 +7,13 @@ export const runtime = "nodejs";
 interface TestResultPayload {
   suite_id: string;
   session_id: string;
+  framework?:
+    | "playwright"
+    | "selenium"
+    | "cypress"
+    | "puppeteer"
+    | "testcafe"
+    | "webdriverio";
   test_results: Array<{
     test_case_id: string | null;
     execution_status: "passed" | "failed" | "skipped";
@@ -19,7 +26,11 @@ interface TestResultPayload {
     browser: string;
     os_version: string;
     test_environment: string;
-    playwright_version: string;
+    framework?: string;
+    framework_version?: string;
+    playwright_version?: string;
+    selenium_version?: string;
+    cypress_version?: string;
   }>;
   metadata: {
     total_tests: number;
@@ -27,6 +38,10 @@ interface TestResultPayload {
     failed_tests: number;
     skipped_tests: number;
     overall_status: "passed" | "failed";
+    ci_provider?: string;
+    branch?: string;
+    commit_sha?: string;
+    commit_message?: string;
   };
 }
 
@@ -67,7 +82,7 @@ export async function POST(req: Request) {
 
     const { data: suite, error: suiteError } = await supabase
       .from("suites")
-      .select("id, user_id")
+      .select("id, user_id, total_automation_runs")
       .eq("id", payload.suite_id)
       .eq("user_id", profile.id)
       .single();
@@ -80,77 +95,137 @@ export async function POST(req: Request) {
       );
     }
 
-    // Map status for existing table
-    const mapStatus = (status: string) => {
-      if (status === "passed") return "passed";
-      if (status === "failed") return "failed";
-      if (status === "skipped") return "skipped";
-      return "failed";
-    };
+    // ✅ UNCHANGED: Calculate durations
+    const startTime = new Date(
+      payload.test_results[0]?.started_at || Date.now(),
+    );
+    const endTime = new Date();
+    const durationMs = endTime.getTime() - startTime.getTime();
 
-    // Create execution record (suite-level)
-    const { data: execution, error: execError } = await supabase
-      .from("test_executions")
+    // ✅ UNCHANGED: Create automation_run record
+    const runNumber = (suite.total_automation_runs || 0) + 1;
+
+    // ✅ UPDATED: Detect framework from payload
+    const framework =
+      payload.framework || payload.test_results[0]?.framework || "playwright"; // Default to playwright for backward compatibility
+
+    // ✅ UPDATED: Get framework version (try multiple fields for backward compat)
+    const frameworkVersion =
+      payload.test_results[0]?.framework_version ||
+      payload.test_results[0]?.playwright_version ||
+      payload.test_results[0]?.selenium_version ||
+      payload.test_results[0]?.cypress_version ||
+      null;
+
+    const { data: automationRun, error: runError } = await supabase
+      .from("automation_runs")
       .insert({
-        user_id: profile.id,
-        executed_by: profile.id,
         suite_id: payload.suite_id,
-        test_case_id: null,
-        execution_type: "automated",
-        execution_status: mapStatus(payload.metadata.overall_status),
-        started_at:
-          payload.test_results[0]?.started_at || new Date().toISOString(),
-        completed_at: new Date().toISOString(),
-        duration_minutes: Math.round(
-          payload.test_results.reduce((sum, r) => sum + r.duration_minutes, 0),
-        ),
-        test_environment: payload.test_results[0]?.test_environment || "local",
+        user_id: profile.id,
+        run_number: runNumber,
+        status: payload.metadata.overall_status,
+        framework: framework, // ✅ UPDATED: Dynamic framework
+        environment: payload.test_results[0]?.test_environment || "local",
         browser: payload.test_results[0]?.browser || "chromium",
         os_version: payload.test_results[0]?.os_version || null,
-        playwright_version: payload.test_results[0]?.playwright_version || null,
+        ci_provider: payload.metadata.ci_provider || null,
+        branch: payload.metadata.branch || null,
+        commit_sha: payload.metadata.commit_sha || null,
+        commit_message: payload.metadata.commit_message || null,
+        triggered_by: payload.metadata.ci_provider ? "webhook" : "manual",
         total_tests: payload.metadata.total_tests,
         passed_tests: payload.metadata.passed_tests,
         failed_tests: payload.metadata.failed_tests,
         skipped_tests: payload.metadata.skipped_tests,
+        started_at: startTime.toISOString(),
+        completed_at: endTime.toISOString(),
+        duration_ms: durationMs,
+        framework_version: frameworkVersion, // ✅ UPDATED: Generic field name
       })
       .select()
       .single();
 
-    if (execError || !execution) {
-      console.error("Failed to create execution:", execError);
+    if (runError || !automationRun) {
+      console.error("Failed to create automation run:", runError);
       return NextResponse.json(
-        { error: "Failed to save execution" },
+        { error: "Failed to save automation run" },
         { status: 500 },
       );
     }
 
-    // Save individual test results to test_results table
-    const results = payload.test_results
+    // ✅ UNCHANGED: Update suite pass rate
+    const { error: passRateError } = await supabase.rpc(
+      "update_suite_pass_rate",
+      {
+        p_suite_id: payload.suite_id,
+        p_passed: payload.metadata.passed_tests,
+        p_total: payload.metadata.total_tests,
+      },
+    );
+
+    if (passRateError) {
+      console.error("Failed to update suite pass rate:", passRateError);
+    }
+
+    // ✅ UPDATED: Create individual test execution records with framework info
+    const executions = payload.test_results
       .filter((r) => r.test_case_id)
-      .map((r) => ({
-        execution_id: execution.id,
-        test_case_id: r.test_case_id,
-        status: mapStatus(r.execution_status),
-        duration_ms: Math.round(r.duration_minutes * 60 * 1000),
-        error_message: r.failure_reason,
-        stack_trace: r.stack_trace,
-      }));
+      .map((r) => {
+        // Determine framework for this test (can override per-test)
+        const testFramework = r.framework || framework;
 
-    if (results.length > 0) {
-      const { error: resultsError } = await supabase
-        .from("test_results")
-        .insert(results);
+        // Get framework version (try all possible fields)
+        const testFrameworkVersion =
+          r.framework_version ||
+          r.playwright_version ||
+          r.selenium_version ||
+          r.cypress_version ||
+          null;
 
-      if (resultsError) {
-        console.error("Failed to save test results:", resultsError);
+        return {
+          user_id: profile.id,
+          executed_by: profile.id,
+          suite_id: payload.suite_id,
+          test_case_id: r.test_case_id,
+          execution_type: "automated",
+          execution_status: r.execution_status,
+          started_at: r.started_at,
+          completed_at: r.completed_at,
+          duration_minutes: r.duration_minutes,
+          execution_notes: r.execution_notes,
+          failure_reason: r.failure_reason,
+          stack_trace: r.stack_trace, // ✅ ADDED: stack trace support
+          test_environment: r.test_environment,
+          browser: r.browser,
+          os_version: r.os_version,
+          framework: testFramework, // ✅ ADDED: framework field
+          framework_version: testFrameworkVersion, // ✅ ADDED: generic version field
+          session_id: payload.session_id,
+
+          // ✅ ADDED: Aggregated counts for display
+          total_tests: payload.metadata.total_tests,
+          passed_tests: payload.metadata.passed_tests,
+          failed_tests: payload.metadata.failed_tests,
+          skipped_tests: payload.metadata.skipped_tests,
+        };
+      });
+
+    if (executions.length > 0) {
+      const { error: execError } = await supabase
+        .from("test_executions")
+        .insert(executions);
+
+      if (execError) {
+        console.error("Failed to save test executions:", execError);
       }
     }
 
     return NextResponse.json({
       success: true,
-      execution_id: execution.id,
-      results_saved: results.length,
-      message: `Saved automated execution with ${results.length} test results`,
+      automation_run_id: automationRun.id,
+      run_number: runNumber,
+      executions_saved: executions.length,
+      message: `Saved ${framework} automation run #${runNumber} with ${executions.length} test results`,
     });
   } catch (error) {
     console.error("Webhook error:", error);

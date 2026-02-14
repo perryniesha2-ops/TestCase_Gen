@@ -1,3 +1,4 @@
+// components/automation/export-automation-button.tsx
 "use client";
 
 import { useState } from "react";
@@ -11,30 +12,82 @@ import {
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 
-interface ExportPlaywrightButtonProps {
+interface ExportAutomationButtonProps {
   suiteId: string;
   suiteName?: string;
+  framework?: string; // ✅ NEW: Framework prop
   variant?: "default" | "outline" | "ghost" | "secondary";
   size?: "default" | "sm" | "lg" | "icon";
   showLabel?: boolean;
   className?: string;
 }
 
-export function ExportPlaywrightButton({
+export function ExportAutomationButton({
   suiteId,
   suiteName,
+  framework = "playwright", // ✅ Default to playwright
   variant = "outline",
   size = "default",
   showLabel = true,
   className,
-}: ExportPlaywrightButtonProps) {
+}: ExportAutomationButtonProps) {
   const [isExporting, setIsExporting] = useState(false);
 
+  // ✅ Format framework name for display
+  const getFrameworkDisplayName = () => {
+    const names: Record<string, string> = {
+      playwright: "Playwright",
+      cypress: "Cypress",
+      selenium: "Selenium",
+      puppeteer: "Puppeteer",
+      testcafe: "TestCafe",
+      webdriverio: "WebdriverIO",
+    };
+    return names[framework.toLowerCase()] || "Playwright";
+  };
+
+  // ✅ Get correct export endpoint
+  const getExportEndpoint = () => {
+    const endpoints: Record<string, string> = {
+      playwright: "/api/automation/export/playwright",
+      cypress: "/api/automation/export/cypress",
+      selenium: "/api/automation/export/selenium",
+      puppeteer: "/api/automation/export/puppeteer",
+      testcafe: "/api/automation/export/testcafe",
+      webdriverio: "/api/automation/export/webdriverio",
+    };
+    // Default to playwright if endpoint not found
+    return (
+      endpoints[framework.toLowerCase()] || "/api/automation/export/playwright"
+    );
+  };
+
+  // ✅ Check if framework is supported
+  const isFrameworkSupported = () => {
+    const supported = [
+      "playwright",
+      "cypress",
+      "selenium",
+      // "puppeteer",  // Coming soon
+      // "testcafe",   // Coming soon
+      // "webdriverio" // Coming soon
+    ];
+    return supported.includes(framework.toLowerCase());
+  };
+
   const handleExport = async () => {
+    // ✅ Check if framework is supported
+    if (!isFrameworkSupported()) {
+      toast.error("Export Not Available", {
+        description: `${getFrameworkDisplayName()} export is coming soon.`,
+      });
+      return;
+    }
+
     try {
       setIsExporting(true);
 
-      const response = await fetch("/api/automation/export/playwright", {
+      const response = await fetch(getExportEndpoint(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ suiteId }),
@@ -50,7 +103,8 @@ export function ExportPlaywrightButton({
       // Get filename from Content-Disposition header
       const contentDisposition = response.headers.get("Content-Disposition");
       const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
-      const filename = filenameMatch?.[1] || `playwright-export-${suiteId}.zip`;
+      const filename =
+        filenameMatch?.[1] || `${framework}-export-${suiteId}.zip`;
 
       // Download the file
       const blob = await response.blob();
@@ -64,9 +118,7 @@ export function ExportPlaywrightButton({
       document.body.removeChild(a);
 
       toast.success("Export Successful", {
-        description: `${
-          suiteName || "Test suite"
-        } exported as Playwright project`,
+        description: `${suiteName || "Test suite"} exported as ${getFrameworkDisplayName()} project`,
       });
     } catch (error) {
       console.error("Export error:", error);
@@ -81,6 +133,9 @@ export function ExportPlaywrightButton({
     }
   };
 
+  const frameworkName = getFrameworkDisplayName();
+  const supported = isFrameworkSupported();
+
   const buttonContent = (
     <>
       {isExporting ? (
@@ -90,11 +145,15 @@ export function ExportPlaywrightButton({
       )}
       {showLabel && size !== "icon" && (
         <span className="ml-2">
-          {isExporting ? "Exporting..." : "Export to Playwright"}
+          {isExporting ? "Exporting..." : `Export to ${frameworkName}`}
         </span>
       )}
     </>
   );
+
+  const tooltipText = supported
+    ? `Export to ${frameworkName}`
+    : `${frameworkName} export coming soon`;
 
   if (size === "icon" && !showLabel) {
     return (
@@ -103,7 +162,7 @@ export function ExportPlaywrightButton({
           <TooltipTrigger asChild>
             <Button
               onClick={handleExport}
-              disabled={isExporting}
+              disabled={isExporting || !supported}
               variant={variant}
               size={size}
               className={className}
@@ -112,7 +171,7 @@ export function ExportPlaywrightButton({
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Export to Playwright</p>
+            <p>{tooltipText}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -122,12 +181,16 @@ export function ExportPlaywrightButton({
   return (
     <Button
       onClick={handleExport}
-      disabled={isExporting}
+      disabled={isExporting || !supported}
       variant={variant}
       size={size}
       className={className}
+      title={!supported ? tooltipText : undefined}
     >
       {buttonContent}
     </Button>
   );
 }
+
+// ✅ Keep the old name as an alias for backwards compatibility
+export const ExportPlaywrightButton = ExportAutomationButton;

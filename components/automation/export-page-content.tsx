@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { ExportPlaywrightButton } from "@/components/automation/export-playwright-button";
+import { ExportPlaywrightButton } from "@/components/automation/export-automation-button";
 import {
   Card,
   CardContent,

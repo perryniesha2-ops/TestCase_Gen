@@ -26,6 +26,8 @@ export default async function TestSuiteRoute({ params }: PageProps) {
         <main className="max-w-6xl mx-auto w-full mt-6">
           <SuiteDetailsPageClient suiteId={suiteId} />
         </main>
+        <div className="h-4" />
+
         <SiteFooter />
       </div>
     </div>
