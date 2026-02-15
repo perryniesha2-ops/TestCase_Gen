@@ -80,6 +80,15 @@ export async function POST(req: Request) {
 
     const payload: TestResultPayload = await req.json();
 
+    // ✅ ADD DEBUG LOG
+    console.log("📦 WEBHOOK RECEIVED:", {
+      suite_id: payload.suite_id,
+      total_tests: payload.test_results?.length,
+      tests_with_case_id: payload.test_results?.filter((r) => r.test_case_id)
+        .length,
+      sample: payload.test_results?.[0],
+    });
+
     const { data: suite, error: suiteError } = await supabase
       .from("suites")
       .select("id, user_id, total_automation_runs")
@@ -95,21 +104,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ UNCHANGED: Calculate durations
     const startTime = new Date(
       payload.test_results[0]?.started_at || Date.now(),
     );
     const endTime = new Date();
     const durationMs = endTime.getTime() - startTime.getTime();
 
-    // ✅ UNCHANGED: Create automation_run record
     const runNumber = (suite.total_automation_runs || 0) + 1;
 
-    // ✅ UPDATED: Detect framework from payload
     const framework =
-      payload.framework || payload.test_results[0]?.framework || "playwright"; // Default to playwright for backward compatibility
+      payload.framework || payload.test_results[0]?.framework || "playwright";
 
-    // ✅ UPDATED: Get framework version (try multiple fields for backward compat)
     const frameworkVersion =
       payload.test_results[0]?.framework_version ||
       payload.test_results[0]?.playwright_version ||
@@ -117,6 +122,9 @@ export async function POST(req: Request) {
       payload.test_results[0]?.cypress_version ||
       null;
 
+    // ============================================================================
+    // CREATE AUTOMATION RUN
+    // ============================================================================
     const { data: automationRun, error: runError } = await supabase
       .from("automation_runs")
       .insert({
@@ -124,7 +132,7 @@ export async function POST(req: Request) {
         user_id: profile.id,
         run_number: runNumber,
         status: payload.metadata.overall_status,
-        framework: framework, // ✅ UPDATED: Dynamic framework
+        framework: framework,
         environment: payload.test_results[0]?.test_environment || "local",
         browser: payload.test_results[0]?.browser || "chromium",
         os_version: payload.test_results[0]?.os_version || null,
@@ -140,20 +148,40 @@ export async function POST(req: Request) {
         started_at: startTime.toISOString(),
         completed_at: endTime.toISOString(),
         duration_ms: durationMs,
-        framework_version: frameworkVersion, // ✅ UPDATED: Generic field name
+        framework_version: frameworkVersion,
       })
       .select()
       .single();
 
-    if (runError || !automationRun) {
-      console.error("Failed to create automation run:", runError);
+    // ✅ CHECK FOR ERRORS IMMEDIATELY AFTER INSERT
+    if (runError) {
+      console.error("❌ FAILED TO CREATE AUTOMATION RUN:", {
+        error: runError,
+        message: runError.message,
+        code: runError.code,
+      });
       return NextResponse.json(
-        { error: "Failed to save automation run" },
+        { error: "Failed to save automation run", details: runError.message },
         { status: 500 },
       );
     }
 
-    // ✅ UNCHANGED: Update suite pass rate
+    if (!automationRun) {
+      console.error("❌ NO AUTOMATION RUN RETURNED");
+      return NextResponse.json(
+        { error: "No automation run data returned" },
+        { status: 500 },
+      );
+    }
+
+    console.log("✅ AUTOMATION RUN CREATED:", {
+      id: automationRun.id,
+      run_number: automationRun.run_number,
+    });
+
+    // ============================================================================
+    // UPDATE SUITE PASS RATE
+    // ============================================================================
     const { error: passRateError } = await supabase.rpc(
       "update_suite_pass_rate",
       {
@@ -167,75 +195,69 @@ export async function POST(req: Request) {
       console.error("Failed to update suite pass rate:", passRateError);
     }
 
-    const executions = payload.test_results
-      //.filter((r) => r.test_case_id)
-      .map((r) => {
-        const testFramework = r.framework || framework;
-        const testFrameworkVersion =
-          r.framework_version ||
-          r.playwright_version ||
-          r.selenium_version ||
-          r.cypress_version ||
-          null;
+    // ============================================================================
+    // CREATE TEST EXECUTIONS
+    // ============================================================================
+    const executions = payload.test_results.map((r) => {
+      const testFramework = r.framework || framework;
+      const testFrameworkVersion =
+        r.framework_version ||
+        r.playwright_version ||
+        r.selenium_version ||
+        r.cypress_version ||
+        null;
 
-        return {
-          user_id: profile.id,
-          executed_by: profile.id,
-          suite_id: payload.suite_id,
-          test_case_id: r.test_case_id || null,
-          execution_type: "automated",
-          execution_status: r.execution_status,
-          started_at: r.started_at,
-          completed_at: r.completed_at,
-          duration_minutes: r.duration_minutes,
-          execution_notes: r.execution_notes,
-          failure_reason: r.failure_reason,
-          stack_trace: r.stack_trace,
-          test_environment: r.test_environment,
-          browser: r.browser,
-          os_version: r.os_version,
-          framework: testFramework,
-          framework_version: testFrameworkVersion,
-          session_id: payload.session_id,
-          automation_run_id: automationRun.id,
+      return {
+        user_id: profile.id,
+        executed_by: profile.id,
+        suite_id: payload.suite_id,
+        test_case_id: r.test_case_id || null,
+        execution_type: "automated",
+        execution_status: r.execution_status,
+        started_at: r.started_at,
+        completed_at: r.completed_at,
+        duration_minutes: r.duration_minutes,
+        execution_notes: r.execution_notes,
+        failure_reason: r.failure_reason,
+        stack_trace: r.stack_trace,
+        test_environment: r.test_environment,
+        browser: r.browser,
+        os_version: r.os_version,
+        framework: testFramework,
+        framework_version: testFrameworkVersion,
+        session_id: payload.session_id,
+        automation_run_id: automationRun.id, // ✅ Link to automation_run
+        total_tests: payload.metadata.total_tests,
+        passed_tests: payload.metadata.passed_tests,
+        failed_tests: payload.metadata.failed_tests,
+        skipped_tests: payload.metadata.skipped_tests,
+      };
+    });
 
-          total_tests: payload.metadata.total_tests,
-          passed_tests: payload.metadata.passed_tests,
-          failed_tests: payload.metadata.failed_tests,
-          skipped_tests: payload.metadata.skipped_tests,
-        };
-      });
+    console.log("📝 CREATING TEST EXECUTIONS:", {
+      count: executions.length,
+      automation_run_id: automationRun.id,
+      sample: executions[0],
+    });
 
     if (executions.length > 0) {
-      const { error: execError } = await supabase
+      const { data: insertedExecs, error: execError } = await supabase
         .from("test_executions")
-        .insert(executions);
+        .insert(executions)
+        .select(); // ✅ Get back inserted records
 
       if (execError) {
-        console.error("Failed to save test executions:", execError);
+        console.error("❌ FAILED TO INSERT TEST EXECUTIONS:", {
+          error: execError,
+          message: execError.message,
+          code: execError.code,
+        });
+        // Don't return error - automation_run was created successfully
+      } else {
+        console.log("✅ INSERTED TEST EXECUTIONS:", insertedExecs?.length);
       }
-      if (runError) {
-        console.error("❌❌❌ FAILED TO CREATE AUTOMATION RUN:");
-        return NextResponse.json(
-          { error: "Failed to save automation run" },
-          { status: 500 },
-        );
-      }
-
-      if (!automationRun) {
-        console.error("❌❌❌ NO AUTOMATION RUN RETURNED (but no error?)");
-        return NextResponse.json(
-          { error: "Failed to save automation run - no data returned" },
-          { status: 500 },
-        );
-      }
-
-      console.log("✅✅✅ AUTOMATION RUN CREATED SUCCESSFULLY:", {
-        id: automationRun.id,
-        run_number: automationRun.run_number,
-        suite_id: automationRun.suite_id,
-        total_tests: automationRun.total_tests,
-      });
+    } else {
+      console.warn("⚠️  NO EXECUTIONS TO INSERT");
     }
 
     return NextResponse.json({
@@ -246,7 +268,7 @@ export async function POST(req: Request) {
       message: `Saved ${framework} automation run #${runNumber} with ${executions.length} test results`,
     });
   } catch (error) {
-    console.error("Webhook error:", error);
+    console.error("❌ WEBHOOK ERROR:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
