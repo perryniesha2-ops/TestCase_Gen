@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
 import { TestCaseFormDialog } from "@/components/testcase-management/test-cases/dialogs/test-case-form-dialog";
 import { TestRunnerDialog } from "@/components/testcase-management/test-cases/dialogs/test-runner-dialog";
+import { ExecutionHistoryTab } from "@/components/testcase-management/test-cases/executionhistory";
 import { useExecutions } from "@/hooks/useExecutions";
 
 const platformIcons = {
@@ -471,11 +472,10 @@ export function TestCaseDetailsPageClient({
 
         {/* Content Tabs */}
         <Tabs defaultValue="details" className="w-full">
-          {/*<TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="execution">Execution History</TabsTrigger>
-            <TabsTrigger value="automation">Automation</TabsTrigger>
-          </TabsList>*/}
+          </TabsList>
 
           <TabsContent value="details" className="space-y-6 mt-6">
             {/* Description */}
@@ -620,21 +620,10 @@ export function TestCaseDetailsPageClient({
           </TabsContent>
 
           <TabsContent value="execution" className="mt-6">
-            <div className="rounded-lg border bg-card p-12 text-center shadow-sm">
-              <p className="text-muted-foreground">
-                Execution history coming soon
-              </p>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="automation" className="mt-6">
-            <div className="rounded-lg border bg-card p-12 text-center shadow-sm">
-              <p className="text-muted-foreground">
-                Automation details coming soon
-              </p>
-            </div>
+            <ExecutionHistoryTab testCaseId={testCase.id} caseType={caseType} />
           </TabsContent>
         </Tabs>
+        <div className="h-4" />
       </div>
 
       {/* Edit Dialog - Only for regular test cases */}

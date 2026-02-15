@@ -1,3 +1,4 @@
+// app/(authenticated)/automation/[suiteId]/page-client.tsx
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -27,11 +28,16 @@ import {
   Code2,
   Zap,
   FileText,
+  TrendingUp,
+  Activity,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
-import { ExportPlaywrightButton } from "@/components/automation/export-playwright-button";
-import { PlaywrightExecutionHistory } from "@/components/automation/playwrightexecutionhistory";
-import type { TestSuite } from "@/types/test-cases";
+import { ExportAutomationButton } from "@/components/automation/export-automation-button";
+import { AutomationHistory } from "@/components/automation/automation-executionhistory";
 import { AddAutomationButton } from "@/components/automation/add-automation-button";
+import { AutomationConfigDialog } from "@/components/automation/automation-config-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface AutomationPageProps {
   suiteId: string;
@@ -41,138 +47,226 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
-  const [suite, setSuite] = useState<TestSuite | null>(null);
+  const [suite, setSuite] = useState<any>(null);
   const [testCases, setTestCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
+  const [showConfigDialog, setShowConfigDialog] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
-  /**
-   * Gate: readiness + export only after "Add Automation" is completed.
-   * Persisted per-suite so a refresh doesn't revert UI.
-   */
-  const storageKey = `synthqa_automation_added_${suiteId}`;
-  const [automationAdded, setAutomationAdded] = useState(false);
-
-  useEffect(() => {
-    // Restore gating state
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved === "1") setAutomationAdded(true);
-    } catch {
-      // ignore
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey]);
-
-  const markAutomationAdded = useCallback(() => {
-    setAutomationAdded(true);
-    try {
-      localStorage.setItem(storageKey, "1");
-    } catch {
-      // ignore
-    }
-  }, [storageKey]);
+  // Track if regeneration is needed
+  const [needsRegeneration, setNeedsRegeneration] = useState(false);
+  const [regenerationReason, setRegenerationReason] = useState<string[]>([]);
 
   useEffect(() => {
     if (suiteId && user) {
       loadSuiteData();
     }
-    // include automationAdded so stats recalc correctly after toggling
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suiteId, user, automationAdded]);
+  }, [suiteId, user]);
 
-  const loadSuiteData = useCallback(
-    async (overrideAutomationAdded?: boolean) => {
-      if (!user) {
-        console.error("No user available");
-        return;
-      }
+  const loadSuiteData = useCallback(async () => {
+    if (!user) return;
 
-      const isAutomationAdded = overrideAutomationAdded ?? automationAdded;
+    try {
+      setLoading(true);
+      const supabase = createClient();
 
-      try {
-        setLoading(true);
-        const supabase = createClient();
+      // Load suite with ALL automation metadata
+      const { data: suiteData, error: suiteError } = await supabase
+        .from("suites")
+        .select(
+          `
+          *,
+          projects:project_id(id, name, color, icon)
+        `,
+        )
+        .eq("id", suiteId)
+        .eq("user_id", user.id)
+        .single();
 
-        // Load suite
-        const { data: suiteData, error: suiteError } = await supabase
-          .from("suites")
-          .select(`*, projects:project_id(id, name, color, icon)`)
-          .eq("id", suiteId)
-          .eq("user_id", user.id)
-          .single();
+      if (suiteError) throw suiteError;
 
-        if (suiteError) throw suiteError;
-
-        // Load test cases
-        const { data: suiteCases, error: casesError } = await supabase
-          .from("suite_items")
-          .select(
-            `
-            *,
-            test_cases (
-              id,
-              title,
-              description,
-              test_type,
-              test_steps,
-              automation_metadata
-            )
-          `,
+      // Load test cases
+      const { data: suiteCases, error: casesError } = await supabase
+        .from("suite_items")
+        .select(
+          `
+          *,
+          test_cases (
+            id,
+            title,
+            description,
+            test_type,
+            test_steps,
+            automation_metadata,
+            updated_at
+          ),
+          platform_test_cases (
+            id,
+            title,
+            description,
+            platform,
+            framework,
+            steps,
+            automation_metadata,
+            updated_at
           )
-          .eq("suite_id", suiteId)
-          .order("sequence_order", { ascending: true });
+        `,
+        )
+        .eq("suite_id", suiteId)
+        .order("sequence_order", { ascending: true });
 
-        if (casesError) throw casesError;
+      if (casesError) throw casesError;
 
-        // Calculate automation stats (GATED by isAutomationAdded)
-        const cases = (suiteCases || []).map((sc: any) => {
-          const tc = Array.isArray(sc.test_cases)
-            ? sc.test_cases[0]
-            : sc.test_cases;
+      // Calculate automation stats
+      const cases = (suiteCases || [])
+        .map((sc: any) => {
+          const tc = sc.test_cases || sc.platform_test_cases;
+          if (!tc) return null;
 
-          const hasSteps =
-            Array.isArray(tc?.test_steps) && tc.test_steps.length > 0;
+          const steps = tc.test_steps || tc.steps || [];
+          const hasSteps = Array.isArray(steps) && steps.length > 0;
+
+          // Check if steps have automation data (selector + action_type)
           const hasAutomationData =
-            tc?.automation_metadata &&
-            Object.keys(tc.automation_metadata).length > 0;
+            Array.isArray(steps) &&
+            steps.some((s: any) => s.selector && s.action_type);
 
           return {
             ...tc,
             has_steps: hasSteps,
             has_automation_metadata: hasAutomationData,
-            // Gate "ready" until automation is added
-            ready_for_export: isAutomationAdded && hasSteps,
+            ready_for_export: suiteData.automation_enabled && hasAutomationData,
           };
-        });
+        })
+        .filter(Boolean);
 
-        const automationStats = {
-          total: cases.length,
-          with_steps: cases.filter((c) => c.has_steps).length,
-          with_automation: cases.filter((c) => c.has_automation_metadata)
-            .length,
-          // Gate "ready" count until automation is added
-          ready: isAutomationAdded
-            ? cases.filter((c) => c.ready_for_export).length
-            : 0,
-        };
+      const automationStats = {
+        total: cases.length,
+        with_steps: cases.filter((c: any) => c.has_steps).length,
+        with_automation: cases.filter((c: any) => c.has_automation_metadata)
+          .length,
+        ready: cases.filter((c: any) => c.ready_for_export).length,
+      };
 
-        setSuite({
-          ...suiteData,
-          automation_stats: automationStats,
-        });
-        setTestCases(cases);
-      } catch (error) {
-        console.error("Error loading suite:", error);
-        toast.error("Failed to load suite data");
-      } finally {
-        setLoading(false);
+      // Check if regeneration is needed
+      const reasons = checkRegenerationNeeded(suiteData, cases);
+      setNeedsRegeneration(reasons.length > 0);
+      setRegenerationReason(reasons);
+
+      setSuite({
+        ...suiteData,
+        automation_stats: automationStats,
+      });
+      setTestCases(cases);
+    } catch (error) {
+      console.error("Error loading suite:", error);
+      toast.error("Failed to load suite data");
+    } finally {
+      setLoading(false);
+    }
+  }, [suiteId, user]);
+
+  // Check if automation needs to be regenerated
+  function checkRegenerationNeeded(suiteData: any, cases: any[]): string[] {
+    const reasons: string[] = [];
+
+    // Check if test cases were updated after last automation generation
+    if (suiteData.automation_last_generated) {
+      const lastGenerated = new Date(suiteData.automation_last_generated);
+      const hasNewerCases = cases.some((tc) => {
+        const updatedAt = new Date(tc.updated_at);
+        return updatedAt > lastGenerated;
+      });
+
+      if (hasNewerCases) {
+        reasons.push("Test cases have been updated");
       }
-    },
-    [automationAdded, suiteId, user],
-  );
+    }
 
-  if (authLoading) {
+    // Check if suite config was updated after last generation
+    if (suiteData.automation_last_generated && suiteData.updated_at) {
+      const lastGenerated = new Date(suiteData.automation_last_generated);
+      const suiteUpdated = new Date(suiteData.updated_at);
+
+      if (suiteUpdated > lastGenerated) {
+        reasons.push("Suite configuration has changed");
+      }
+    }
+
+    // Check if there are new test cases since last generation
+    if (suiteData.automation_last_generated) {
+      const casesWithoutMetadata = cases.filter(
+        (tc) => !tc.has_automation_metadata,
+      );
+      if (casesWithoutMetadata.length > 0) {
+        reasons.push(
+          `${casesWithoutMetadata.length} test case(s) need automation metadata`,
+        );
+      }
+    }
+
+    return reasons;
+  }
+
+  // Regenerate automation metadata
+  async function handleRegenerateAutomation() {
+    if (!suite || !user) return;
+
+    try {
+      setRegenerating(true);
+      toast.loading("Regenerating automation metadata...", {
+        id: "regenerate",
+      });
+
+      const supabase = createClient();
+
+      // Call the same endpoint as AddAutomationButton but with regenerate flag
+      const response = await fetch("/api/automation/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          suiteId: suite.id,
+          applicationUrl: suite.base_url || "https://app.example.com",
+          regenerate: true, // Flag to indicate regeneration
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to regenerate automation");
+      }
+
+      const result = await response.json();
+
+      // Update suite with new generation timestamp
+      const { error: updateError } = await supabase
+        .from("suites")
+        .update({
+          automation_last_generated: new Date().toISOString(),
+          automation_enabled: true,
+        })
+        .eq("id", suite.id);
+
+      if (updateError) throw updateError;
+
+      toast.success("Automation metadata regenerated successfully!", {
+        id: "regenerate",
+      });
+
+      // Reload suite data
+      await loadSuiteData();
+    } catch (error: any) {
+      console.error("Error regenerating automation:", error);
+      toast.error(error.message || "Failed to regenerate automation", {
+        id: "regenerate",
+      });
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="text-center">
@@ -186,24 +280,6 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
   if (!user) {
     router.push("/login");
     return null;
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="space-y-2 flex-1">
-            <div className="h-8 w-64 bg-muted animate-pulse rounded" />
-            <div className="h-4 w-48 bg-muted animate-pulse rounded" />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-32 bg-muted animate-pulse rounded-lg" />
-          ))}
-        </div>
-      </div>
-    );
   }
 
   if (!suite) {
@@ -226,46 +302,136 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
 
   const total = suite.automation_stats?.total || 0;
   const ready = suite.automation_stats?.ready || 0;
-
   const automationPercentage =
     total > 0 ? Math.round((ready / total) * 100) : 0;
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "ready":
+      case "active":
+        return "bg-green-500";
+      case "in_progress":
+        return "bg-yellow-500";
+      case "not_configured":
+        return "bg-gray-500";
+      case "deprecated":
+        return "bg-red-500";
+      default:
+        return "bg-gray-500";
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    return (
+      status?.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase()) ||
+      "Not Configured"
+    );
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+        <div className="flex items-center gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <Code2 className="h-6 w-6 text-primary" />
+              <Code2 className="h-6 w-8 text-primary" />
               <h1 className="text-3xl font-bold">{suite.name}</h1>
             </div>
-            <p className="text-muted-foreground mt-1">Test Automation Hub</p>
+
+            <div className="space-y-4">
+              <Badge className={getStatusColor(suite.automation_status)}>
+                {getStatusLabel(suite.automation_status)}
+              </Badge>
+
+              <Badge variant="outline" className="gap-1">
+                <Zap className="h-3 w-3" />
+                {suite.automation_framework?.toUpperCase() || "PLAYWRIGHT"}
+              </Badge>
+            </div>
+            <div className="h-6" />
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            onClick={() => router.push("/test-library")}
+            size="sm"
+            onClick={() => setShowConfigDialog(true)}
           >
-            Back to Suites
+            <Settings className="h-4 w-4 mr-2" />
+            Configure
           </Button>
 
-          {/* Export button visible only after Add Automation */}
-          {automationAdded && (
-            <ExportPlaywrightButton
-              suiteId={suite.id}
-              suiteName={suite.name}
-              variant="default"
-              size="default"
-            />
+          {suite.automation_enabled && (
+            <>
+              {/* Regenerate Button (replaces second export button) */}
+              <Button
+                variant={needsRegeneration ? "default" : "outline"}
+                onClick={handleRegenerateAutomation}
+                disabled={regenerating}
+              >
+                {regenerating ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Regenerating...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Regenerate
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => router.push("/test-library")}
+              >
+                Back to Suites
+              </Button>
+            </>
           )}
         </div>
       </div>
+
+      {/* Regeneration Alert */}
+      {needsRegeneration && (
+        <Alert
+          variant="default"
+          className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20"
+        >
+          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <AlertTitle className="text-yellow-900 dark:text-yellow-100">
+            Automation Regeneration Recommended
+          </AlertTitle>
+          <AlertDescription className="text-yellow-800 dark:text-yellow-200">
+            <ul className="list-disc list-inside space-y-1 mt-2">
+              {regenerationReason.map((reason, idx) => (
+                <li key={idx}>{reason}</li>
+              ))}
+            </ul>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 border-yellow-600 text-yellow-900 hover:bg-yellow-100 dark:text-yellow-100 dark:hover:bg-yellow-900"
+              onClick={handleRegenerateAutomation}
+              disabled={regenerating}
+            >
+              {regenerating ? (
+                <>
+                  <RefreshCw className="h-3 w-3 mr-2 animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-3 w-3 mr-2" />
+                  Regenerate Now
+                </>
+              )}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -288,46 +454,44 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
             <CheckCircle2 className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {automationAdded ? ready : 0}
-            </div>
+            <div className="text-2xl font-bold">{ready}</div>
             <p className="text-xs text-muted-foreground">
-              {automationAdded
-                ? `${automationPercentage}% ready`
-                : "Add automation to calculate readiness"}
+              {automationPercentage}% ready
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">With Metadata</CardTitle>
-            <Zap className="h-4 w-4 text-yellow-500" />
+            <CardTitle className="text-sm font-medium">Pass Rate</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {automationAdded
-                ? suite.automation_stats?.with_automation || 0
-                : 0}
+              {suite.automation_pass_rate
+                ? `${suite.automation_pass_rate}%`
+                : "N/A"}
             </div>
             <p className="text-xs text-muted-foreground">
-              {automationAdded
-                ? "Enhanced with selectors"
-                : "Generated after automation is added"}
+              {suite.total_automation_runs || 0} total runs
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Suite Type</CardTitle>
-            <Settings className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Last Run</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold capitalize">
-              {suite.suite_type || "Manual"}
+            <div className="text-2xl font-bold">
+              {suite.last_automation_run
+                ? new Date(suite.last_automation_run).toLocaleDateString()
+                : "Never"}
             </div>
-            <p className="text-xs text-muted-foreground">Test suite type</p>
+            <p className="text-xs text-muted-foreground">
+              Most recent execution
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -343,7 +507,6 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
             <FileCode className="h-4 w-4" />
             Overview
           </TabsTrigger>
-
           <TabsTrigger value="history" className="flex items-center gap-2">
             <History className="h-4 w-4" />
             Execution History
@@ -352,6 +515,32 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
+          {/* Configuration Status */}
+          {!suite.automation_enabled && (
+            <Card className="border-dashed border-2 border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <AlertCircle className="h-5 w-5 text-yellow-600" />
+                      Automation Not Configured
+                    </CardTitle>
+                    <CardDescription className="mt-2">
+                      Generate automation metadata to enable test export and
+                      execution
+                    </CardDescription>
+                  </div>
+                  <AddAutomationButton
+                    suiteId={suite.id}
+                    applicationUrl={suite.base_url || "https://app.example.com"}
+                    onComplete={loadSuiteData}
+                    variant="default"
+                  />
+                </div>
+              </CardHeader>
+            </Card>
+          )}
+
           {/* Export Call to Action */}
           <Card className="border-dashed border-2">
             <CardHeader>
@@ -362,31 +551,24 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
                     Ready to Automate?
                   </CardTitle>
                   <CardDescription className="mt-2">
-                    {automationAdded
-                      ? "Export this suite as a Playwright project and start running automated tests"
-                      : "First, click Add Automation to generate automation readiness and enable export"}
+                    {suite.automation_enabled
+                      ? `Export this suite as a ${suite.automation_framework?.toUpperCase() || "PLAYWRIGHT"} project and start running automated tests`
+                      : "Configure automation first to enable export"}
                   </CardDescription>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {!automationAdded && (
-                    <AddAutomationButton
-                      suiteId={suite.id}
-                      applicationUrl="https://app.example.com"
-                      onComplete={() => {
-                        markAutomationAdded();
-                        loadSuiteData(true);
-                      }}
-                      variant="outline"
-                    />
-                  )}
-
-                  {/* Export button visible only after Add Automation */}
-                  {automationAdded && (
-                    <ExportPlaywrightButton
+                  {suite.automation_enabled ? (
+                    <ExportAutomationButton
                       suiteId={suite.id}
                       suiteName={suite.name}
+                      framework={suite.automation_framework || "playwright"}
                     />
+                  ) : (
+                    <Button variant="outline" disabled>
+                      <Download className="h-4 w-4 mr-2" />
+                      Export Disabled
+                    </Button>
                   )}
                 </div>
               </div>
@@ -407,11 +589,13 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
                   <div>
-                    <p className="font-medium">TypeScript Tests</p>
+                    <p className="font-medium">
+                      {suite.automation_framework === "selenium"
+                        ? "Java Tests"
+                        : "TypeScript Tests"}
+                    </p>
                     <p className="text-muted-foreground">
-                      {automationAdded
-                        ? `${suite.automation_stats?.ready || 0} test specifications generated`
-                        : "Generated after automation is added"}
+                      {ready} test specifications with executable code
                     </p>
                   </div>
                 </div>
@@ -472,29 +656,20 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {/* Gate READY badge until automationAdded */}
-                        {!automationAdded ? (
-                          <Badge variant="secondary" className="gap-1">
-                            <Clock className="h-3 w-3" />
-                            Add Automation
-                          </Badge>
-                        ) : tc.ready_for_export ? (
+                        {tc.ready_for_export ? (
                           <Badge variant="default" className="gap-1">
                             <CheckCircle2 className="h-3 w-3" />
                             Ready
                           </Badge>
+                        ) : tc.has_automation_metadata ? (
+                          <Badge variant="secondary" className="gap-1">
+                            <Zap className="h-3 w-3" />
+                            Has Metadata
+                          </Badge>
                         ) : (
                           <Badge variant="secondary" className="gap-1">
                             <AlertCircle className="h-3 w-3" />
-                            Needs Steps
-                          </Badge>
-                        )}
-
-                        {/* Enhanced badge can be gated too; usually it only exists after automation is added */}
-                        {automationAdded && tc.has_automation_metadata && (
-                          <Badge variant="outline" className="gap-1">
-                            <Zap className="h-3 w-3" />
-                            Enhanced
+                            Needs Automation
                           </Badge>
                         )}
                       </div>
@@ -506,140 +681,19 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
           </Card>
         </TabsContent>
 
-        {/* Export & Setup Tab */}
-        <TabsContent value="export" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Export to Playwright</CardTitle>
-              <CardDescription>
-                {automationAdded
-                  ? "Download a complete, ready-to-run Playwright automation project"
-                  : "Export is enabled after you add automation"}
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-center py-8 border-2 border-dashed rounded-lg">
-                <div className="text-center space-y-4">
-                  <Download className="h-16 w-16 mx-auto text-muted-foreground" />
-                  <div>
-                    <h3 className="text-lg font-semibold mb-2">
-                      Export Suite: {suite.name}
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Includes {total} test cases
-                    </p>
-                  </div>
-
-                  {!automationAdded ? (
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">
-                        Click “Add Automation” to generate readiness and enable
-                        export.
-                      </p>
-                      <AddAutomationButton
-                        suiteId={suite.id}
-                        applicationUrl="https://app.example.com"
-                        onComplete={() => {
-                          markAutomationAdded();
-                          loadSuiteData(true);
-                        }}
-                        variant="default"
-                      />
-                    </div>
-                  ) : (
-                    <ExportPlaywrightButton
-                      suiteId={suite.id}
-                      suiteName={suite.name}
-                      size="lg"
-                    />
-                  )}
-                </div>
-              </div>
-
-              {/* What's Included */}
-              <div>
-                <h4 className="font-semibold mb-3">What's Included</h4>
-                <div className="space-y-2">
-                  <div className="flex items-start gap-2 text-sm">
-                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
-                    <div>
-                      <p className="font-medium">Complete Playwright Project</p>
-                      <p className="text-muted-foreground">
-                        package.json, playwright.config.ts, TypeScript setup
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2 text-sm">
-                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
-                    <div>
-                      <p className="font-medium">Test Specifications</p>
-                      <p className="text-muted-foreground">
-                        {automationAdded
-                          ? `${ready} TypeScript test files with step-by-step execution`
-                          : "Generated after automation is added"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2 text-sm">
-                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
-                    <div>
-                      <p className="font-medium">Test Data Snapshots</p>
-                      <p className="text-muted-foreground">
-                        JSON snapshots of all test cases and expected results
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2 text-sm">
-                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
-                    <div>
-                      <p className="font-medium">Setup Documentation</p>
-                      <p className="text-muted-foreground">
-                        README with installation and usage instructions
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Next Steps */}
-              <div>
-                <h4 className="font-semibold mb-3">Next Steps After Export</h4>
-                <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                  <li>Extract the ZIP file to your desired location</li>
-                  <li>
-                    Run{" "}
-                    <code className="px-1.5 py-0.5 rounded bg-muted">
-                      pnpm install
-                    </code>{" "}
-                    and{" "}
-                    <code className="px-1.5 py-0.5 rounded bg-muted">
-                      npx playwright install
-                    </code>
-                  </li>
-                  <li>
-                    Configure{" "}
-                    <code className="px-1.5 py-0.5 rounded bg-muted">.env</code>{" "}
-                    file with your BASE_URL
-                  </li>
-                  <li>Implement selectors and assertions in TODO blocks</li>
-                  <li>
-                    Run tests with{" "}
-                    <code className="px-1.5 py-0.5 rounded bg-muted">
-                      pnpm test
-                    </code>
-                  </li>
-                </ol>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         {/* Execution History Tab */}
         <TabsContent value="history">
-          <PlaywrightExecutionHistory suiteId={suite.id} />
+          <AutomationHistory suiteId={suite.id} />
         </TabsContent>
       </Tabs>
+
+      {/* Configuration Dialog */}
+      <AutomationConfigDialog
+        open={showConfigDialog}
+        onOpenChange={setShowConfigDialog}
+        suite={suite}
+        onUpdate={loadSuiteData}
+      />
     </div>
   );
 }

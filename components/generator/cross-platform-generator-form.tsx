@@ -35,7 +35,6 @@ import {
   Eye,
   Zap,
   FileText,
-  Info,
 } from "lucide-react";
 
 import {
@@ -429,11 +428,17 @@ export function CrossPlatformGeneratorForm() {
   // Auto-fill title/description when a saved requirement is selected
   useEffect(() => {
     if (mode !== "saved") return;
-    if (!selectedReqData) return;
+    if (!selectedReqData) {
+      // Clear title when no requirement is selected in saved mode
+      setTitle("");
+      setDescription("");
+      return;
+    }
 
+    // Force overwrite by constructing fresh title
     setTitle(`${selectedReqData.title} Cross-Platform Suite`);
     setDescription(selectedReqData.description || "");
-  }, [mode, selectedReqData?.id]);
+  }, [mode, selectedReqData, selectedRequirementId]); // Added selectedRequirementId to force re-run on selection change
 
   // Auto-apply project from requirement if present
   useEffect(() => {
@@ -453,13 +458,6 @@ export function CrossPlatformGeneratorForm() {
       setProjectSource("none");
     }
   }, [mode, selectedReqData?.project_id, projectSource, selectedReqData]);
-
-  // Suggested title (only if user hasn't set one)
-  useEffect(() => {
-    if (title.trim()) return;
-    if (finalRequirementText.trim().length < 12) return;
-    setTitle("");
-  }, [finalRequirementText, title]);
 
   const ensureDefaultFramework = useCallback((platform: PlatformId) => {
     setFrameworkByPlatform((prev) => {
@@ -727,6 +725,7 @@ export function CrossPlatformGeneratorForm() {
       description,
       projectId,
       router,
+      requestedTotal,
     ],
   );
 
@@ -940,7 +939,10 @@ export function CrossPlatformGeneratorForm() {
                 disabled={pageBusy}
                 onSelect={(p) => {
                   setProjectId(p?.id ?? "");
-                  setProjectSource("none");
+                  if (!p?.id) {
+                    // User explicitly cleared the selection
+                    setProjectSource("none");
+                  }
                 }}
               />
             </div>

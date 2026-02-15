@@ -74,7 +74,7 @@
   --popover: oklch(0.28 0.03 257);
   --popover-foreground: oklch(0.985 0.002 247.839);
   --primary: oklch(0.928 0.006 264.531);
-  --primary-foreground: oklch(0.21 0.034 264.665);
+  --primary-foreground: oklch(33.006% 0.04749 264.294);
   --secondary: oklch(0.278 0.033 256.848);
   --secondary-foreground: oklch(0.985 0.002 247.839);
   --muted: oklch(0.278 0.033 256.848);
@@ -109,9 +109,6 @@
   }
 }
 
-/* Add to your global CSS or component styles for better scrollbar */
-
-/* Custom scrollbar for test type multiselect */
 .test-type-scroll {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
