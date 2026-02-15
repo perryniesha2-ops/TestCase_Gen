@@ -225,15 +225,15 @@ export async function POST(req: Request) {
         os_version: r.os_version,
         framework: testFramework,
         framework_version: testFrameworkVersion,
-        session_id: payload.session_id,
-        automation_run_id: automationRun.id, // ✅ Link to automation_run
+        session_id: null, // ✅ NULL for automated tests (FK to test_run_sessions)
+        automation_session_id: payload.session_id, // ✅ NEW: Store automation session
+        automation_run_id: automationRun.id,
         total_tests: payload.metadata.total_tests,
         passed_tests: payload.metadata.passed_tests,
         failed_tests: payload.metadata.failed_tests,
         skipped_tests: payload.metadata.skipped_tests,
       };
     });
-
     console.log("📝 CREATING TEST EXECUTIONS:", {
       count: executions.length,
       automation_run_id: automationRun.id,
