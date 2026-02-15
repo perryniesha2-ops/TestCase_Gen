@@ -45,6 +45,9 @@ import {
   TrendingUp,
   TrendingDown,
   MinusCircle,
+  FileText,
+  AlertCircle,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -524,117 +527,199 @@ export function AutomationHistory({ suiteId }: AutomationHistoryProps) {
 
       {/* Run Details Dialog */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between pr-8">
-              <span>Test Run #{selectedRun?.run_number} Details</span>
-              {selectedRun && getStatusBadge(selectedRun.status)}
-            </DialogTitle>
-            {selectedRun && (
-              <DialogDescription>
-                {getFrameworkBadge(selectedRun.framework)} •{" "}
-                {new Date(selectedRun.started_at).toLocaleString()} •{" "}
-                {formatDuration(selectedRun.duration_ms)}
-              </DialogDescription>
-            )}
+        <DialogContent
+          className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          {" "}
+          <DialogHeader className="sticky top-0 z-10 bg-background p-6 border-b">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2 min-w-0">
+                <DialogTitle className="text-2xl flex items-center gap-3">
+                  Test Run #{selectedRun?.run_number}
+                  {selectedRun && getStatusBadge(selectedRun.status)}
+                  {selectedRun && getFrameworkBadge(selectedRun.framework)}
+                </DialogTitle>
+                {selectedRun && (
+                  <DialogDescription className="flex items-center gap-4 text-base">
+                    <span className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      {new Date(selectedRun.started_at).toLocaleString()}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      {formatDuration(selectedRun.duration_ms)}
+                    </span>
+                  </DialogDescription>
+                )}
+              </div>
+            </div>
           </DialogHeader>
-
           {selectedRun && (
-            <div className="space-y-4">
-              {/* Run Info */}
+            <div className="flex-1 overflow-y-auto space-y-6 px-6 py-6">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-4 gap-4">
+                <Card className="border-green-200 bg-green-50 dark:bg-green-950/20">
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-green-600">
+                        {selectedRun.passed_tests}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Passed
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-red-600">
+                        {selectedRun.failed_tests}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Failed
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-slate-200 bg-slate-50 dark:bg-slate-950/20">
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-slate-600">
+                        {selectedRun.skipped_tests}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Skipped
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-blue-600">
+                        {calculatePassRate(selectedRun)}%
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Pass Rate
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Execution Info */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Activity className="h-5 w-5" />
                     Execution Information
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Framework:</span>
-                    <div className="mt-1">
-                      {getFrameworkBadge(selectedRun.framework)}
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-4 text-sm">
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs">Framework</p>
+                      <div>{getFrameworkBadge(selectedRun.framework)}</div>
                     </div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Status:</span>
-                    <div className="mt-1">
-                      {getStatusBadge(selectedRun.status)}
+
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs">
+                        Environment
+                      </p>
+                      <Badge variant="outline">{selectedRun.environment}</Badge>
                     </div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Duration:</span>
-                    <div className="font-medium mt-1">
-                      {formatDuration(selectedRun.duration_ms)}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Environment:</span>
-                    <div className="font-medium mt-1">
-                      {selectedRun.environment}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Browser:</span>
-                    <div className="font-medium mt-1">
-                      {selectedRun.browser}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">OS:</span>
-                    <div className="font-medium mt-1">
-                      {selectedRun.os_version || "-"}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Triggered By:</span>
-                    <div className="font-medium mt-1">
-                      {selectedRun.triggered_by}
-                    </div>
-                  </div>
-                  {selectedRun.framework_version && (
-                    <div>
-                      <span className="text-muted-foreground">
-                        Framework Version:
-                      </span>
-                      <div className="font-medium mt-1">
-                        {selectedRun.framework_version}
-                      </div>
-                    </div>
-                  )}
-                  {selectedRun.ci_provider && (
-                    <>
-                      <div>
-                        <span className="text-muted-foreground">
-                          CI Provider:
+
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs">Browser</p>
+                      <div className="flex items-center gap-2">
+                        <Monitor className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">
+                          {selectedRun.browser}
                         </span>
-                        <div className="font-medium mt-1">
-                          {selectedRun.ci_provider}
-                        </div>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Branch:</span>
-                        <div className="font-medium mt-1">
-                          {selectedRun.branch || "-"}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                  {selectedRun.commit_sha && (
-                    <div>
-                      <span className="text-muted-foreground">Commit:</span>
-                      <div className="font-mono text-xs mt-1">
-                        {selectedRun.commit_sha.substring(0, 8)}
                       </div>
                     </div>
-                  )}
-                  {selectedRun.commit_message && (
-                    <div className="col-span-2">
-                      <span className="text-muted-foreground">
-                        Commit Message:
+
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs">
+                        Operating System
+                      </p>
+                      <span className="font-medium">
+                        {selectedRun.os_version || "Unknown"}
                       </span>
-                      <div className="text-sm mt-1 line-clamp-2">
-                        {selectedRun.commit_message}
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-xs">
+                        Triggered By
+                      </p>
+                      <span className="font-medium capitalize">
+                        {selectedRun.triggered_by}
+                      </span>
+                    </div>
+
+                    {selectedRun.framework_version && (
+                      <div className="space-y-1">
+                        <p className="text-muted-foreground text-xs">
+                          Framework Version
+                        </p>
+                        <span className="font-mono text-xs font-medium">
+                          {selectedRun.framework_version}
+                        </span>
                       </div>
+                    )}
+
+                    {selectedRun.ci_provider && (
+                      <>
+                        <div className="space-y-1">
+                          <p className="text-muted-foreground text-xs">
+                            CI Provider
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <GitBranch className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium">
+                              {selectedRun.ci_provider}
+                            </span>
+                          </div>
+                        </div>
+
+                        {selectedRun.branch && (
+                          <div className="space-y-1">
+                            <p className="text-muted-foreground text-xs">
+                              Branch
+                            </p>
+                            <span className="font-mono text-xs font-medium">
+                              {selectedRun.branch}
+                            </span>
+                          </div>
+                        )}
+
+                        {selectedRun.commit_sha && (
+                          <div className="space-y-1">
+                            <p className="text-muted-foreground text-xs">
+                              Commit
+                            </p>
+                            <span className="font-mono text-xs font-medium">
+                              {selectedRun.commit_sha.substring(0, 8)}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {selectedRun.commit_message && (
+                    <div className="mt-4 pt-4 border-t">
+                      <p className="text-muted-foreground text-xs mb-2">
+                        Commit Message
+                      </p>
+                      <p className="text-sm bg-muted p-3 rounded-md font-mono">
+                        {selectedRun.commit_message}
+                      </p>
                     </div>
                   )}
                 </CardContent>
@@ -643,58 +728,112 @@ export function AutomationHistory({ suiteId }: AutomationHistoryProps) {
               {/* Test Results */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">
-                    Test Results ({selectedRun.total_tests})
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      Individual Test Results ({selectedRun.total_tests})
+                    </CardTitle>
+                    {loadingDetails && (
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {loadingDetails ? (
-                    <div className="flex items-center justify-center py-10">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                      <span className="ml-3 text-muted-foreground">
-                        Loading test details...
-                      </span>
+                    <div className="flex items-center justify-center py-12">
+                      <div className="text-center space-y-3">
+                        <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                          Loading test details...
+                        </p>
+                      </div>
                     </div>
                   ) : selectedRunExecutions.length === 0 ? (
-                    <div className="text-center py-10 text-muted-foreground">
-                      <p className="text-sm">
-                        No individual test execution details available
-                      </p>
+                    <div className="text-center py-12 text-muted-foreground space-y-3">
+                      <FileText className="h-12 w-12 mx-auto opacity-50" />
+                      <div>
+                        <p className="font-medium">
+                          No individual test execution details available
+                        </p>
+                        <p className="text-sm mt-1">
+                          This may be because test cases weren't linked to the
+                          suite.
+                        </p>
+                      </div>
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {selectedRunExecutions.map((exec) => (
+                    <div className="space-y-3">
+                      {selectedRunExecutions.map((exec, index) => (
                         <div
                           key={exec.id}
-                          className="flex items-center justify-between p-3 rounded-lg border"
+                          className="group relative flex items-start gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
                         >
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm truncate">
-                              {exec.test_cases?.title || "Untitled Test"}
+                          {/* Test Number */}
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-mono font-semibold">
+                            {index + 1}
+                          </div>
+
+                          {/* Test Info */}
+                          <div className="flex-1 min-w-0 space-y-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-semibold text-sm truncate">
+                                  {exec.test_cases?.title || "Untitled Test"}
+                                </h4>
+                                {exec.test_cases?.description && (
+                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                                    {exec.test_cases.description}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-3 flex-shrink-0">
+                                <div className="text-xs text-muted-foreground">
+                                  {exec.duration_minutes
+                                    ? `${exec.duration_minutes.toFixed(2)}m`
+                                    : "-"}
+                                </div>
+                                {getStatusBadge(exec.execution_status)}
+                              </div>
                             </div>
+
+                            {/* Failure Details */}
                             {exec.failure_reason && (
-                              <div className="text-xs text-destructive mt-1 line-clamp-2">
-                                {exec.failure_reason}
+                              <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 space-y-2">
+                                <div className="flex items-start gap-2">
+                                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium text-destructive">
+                                      Failure Reason:
+                                    </p>
+                                    <p className="text-xs text-destructive/90 mt-1">
+                                      {exec.failure_reason}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {exec.stack_trace && (
+                                  <details className="group/details">
+                                    <summary className="text-xs text-destructive/80 cursor-pointer hover:text-destructive font-medium flex items-center gap-1">
+                                      <span>View stack trace</span>
+                                      <ChevronDown className="h-3 w-3 transition-transform group-open/details:rotate-180" />
+                                    </summary>
+                                    <pre className="text-[10px] bg-destructive/5 p-3 rounded mt-2 overflow-x-auto max-h-32 border border-destructive/10">
+                                      {exec.stack_trace}
+                                    </pre>
+                                  </details>
+                                )}
                               </div>
                             )}
-                            {exec.stack_trace && (
-                              <details className="mt-2">
-                                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                                  View stack trace
-                                </summary>
-                                <pre className="text-xs bg-muted p-2 rounded mt-1 overflow-x-auto">
-                                  {exec.stack_trace}
-                                </pre>
-                              </details>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 ml-4">
-                            <div className="text-sm text-muted-foreground">
-                              {exec.duration_minutes
-                                ? `${exec.duration_minutes.toFixed(2)}m`
-                                : "-"}
-                            </div>
-                            {getStatusBadge(exec.execution_status)}
+
+                            {/* Execution Notes */}
+                            {exec.execution_notes &&
+                              exec.execution_status === "passed" && (
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  {exec.execution_notes}
+                                </div>
+                              )}
                           </div>
                         </div>
                       ))}
@@ -704,8 +843,7 @@ export function AutomationHistory({ suiteId }: AutomationHistoryProps) {
               </Card>
             </div>
           )}
-
-          <DialogFooter>
+          <DialogFooter className="border-t px-6 py-4">
             <Button variant="outline" onClick={() => setDetailsOpen(false)}>
               Close
             </Button>

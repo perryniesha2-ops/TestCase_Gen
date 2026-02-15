@@ -30,11 +30,14 @@ import {
   FileText,
   TrendingUp,
   Activity,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { ExportAutomationButton } from "@/components/automation/export-automation-button";
 import { AutomationHistory } from "@/components/automation/automation-executionhistory";
 import { AddAutomationButton } from "@/components/automation/add-automation-button";
 import { AutomationConfigDialog } from "@/components/automation/automation-config-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface AutomationPageProps {
   suiteId: string;
@@ -49,6 +52,11 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [showConfigDialog, setShowConfigDialog] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  // Track if regeneration is needed
+  const [needsRegeneration, setNeedsRegeneration] = useState(false);
+  const [regenerationReason, setRegenerationReason] = useState<string[]>([]);
 
   useEffect(() => {
     if (suiteId && user) {
@@ -90,7 +98,8 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
             description,
             test_type,
             test_steps,
-            automation_metadata
+            automation_metadata,
+            updated_at
           ),
           platform_test_cases (
             id,
@@ -99,7 +108,8 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
             platform,
             framework,
             steps,
-            automation_metadata
+            automation_metadata,
+            updated_at
           )
         `,
         )
@@ -139,6 +149,11 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
         ready: cases.filter((c: any) => c.ready_for_export).length,
       };
 
+      // Check if regeneration is needed
+      const reasons = checkRegenerationNeeded(suiteData, cases);
+      setNeedsRegeneration(reasons.length > 0);
+      setRegenerationReason(reasons);
+
       setSuite({
         ...suiteData,
         automation_stats: automationStats,
@@ -151,6 +166,105 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
       setLoading(false);
     }
   }, [suiteId, user]);
+
+  // Check if automation needs to be regenerated
+  function checkRegenerationNeeded(suiteData: any, cases: any[]): string[] {
+    const reasons: string[] = [];
+
+    // Check if test cases were updated after last automation generation
+    if (suiteData.automation_last_generated) {
+      const lastGenerated = new Date(suiteData.automation_last_generated);
+      const hasNewerCases = cases.some((tc) => {
+        const updatedAt = new Date(tc.updated_at);
+        return updatedAt > lastGenerated;
+      });
+
+      if (hasNewerCases) {
+        reasons.push("Test cases have been updated");
+      }
+    }
+
+    // Check if suite config was updated after last generation
+    if (suiteData.automation_last_generated && suiteData.updated_at) {
+      const lastGenerated = new Date(suiteData.automation_last_generated);
+      const suiteUpdated = new Date(suiteData.updated_at);
+
+      if (suiteUpdated > lastGenerated) {
+        reasons.push("Suite configuration has changed");
+      }
+    }
+
+    // Check if there are new test cases since last generation
+    if (suiteData.automation_last_generated) {
+      const casesWithoutMetadata = cases.filter(
+        (tc) => !tc.has_automation_metadata,
+      );
+      if (casesWithoutMetadata.length > 0) {
+        reasons.push(
+          `${casesWithoutMetadata.length} test case(s) need automation metadata`,
+        );
+      }
+    }
+
+    return reasons;
+  }
+
+  // Regenerate automation metadata
+  async function handleRegenerateAutomation() {
+    if (!suite || !user) return;
+
+    try {
+      setRegenerating(true);
+      toast.loading("Regenerating automation metadata...", {
+        id: "regenerate",
+      });
+
+      const supabase = createClient();
+
+      // Call the same endpoint as AddAutomationButton but with regenerate flag
+      const response = await fetch("/api/automation/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          suiteId: suite.id,
+          applicationUrl: suite.base_url || "https://app.example.com",
+          regenerate: true, // Flag to indicate regeneration
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to regenerate automation");
+      }
+
+      const result = await response.json();
+
+      // Update suite with new generation timestamp
+      const { error: updateError } = await supabase
+        .from("suites")
+        .update({
+          automation_last_generated: new Date().toISOString(),
+          automation_enabled: true,
+        })
+        .eq("id", suite.id);
+
+      if (updateError) throw updateError;
+
+      toast.success("Automation metadata regenerated successfully!", {
+        id: "regenerate",
+      });
+
+      // Reload suite data
+      await loadSuiteData();
+    } catch (error: any) {
+      console.error("Error regenerating automation:", error);
+      toast.error(error.message || "Failed to regenerate automation", {
+        id: "regenerate",
+      });
+    } finally {
+      setRegenerating(false);
+    }
+  }
 
   if (authLoading || loading) {
     return (
@@ -218,24 +332,25 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+        <div className="flex items-center gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <Code2 className="h-6 w-6 text-primary" />
+              <Code2 className="h-6 w-8 text-primary" />
               <h1 className="text-3xl font-bold">{suite.name}</h1>
+            </div>
+
+            <div className="space-y-4">
               <Badge className={getStatusColor(suite.automation_status)}>
                 {getStatusLabel(suite.automation_status)}
               </Badge>
+
               <Badge variant="outline" className="gap-1">
                 <Zap className="h-3 w-3" />
                 {suite.automation_framework?.toUpperCase() || "PLAYWRIGHT"}
               </Badge>
             </div>
+            <div className="h-6" />
           </div>
-          <div className="h-6" />
         </div>
 
         <div className="flex items-center gap-2">
@@ -248,23 +363,75 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
             Configure
           </Button>
 
-          <Button
-            variant="outline"
-            onClick={() => router.push("/test-library")}
-          >
-            Back to Suites
-          </Button>
-
           {suite.automation_enabled && (
-            <ExportAutomationButton
-              suiteId={suite.id}
-              suiteName={suite.name}
-              framework={suite.automation_framework || "playwright"} // ✅ Pass framework
-              variant="default"
-            />
+            <>
+              {/* Regenerate Button (replaces second export button) */}
+              <Button
+                variant={needsRegeneration ? "default" : "outline"}
+                onClick={handleRegenerateAutomation}
+                disabled={regenerating}
+              >
+                {regenerating ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Regenerating...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Regenerate
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => router.push("/test-library")}
+              >
+                Back to Suites
+              </Button>
+            </>
           )}
         </div>
       </div>
+
+      {/* Regeneration Alert */}
+      {needsRegeneration && (
+        <Alert
+          variant="default"
+          className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20"
+        >
+          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <AlertTitle className="text-yellow-900 dark:text-yellow-100">
+            Automation Regeneration Recommended
+          </AlertTitle>
+          <AlertDescription className="text-yellow-800 dark:text-yellow-200">
+            <ul className="list-disc list-inside space-y-1 mt-2">
+              {regenerationReason.map((reason, idx) => (
+                <li key={idx}>{reason}</li>
+              ))}
+            </ul>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 border-yellow-600 text-yellow-900 hover:bg-yellow-100 dark:text-yellow-100 dark:hover:bg-yellow-900"
+              onClick={handleRegenerateAutomation}
+              disabled={regenerating}
+            >
+              {regenerating ? (
+                <>
+                  <RefreshCw className="h-3 w-3 mr-2 animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-3 w-3 mr-2" />
+                  Regenerate Now
+                </>
+              )}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -385,7 +552,7 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
                   </CardTitle>
                   <CardDescription className="mt-2">
                     {suite.automation_enabled
-                      ? "Export this suite as a Playwright project and start running automated tests"
+                      ? `Export this suite as a ${suite.automation_framework?.toUpperCase() || "PLAYWRIGHT"} project and start running automated tests`
                       : "Configure automation first to enable export"}
                   </CardDescription>
                 </div>
@@ -398,7 +565,7 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
                       framework={suite.automation_framework || "playwright"}
                     />
                   ) : (
-                    <Button variant="outline">
+                    <Button variant="outline" disabled>
                       <Download className="h-4 w-4 mr-2" />
                       Export Disabled
                     </Button>
@@ -422,7 +589,11 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
                   <div>
-                    <p className="font-medium">TypeScript Tests</p>
+                    <p className="font-medium">
+                      {suite.automation_framework === "selenium"
+                        ? "Java Tests"
+                        : "TypeScript Tests"}
+                    </p>
                     <p className="text-muted-foreground">
                       {ready} test specifications with executable code
                     </p>

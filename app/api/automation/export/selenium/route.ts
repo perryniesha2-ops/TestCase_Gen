@@ -13,6 +13,7 @@ import {
   generateDotEnvExample,
   generateGitignore,
   generateReadme,
+  generateGlobalCleanupListener,
 } from "@/lib/exports/web/selenium";
 
 export const runtime = "nodejs";
@@ -116,9 +117,19 @@ function needsAuthentication(testCase: any): boolean {
   const title = testCase.title.toLowerCase();
 
   if (
+    title.includes("login") ||
+    title.includes("sign in") ||
+    title.includes("sign up") ||
+    title.includes("authentication") ||
+    title.includes("register")
+  ) {
+    return false;
+  }
+  if (
     title.includes("without login") ||
     title.includes("prevent access") ||
-    title.includes("require login")
+    title.includes("require login") ||
+    title.includes("unauthorized")
   ) {
     return false;
   }
@@ -131,7 +142,6 @@ function needsAuthentication(testCase: any): boolean {
   const hasLoginSteps = firstSteps.some((step: any) => {
     const action = step.action?.toLowerCase() || "";
     return (
-      action.includes("login") ||
       action.includes("email") ||
       action.includes("password") ||
       step.input_value?.includes("@")
@@ -153,13 +163,21 @@ function generateSeleniumTest(
   if (needsAuth) {
     const firstNonLoginStepIndex = steps.findIndex((step) => {
       const action = step.action?.toLowerCase() || "";
-      return (
-        !action.includes("login") &&
-        !action.includes("email") &&
-        !action.includes("password") &&
-        !action.includes("navigate") &&
-        !step.input_value?.includes("@")
-      );
+      const isNavigateToLogin =
+        step.action_type === "navigate" &&
+        step.input_value?.toLowerCase().includes("login");
+
+      const isLoginField =
+        action.includes("email") ||
+        action.includes("password") ||
+        step.input_value?.includes("@");
+
+      const isLoginButton =
+        action.includes("sign in") ||
+        action.includes("login") ||
+        (step.action_type === "click" && action.includes("submit"));
+
+      return !isNavigateToLogin && !isLoginField && !isLoginButton;
     });
 
     if (firstNonLoginStepIndex > 0) {
@@ -167,10 +185,31 @@ function generateSeleniumTest(
     }
   }
 
+  const hasNavigationStep = processedSteps.some(
+    (step) => step.action_type === "navigate",
+  );
+
+  if (!hasNavigationStep && processedSteps.length > 0) {
+    const defaultUrl = needsAuth ? "/dashboard" : "/login";
+
+    processedSteps = [
+      {
+        action: "Navigate to page",
+        action_type: "navigate",
+        input_value: defaultUrl,
+        expected: "Page loads",
+      } as TestStep,
+      ...processedSteps,
+    ];
+  }
+
   const stepsCode = processedSteps
     .map((step, idx) => {
       const lines: string[] = [];
 
+      // ============================================================
+      // NAVIGATION
+      // ============================================================
       if (step.action_type === "navigate") {
         const url = step.input_value || "/";
 
@@ -186,26 +225,97 @@ function generateSeleniumTest(
           const path = url.startsWith("/") ? url : `/${url}`;
           lines.push(`driver.get(baseUrl + "${path}");`);
         }
-      } else if (step.action_type === "click") {
+      }
+      // ============================================================
+      // CLICK
+      // ============================================================
+      else if (step.action_type === "click") {
         lines.push(
           `driver.findElement(By.cssSelector("${step.selector}")).click();`,
         );
-      } else if (step.action_type === "fill" || step.action_type === "type") {
-        lines.push(
-          `driver.findElement(By.cssSelector("${step.selector}")).sendKeys("${step.input_value || ""}");`,
-        );
-      } else if (step.action_type === "check") {
+      }
+      // ============================================================
+      // FILL / TYPE (EMAIL & PASSWORD HANDLING)
+      // ============================================================
+      else if (step.action_type === "fill" || step.action_type === "type") {
+        const isEmailField =
+          step.selector?.includes("email") ||
+          step.action?.toLowerCase().includes("email") ||
+          step.input_value?.includes("@");
+
+        const isPasswordField =
+          step.selector?.includes("password") ||
+          step.action?.toLowerCase().includes("password");
+
+        // ✅ Check if this is a NEGATIVE test (testing failures)
+        const isNegativeTest =
+          step.input_value?.toLowerCase().includes("wrong") ||
+          step.input_value?.toLowerCase().includes("incorrect") ||
+          step.input_value?.toLowerCase().includes("invalid") ||
+          step.expected?.toLowerCase().includes("fail") ||
+          step.expected?.toLowerCase().includes("error") ||
+          step.action?.toLowerCase().includes("incorrect") ||
+          step.action?.toLowerCase().includes("invalid");
+
+        if (isEmailField) {
+          // For email, check if it's intentionally invalid
+          if (isNegativeTest || !step.input_value?.includes("@")) {
+            // Use the hardcoded invalid email
+            lines.push(
+              `driver.findElement(By.cssSelector("${step.selector}")).sendKeys("${step.input_value || "invalid-email"}");`,
+            );
+          } else {
+            // Use environment variable for valid email
+            lines.push(
+              `driver.findElement(By.cssSelector("${step.selector}")).sendKeys(System.getProperty("TEST_USER_EMAIL", "${step.input_value || "test@example.com"}"));`,
+            );
+          }
+        } else if (isPasswordField) {
+          // For password, check if it's intentionally wrong
+          if (isNegativeTest) {
+            // ✅ Use the hardcoded WRONG password for negative tests
+            lines.push(
+              `driver.findElement(By.cssSelector("${step.selector}")).sendKeys("${step.input_value || "WrongPassword123!"}");`,
+            );
+          } else {
+            // Use environment variable for correct password
+            lines.push(
+              `driver.findElement(By.cssSelector("${step.selector}")).sendKeys(System.getProperty("TEST_USER_PASSWORD", "${step.input_value || "password123"}"));`,
+            );
+          }
+        } else {
+          // Regular input - use hardcoded value
+          lines.push(
+            `driver.findElement(By.cssSelector("${step.selector}")).sendKeys("${step.input_value || ""}");`,
+          );
+        }
+      }
+      // ============================================================
+      // CHECKBOX
+      // ============================================================
+      else if (step.action_type === "check") {
         lines.push(
           `driver.findElement(By.cssSelector("${step.selector}")).click();`,
         );
-      } else if (step.action_type === "select") {
+      }
+      // ============================================================
+      // SELECT DROPDOWN
+      // ============================================================
+      else if (step.action_type === "select") {
         lines.push(
           `new Select(driver.findElement(By.cssSelector("${step.selector}"))).selectByVisibleText("${step.input_value}");`,
         );
-      } else {
+      }
+      // ============================================================
+      // UNKNOWN ACTION
+      // ============================================================
+      else {
         lines.push(`// TODO: ${step.action}`);
       }
 
+      // ============================================================
+      // ASSERTIONS
+      // ============================================================
       if (step.assertion?.type === "visible") {
         lines.push(
           `Assert.assertTrue(driver.findElement(By.cssSelector("${step.assertion.target || step.selector}")).isDisplayed());`,
@@ -220,6 +330,9 @@ function generateSeleniumTest(
         );
       }
 
+      // ============================================================
+      // WAIT TIME
+      // ============================================================
       if (step.wait_time) {
         lines.push(`Thread.sleep(${step.wait_time});`);
       }
@@ -344,6 +457,11 @@ export async function POST(req: Request) {
       generateSeleniumReporter(),
     );
 
+    zip.file(
+      `${root}/src/test/java/com/synthqa/GlobalCleanupListener.java`,
+      generateGlobalCleanupListener(),
+    );
+
     // ✅ Generate .env with SYNTHQA variables
     zip.file(
       `${root}/.env`,
@@ -358,7 +476,6 @@ export async function POST(req: Request) {
 
     zip.file(`${root}/.env.example`, generateDotEnvExample(webhookUrl));
 
-    // ✅ Generate testng.xml with reporter registered
     zip.file(`${root}/testng.xml`, generateTestNGXml(suite.name));
 
     zip.file(`${root}/.gitignore`, generateGitignore());

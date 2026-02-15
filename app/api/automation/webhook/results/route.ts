@@ -167,14 +167,10 @@ export async function POST(req: Request) {
       console.error("Failed to update suite pass rate:", passRateError);
     }
 
-    // ✅ UPDATED: Create individual test execution records with framework info
     const executions = payload.test_results
       .filter((r) => r.test_case_id)
       .map((r) => {
-        // Determine framework for this test (can override per-test)
         const testFramework = r.framework || framework;
-
-        // Get framework version (try all possible fields)
         const testFrameworkVersion =
           r.framework_version ||
           r.playwright_version ||
@@ -194,15 +190,15 @@ export async function POST(req: Request) {
           duration_minutes: r.duration_minutes,
           execution_notes: r.execution_notes,
           failure_reason: r.failure_reason,
-          stack_trace: r.stack_trace, // ✅ ADDED: stack trace support
+          stack_trace: r.stack_trace,
           test_environment: r.test_environment,
           browser: r.browser,
           os_version: r.os_version,
-          framework: testFramework, // ✅ ADDED: framework field
-          framework_version: testFrameworkVersion, // ✅ ADDED: generic version field
+          framework: testFramework,
+          framework_version: testFrameworkVersion,
           session_id: payload.session_id,
+          automation_run_id: automationRun.id,
 
-          // ✅ ADDED: Aggregated counts for display
           total_tests: payload.metadata.total_tests,
           passed_tests: payload.metadata.passed_tests,
           failed_tests: payload.metadata.failed_tests,
