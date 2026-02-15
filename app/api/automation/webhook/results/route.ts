@@ -168,7 +168,7 @@ export async function POST(req: Request) {
     }
 
     const executions = payload.test_results
-      .filter((r) => r.test_case_id)
+      //.filter((r) => r.test_case_id)
       .map((r) => {
         const testFramework = r.framework || framework;
         const testFrameworkVersion =
