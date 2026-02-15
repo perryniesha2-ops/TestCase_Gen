@@ -217,6 +217,7 @@ export function AutomationHistory({ suiteId }: AutomationHistoryProps) {
         .gte("started_at", run.started_at)
         .lte("completed_at", run.completed_at)
         .eq("framework", run.framework)
+        .eq("automation_run_id", run.id)
         .order("started_at", { ascending: true });
 
       if (error) throw error;

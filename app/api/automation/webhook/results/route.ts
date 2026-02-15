@@ -214,6 +214,28 @@ export async function POST(req: Request) {
       if (execError) {
         console.error("Failed to save test executions:", execError);
       }
+      if (runError) {
+        console.error("❌❌❌ FAILED TO CREATE AUTOMATION RUN:");
+        return NextResponse.json(
+          { error: "Failed to save automation run" },
+          { status: 500 },
+        );
+      }
+
+      if (!automationRun) {
+        console.error("❌❌❌ NO AUTOMATION RUN RETURNED (but no error?)");
+        return NextResponse.json(
+          { error: "Failed to save automation run - no data returned" },
+          { status: 500 },
+        );
+      }
+
+      console.log("✅✅✅ AUTOMATION RUN CREATED SUCCESSFULLY:", {
+        id: automationRun.id, // ← This is the auto-generated UUID
+        run_number: automationRun.run_number,
+        suite_id: automationRun.suite_id,
+        total_tests: automationRun.total_tests,
+      });
     }
 
     return NextResponse.json({

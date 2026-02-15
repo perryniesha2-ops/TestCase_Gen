@@ -267,7 +267,7 @@ function generateSeleniumTest(
           } else {
             // Use environment variable for valid email
             lines.push(
-              `driver.findElement(By.cssSelector("${step.selector}")).sendKeys(System.getProperty("TEST_USER_EMAIL", "${step.input_value || "test@example.com"}"));`,
+              `driver.findElement(By.cssSelector("${step.selector}")).sendKeys(System.getProperty("${step.input_value || "test@example.com"}"));`,
             );
           }
         } else if (isPasswordField) {
