@@ -182,7 +182,7 @@ export async function POST(req: Request) {
           user_id: profile.id,
           executed_by: profile.id,
           suite_id: payload.suite_id,
-          test_case_id: r.test_case_id,
+          test_case_id: r.test_case_id || null,
           execution_type: "automated",
           execution_status: r.execution_status,
           started_at: r.started_at,
@@ -231,7 +231,7 @@ export async function POST(req: Request) {
       }
 
       console.log("✅✅✅ AUTOMATION RUN CREATED SUCCESSFULLY:", {
-        id: automationRun.id, // ← This is the auto-generated UUID
+        id: automationRun.id,
         run_number: automationRun.run_number,
         suite_id: automationRun.suite_id,
         total_tests: automationRun.total_tests,
