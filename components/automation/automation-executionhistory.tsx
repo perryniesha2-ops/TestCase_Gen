@@ -348,7 +348,7 @@ export function AutomationHistory({ suiteId }: AutomationHistoryProps) {
               </SelectContent>
             </Select>
 
-            <Select value="dateFilter" onValueChange={setDateFilter}>
+            <Select value={dateFilter} onValueChange={setDateFilter}>
               <SelectTrigger className="w-[160px]">
                 <SelectValue placeholder="Date range" />
               </SelectTrigger>
@@ -365,7 +365,7 @@ export function AutomationHistory({ suiteId }: AutomationHistoryProps) {
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All status</SelectItem>
+                <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem value="passed">Passed</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
               </SelectContent>

@@ -281,7 +281,13 @@ function generateExecutableStep(step: TestStep): string {
         case "url":
           if (step.assertion.value !== undefined) {
             const val = escapeString(String(step.assertion.value));
-            lines.push(`await expect(page).toHaveURL(/${val}/);`);
+            if (val.includes("/") || val.includes("^") || val.includes("$")) {
+              const escapedPattern = val.replace(/\//g, "\\/");
+              lines.push(`await expect(page).toHaveURL(/${escapedPattern}/);`);
+            } else {
+              // Simple string match - more reliable
+              lines.push(`await expect(page).toHaveURL('${val}');`);
+            }
           }
           break;
 

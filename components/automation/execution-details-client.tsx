@@ -50,22 +50,23 @@ export function ExecutionDetailsClient({
 
       // Load individual test results with test case details
       const { data: results, error: resultsError } = await supabase
-        .from("test_results")
+        .from("test_executions")
         .select(
           `
           id,
-          execution_id,
           test_case_id,
-          status,
-          duration_ms,
-          error_message,
+          execution_status,
+          duration_minutes,
+          failure_reason,
           stack_trace,
           created_at,
+          started_at,
+          completed_at,
           test_cases(id, title, description, test_type)
         `,
         )
-        .eq("execution_id", executionId)
-        .order("created_at", { ascending: true });
+        .eq("automation_run_id", exec.automation_run_id)
+        .order("started_at", { ascending: true });
 
       if (resultsError) {
         console.error("Error loading test results:", resultsError);
