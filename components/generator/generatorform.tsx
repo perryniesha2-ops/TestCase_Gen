@@ -37,6 +37,15 @@ import { Loader2, Sparkles, Info, FileText } from "lucide-react";
 
 import { TemplateSelect } from "@/components/templates/template-select";
 import { ProjectSelect } from "@/components/projects/project-select";
+import {
+  AI_MODELS,
+  MODEL_GROUPS,
+  type ModelKey,
+  getDefaultModel,
+  isModelAllowed,
+  migrateModelKey,
+} from "@/lib/ai-models/config";
+import { Separator } from "@radix-ui/react-separator";
 
 type TemplateCategory =
   | "functional"
@@ -318,7 +327,7 @@ export function GeneratorForm() {
     useState<TemplateFromSelect | null>(null);
 
   // Generation settings
-  const [model, setModel] = useState("claude-sonnet-4-5");
+  const [model, setModel] = useState(getDefaultModel);
   const [testCaseCount, setTestCaseCount] = useState("10");
   const [selectedTestTypes, setSelectedTestTypes] = useState<
     CanonicalTestType[]
@@ -338,7 +347,11 @@ export function GeneratorForm() {
     if (defaultsAppliedRef.current) return;
     if (!defaults) return;
 
-    setModel(defaults.model || "claude-sonnet-4-5");
+    setModel(
+      isModelAllowed(defaults.model ?? "")
+        ? migrateModelKey(defaults.model!)
+        : getDefaultModel(),
+    );
     setTestCaseCount(String(clampTestCount(defaults.count ?? 10, 1, 100)));
     setSelectedTestTypes(
       coerceCanonicalTestTypes(defaults.test_types, [
@@ -419,7 +432,7 @@ export function GeneratorForm() {
       if (!template) return;
 
       const settings = template.template_content;
-      setModel(settings.model);
+      setModel(migrateModelKey(settings.model));
       setTestCaseCount(String(settings.testCaseCount));
     },
     [],
@@ -790,28 +803,24 @@ export function GeneratorForm() {
                   <Select
                     name="model"
                     value={model}
-                    onValueChange={setModel}
+                    onValueChange={(v) => setModel(migrateModelKey(v))}
                     disabled={pageBusy}
                   >
                     <SelectTrigger className="h-10">
                       <SelectValue placeholder="Select model" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="claude-sonnet-4-5">
-                        Claude Sonnet 4.5
-                      </SelectItem>
-                      <SelectItem value="claude-haiku-4-5">
-                        Claude Haiku 4.5 (Fast)
-                      </SelectItem>
-                      <SelectItem value="claude-opus-4-5">
-                        Claude Opus 4.5 (Max Quality)
-                      </SelectItem>
-
-                      {/* OpenAI (restricted to stable models) */}
-                      <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                      <SelectItem value="gpt-4o-mini">
-                        GPT-4o Mini (Economical)
-                      </SelectItem>
+                      {MODEL_GROUPS.anthropic.models.map((key) => (
+                        <SelectItem key={key} value={key}>
+                          {AI_MODELS[key].name}
+                        </SelectItem>
+                      ))}
+                      <Separator />
+                      {MODEL_GROUPS.openai.models.map((key) => (
+                        <SelectItem key={key} value={key}>
+                          {AI_MODELS[key].name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

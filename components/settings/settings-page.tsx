@@ -57,7 +57,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-import type { ModelKey } from "@/lib/ai-models/config";
+import {
+  type ModelKey,
+  AI_MODELS,
+  MODEL_MIGRATIONS,
+  isModelAllowed,
+  migrateModelKey,
+  getDefaultModel,
+  MODEL_GROUPS,
+} from "@/lib/ai-models/config";
+
 import {
   CanonicalTestType,
   TestTypeMultiselect,
@@ -100,40 +109,10 @@ const DEFAULT_PREFERENCES: Preferences = {
   theme: "system",
   notifications: { email: true, push: true, marketing: false },
   test_case_defaults: {
-    model: "claude-sonnet-4-5",
+    model: getDefaultModel(),
     test_types: ["happy-path", "negative", "boundary"],
     count: 10,
   },
-};
-
-const MODEL_KEYS = new Set<ModelKey>([
-  "claude-sonnet-4-5",
-  "claude-haiku-4-5",
-  "claude-opus-4-5",
-  "gpt-4o",
-  "gpt-4o-mini",
-]);
-
-const MODEL_LABELS: Record<ModelKey, string> = {
-  "claude-sonnet-4-5": "Claude Sonnet 4.5",
-  "claude-haiku-4-5": "Claude Haiku 4.5",
-  "claude-opus-4-5": "Claude Opus 4.5",
-  "gpt-4o": "GPT-4o",
-  "gpt-4o-mini": "GPT-4o Mini",
-};
-
-const MODEL_MIGRATIONS: Record<string, ModelKey> = {
-  // Anthropic legacy
-  "claude-3-5-sonnet-20241022": "claude-sonnet-4-5",
-  "claude-3-5-haiku-20241022": "claude-haiku-4-5",
-
-  // OpenAI legacy IDs -> keys
-  "gpt-4o-2024-11-20": "gpt-4o",
-  "gpt-4o-mini-2024-07-18": "gpt-4o-mini",
-
-  // GPT-5 keys (disabled) -> safe fallbacks
-  "gpt-5-mini": "gpt-4o-mini",
-  "gpt-5.2": "gpt-4o",
 };
 
 // ============================================================================
@@ -141,7 +120,7 @@ const MODEL_MIGRATIONS: Record<string, ModelKey> = {
 // ============================================================================
 
 function isModelKey(v: unknown): v is ModelKey {
-  return typeof v === "string" && MODEL_KEYS.has(v as ModelKey);
+  return isModelAllowed(v as string);
 }
 
 function randomHex(bytes = 32): string {
@@ -151,20 +130,12 @@ function randomHex(bytes = 32): string {
 }
 
 function getModelDisplayName(modelKey: string): string {
-  return MODEL_LABELS[modelKey as ModelKey] ?? modelKey;
+  return isModelAllowed(modelKey) ? AI_MODELS[modelKey].name : modelKey;
 }
 
 function normalizeModel(raw: unknown): ModelKey {
   const s = typeof raw === "string" ? raw : "";
-  const migrated = MODEL_MIGRATIONS[s];
-  if (migrated) return migrated;
-
-  if (s.startsWith("claude-3-5-sonnet")) return "claude-sonnet-4-5";
-  if (s.startsWith("claude-3-5-haiku")) return "claude-haiku-4-5";
-  if (s.startsWith("gpt-4o-mini")) return "gpt-4o-mini";
-  if (s.startsWith("gpt-4o")) return "gpt-4o";
-
-  return isModelKey(s) ? s : "claude-sonnet-4-5";
+  return migrateModelKey(s);
 }
 
 function toCanonicalTestTypes(types: string[]): CanonicalTestType[] {
@@ -254,8 +225,7 @@ export default function SettingsPage() {
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
   const [marketingEmails, setMarketingEmails] = useState(false);
-  const [defaultModel, setDefaultModel] =
-    useState<ModelKey>("claude-sonnet-4-5");
+  const [defaultModel, setDefaultModel] = useState<ModelKey>(getDefaultModel);
   const [defaultCount, setDefaultCount] = useState(10);
   const [defaultTestTypes, setDefaultTestTypes] = useState<CanonicalTestType[]>(
     ["happy-path", "negative", "boundary"],
@@ -798,17 +768,17 @@ export default function SettingsPage() {
                       <SelectValue placeholder="Select a model" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="claude-sonnet-4-5">
-                        Claude Sonnet 4.5
-                      </SelectItem>
-                      <SelectItem value="claude-haiku-4-5">
-                        Claude Haiku 4.5
-                      </SelectItem>
-                      <SelectItem value="claude-opus-4-5">
-                        Claude Opus 4.5
-                      </SelectItem>
-                      <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                      <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
+                      {MODEL_GROUPS.anthropic.models.map((key) => (
+                        <SelectItem key={key} value={key}>
+                          {AI_MODELS[key].name}
+                        </SelectItem>
+                      ))}
+                      <Separator />
+                      {MODEL_GROUPS.openai.models.map((key) => (
+                        <SelectItem key={key} value={key}>
+                          {AI_MODELS[key].name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
 

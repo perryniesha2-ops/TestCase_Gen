@@ -187,7 +187,7 @@ export default function BrowserExtensionGuidePage() {
                   key={item.id}
                   href={`#${item.id}`}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   {item.icon}
@@ -733,7 +733,7 @@ export default function BrowserExtensionGuidePage() {
                 </div>
                 <Separator />
                 <div className="text-xs text-muted-foreground">
-                  Last updated: January 2026 · Guide version: 1.0
+                  Last updated: January 2026 · Guide version: 1.1
                 </div>
               </CardContent>
             </Card>

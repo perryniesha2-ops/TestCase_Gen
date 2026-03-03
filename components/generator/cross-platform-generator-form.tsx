@@ -48,6 +48,17 @@ import {
   type PlatformId as MultiselectPlatformId,
 } from "@/components/generator/cross-platform-test-type-multiselect";
 
+import {
+  type ModelKey,
+  AI_MODELS,
+  MODEL_MIGRATIONS,
+  isModelAllowed,
+  migrateModelKey,
+  getDefaultModel,
+  MODEL_GROUPS,
+} from "@/lib/ai-models/config";
+import { Separator } from "@radix-ui/react-separator";
+
 /* =========================
    Types
 ========================= */
@@ -310,7 +321,7 @@ export function CrossPlatformGeneratorForm() {
   const [projectId, setProjectId] = useState<string>("");
 
   // Model/settings
-  const [model, setModel] = useState("claude-sonnet-4-5");
+  const [model, setModel] = useState(getDefaultModel());
   const [perPlatformCount, setPerPlatformCount] = useState<string>("10");
 
   // Template
@@ -953,29 +964,24 @@ export function CrossPlatformGeneratorForm() {
                 <Label>AI Model</Label>
                 <Select
                   value={model}
-                  onValueChange={setModel}
+                  onValueChange={(v) => setModel(migrateModelKey(v))}
                   disabled={pageBusy}
                 >
                   <SelectTrigger className="h-10">
                     <SelectValue placeholder="Select model" />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* Anthropic (recommended + stable) */}
-                    <SelectItem value="claude-sonnet-4-5">
-                      Claude Sonnet 4.5
-                    </SelectItem>
-                    <SelectItem value="claude-haiku-4-5">
-                      Claude Haiku 4.5 (Fast)
-                    </SelectItem>
-                    <SelectItem value="claude-opus-4-5">
-                      Claude Opus 4.5 (Max Quality)
-                    </SelectItem>
-
-                    {/* OpenAI (restricted to stable models) */}
-                    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                    <SelectItem value="gpt-4o-mini">
-                      GPT-4o Mini (Economical)
-                    </SelectItem>
+                    {MODEL_GROUPS.anthropic.models.map((key) => (
+                      <SelectItem key={key} value={key}>
+                        {AI_MODELS[key].name}
+                      </SelectItem>
+                    ))}
+                    <Separator />
+                    {MODEL_GROUPS.openai.models.map((key) => (
+                      <SelectItem key={key} value={key}>
+                        {AI_MODELS[key].name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -50,9 +50,17 @@ import {
   Eye,
   Loader2,
 } from "lucide-react";
+import {
+  type ModelKey,
+  AI_MODELS,
+  MODEL_MIGRATIONS,
+  isModelAllowed,
+  migrateModelKey,
+  getDefaultModel,
+} from "@/lib/ai-models/config";
 
 import { TemplateEditorDialog } from "@/components/templates/template-editor-dialog";
-import type { TemplateFormData } from "@/components/templates/template-editor-dialog";
+import type { TemplateFormData } from "@/types/templates";
 import type { CanonicalTestType } from "@/components/generator/testtype-multiselect";
 
 // ============================================================================
@@ -123,35 +131,9 @@ const CATEGORY_COLORS: Record<TemplateCategory, string> = {
   other: "bg-gray-500",
 };
 
-const MODEL_DISPLAY_NAMES: Record<string, string> = {
-  "claude-sonnet-4-5": "Claude Sonnet 4.5",
-  "claude-haiku-4-5": "Claude Haiku 4.5",
-  "claude-opus-4-5": "Claude Opus 4.5",
-  "gpt-5-mini": "GPT-5 Mini",
-  "gpt-5.2": "GPT-5.2",
-  "gpt-4o": "GPT-4o",
-  "gpt-4o-mini": "GPT-4o Mini",
-};
-
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-function getModelDisplayName(modelKey: string): string {
-  if (MODEL_DISPLAY_NAMES[modelKey]) return MODEL_DISPLAY_NAMES[modelKey];
-
-  // Fallback to legacy models
-  if (modelKey.includes("claude-3-5-sonnet")) return "Claude 3.5 Sonnet";
-  if (modelKey.includes("claude-3-5-haiku")) return "Claude 3.5 Haiku";
-  if (modelKey.includes("claude-sonnet-4")) return "Claude Sonnet 4";
-  if (modelKey.includes("claude-opus-4")) return "Claude Opus 4";
-  if (modelKey.includes("gpt-4-turbo")) return "GPT-4 Turbo";
-  if (modelKey.includes("gpt-3.5")) return "GPT-3.5 Turbo";
-  if (modelKey.includes("claude")) return "Claude";
-  if (modelKey.includes("gpt")) return "GPT";
-
-  return modelKey;
-}
 
 function tabToScope(tab: Tab): Scope {
   return tab === "public" ? "public" : "my";
@@ -197,7 +179,7 @@ export function TemplateManager() {
     name: "",
     description: "",
     category: "functional",
-    model: "claude-sonnet-4-5",
+    model: getDefaultModel(),
     testCaseCount: 10,
     test_types: ["happy-path", "negative", "boundary"],
     includeEdgeCases: true,
@@ -297,7 +279,7 @@ export function TemplateManager() {
       name: "",
       description: "",
       category: "functional",
-      model: "claude-sonnet-4-5",
+      model: getDefaultModel(),
       testCaseCount: 10,
       test_types: ["happy-path", "negative", "boundary"],
       includeEdgeCases: true,
@@ -804,9 +786,7 @@ export function TemplateManager() {
                         <div className="flex justify-between">
                           <span>Model:</span>
                           <span className="font-medium">
-                            {getModelDisplayName(
-                              template.template_content.model,
-                            )}
+                            {getDefaultModel()}
                           </span>
                         </div>
 

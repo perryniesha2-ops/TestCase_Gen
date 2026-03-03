@@ -284,7 +284,7 @@ export default function TemplatesGuidePage() {
                   key={item.id}
                   href={`#${item.id}`}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   {item.icon}
@@ -641,7 +641,7 @@ export default function TemplatesGuidePage() {
                       </div>
                       <div className="space-y-1 text-xs">
                         <div>
-                          <strong>Model:</strong> Claude Sonnet 4.5
+                          <strong>Model:</strong> Claude Sonnet 4.6
                         </div>
                         <div>
                           <strong>Count:</strong> 10-15 test cases
@@ -682,7 +682,7 @@ export default function TemplatesGuidePage() {
                     <div className="p-3 rounded-lg border">
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-foreground text-sm">
-                          Claude Sonnet 4.5
+                          Claude Sonnet 4.6
                         </span>
                         <Badge variant="secondary">Recommended</Badge>
                       </div>
@@ -741,7 +741,7 @@ export default function TemplatesGuidePage() {
                     <AlertTitle>Model recommendations per category</AlertTitle>
                     <AlertDescription>
                       Security templates → Opus 4.5. Functional templates →
-                      Sonnet 4.5. Quick validation → Haiku 4.5.
+                      Sonnet 4.6. Quick validation → Haiku 4.5.
                     </AlertDescription>
                   </Alert>
                 </AccordionContent>
@@ -1500,7 +1500,7 @@ export default function TemplatesGuidePage() {
                     2. Standard Functional
                   </div>
                   <div>
-                    Sonnet 4.5, 15 tests, Comprehensive - for typical features
+                    Sonnet 4.6, 15 tests, Comprehensive - for typical features
                   </div>
                 </div>
 
@@ -1516,7 +1516,7 @@ export default function TemplatesGuidePage() {
                     4. Regression Suite
                   </div>
                   <div>
-                    Sonnet 4.5, 20 tests, Comprehensive - for release testing
+                    Sonnet 4.6, 20 tests, Comprehensive - for release testing
                   </div>
                 </div>
 
@@ -1524,7 +1524,7 @@ export default function TemplatesGuidePage() {
                   <div className="font-medium text-foreground">
                     5. Performance Baseline
                   </div>
-                  <div>Sonnet 4.5, 10 tests, Standard - for load testing</div>
+                  <div>Sonnet 4.6, 10 tests, Standard - for load testing</div>
                 </div>
               </CardContent>
             </Card>
@@ -1732,7 +1732,7 @@ export default function TemplatesGuidePage() {
                 </div>
 
                 <div className="text-xs text-muted-foreground pt-4 border-t">
-                  Last updated: January 2026 · Guide version: 1.0
+                  Last updated: January 2026 · Guide version: 1.1
                 </div>
               </CardContent>
             </Card>
