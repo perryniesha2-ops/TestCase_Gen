@@ -197,12 +197,9 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
     const reasons: string[] = [];
 
     // Check if test cases were updated after last automation generation
-    if (suiteData.automation_last_generated) {
-      const lastGenerated = new Date(suiteData.automation_last_generated);
-      const hasNewerCases = cases.some((tc) => {
-        const updatedAt = new Date(tc.updated_at);
-        return updatedAt > lastGenerated;
-      });
+    if (suiteData.last_generated_at) {
+      const lastGenerated = new Date(suiteData.last_generated_at);
+      const hasNewerCases = cases.some((tc) => {});
 
       if (hasNewerCases) {
         reasons.push("Test cases have been updated");
@@ -210,17 +207,16 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
     }
 
     // Check if suite config was updated after last generation
-    if (suiteData.automation_last_generated && suiteData.updated_at) {
-      const lastGenerated = new Date(suiteData.automation_last_generated);
-      const suiteUpdated = new Date(suiteData.updated_at);
-
-      if (suiteUpdated > lastGenerated) {
-        reasons.push("Suite configuration has changed");
+    if (suiteData.last_generated_at && suiteData.automation_config_updated_at) {
+      const lastGenerated = new Date(suiteData.last_generated_at);
+      const cfgUpdated = new Date(suiteData.automation_config_updated_at);
+      if (cfgUpdated > lastGenerated) {
+        reasons.push("Suite automation configuration has changed");
       }
     }
 
     // Check if there are new test cases since last generation
-    if (suiteData.automation_last_generated) {
+    if (suiteData.last_generated_at) {
       const casesWithoutMetadata = cases.filter(
         (tc) => !tc.has_automation_metadata,
       );
@@ -244,42 +240,26 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
         id: "regenerate",
       });
 
-      const supabase = createClient();
-
-      // Call the same endpoint as AddAutomationButton but with regenerate flag
       const response = await fetch("/api/automation/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          suiteId: suite.id,
-          applicationUrl: suite.base_url || "https://app.example.com",
-          regenerate: true, // Flag to indicate regeneration
+          suite_id: suite.id,
+          application_url: suite.base_url || "https://app.example.com",
+          regenerate: true,
         }),
       });
 
+      const payload = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to regenerate automation");
+        throw new Error(payload?.error || "Failed to regenerate automation");
       }
-
-      const result = await response.json();
-
-      // Update suite with new generation timestamp
-      const { error: updateError } = await supabase
-        .from("suites")
-        .update({
-          automation_last_generated: new Date().toISOString(),
-          automation_enabled: true,
-        })
-        .eq("id", suite.id);
-
-      if (updateError) throw updateError;
 
       toast.success("Automation metadata regenerated successfully!", {
         id: "regenerate",
       });
 
-      // Reload suite data
       await loadSuiteData();
     } catch (error: any) {
       console.error("Error regenerating automation:", error);
@@ -358,24 +338,15 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Code2 className="h-6 w-8 text-primary" />
-              <h1 className="text-3xl font-bold">{suite.name}</h1>
-            </div>
-
-            <div className="space-y-4">
-              <Badge className={getStatusColor(suite.automation_status)}>
-                {getStatusLabel(suite.automation_status)}
-              </Badge>
-
-              <Badge variant="outline" className="gap-1">
-                <Zap className="h-3 w-3" />
-                {suite.automation_framework?.toUpperCase() || "PLAYWRIGHT"}
-              </Badge>
-            </div>
-            <div className="h-6" />
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => router.back()}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -407,12 +378,6 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
                     Regenerate
                   </>
                 )}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => router.push("/test-library")}
-              >
-                Back to Suites
               </Button>
             </>
           )}
@@ -457,6 +422,25 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
           </AlertDescription>
         </Alert>
       )}
+
+      <div>
+        <div className="flex items-center gap-2">
+          <Code2 className="h-6 w-8 text-primary" />
+          <h1 className="text-3xl font-bold">{suite.name}</h1>
+        </div>
+
+        <div className="space-y-4">
+          <Badge className={getStatusColor(suite.automation_status)}>
+            {getStatusLabel(suite.automation_status)}
+          </Badge>
+          {"   "}
+          <Badge variant="outline" className="gap-1">
+            <Zap className="h-3 w-3" />
+            {suite.automation_framework?.toUpperCase() || "PLAYWRIGHT"}
+          </Badge>
+        </div>
+        <div className="h-6" />
+      </div>
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

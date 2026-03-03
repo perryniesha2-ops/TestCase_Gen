@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
@@ -20,6 +21,7 @@ import {
   Clock,
   Zap,
   TrendingUp,
+  ArrowLeft,
 } from "lucide-react";
 import {
   LineChart,
@@ -134,6 +136,7 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
   const [problemTests, setProblemTests] = useState<ProblemTest[]>([]);
   const [suites, setSuites] = useState<Suite[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   const loadProject = useCallback(async () => {
     if (!user) return;
@@ -257,33 +260,15 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
               {/* Header */}
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-3">
-                    <FolderOpen className="h-6 w-6 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <h1 className="text-2xl font-semibold leading-tight truncate">
-                        {project.name}
-                      </h1>
-                      {project.description ? (
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {project.description}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">{project.status ?? "—"}</Badge>
-                    <Badge variant="secondary">{daysLabel}d view</Badge>
-                    <Badge variant="secondary">
-                      {combinedPassRate}% pass rate
-                    </Badge>
-                    {dashboard?.last_execution_at ? (
-                      <Badge variant="secondary" className="truncate">
-                        Last run:{" "}
-                        {new Date(dashboard.last_execution_at).toLocaleString()}
-                      </Badge>
-                    ) : null}
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => router.back()}
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back
+                  </Button>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -322,6 +307,30 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                     </Button>
                   )}
                 </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <FolderOpen className="h-6 w-6 text-muted-foreground" />
+                <div className="min-w-0">
+                  <h1 className="text-2xl font-semibold leading-tight truncate">
+                    {project.name}
+                  </h1>
+                  {project.description ? (
+                    <p className="text-sm text-muted-foreground line-clamp-2">
+                      {project.description}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Badge variant="outline">{project.status ?? "—"}</Badge>
+                <Badge variant="secondary">{daysLabel}d view</Badge>
+                <Badge variant="secondary">{combinedPassRate}% pass rate</Badge>
+                {dashboard?.last_execution_at ? (
+                  <Badge variant="secondary" className="truncate">
+                    Last run:{" "}
+                    {new Date(dashboard.last_execution_at).toLocaleString()}
+                  </Badge>
+                ) : null}
               </div>
 
               {/* KPI Cards */}
