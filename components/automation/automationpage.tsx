@@ -64,6 +64,8 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
     }
   }, [suiteId, user]);
 
+  // app/(authenticated)/automation/[suiteId]/page-client.tsx
+
   const loadSuiteData = useCallback(async () => {
     if (!user) return;
 
@@ -76,9 +78,9 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
         .from("suites")
         .select(
           `
-          *,
-          projects:project_id(id, name, color, icon)
-        `,
+        *,
+        projects:project_id(id, name, color, icon)
+      `,
         )
         .eq("id", suiteId)
         .eq("user_id", user.id)
@@ -86,32 +88,51 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
 
       if (suiteError) throw suiteError;
 
+      // ✅ Load automation_runs stats
+      const { data: automationRuns, error: runsError } = await supabase
+        .from("automation_runs")
+        .select("*")
+        .eq("suite_id", suiteId)
+        .order("created_at", { ascending: false });
+
+      if (runsError) {
+        console.error("Error loading automation runs:", runsError);
+      }
+
+      // ✅ Calculate pass rate and last run from automation_runs
+      const totalRuns = automationRuns?.length || 0;
+      const passedRuns =
+        automationRuns?.filter((r) => r.status === "passed").length || 0;
+      const passRate =
+        totalRuns > 0 ? Math.round((passedRuns / totalRuns) * 100) : null;
+      const lastRun = automationRuns?.[0]; // Most recent run
+
       // Load test cases
       const { data: suiteCases, error: casesError } = await supabase
         .from("suite_items")
         .select(
           `
-          *,
-          test_cases (
-            id,
-            title,
-            description,
-            test_type,
-            test_steps,
-            automation_metadata,
-            updated_at
-          ),
-          platform_test_cases (
-            id,
-            title,
-            description,
-            platform,
-            framework,
-            steps,
-            automation_metadata,
-            updated_at
-          )
-        `,
+        *,
+        test_cases (
+          id,
+          title,
+          description,
+          test_type,
+          test_steps,
+          automation_metadata,
+          updated_at
+        ),
+        platform_test_cases (
+          id,
+          title,
+          description,
+          platform,
+          framework,
+          steps,
+          automation_metadata,
+          updated_at
+        )
+      `,
         )
         .eq("suite_id", suiteId)
         .order("sequence_order", { ascending: true });
@@ -157,6 +178,10 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
       setSuite({
         ...suiteData,
         automation_stats: automationStats,
+        // ✅ Add calculated stats
+        automation_pass_rate: passRate,
+        total_automation_runs: totalRuns,
+        last_automation_run: lastRun?.started_at || null,
       });
       setTestCases(cases);
     } catch (error) {
@@ -468,9 +493,7 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {suite.automation_pass_rate
-                ? `${suite.automation_pass_rate}%`
-                : "N/A"}
+              {suite.pass_rate ? `${suite.pass_rate}%` : "N/A"}
             </div>
             <p className="text-xs text-muted-foreground">
               {suite.total_automation_runs || 0} total runs
