@@ -97,14 +97,14 @@ export async function POST(req: Request) {
     zip.file(
       `${root}/cypress.config.ts`,
       `import { defineConfig } from 'cypress';
-      import synthqareporter from './cypress/support/synthqareporter';
-
+import synthqareporter from './cypress/support/synthqareporter';
 
 export default defineConfig({
   e2e: {
-    baseUrl: process.env.BASE_URL || '${suite.base_url}',
+    baseUrl: '${suite.base_url}',
     setupNodeEvents(on, config) {
-          synthqareporter(on);
+      synthqareporter(on, config);
+      return config;
     },
     supportFile: 'cypress/support/e2e.ts',
     specPattern: 'cypress/e2e/**/*.cy.ts',
@@ -113,7 +113,7 @@ export default defineConfig({
     retries: {
       runMode: 2,
       openMode: 0
-    }
+    },
   },
 });
 `,
@@ -121,13 +121,10 @@ export default defineConfig({
 
     //cypress synthqa reporter
 
+    // synthqareporter.ts template
     zip.file(
       `${root}/cypress/support/synthqareporter.ts`,
       `import { execSync } from 'child_process';
-
-const WEBHOOK_URL = process.env.SYNTHQA_WEBHOOK_URL;
-const API_KEY = process.env.SYNTHQA_API_KEY;
-const SUITE_ID = process.env.SYNTHQA_SUITE_ID;
 
 interface TestResult {
   test_case_id: string | null;
@@ -145,12 +142,9 @@ interface TestResult {
   cypress_version: string;
 }
 
-const results: TestResult[] = [];
-let suiteStartTime = new Date().toISOString();
-
 let cypressVersion = 'unknown';
 try {
-  cypressVersion = execSync('npx cypress --version --component')
+  cypressVersion = execSync('npx cypress --version')
     .toString()
     .split('\\n')[0]
     .trim();
@@ -165,9 +159,14 @@ const getOS = (): string => {
   return 'Linux';
 };
 
-module.exports = (on: Cypress.PluginEvents) => {
+export default (on: Cypress.PluginEvents, config: Cypress.PluginConfigOptions) => {
+  const WEBHOOK_URL = config.env.SYNTHQA_WEBHOOK_URL as string | undefined;
+  const API_KEY = config.env.SYNTHQA_API_KEY as string | undefined;
+  const SUITE_ID = config.env.SYNTHQA_SUITE_ID as string | undefined;
+
+  const results: TestResult[] = [];
+
   on('before:run', () => {
-    suiteStartTime = new Date().toISOString();
     results.length = 0;
   });
 
@@ -180,53 +179,39 @@ module.exports = (on: Cypress.PluginEvents) => {
       const state = lastAttempt.state ?? test.state ?? 'skipped';
       const durationMs = lastAttempt.duration ?? test.duration ?? 0;
 
-      // Extract test_case_id from the it() title (we use the UUID as the test name)
-      const uuidRegex =
-        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+      const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
       const titleMatch = test.title?.join(' ')?.match(uuidRegex);
       const testCaseId = titleMatch ? titleMatch[0] : null;
-
       const error = lastAttempt.error;
-      const startedAt = new Date(
-        Date.now() - durationMs
-      ).toISOString();
-      const completedAt = new Date().toISOString();
 
       results.push({
         test_case_id: testCaseId,
         execution_status:
-          state === 'passed'
-            ? 'passed'
-            : state === 'pending'
-            ? 'skipped'
-            : 'failed',
-        started_at: startedAt,
-        completed_at: completedAt,
+          state === 'passed' ? 'passed' : state === 'pending' ? 'skipped' : 'failed',
+        started_at: new Date(Date.now() - durationMs).toISOString(),
+        completed_at: new Date().toISOString(),
         duration_minutes: durationMs / 60000,
         execution_notes: null,
         failure_reason: error?.message ?? null,
         stack_trace: error?.stack ?? null,
         browser: 'chrome',
         os_version: getOS(),
-        test_environment: process.env.TEST_ENVIRONMENT || 'local',
+        test_environment: config.env.TEST_ENVIRONMENT || 'local',
         framework: 'cypress',
         cypress_version: cypressVersion,
       });
     }
   });
 
-  on('after:run', async (runResults: any) => {
+  on('after:run', async (_runResults: any) => {
     if (!WEBHOOK_URL || !API_KEY || !SUITE_ID) {
-      console.warn(
-        '[SynthQA] Missing SYNTHQA_WEBHOOK_URL, SYNTHQA_API_KEY, or SYNTHQA_SUITE_ID — skipping result sync'
-      );
+      console.warn('[SynthQA] Missing SYNTHQA_WEBHOOK_URL, SYNTHQA_API_KEY, or SYNTHQA_SUITE_ID — skipping result sync');
       return;
     }
 
     const passed = results.filter((r) => r.execution_status === 'passed').length;
     const failed = results.filter((r) => r.execution_status === 'failed').length;
     const skipped = results.filter((r) => r.execution_status === 'skipped').length;
-    const total = results.length;
 
     const payload = {
       suite_id: SUITE_ID,
@@ -234,7 +219,7 @@ module.exports = (on: Cypress.PluginEvents) => {
       framework: 'cypress',
       test_results: results,
       metadata: {
-        total_tests: total,
+        total_tests: results.length,
         passed_tests: passed,
         failed_tests: failed,
         skipped_tests: skipped,
@@ -260,9 +245,7 @@ module.exports = (on: Cypress.PluginEvents) => {
         console.error(\`[SynthQA] Webhook failed (\${res.status}): \${text}\`);
       } else {
         const json = await res.json();
-        console.log(
-          \`[SynthQA] ✅ Synced run #\${json.run_number} — \${passed} passed, \${failed} failed, \${skipped} skipped\`
-        );
+        console.log(\`[SynthQA] ✅ Synced run #\${json.run_number} — \${passed} passed, \${failed} failed, \${skipped} skipped\`);
       }
     } catch (err) {
       console.error('[SynthQA] Webhook error:', err);
@@ -271,6 +254,7 @@ module.exports = (on: Cypress.PluginEvents) => {
 };
 `,
     );
+
     // tsconfig.json
     zip.file(
       `${root}/tsconfig.json`,
@@ -342,15 +326,18 @@ export {};
 
     // .env.example
     zip.file(
-      `${root}/.env.example`,
-      `BASE_URL=${suite.base_url}
-SYNTHQA_WEBHOOK_URL=${process.env.NEXT_PUBLIC_APP_URL || ""}/api/automation/webhook/results
-SYNTHQA_API_KEY=your_api_key_here
-SYNTHQA_SUITE_ID=${suite.id}
-TEST_ENVIRONMENT=local
-USER_EMAIL=test@example.com
-USER_PASSWORD=password123
-`,
+      `${root}/cypress.env.json`,
+      JSON.stringify(
+        {
+          SYNTHQA_WEBHOOK_URL: `${process.env.NEXT_PUBLIC_APP_URL}/api/automation/webhook/results`,
+          SYNTHQA_API_KEY: "your_api_key_here",
+          SYNTHQA_SUITE_ID: suite.id,
+          BASE_URL: suite.base_url,
+          TEST_ENVIRONMENT: "local",
+        },
+        null,
+        2,
+      ),
     );
 
     // .gitignore
@@ -359,7 +346,7 @@ USER_PASSWORD=password123
       `node_modules
 cypress/videos
 cypress/screenshots
-.env
+cypress.env.json
 cypress/downloads
 `,
     );
@@ -456,6 +443,7 @@ ${stepsCode}
 `;
 }
 
+// README template — update the Configuration section
 function generateCypressReadme(suiteName: string, caseCount: number): string {
   return `# ${suiteName} - Cypress Tests
 
@@ -479,13 +467,17 @@ npm run open
 
 ## Configuration
 
-Create a \`.env\` file:
+Update \`cypress.env.json\` with your API key:
 
-\`\`\`bash
-BASE_URL=https://your-app.com
-USER_EMAIL=test@example.com
-USER_PASSWORD=password123
+\`\`\`json
+{
+  "SYNTHQA_API_KEY": "your_api_key_here"
+}
 \`\`\`
+
+All other values (webhook URL, suite ID, base URL) are pre-filled from your SynthQA configuration.
+
+> ⚠️ Do not commit \`cypress.env.json\` — it is already in \`.gitignore\`.
 
 ## Test Cases
 
@@ -496,6 +488,8 @@ USER_PASSWORD=password123
 
 \`\`\`yaml
 - name: Run Cypress tests
+  env:
+    CYPRESS_SYNTHQA_API_KEY: \${{ secrets.SYNTHQA_API_KEY }}
   run: npm test
 \`\`\`
 `;
