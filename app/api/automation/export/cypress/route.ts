@@ -102,7 +102,7 @@ export default defineConfig({
   e2e: {
     baseUrl: process.env.BASE_URL || '${suite.base_url}',
     setupNodeEvents(on, config) {
-          synthqa-reporter(on);
+          synthqareporter(on);
     },
     supportFile: 'cypress/support/e2e.ts',
     specPattern: 'cypress/e2e/**/*.cy.ts',
@@ -120,7 +120,7 @@ export default defineConfig({
     //cypress synthqa reporter
 
     zip.file(
-      `${root}/cypress/support/synthqa-reporter.ts`,
+      `${root}/cypress/support/synthqareporter.ts`,
       `import { execSync } from 'child_process';
 
 const WEBHOOK_URL = process.env.SYNTHQA_WEBHOOK_URL;
