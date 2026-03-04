@@ -80,15 +80,6 @@ export async function POST(req: Request) {
 
     const payload: TestResultPayload = await req.json();
 
-    // ✅ ADD DEBUG LOG
-    console.log("📦 WEBHOOK RECEIVED:", {
-      suite_id: payload.suite_id,
-      total_tests: payload.test_results?.length,
-      tests_with_case_id: payload.test_results?.filter((r) => r.test_case_id)
-        .length,
-      sample: payload.test_results?.[0],
-    });
-
     const { data: suite, error: suiteError } = await supabase
       .from("suites")
       .select("id, user_id, total_automation_runs")
@@ -153,7 +144,6 @@ export async function POST(req: Request) {
       .select()
       .single();
 
-    // ✅ CHECK FOR ERRORS IMMEDIATELY AFTER INSERT
     if (runError) {
       console.error("❌ FAILED TO CREATE AUTOMATION RUN:", {
         error: runError,
@@ -225,8 +215,8 @@ export async function POST(req: Request) {
         os_version: r.os_version,
         framework: testFramework,
         framework_version: testFrameworkVersion,
-        session_id: null, // ✅ NULL for automated tests (FK to test_run_sessions)
-        automation_session_id: payload.session_id, // ✅ NEW: Store automation session
+        session_id: null,
+        automation_session_id: payload.session_id,
         automation_run_id: automationRun.id,
         total_tests: payload.metadata.total_tests,
         passed_tests: payload.metadata.passed_tests,
@@ -244,7 +234,7 @@ export async function POST(req: Request) {
       const { data: insertedExecs, error: execError } = await supabase
         .from("test_executions")
         .insert(executions)
-        .select(); // ✅ Get back inserted records
+        .select();
 
       if (execError) {
         console.error("❌ FAILED TO INSERT TEST EXECUTIONS:", {
@@ -252,7 +242,6 @@ export async function POST(req: Request) {
           message: execError.message,
           code: execError.code,
         });
-        // Don't return error - automation_run was created successfully
       } else {
         console.log("✅ INSERTED TEST EXECUTIONS:", insertedExecs?.length);
       }

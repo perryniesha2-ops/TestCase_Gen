@@ -100,6 +100,13 @@ function isNavigationAction(action: string): boolean {
   return navigationKeywords.some((keyword) => lowerAction.includes(keyword));
 }
 
+function stripAutomationFields(step: any) {
+  if (!step || typeof step !== "object") return step;
+  const { selector, action_type, input_value, wait_time, assertion, ...rest } =
+    step;
+  return rest;
+}
+
 // ============================================================================
 // AUTOMATION ENHANCEMENT PROMPT
 // ============================================================================
@@ -376,7 +383,7 @@ function postProcessSteps(
 
     return processedStep;
   });
-} // ← THIS WAS MISSING!
+}
 
 // ============================================================================
 // MAIN HANDLER
@@ -400,11 +407,21 @@ export async function POST(req: Request) {
       test_case_ids?: string[];
       suite_id?: string;
       application_url?: string;
+      regenerate?: boolean;
+      automation_framework?:
+        | "playwright"
+        | "selenium"
+        | "cypress"
+        | "puppeteer"
+        | "testcafe"
+        | "webdriverio";
     };
 
     const testCaseIds = body.test_case_ids || [];
     const suiteId = body.suite_id;
     const applicationUrl = body.application_url || "https://app.example.com";
+    const regenerate = Boolean(body.regenerate);
+    const framework = body.automation_framework ?? "playwright";
 
     console.log("[Automation] Request:", {
       test_case_ids: testCaseIds.length,
@@ -420,7 +437,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ FIX: Fetch suite info FIRST to get the kind
     let suiteKind: string | null = null;
     if (suiteId) {
       const { data: suite, error: suiteError } = await supabase
@@ -450,7 +466,6 @@ export async function POST(req: Request) {
     let platformTestCaseIds: string[] = [];
 
     if (suiteId) {
-      // ✅ FIX: Fetch ALL suite items (both regular and platform)
       const { data: suiteItems, error: itemsError } = await supabase
         .from("suite_items")
         .select("test_case_id, platform_test_case_id")
@@ -504,7 +519,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // ✅ FIX: Process regular test cases
     let totalEnhanced = 0;
     let totalSkipped = 0;
     let totalFailed = 0;
@@ -532,23 +546,32 @@ export async function POST(req: Request) {
       );
 
       // Filter out test cases that already have automation data
-      const casesNeedingAutomation = testCases.filter((tc) => {
+      const casesToProcess = testCases.filter((tc) => {
         const steps = Array.isArray(tc.test_steps) ? tc.test_steps : [];
         const hasAutomation = steps.some(
           (s: any) => s.selector && s.action_type,
         );
-        if (hasAutomation) totalSkipped++;
-        return !hasAutomation;
+        if (!regenerate && hasAutomation) {
+          totalSkipped++;
+          return false;
+        }
+        return true;
       });
 
       console.log(
-        `[Automation] ${casesNeedingAutomation.length} regular test cases need automation`,
+        `[Automation] ${casesToProcess.length} regular test cases need automation`,
       );
 
       // Process each test case
-      for (const tc of casesNeedingAutomation) {
+      for (const tc of casesToProcess) {
         try {
           const steps = Array.isArray(tc.test_steps) ? tc.test_steps : [];
+
+          const rawSteps = Array.isArray(tc.test_steps) ? tc.test_steps : [];
+
+          const stepsForModel = regenerate
+            ? rawSteps.map(stripAutomationFields)
+            : rawSteps;
 
           if (steps.length === 0) {
             console.warn(`[Automation] Test case ${tc.id} has no steps`);
@@ -574,7 +597,7 @@ DESCRIPTION: ${tc.description || "N/A"}
 EXPECTED RESULT: ${tc.expected_result || "N/A"}
 
 STEPS TO ENHANCE:
-${JSON.stringify(steps, null, 2)}
+${JSON.stringify(stepsForModel, null, 2)}
 
 Return ONLY a JSON object with an "enhanced_steps" array.`;
 
@@ -646,7 +669,6 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
       }
     }
 
-    // ✅ FIX: Process platform test cases if any
     if (platformTestCaseIds.length > 0) {
       const { data: platformCases, error: fetchError } = await supabase
         .from("platform_test_cases")
@@ -780,15 +802,16 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
       }
     }
 
-    // ✅ FIX: Update suite metadata AFTER processing (not before!)
-    if (suiteId && totalEnhanced > 0) {
+    if ((suiteId && totalEnhanced > 0) || regenerate) {
+      const now = new Date().toISOString();
+
       const { error: updateError } = await supabase
         .from("suites")
         .update({
           automation_enabled: true,
           automation_status: "ready",
           automation_generated: true,
-          last_generated_at: new Date().toISOString(),
+          last_generated_at: now,
           automation_ready_count: totalEnhanced,
         })
         .eq("id", suiteId);
@@ -944,6 +967,7 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
       });
     }
   }
+  const now = new Date().toISOString();
 
   // Update suite automation metadata
   if (enhanced.length > 0) {
@@ -951,7 +975,7 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
       .from("suites")
       .update({
         automation_generated: true,
-        last_generated_at: new Date().toISOString(),
+        last_generated_at: now,
         automation_ready_count: enhanced.length,
       })
       .eq("id", suiteId);

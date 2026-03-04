@@ -39,6 +39,15 @@ import {
   X,
 } from "lucide-react";
 
+import {
+  type ModelKey,
+  AI_MODELS,
+  MODEL_MIGRATIONS,
+  isModelAllowed,
+  migrateModelKey,
+  getDefaultModel,
+} from "@/lib/ai-models/config";
+
 type TemplateCategory =
   | "functional"
   | "security"
@@ -93,25 +102,6 @@ const categoryIcons: Record<
   other: FileText,
 };
 
-function getModelDisplayName(modelKey: string): string {
-  if (modelKey === "claude-sonnet-4-5") return "Claude Sonnet 4.5";
-  if (modelKey === "claude-haiku-4-5") return "Claude Haiku 4.5";
-  if (modelKey === "claude-opus-4-5") return "Claude Opus 4.5";
-  if (modelKey === "gpt-5-mini") return "GPT-5 Mini";
-  if (modelKey === "gpt-5.2") return "GPT-5.2";
-  if (modelKey === "gpt-4o") return "GPT-4o";
-  if (modelKey === "gpt-4o-mini") return "GPT-4o Mini";
-  if (modelKey.includes("claude-3-5-sonnet")) return "Claude 3.5 Sonnet";
-  if (modelKey.includes("claude-3-5-haiku")) return "Claude 3.5 Haiku";
-  if (modelKey.includes("claude-sonnet-4")) return "Claude Sonnet 4";
-  if (modelKey.includes("claude-opus-4")) return "Claude Opus 4";
-  if (modelKey.includes("gpt-4-turbo")) return "GPT-4 Turbo";
-  if (modelKey.includes("gpt-3.5")) return "GPT-3.5 Turbo";
-  if (modelKey.includes("claude")) return "Claude";
-  if (modelKey.includes("gpt")) return "GPT";
-  return modelKey;
-}
-
 export function TemplateSelect({
   value,
   onSelect,
@@ -123,7 +113,7 @@ export function TemplateSelect({
 }: TemplateSelectProps) {
   const [templates, setTemplates] = useState<Template[]>(templatesProp ?? []);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(
-    null
+    null,
   );
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -141,7 +131,7 @@ export function TemplateSelect({
 
   const favoriteTemplates = useMemo(
     () => visibleTemplates.filter((t) => t.is_favorite),
-    [visibleTemplates]
+    [visibleTemplates],
   );
 
   useEffect(() => {
@@ -211,8 +201,8 @@ export function TemplateSelect({
         prev.map((t) =>
           t.id === templateId
             ? { ...t, usage_count: (t.usage_count ?? 0) + 1 }
-            : t
-        )
+            : t,
+        ),
       );
     } catch (e) {
       console.error("Error recording template usage:", e);
@@ -381,11 +371,7 @@ export function TemplateSelect({
                 <div className="grid gap-2 text-sm">
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-muted-foreground">AI Model:</span>
-                    <span className="font-medium">
-                      {getModelDisplayName(
-                        selectedTemplate.template_content.model
-                      )}
-                    </span>
+                    <span className="font-medium">{getDefaultModel()}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-muted-foreground">Test Cases:</span>

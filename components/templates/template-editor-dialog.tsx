@@ -27,7 +27,19 @@ import {
   TestTypeMultiselect,
   type CanonicalTestType,
 } from "@/components/generator/testtype-multiselect";
+
 import { ProjectSelect } from "@/components/projects/project-select";
+
+import {
+  type ModelKey,
+  AI_MODELS,
+  MODEL_MIGRATIONS,
+  isModelAllowed,
+  migrateModelKey,
+  getDefaultModel,
+} from "@/lib/ai-models/config";
+
+import { TemplateFormData } from "@/types/templates";
 
 type TemplateCategory =
   | "functional"
@@ -43,18 +55,6 @@ type TemplateContent = {
   testCaseCount: number;
   includeEdgeCases?: boolean;
   includeNegativeTests?: boolean;
-};
-
-export type TemplateFormData = {
-  name: string;
-  description: string;
-  category: TemplateCategory;
-  model: string;
-  testCaseCount: number;
-  includeEdgeCases: boolean;
-  includeNegativeTests: boolean;
-  test_types: CanonicalTestType[];
-  project_id: string | null;
 };
 
 type Props = {
@@ -184,7 +184,7 @@ export function TemplateEditorDialog({
               <div className="space-y-2">
                 <Label>AI Model</Label>
                 <Select
-                  value={formData.model}
+                  value={getDefaultModel()}
                   onValueChange={(value) =>
                     setFormData((p) => ({ ...p, model: value }))
                   }
@@ -193,20 +193,20 @@ export function TemplateEditorDialog({
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="min-w-[var(--radix-select-trigger-width)]">
-                    <SelectItem value="claude-sonnet-4-5">
-                      Claude Sonnet 4.5 (Recommended)
-                    </SelectItem>
-                    <SelectItem value="claude-haiku-4-5">
-                      Claude Haiku 4.5 (Fast)
-                    </SelectItem>
-                    <SelectItem value="claude-opus-4-5">
-                      Claude Opus 4.5 (Max Quality)
-                    </SelectItem>
-                    <SelectItem value="gpt-5-mini">GPT-5 Mini</SelectItem>
-                    <SelectItem value="gpt-5.2">GPT-5.2</SelectItem>
-                    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                    <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
+                  <SelectContent>
+                    {Object.values(AI_MODELS).map((m) => (
+                      <SelectItem
+                        key={m.id}
+                        value={
+                          Object.keys(AI_MODELS).find(
+                            (k) => AI_MODELS[k as ModelKey].id === m.id,
+                          )!
+                        }
+                      >
+                        {m.name}
+                        {m.hint ? ` — ${m.hint}` : ""}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

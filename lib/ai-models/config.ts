@@ -4,14 +4,29 @@ export const AI_MODELS = {
   // ============================================================================
   // ANTHROPIC CLAUDE MODELS
   // ============================================================================
+  "claude-sonnet-4-6": {
+    id: "claude-sonnet-4-6",
+    name: "Claude Sonnet 4.6",
+    provider: "anthropic",
+    family: "claude-4.6",
+    description:
+      "Latest Sonnet - Best balance of speed & quality, improved coding",
+    hint: "Recommended",
+    recommended: true,
+    contextWindow: 200000,
+    maxOutput: 64000,
+    pricing: { input: 3.0, output: 15.0 },
+    releaseDate: "2026-02-18",
+  },
+
   "claude-sonnet-4-5": {
     id: "claude-sonnet-4-5-20250514",
     name: "Claude Sonnet 4.5",
     provider: "anthropic",
     family: "claude-4.5",
-    description: "Latest Sonnet - Best balance of speed & quality",
-    hint: "Recommended",
-    recommended: true,
+    description: "Previous Sonnet - Stable & well-tested",
+    hint: "",
+    recommended: false,
     contextWindow: 200000,
     maxOutput: 8192,
     pricing: { input: 3.0, output: 15.0 },
@@ -49,7 +64,6 @@ export const AI_MODELS = {
   // ============================================================================
   // OPENAI GPT MODELS (SAFE ALLOWLIST)
   // ============================================================================
-  // NOTE: GPT-5 family intentionally excluded for reliability in production.
   "gpt-4o": {
     id: "gpt-4o-2024-11-20",
     name: "GPT-4o",
@@ -120,12 +134,12 @@ export function isOpenAIModel(key: ModelKey): boolean {
   return AI_MODELS[key].provider === "openai";
 }
 
-export function getFallbackModel(provider: "anthropic" | "openai"): ModelKey {
-  return provider === "anthropic" ? "claude-sonnet-4-5" : "gpt-4o";
+export function getDefaultModel(): ModelKey {
+  return "claude-sonnet-4-6";
 }
 
-export function getDefaultModel(): ModelKey {
-  return "claude-sonnet-4-5";
+export function getFallbackModel(provider: "anthropic" | "openai"): ModelKey {
+  return provider === "anthropic" ? "claude-sonnet-4-6" : "gpt-4o";
 }
 
 /**
@@ -142,11 +156,12 @@ export function isModelAllowed(key: string): key is ModelKey {
 export const MODEL_GROUPS = {
   recommended: {
     label: "Recommended",
-    models: ["claude-sonnet-4-5"] as ModelKey[],
+    models: ["claude-sonnet-4-6"] as ModelKey[],
   },
   anthropic: {
     label: "Anthropic Claude",
     models: [
+      "claude-sonnet-4-6",
       "claude-sonnet-4-5",
       "claude-haiku-4-5",
       "claude-opus-4-5",
@@ -166,16 +181,20 @@ export const MODEL_GROUPS = {
 // MIGRATION HELPER
 // ============================================================================
 export const MODEL_MIGRATIONS: Record<string, ModelKey> = {
-  // Old Anthropic keys
-  "claude-3-5-sonnet-20241022": "claude-sonnet-4-5",
-  "claude-3-5-sonnet": "claude-sonnet-4-5",
+  // Sonnet 4.6 snapshot alias
+  "claude-sonnet-4-6-20260218": "claude-sonnet-4-6",
+
+  // Old Anthropic keys -> 4.6
+  "claude-3-5-sonnet-20241022": "claude-sonnet-4-6",
+  "claude-3-5-sonnet": "claude-sonnet-4-6",
+  "claude-sonnet-4": "claude-sonnet-4-6",
+  "claude-sonnet-4-5": "claude-sonnet-4-6", // upgrade old default
+
+  // Haiku / Opus stay pinned
   "claude-3-5-haiku-20241022": "claude-haiku-4-5",
   "claude-3-5-haiku": "claude-haiku-4-5",
-
-  // Old Claude 4 keys
-  "claude-sonnet-4": "claude-sonnet-4-5",
-  "claude-opus-4": "claude-opus-4-5",
   "claude-haiku-4": "claude-haiku-4-5",
+  "claude-opus-4": "claude-opus-4-5",
 
   // Old OpenAI IDs -> keys
   "gpt-4o-2024-11-20": "gpt-4o",
@@ -183,8 +202,6 @@ export const MODEL_MIGRATIONS: Record<string, ModelKey> = {
   "gpt-4-turbo-2024-04-09": "gpt-4o",
   "gpt-4-turbo": "gpt-4o",
   "gpt-3-5-turbo": "gpt-4o-mini",
-
-  // GPT-5 keys (deprecated/disabled) -> safe fallbacks
   "gpt-5-mini": "gpt-4o-mini",
   "gpt-5.2": "gpt-4o",
 };

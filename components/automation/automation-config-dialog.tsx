@@ -1,7 +1,7 @@
 // components/automation/automation-config-dialog.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import {
@@ -31,6 +31,28 @@ interface AutomationConfigDialogProps {
   onUpdate: () => void;
 }
 
+type ConfigState = {
+  automation_framework: string;
+  base_url: string;
+  automation_notes: string;
+};
+
+function normalizeConfig(suite: any): ConfigState {
+  return {
+    automation_framework: suite?.automation_framework || "playwright",
+    base_url: suite?.base_url || "",
+    automation_notes: suite?.automation_notes || "",
+  };
+}
+
+function isSameConfig(a: ConfigState, b: ConfigState): boolean {
+  return (
+    a.automation_framework === b.automation_framework &&
+    (a.base_url || "") === (b.base_url || "") &&
+    (a.automation_notes || "") === (b.automation_notes || "")
+  );
+}
+
 export function AutomationConfigDialog({
   open,
   onOpenChange,
@@ -38,24 +60,43 @@ export function AutomationConfigDialog({
   onUpdate,
 }: AutomationConfigDialogProps) {
   const [saving, setSaving] = useState(false);
-  const [config, setConfig] = useState({
-    automation_framework: suite?.automation_framework || "playwright",
-    base_url: suite?.base_url || "",
-    automation_notes: suite?.automation_notes || "",
-  });
+
+  // Snapshot of suite config when dialog opens (used to detect changes)
+  const baseline = useMemo(() => normalizeConfig(suite), [suite]);
+
+  const [config, setConfig] = useState<ConfigState>(baseline);
+
+  // Keep form in sync when the dialog opens or suite changes
+  useEffect(() => {
+    if (!open) return;
+    setConfig(normalizeConfig(suite));
+  }, [open, suite]);
 
   const saveConfig = async () => {
+    if (!suite?.id) return;
+
     setSaving(true);
     try {
       const supabase = createClient();
 
+      const didChange = !isSameConfig(config, baseline);
+
+      const patch: Record<string, any> = {
+        automation_framework: config.automation_framework,
+        base_url: config.base_url?.trim() ? config.base_url.trim() : null,
+        automation_notes: config.automation_notes?.trim()
+          ? config.automation_notes.trim()
+          : null,
+      };
+
+      // Option A: dedicated timestamp for automation-relevant config drift
+      if (didChange) {
+        patch.automation_config_updated_at = new Date().toISOString();
+      }
+
       const { error } = await supabase
         .from("suites")
-        .update({
-          automation_framework: config.automation_framework,
-          base_url: config.base_url || null,
-          automation_notes: config.automation_notes || null,
-        })
+        .update(patch)
         .eq("id", suite.id);
 
       if (error) throw error;
@@ -87,8 +128,9 @@ export function AutomationConfigDialog({
             <Select
               value={config.automation_framework}
               onValueChange={(value) =>
-                setConfig({ ...config, automation_framework: value })
+                setConfig((prev) => ({ ...prev, automation_framework: value }))
               }
+              disabled={saving}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -99,6 +141,7 @@ export function AutomationConfigDialog({
                 <SelectItem value="selenium">Selenium</SelectItem>
                 <SelectItem value="puppeteer">Puppeteer</SelectItem>
                 <SelectItem value="testcafe">TestCafe</SelectItem>
+                <SelectItem value="webdriverio">WebdriverIO</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -108,9 +151,10 @@ export function AutomationConfigDialog({
             <Input
               value={config.base_url}
               onChange={(e) =>
-                setConfig({ ...config, base_url: e.target.value })
+                setConfig((prev) => ({ ...prev, base_url: e.target.value }))
               }
               placeholder="https://app.example.com"
+              disabled={saving}
             />
             <p className="text-xs text-muted-foreground">
               Base URL for your application under test
@@ -122,15 +166,23 @@ export function AutomationConfigDialog({
             <Input
               value={config.automation_notes}
               onChange={(e) =>
-                setConfig({ ...config, automation_notes: e.target.value })
+                setConfig((prev) => ({
+                  ...prev,
+                  automation_notes: e.target.value,
+                }))
               }
               placeholder="Additional notes about automation setup"
+              disabled={saving}
             />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             Cancel
           </Button>
           <Button onClick={saveConfig} disabled={saving} className="gap-2">
