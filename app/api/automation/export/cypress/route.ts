@@ -102,7 +102,7 @@ export default defineConfig({
   e2e: {
     baseUrl: process.env.BASE_URL || '${suite.base_url}',
     setupNodeEvents(on, config) {
-          synthqaReporter(on);
+          synthqa-reporter(on);
     },
     supportFile: 'cypress/support/e2e.ts',
     specPattern: 'cypress/e2e/**/*.cy.ts',
