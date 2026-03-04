@@ -97,6 +97,8 @@ export async function POST(req: Request) {
     zip.file(
       `${root}/cypress.config.ts`,
       `import { defineConfig } from 'cypress';
+      import synthqareporter from './cypress/support/synthqareporter';
+
 
 export default defineConfig({
   e2e: {
