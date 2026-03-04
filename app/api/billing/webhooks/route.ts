@@ -162,7 +162,6 @@ async function handleSubscriptionCreated(
 
     console.log("✅ User profile updated");
 
-    // ✅ FIX 2: Wrap email sending in try-catch (non-critical, shouldn't break webhook)
     if (mappedStatus === "trial" && emailService) {
       try {
         const { data: profile } = await supabaseAdmin
@@ -285,7 +284,6 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   try {
     const subscriptionData = subscription as any;
 
-    // ❌ FIX 3: Get user info BEFORE updating to free tier (for email)
     const { data: userProfile } = await supabaseAdmin
       .from("user_profiles")
       .select("email, full_name, subscription_tier")
@@ -309,7 +307,6 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
       throw error;
     }
 
-    // ✅ Send subscription ended email
     if (userProfile && emailService) {
       try {
         await emailService.sendSubscriptionEndedEmail({
@@ -378,11 +375,8 @@ async function handleInvoicePaymentSucceeded(
       return;
     }
 
-    // Ensure subscription is active
-
     const invoiceData = invoice as any;
 
-    // ✅ FIX 2: Wrap email sending in try-catch
     if (emailService) {
       try {
         const { data: profile } = await supabaseAdmin

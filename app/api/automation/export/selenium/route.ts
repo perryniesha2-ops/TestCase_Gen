@@ -382,10 +382,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // ✅ Get webhook URL
+    // Get webhook URL
     const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://app.synthqa.com"}/api/automation/webhook/results`;
 
-    // ✅ Get user's API key if they have one
+    // Get user's API key if they have one
     const { data: profile } = await supabase
       .from("user_profiles")
       .select("api_key")
@@ -434,7 +434,7 @@ export async function POST(req: Request) {
     const zip = new JSZip();
     const root = `selenium-${suite.name.toLowerCase().replace(/\s+/g, "-")}-${suite.id.slice(0, 8)}`;
 
-    // ✅ Generate all files using library functions
+    // Generate all files using library functions
     zip.file(`${root}/pom.xml`, generatePomXml());
 
     zip.file(
@@ -462,7 +462,7 @@ export async function POST(req: Request) {
       generateGlobalCleanupListener(),
     );
 
-    // ✅ Generate .env with SYNTHQA variables
+    // Generate .env with SYNTHQA variables
     zip.file(
       `${root}/.env`,
       generateDotEnv(

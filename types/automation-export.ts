@@ -4,6 +4,11 @@ export type TestStep = {
   step_number?: number;
   action: string;
   expected: string;
+  selector?: string;
+  action_type?: string;
+  input_value?: string;
+  wait_time?: number;
+  assertion?: any;
 };
 
 export type TestCase = {

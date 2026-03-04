@@ -151,7 +151,6 @@ function escapeString(s: string) {
 function generateExecutableStep(step: TestStep): string {
   const lines: string[] = [];
 
-  // Check if step has executable data
   const hasExecutableData = step.selector && step.action_type;
 
   if (hasExecutableData) {
@@ -208,7 +207,6 @@ function generateExecutableStep(step: TestStep): string {
         if (step.input_value !== undefined) {
           const url = step.input_value;
 
-          // ✅ FIX: Simple and predictable logic
           if (url.startsWith("http://") || url.startsWith("https://")) {
             // Full URL - use as-is (don't concatenate with baseUrl)
             lines.push(`await page.goto('${escapeString(url)}');`);
@@ -228,12 +226,10 @@ function generateExecutableStep(step: TestStep): string {
         break;
     }
 
-    // Add wait time if specified
     if (step.wait_time) {
       lines.push(`await page.waitForTimeout(${step.wait_time});`);
     }
 
-    // Generate assertion code (unchanged - keep existing assertion logic)
     if (step.assertion?.type) {
       const target = step.assertion.target || step.selector;
       const escapedTarget = escapeString(target!);

@@ -437,7 +437,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ FIX: Fetch suite info FIRST to get the kind
     let suiteKind: string | null = null;
     if (suiteId) {
       const { data: suite, error: suiteError } = await supabase
@@ -467,7 +466,6 @@ export async function POST(req: Request) {
     let platformTestCaseIds: string[] = [];
 
     if (suiteId) {
-      // ✅ FIX: Fetch ALL suite items (both regular and platform)
       const { data: suiteItems, error: itemsError } = await supabase
         .from("suite_items")
         .select("test_case_id, platform_test_case_id")
@@ -521,7 +519,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // ✅ FIX: Process regular test cases
     let totalEnhanced = 0;
     let totalSkipped = 0;
     let totalFailed = 0;
@@ -672,7 +669,6 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
       }
     }
 
-    // ✅ FIX: Process platform test cases if any
     if (platformTestCaseIds.length > 0) {
       const { data: platformCases, error: fetchError } = await supabase
         .from("platform_test_cases")
