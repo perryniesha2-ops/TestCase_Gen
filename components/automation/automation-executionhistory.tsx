@@ -129,6 +129,8 @@ export function AutomationHistory({ suiteId }: AutomationHistoryProps) {
   const { user } = useAuth();
   const router = useRouter();
 
+  const stripAnsi = (str: string) => str.replace(/\u001b\[[0-9;]*m/g, "");
+
   useEffect(() => {
     if (user) {
       void loadRuns();
@@ -215,10 +217,8 @@ export function AutomationHistory({ suiteId }: AutomationHistoryProps) {
         )
         .eq("suite_id", run.suite_id)
         .gte("started_at", run.started_at)
-        .lte("completed_at", run.completed_at)
         .eq("framework", run.framework)
-        .eq("automation_run_id", run.id)
-        .order("started_at", { ascending: true });
+        .eq("automation_run_id", run.id);
 
       if (error) throw error;
 
@@ -808,7 +808,7 @@ export function AutomationHistory({ suiteId }: AutomationHistoryProps) {
                                       Failure Reason:
                                     </p>
                                     <p className="text-xs text-destructive/90 mt-1">
-                                      {exec.failure_reason}
+                                      {stripAnsi(exec.failure_reason)}
                                     </p>
                                   </div>
                                 </div>
@@ -820,7 +820,7 @@ export function AutomationHistory({ suiteId }: AutomationHistoryProps) {
                                       <ChevronDown className="h-3 w-3 transition-transform group-open/details:rotate-180" />
                                     </summary>
                                     <pre className="text-[10px] bg-destructive/5 p-3 rounded mt-2 overflow-x-auto max-h-32 border border-destructive/10">
-                                      {exec.stack_trace}
+                                      {stripAnsi(exec.stack_trace)}
                                     </pre>
                                   </details>
                                 )}
