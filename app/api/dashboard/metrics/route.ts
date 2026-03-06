@@ -175,6 +175,7 @@ export async function GET() {
         "id, execution_status, created_at, test_case_id, test_cases ( title )",
       )
       .eq("executed_by", user.id)
+      .is("automation_run_id", null)
       .order("created_at", { ascending: false })
       .limit(5);
 
@@ -184,6 +185,7 @@ export async function GET() {
         "id, execution_status, created_at, test_case_id, platform_test_cases ( title )",
       )
       .eq("executed_by", user.id)
+      .is("automation_run_id", null)
       .order("created_at", { ascending: false })
       .limit(5);
 

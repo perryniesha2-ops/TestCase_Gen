@@ -270,7 +270,7 @@ export function TestManagementDashboard() {
             className="w-full h-auto py-3 flex flex-col items-center gap-1.5 hover:bg-primary hover:text-primary-foreground transition-colors"
           >
             <Zap className="h-5 w-5" />
-            <span className="text-xs font-medium">Export Suite</span>
+            <span className="text-xs font-medium">Automation</span>
           </Button>
         </Link>
         <Link href="/test-cases?runStatus=failed">
@@ -376,7 +376,7 @@ export function TestManagementDashboard() {
                 variant="link"
                 className="h-auto p-0 text-xs mt-2 text-red-600 hover:text-red-700"
               >
-                View failures <ArrowRight className="h-3 w-3 ml-1 inline" />
+                View failures
               </Button>
             </Link>
           </CardContent>
@@ -638,7 +638,7 @@ export function TestManagementDashboard() {
                 <Link href="/automation">
                   <Button variant="outline" size="sm">
                     <Plus className="h-4 w-4 mr-2" />
-                    Export Suite
+                    Automation{" "}
                   </Button>
                 </Link>
               </div>
