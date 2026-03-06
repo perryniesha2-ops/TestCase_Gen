@@ -48,6 +48,7 @@ export async function middleware(request: NextRequest) {
     "/settings",
     "/generate",
     "/test-cases",
+    "/cross-platform-cases",
   ];
 
   // Requires login + active paid subscription
@@ -57,7 +58,6 @@ export async function middleware(request: NextRequest) {
     "/requirements",
     "/project-manager",
     "/template-manager",
-    "/cross-platform-cases",
     "/analytics",
     "/integrations",
     "/test-runs",
