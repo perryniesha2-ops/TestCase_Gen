@@ -80,9 +80,9 @@ export default function GuidesIndexPage() {
     },
 
     {
-      title: "Playwright Automation",
+      title: "Automation",
       description:
-        "Transform your manual test cases into executable Playwright automation",
+        "Transform your manual test cases into executable automation",
       href: "/docs/playwright-automation",
       icon: Code2,
       color: "text-blue-800",

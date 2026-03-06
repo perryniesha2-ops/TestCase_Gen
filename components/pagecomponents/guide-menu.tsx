@@ -125,7 +125,7 @@ export function GuideMenu() {
           </MenubarItem>
           <MenubarItem asChild>
             <Link
-              href="/guides/test-management#test-suites"
+              href="/docs/test-management#test-suites"
               className="cursor-pointer pl-6 text-sm"
             >
               Test Suites
@@ -141,7 +141,7 @@ export function GuideMenu() {
           </MenubarItem>
           <MenubarItem asChild>
             <Link
-              href="/guides/test-management#evidence"
+              href="/docs/test-management#evidence"
               className="cursor-pointer pl-6 text-sm"
             >
               Test Evidence
@@ -212,7 +212,7 @@ export function GuideMenu() {
               )}
             >
               <Code2 className="h-4 w-4 mr-2" />
-              Playwright Automation
+              Automation
             </Link>
           </MenubarItem>
           <MenubarItem asChild>

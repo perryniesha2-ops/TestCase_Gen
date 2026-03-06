@@ -1,9 +1,8 @@
-// app/(dashboard)/guides/playwright-automation/page.tsx
+// app/(dashboard)/guides/automation/page.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -73,7 +72,98 @@ function Section({
   );
 }
 
-function ComparisonTable() {
+function FrameworkComparisonTable() {
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50">
+          <tr>
+            <th className="p-3 text-left font-medium">Framework</th>
+            <th className="p-3 text-left font-medium">Language</th>
+            <th className="p-3 text-left font-medium">Best For</th>
+            <th className="p-3 text-left font-medium">SynthQA Support</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          <tr>
+            <td className="p-3 font-medium">Playwright</td>
+            <td className="p-3 text-muted-foreground">TypeScript / JS</td>
+            <td className="p-3 text-muted-foreground">
+              Modern web apps, cross-browser
+            </td>
+            <td className="p-3">
+              <Badge className="bg-green-100 text-green-800 text-xs">
+                Full export
+              </Badge>
+            </td>
+          </tr>
+          <tr>
+            <td className="p-3 font-medium">Cypress</td>
+            <td className="p-3 text-muted-foreground">JavaScript</td>
+            <td className="p-3 text-muted-foreground">
+              Frontend-heavy apps, E2E
+            </td>
+            <td className="p-3">
+              <Badge className="bg-green-100 text-green-800 text-xs">
+                Full export
+              </Badge>
+            </td>
+          </tr>
+          <tr>
+            <td className="p-3 font-medium">Selenium</td>
+            <td className="p-3 text-muted-foreground">Java / Python / JS</td>
+            <td className="p-3 text-muted-foreground">
+              Legacy apps, enterprise
+            </td>
+            <td className="p-3">
+              <Badge className="bg-green-100 text-green-800 text-xs">
+                Full export
+              </Badge>
+            </td>
+          </tr>
+          <tr>
+            <td className="p-3 font-medium">Puppeteer</td>
+            <td className="p-3 text-muted-foreground">JavaScript</td>
+            <td className="p-3 text-muted-foreground">
+              Chrome automation, scraping
+            </td>
+            <td className="p-3">
+              <Badge className="bg-green-100 text-green-800 text-xs">
+                Full export
+              </Badge>
+            </td>
+          </tr>
+          <tr>
+            <td className="p-3 font-medium">TestCafe</td>
+            <td className="p-3 text-muted-foreground">JavaScript</td>
+            <td className="p-3 text-muted-foreground">
+              No-driver cross-browser testing
+            </td>
+            <td className="p-3">
+              <Badge className="bg-green-100 text-green-800 text-xs">
+                Full export
+              </Badge>
+            </td>
+          </tr>
+          <tr>
+            <td className="p-3 font-medium">WebDriverIO</td>
+            <td className="p-3 text-muted-foreground">JavaScript</td>
+            <td className="p-3 text-muted-foreground">
+              Web + mobile, W3C WebDriver
+            </td>
+            <td className="p-3">
+              <Badge className="bg-green-100 text-green-800 text-xs">
+                Full export
+              </Badge>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ManualVsAutoTable() {
   return (
     <div className="overflow-x-auto rounded-lg border">
       <table className="w-full text-sm">
@@ -81,7 +171,7 @@ function ComparisonTable() {
           <tr>
             <th className="p-3 text-left font-medium">Feature</th>
             <th className="p-3 text-left font-medium">Manual Testing</th>
-            <th className="p-3 text-left font-medium">Playwright Automation</th>
+            <th className="p-3 text-left font-medium">Automation Export</th>
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -120,12 +210,17 @@ function ComparisonTable() {
   );
 }
 
-export default function PlaywrightAutomationGuidePage() {
+export default function AutomationGuidePage() {
   const toc: TocItem[] = [
     {
       id: "overview",
       title: "Overview",
       icon: <BookOpen className="h-4 w-4" />,
+    },
+    {
+      id: "frameworks",
+      title: "Supported Frameworks",
+      icon: <Code2 className="h-4 w-4" />,
     },
     {
       id: "getting-started",
@@ -187,12 +282,12 @@ export default function PlaywrightAutomationGuidePage() {
         <div className="space-y-2">
           <Logo size="xl" />
           <h1 className="text-3xl font-semibold tracking-tight">
-            Playwright Automation Guide
+            Automation Guide
           </h1>
           <p className="max-w-2xl text-muted-foreground">
-            Export your test suites as complete, ready-to-run Playwright
-            automation projects. Turn manual test cases into executable
-            automation in minutes.
+            Export your test suites as complete, ready-to-run automation
+            projects. Supports Playwright, Cypress, Selenium, Puppeteer,
+            TestCafe, and WebDriverIO.
           </p>
           <Badge variant="secondary">Guide</Badge>
         </div>
@@ -229,23 +324,27 @@ export default function PlaywrightAutomationGuidePage() {
           <Section id="overview" title="Overview" kicker="Introduction">
             <Card>
               <CardHeader>
-                <CardTitle>What is Playwright Automation Export?</CardTitle>
+                <CardTitle>What is Automation Export?</CardTitle>
                 <CardDescription>
-                  Transform your manual test cases into executable Playwright
-                  automation.
+                  Transform your manual test cases into executable automation
+                  projects across multiple frameworks.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
                 <p>
-                  The Playwright Automation Export feature converts your SynthQA
-                  test suites into complete, production-ready Playwright test
-                  projects that you can run locally or integrate with your CI/CD
-                  pipeline.
+                  The Automation Export feature converts your SynthQA test
+                  suites into complete, production-ready test projects for your
+                  preferred framework. Export once, run anywhere — locally or in
+                  your CI/CD pipeline.
                 </p>
                 <ul className="list-disc pl-5 space-y-1">
                   <li>One-click export of entire test suites</li>
-                  <li>Complete TypeScript project with all dependencies</li>
-                  <li>Pre-configured Playwright settings and test structure</li>
+                  <li>
+                    Six supported frameworks: Playwright, Cypress, Selenium,
+                    Puppeteer, TestCafe, WebDriverIO
+                  </li>
+                  <li>Complete project structure with all dependencies</li>
+                  <li>Pre-configured settings and test files</li>
                   <li>Test data snapshots for reference and validation</li>
                   <li>
                     Ready for CI/CD integration (GitHub Actions, GitLab CI,
@@ -259,14 +358,13 @@ export default function PlaywrightAutomationGuidePage() {
               <Info className="h-4 w-4" />
               <AlertTitle>Instant automation</AlertTitle>
               <AlertDescription>
-                Export transforms your test cases into a working Playwright
-                project in seconds. You'll get a complete project structure,
-                dependencies, configuration, and test specifications - ready to
-                run immediately.
+                Export transforms your test cases into a working project in
+                seconds — complete with project structure, dependencies,
+                configuration, and test specs ready to run.
               </AlertDescription>
             </Alert>
 
-            <ComparisonTable />
+            <ManualVsAutoTable />
 
             <Card>
               <CardHeader>
@@ -277,19 +375,289 @@ export default function PlaywrightAutomationGuidePage() {
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>Active SynthQA account</li>
+                  <li>Active SynthQA account (Pro plan)</li>
                   <li>At least one test suite with test cases</li>
                   <li>
                     Node.js 18+ installed on your machine (for running tests)
                   </li>
                   <li>Basic understanding of command line operations</li>
                   <li>
-                    Optional: Test cases with defined test steps for better
+                    Optional: Test cases with defined test steps for richer
                     automation
                   </li>
                 </ul>
               </CardContent>
             </Card>
+          </Section>
+
+          {/* Supported Frameworks */}
+          <Section
+            id="frameworks"
+            title="Supported Frameworks"
+            kicker="Choose your stack"
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle>All supported frameworks</CardTitle>
+                <CardDescription>
+                  SynthQA exports to all major web automation frameworks.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FrameworkComparisonTable />
+              </CardContent>
+            </Card>
+
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem value="playwright">
+                <AccordionTrigger>Playwright</AccordionTrigger>
+                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    Microsoft's modern end-to-end testing framework. The
+                    recommended choice for new projects.
+                  </p>
+                  <div className="font-medium text-foreground mb-2">
+                    Strengths:
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Auto-waits for elements — fewer flaky tests</li>
+                    <li>
+                      Native support for Chromium, Firefox, and WebKit (Safari)
+                    </li>
+                    <li>Full TypeScript support out of the box</li>
+                    <li>
+                      Built-in trace viewer, screenshots, and video recording
+                    </li>
+                    <li>Excellent CI/CD integration</li>
+                  </ul>
+                  <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
+                    <div className="text-foreground mb-1">Run command:</div>
+                    <pre>npx playwright test</pre>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="cypress">
+                <AccordionTrigger>Cypress</AccordionTrigger>
+                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    Developer-focused E2E testing with an interactive test
+                    runner and real-time reloading.
+                  </p>
+                  <div className="font-medium text-foreground mb-2">
+                    Strengths:
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Interactive Test Runner with time-travel debugging</li>
+                    <li>Automatic waiting without explicit waits</li>
+                    <li>Real-time reloading during development</li>
+                    <li>Excellent documentation and large community</li>
+                    <li>Built-in dashboard for test recording (paid)</li>
+                  </ul>
+                  <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
+                    <div className="text-foreground mb-1">Run command:</div>
+                    <pre>npx cypress run</pre>
+                  </div>
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Chrome-first</AlertTitle>
+                    <AlertDescription>
+                      Cypress runs tests inside the browser. It supports Chrome,
+                      Firefox, and Edge — but not Safari/WebKit.
+                    </AlertDescription>
+                  </Alert>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="selenium">
+                <AccordionTrigger>Selenium</AccordionTrigger>
+                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    The original browser automation standard. Best for
+                    enterprise environments and legacy app testing.
+                  </p>
+                  <div className="font-medium text-foreground mb-2">
+                    Strengths:
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Industry standard with the widest browser support</li>
+                    <li>
+                      Supports Java, Python, JavaScript, C#, Ruby, and Kotlin
+                    </li>
+                    <li>Deep integration with enterprise tooling</li>
+                    <li>Selenium Grid for parallel distributed testing</li>
+                    <li>Large ecosystem of extensions and tools</li>
+                  </ul>
+                  <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
+                    <div className="text-foreground mb-1">
+                      Run command (JS):
+                    </div>
+                    <pre>npm test</pre>
+                  </div>
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>SynthQA exports JavaScript</AlertTitle>
+                    <AlertDescription>
+                      Exported Selenium projects use JavaScript (Node.js). If
+                      your team uses Java or Python, use the export as a
+                      structural reference and adapt accordingly.
+                    </AlertDescription>
+                  </Alert>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="puppeteer">
+                <AccordionTrigger>Puppeteer</AccordionTrigger>
+                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    Google's Chrome DevTools Protocol library. Ideal for
+                    Chrome-specific automation and headless workflows.
+                  </p>
+                  <div className="font-medium text-foreground mb-2">
+                    Strengths:
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Direct Chrome/Chromium DevTools Protocol access</li>
+                    <li>Fastest for Chrome-only headless testing</li>
+                    <li>
+                      Great for PDF generation, screenshots, and performance
+                      audits
+                    </li>
+                    <li>
+                      First-class support for service workers and browser
+                      internals
+                    </li>
+                  </ul>
+                  <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
+                    <div className="text-foreground mb-1">Run command:</div>
+                    <pre>node tests/run.js</pre>
+                  </div>
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Chrome only</AlertTitle>
+                    <AlertDescription>
+                      Puppeteer only supports Chrome and Chromium. If you need
+                      cross-browser coverage, consider Playwright instead.
+                    </AlertDescription>
+                  </Alert>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="testcafe">
+                <AccordionTrigger>TestCafe</AccordionTrigger>
+                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    No WebDriver required — TestCafe injects scripts directly
+                    into pages for reliable cross-browser testing.
+                  </p>
+                  <div className="font-medium text-foreground mb-2">
+                    Strengths:
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>No WebDriver or browser plugins needed</li>
+                    <li>Runs on any browser including mobile browsers</li>
+                    <li>Built-in concurrency for parallel test runs</li>
+                    <li>Smart assertion retry for stable tests</li>
+                    <li>Simple setup — works out of the box</li>
+                  </ul>
+                  <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
+                    <div className="text-foreground mb-1">Run command:</div>
+                    <pre>npx testcafe chrome tests/</pre>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="webdriverio">
+                <AccordionTrigger>WebDriverIO</AccordionTrigger>
+                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    W3C WebDriver-compliant framework with first-class support
+                    for web and native mobile apps.
+                  </p>
+                  <div className="font-medium text-foreground mb-2">
+                    Strengths:
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Supports both web and mobile (Appium integration)</li>
+                    <li>W3C WebDriver and DevTools protocol support</li>
+                    <li>Rich plugin and reporter ecosystem</li>
+                    <li>Works with any CI/CD system</li>
+                    <li>
+                      Powerful selector strategies including accessibility
+                      selectors
+                    </li>
+                  </ul>
+                  <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
+                    <div className="text-foreground mb-1">Run command:</div>
+                    <pre>npx wdio run wdio.conf.js</pre>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="which-to-choose">
+                <AccordionTrigger>
+                  Which framework should I choose?
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
+                  <div className="space-y-2">
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground mb-1">
+                        New project, no preference
+                      </div>
+                      <div className="text-xs">
+                        → <strong>Playwright.</strong> Modern, fast, full
+                        cross-browser, TypeScript-first.
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground mb-1">
+                        Frontend-heavy app, developer team
+                      </div>
+                      <div className="text-xs">
+                        → <strong>Cypress.</strong> Best interactive debugging
+                        experience.
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground mb-1">
+                        Enterprise / existing Selenium setup
+                      </div>
+                      <div className="text-xs">
+                        → <strong>Selenium.</strong> Widest language support and
+                        enterprise integrations.
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground mb-1">
+                        Chrome-only, performance/screenshot needs
+                      </div>
+                      <div className="text-xs">
+                        → <strong>Puppeteer.</strong> Direct Chrome DevTools
+                        access.
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground mb-1">
+                        No WebDriver setup, mobile browsers
+                      </div>
+                      <div className="text-xs">
+                        → <strong>TestCafe.</strong> No driver needed, runs in
+                        any browser.
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground mb-1">
+                        Web + native mobile testing
+                      </div>
+                      <div className="text-xs">
+                        → <strong>WebDriverIO.</strong> Best Appium integration
+                        for mobile.
+                      </div>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </Section>
 
           {/* Getting Started */}
@@ -319,20 +687,18 @@ export default function PlaywrightAutomationGuidePage() {
                       access the Automation Hub.
                     </p>
                   </div>
-
                   <div className="p-4 rounded-lg border bg-muted/30">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold">
                         2
                       </div>
-                      <h3 className="font-semibold">Export</h3>
+                      <h3 className="font-semibold">Choose & Export</h3>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Click "Export to Playwright" to download a complete test
-                      automation project as a ZIP file.
+                      Select your framework, then click "Export" to download a
+                      complete project as a ZIP file.
                     </p>
                   </div>
-
                   <div className="p-4 rounded-lg border bg-muted/30">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold">
@@ -348,12 +714,11 @@ export default function PlaywrightAutomationGuidePage() {
                 </div>
               </CardContent>
             </Card>
-
             <Alert>
               <Rocket className="h-4 w-4" />
               <AlertTitle>Typical timeline</AlertTitle>
               <AlertDescription>
-                First-time setup: 5-10 minutes. Subsequent exports: 2-3 minutes
+                First-time setup: 5–10 minutes. Subsequent exports: 2–3 minutes
                 from export to running tests.
               </AlertDescription>
             </Alert>
@@ -375,24 +740,17 @@ export default function PlaywrightAutomationGuidePage() {
                     The Automation Hub is your central location for managing
                     test automation for each test suite.
                   </p>
-
                   <div>
                     <div className="font-medium text-foreground mb-2">
                       To access:
                     </div>
                     <ol className="list-decimal pl-5 space-y-1">
                       <li>Navigate to the Test Suites page</li>
-                      <li>
-                        Click on any test suite row to open the suite drawer
-                      </li>
-                      <li>Click the "Automation" button in the drawer</li>
-                      <li>
-                        You'll be redirected to the Automation Hub for that
-                        suite
-                      </li>
+                      <li>Click on any test suite to open its detail page</li>
+                      <li>Click the "Automation" tab</li>
+                      <li>You're now in the Automation Hub for that suite</li>
                     </ol>
                   </div>
-
                   <Alert>
                     <Info className="h-4 w-4" />
                     <AlertTitle>Direct URL access</AlertTitle>
@@ -408,114 +766,87 @@ export default function PlaywrightAutomationGuidePage() {
 
               <AccordionItem value="step2">
                 <AccordionTrigger>
-                  Step 2: Review Automation Stats
+                  Step 2: Select your framework
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <p>
-                    The Automation Hub displays key metrics about your suite's
-                    readiness for automation.
+                    The Automation Hub lets you choose which framework to export
+                    before downloading.
                   </p>
-
-                  <div className="grid md:grid-cols-2 gap-3">
-                    <div className="p-3 rounded-lg border">
-                      <div className="font-medium text-foreground text-sm mb-2">
-                        Total Tests
+                  <div className="grid md:grid-cols-2 gap-3 text-xs">
+                    {[
+                      "Playwright",
+                      "Cypress",
+                      "Selenium",
+                      "Puppeteer",
+                      "TestCafe",
+                      "WebDriverIO",
+                    ].map((fw) => (
+                      <div
+                        key={fw}
+                        className="p-2 rounded-lg border flex items-center gap-2"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+                        <span>{fw}</span>
                       </div>
-                      <p className="text-xs">
-                        Number of test cases in this suite
-                      </p>
-                    </div>
-
-                    <div className="p-3 rounded-lg border">
-                      <div className="font-medium text-foreground text-sm mb-2">
-                        Automation Ready
-                      </div>
-                      <p className="text-xs">
-                        Test cases that have defined test steps and can be
-                        exported
-                      </p>
-                    </div>
-
-                    <div className="p-3 rounded-lg border">
-                      <div className="font-medium text-foreground text-sm mb-2">
-                        With Metadata
-                      </div>
-                      <p className="text-xs">
-                        Test cases enhanced with automation metadata (selectors,
-                        URLs)
-                      </p>
-                    </div>
-
-                    <div className="p-3 rounded-lg border">
-                      <div className="font-medium text-foreground text-sm mb-2">
-                        Suite Type
-                      </div>
-                      <p className="text-xs">
-                        Manual, regression, smoke, or integration testing
-                      </p>
-                    </div>
+                    ))}
                   </div>
-
                   <Alert>
-                    <CheckCircle2 className="h-4 w-4" />
-                    <AlertTitle>Ready indicator</AlertTitle>
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>You can export multiple times</AlertTitle>
                     <AlertDescription>
-                      Test cases with defined steps are ready for export. The
-                      more steps you define, the more complete your exported
-                      tests will be.
+                      There's no limit on exports. Export to Playwright for
+                      CI/CD and Selenium for your enterprise setup — both from
+                      the same suite.
                     </AlertDescription>
                   </Alert>
                 </AccordionContent>
               </AccordionItem>
 
               <AccordionItem value="step3">
-                <AccordionTrigger>Step 3: Review Test Cases</AccordionTrigger>
+                <AccordionTrigger>
+                  Step 3: Review readiness stats
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <p>
-                    The Automation Hub shows all test cases in your suite with
-                    readiness badges.
+                    The hub shows key metrics about your suite's automation
+                    readiness before you export.
                   </p>
-
-                  <div>
-                    <div className="font-medium text-foreground mb-2">
-                      Badge indicators:
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground text-sm mb-1">
+                        Total Tests
+                      </div>
+                      <p className="text-xs">
+                        Number of test cases in the suite
+                      </p>
                     </div>
-                    <div className="space-y-2 text-xs">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="default" className="text-xs">
-                          <CheckCircle2 className="h-3 w-3 mr-1" />
-                          Ready
-                        </Badge>
-                        <span>Test case has steps and can be exported</span>
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground text-sm mb-1">
+                        Automation Ready
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-xs">
-                          <AlertTriangle className="h-3 w-3 mr-1" />
-                          Needs Steps
-                        </Badge>
-                        <span>Test case needs test steps defined</span>
+                      <p className="text-xs">
+                        Test cases with defined steps that will export fully
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground text-sm mb-1">
+                        With Metadata
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          <Zap className="h-3 w-3 mr-1" />
-                          Enhanced
-                        </Badge>
-                        <span>
-                          Test case has automation metadata for pre-filled tests
-                        </span>
+                      <p className="text-xs">
+                        Tests enhanced with selectors and URLs for pre-filled
+                        exports
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground text-sm mb-1">
+                        Suite Type
                       </div>
+                      <p className="text-xs">
+                        Manual, regression, smoke, or integration
+                      </p>
                     </div>
                   </div>
-
-                  <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>Incomplete tests</AlertTitle>
-                    <AlertDescription>
-                      Test cases without steps will still be exported but will
-                      contain TODO placeholders that you'll need to implement
-                      manually.
-                    </AlertDescription>
-                  </Alert>
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
@@ -527,57 +858,33 @@ export default function PlaywrightAutomationGuidePage() {
               <CardHeader>
                 <CardTitle>Export process</CardTitle>
                 <CardDescription>
-                  How to export your test suite as a Playwright project.
+                  How to export your suite as an automation project.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-sm text-muted-foreground">
                 <div>
                   <div className="font-medium text-foreground mb-2">
-                    Export locations:
-                  </div>
-                  <p className="mb-2">
-                    The "Export to Playwright" button appears in three places:
-                  </p>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>Automation Hub header (top-right)</li>
-                    <li>Overview tab - in the "Ready to Automate?" card</li>
-                    <li>
-                      Export & Setup tab - centered with detailed instructions
-                    </li>
-                  </ul>
-                </div>
-
-                <Separator />
-
-                <div>
-                  <div className="font-medium text-foreground mb-2">
                     What happens when you export:
                   </div>
                   <ol className="list-decimal pl-5 space-y-1">
-                    <li>Click "Export to Playwright"</li>
+                    <li>Select your framework in the Automation Hub</li>
+                    <li>Click "Export to [Framework]"</li>
+                    <li>System generates a complete project (5–10 seconds)</li>
+                    <li>ZIP file downloads automatically</li>
                     <li>
-                      System generates a complete Playwright project (5-10
-                      seconds)
-                    </li>
-                    <li>
-                      ZIP file downloads automatically to your Downloads folder
-                    </li>
-                    <li>
-                      File name format:{" "}
+                      File name:{" "}
                       <code className="px-1 py-0.5 rounded bg-muted text-xs">
-                        synthqa-playwright-[suite-name].zip
+                        synthqa-[framework]-[suite-name].zip
                       </code>
                     </li>
                   </ol>
                 </div>
-
                 <Alert>
                   <Download className="h-4 w-4" />
                   <AlertTitle>Download confirmation</AlertTitle>
                   <AlertDescription>
-                    You'll see a success notification showing the export was
-                    successful. Check your browser's download folder for the ZIP
-                    file.
+                    A success notification confirms the export. Check your
+                    browser's downloads folder for the ZIP file.
                   </AlertDescription>
                 </Alert>
               </CardContent>
@@ -586,14 +893,9 @@ export default function PlaywrightAutomationGuidePage() {
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="export-contents">
                 <AccordionTrigger>
-                  What's included in the export
+                  What's included in every export
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>
-                    Every export includes a complete, ready-to-run Playwright
-                    project:
-                  </p>
-
                   <div className="space-y-2">
                     <div className="p-3 rounded-lg border bg-muted/20">
                       <div className="font-medium text-foreground mb-1 text-xs">
@@ -601,88 +903,57 @@ export default function PlaywrightAutomationGuidePage() {
                       </div>
                       <ul className="text-xs space-y-1">
                         <li>
-                          • <code>package.json</code> - Dependencies and scripts
+                          • <code>package.json</code> — dependencies and run
+                          scripts
                         </li>
                         <li>
-                          • <code>playwright.config.ts</code> - Playwright
-                          settings
+                          • Framework config file (e.g.{" "}
+                          <code>playwright.config.ts</code>,{" "}
+                          <code>cypress.config.js</code>,{" "}
+                          <code>wdio.conf.js</code>)
                         </li>
                         <li>
-                          • <code>tsconfig.json</code> - TypeScript
-                          configuration
+                          • <code>tsconfig.json</code> — where applicable
                         </li>
                         <li>
-                          • <code>.env.example</code> - Environment variables
+                          • <code>.env.example</code> — environment variables
                           template
                         </li>
                         <li>
-                          • <code>.gitignore</code> - Git ignore rules
+                          • <code>.gitignore</code>
                         </li>
                       </ul>
                     </div>
-
                     <div className="p-3 rounded-lg border bg-muted/20">
                       <div className="font-medium text-foreground mb-1 text-xs">
                         Test Files:
                       </div>
                       <ul className="text-xs space-y-1">
                         <li>
-                          • <code>tests/cases/*.spec.ts</code> - TypeScript test
-                          specifications
+                          • <code>tests/</code> or <code>cypress/e2e/</code> —
+                          test specifications per test case
                         </li>
                         <li>
-                          • <code>synthqa/suite.json</code> - Suite metadata
+                          • <code>synthqa/suite.json</code> — suite metadata
                         </li>
                         <li>
-                          • <code>synthqa/cases/*.json</code> - Test data
+                          • <code>synthqa/cases/*.json</code> — test data
                           snapshots
                         </li>
                       </ul>
                     </div>
-
                     <div className="p-3 rounded-lg border bg-muted/20">
                       <div className="font-medium text-foreground mb-1 text-xs">
                         Documentation:
                       </div>
                       <ul className="text-xs space-y-1">
                         <li>
-                          • <code>README.md</code> - Setup and usage
-                          instructions
+                          • <code>README.md</code> — setup, running, and
+                          troubleshooting guide
                         </li>
-                        <li>• Installation guide</li>
-                        <li>• Running tests guide</li>
-                        <li>• Troubleshooting tips</li>
                       </ul>
                     </div>
                   </div>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="export-tips">
-                <AccordionTrigger>Export best practices</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>
-                      Export from the Automation Hub for better context and
-                      stats
-                    </li>
-                    <li>
-                      Review your test cases before exporting to ensure they
-                      have steps
-                    </li>
-                    <li>
-                      Use descriptive suite names - they become your project
-                      folder names
-                    </li>
-                    <li>
-                      Export regularly as you update test cases to keep
-                      automation in sync
-                    </li>
-                    <li>
-                      Consider adding automation metadata for pre-filled
-                      selectors (see Enhancement section)
-                    </li>
-                  </ul>
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
@@ -692,161 +963,88 @@ export default function PlaywrightAutomationGuidePage() {
           <Section
             id="project-structure"
             title="Project Structure"
-            kicker="Understanding"
+            kicker="Understanding the export"
           >
-            <Card>
-              <CardHeader>
-                <CardTitle>Exported project layout</CardTitle>
-                <CardDescription>
-                  Understanding the structure of your downloaded Playwright
-                  project.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm text-muted-foreground">
-                <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                  <pre className="text-muted-foreground whitespace-pre">
-                    {`synthqa-playwright-suite-name/
-├── tests/
-│   └── cases/
-│       ├── test-case-1.spec.ts
-│       ├── test-case-2.spec.ts
-│       └── test-case-3.spec.ts
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem value="playwright-structure">
+                <AccordionTrigger>
+                  Playwright project structure
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
+                  <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
+                    <pre className="whitespace-pre">{`synthqa-playwright-suite-name/
+├── tests/cases/
+│   ├── test-case-1.spec.ts
+│   └── test-case-2.spec.ts
 ├── synthqa/
 │   ├── suite.json
 │   └── cases/
-│       ├── test-case-1.json
-│       ├── test-case-2.json
-│       └── test-case-3.json
-├── package.json
 ├── playwright.config.ts
+├── package.json
 ├── tsconfig.json
 ├── .env.example
-├── .gitignore
-└── README.md`}
-                  </pre>
-                </div>
-              </CardContent>
-            </Card>
+└── README.md`}</pre>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
 
-            <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="tests-folder">
-                <AccordionTrigger>tests/cases/ directory</AccordionTrigger>
+              <AccordionItem value="cypress-structure">
+                <AccordionTrigger>Cypress project structure</AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>
-                    Contains executable TypeScript test specifications. Each
-                    test case from your suite becomes a separate{" "}
-                    <code>.spec.ts</code> file.
-                  </p>
-
                   <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                    <div className="text-foreground mb-2">
-                      Example test file structure:
-                    </div>
-                    <pre className="text-muted-foreground whitespace-pre-wrap">
-                      {`import { test, expect } from '@playwright/test';
-
-test.describe('User Login Test', () => {
-  test('should successfully log in', async ({ page }) => {
-    // Step 1: Navigate to login page
-    await page.goto('/login');
-    
-    // Step 2: Enter credentials
-    await page.fill('#email', 'user@example.com');
-    await page.fill('#password', 'password123');
-    
-    // Step 3: Click login button
-    await page.click('button[type="submit"]');
-    
-    // Assertion: Verify successful login
-    await expect(page).toHaveURL('/dashboard');
-  });
-});`}
-                    </pre>
+                    <pre className="whitespace-pre">{`synthqa-cypress-suite-name/
+├── cypress/
+│   ├── e2e/
+│   │   ├── test-case-1.cy.js
+│   │   └── test-case-2.cy.js
+│   └── support/
+│       └── commands.js
+├── synthqa/
+│   ├── suite.json
+│   └── cases/
+├── cypress.config.js
+├── package.json
+├── .env.example
+└── README.md`}</pre>
                   </div>
                 </AccordionContent>
               </AccordionItem>
 
-              <AccordionItem value="synthqa-folder">
-                <AccordionTrigger>synthqa/ directory</AccordionTrigger>
+              <AccordionItem value="other-structures">
+                <AccordionTrigger>
+                  Selenium, Puppeteer, TestCafe, WebDriverIO
+                </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <p>
-                    Contains JSON snapshots of your test data for reference and
-                    potential data-driven testing.
+                    All other frameworks follow the same pattern — a{" "}
+                    <code>tests/</code> directory containing one file per test
+                    case, a <code>synthqa/</code> directory for metadata, and
+                    framework-specific config at the root.
                   </p>
-
-                  <div>
-                    <div className="font-medium text-foreground mb-2">
-                      Files:
+                  <div className="space-y-2 text-xs">
+                    <div className="p-2 rounded border flex items-center justify-between">
+                      <span className="font-medium">Selenium</span>
+                      <code className="text-muted-foreground">
+                        tests/*.test.js + wdio-style runner
+                      </code>
                     </div>
-                    <ul className="list-disc pl-5 space-y-1">
-                      <li>
-                        <code>suite.json</code> - Suite metadata (name,
-                        description, type)
-                      </li>
-                      <li>
-                        <code>cases/*.json</code> - Individual test case data
-                        with steps
-                      </li>
-                    </ul>
-                  </div>
-
-                  <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>Reference data</AlertTitle>
-                    <AlertDescription>
-                      These JSON files serve as reference material. You can use
-                      them to build data-driven tests or simply as
-                      documentation.
-                    </AlertDescription>
-                  </Alert>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="config-files">
-                <AccordionTrigger>Configuration files</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <div className="space-y-3">
-                    <div>
-                      <div className="font-medium text-foreground mb-1">
-                        playwright.config.ts
-                      </div>
-                      <p className="text-xs">
-                        Pre-configured with sensible defaults: headless mode,
-                        screenshots on failure, videos on first retry, HTML
-                        reporter.
-                      </p>
+                    <div className="p-2 rounded border flex items-center justify-between">
+                      <span className="font-medium">Puppeteer</span>
+                      <code className="text-muted-foreground">
+                        tests/*.test.js + Jest runner
+                      </code>
                     </div>
-
-                    <div>
-                      <div className="font-medium text-foreground mb-1">
-                        package.json
-                      </div>
-                      <p className="text-xs">
-                        Includes Playwright dependencies and helpful npm
-                        scripts:
-                        <code className="mx-1 px-1 py-0.5 rounded bg-muted">
-                          test
-                        </code>
-                        ,
-                        <code className="mx-1 px-1 py-0.5 rounded bg-muted">
-                          test:headed
-                        </code>
-                        ,
-                        <code className="mx-1 px-1 py-0.5 rounded bg-muted">
-                          test:debug
-                        </code>
-                      </p>
+                    <div className="p-2 rounded border flex items-center justify-between">
+                      <span className="font-medium">TestCafe</span>
+                      <code className="text-muted-foreground">
+                        tests/*.test.js + .testcaferc.json
+                      </code>
                     </div>
-
-                    <div>
-                      <div className="font-medium text-foreground mb-1">
-                        .env.example
-                      </div>
-                      <p className="text-xs">
-                        Template for environment variables. Copy to{" "}
-                        <code>.env</code> and configure BASE_URL and other
-                        settings.
-                      </p>
+                    <div className="p-2 rounded border flex items-center justify-between">
+                      <span className="font-medium">WebDriverIO</span>
+                      <code className="text-muted-foreground">
+                        test/specs/*.js + wdio.conf.js
+                      </code>
                     </div>
                   </div>
                 </AccordionContent>
@@ -867,20 +1065,12 @@ test.describe('User Login Test', () => {
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <ol className="list-decimal pl-5 space-y-1">
-                    <li>
-                      Locate the downloaded ZIP file in your Downloads folder
-                    </li>
-                    <li>
-                      Extract to your desired location (e.g.,{" "}
-                      <code>~/projects/</code>)
-                    </li>
+                    <li>Locate the downloaded ZIP in your Downloads folder</li>
+                    <li>Extract to your projects directory</li>
                     <li>Navigate to the extracted folder in your terminal</li>
                   </ol>
-
                   <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                    <pre className="text-muted-foreground">
-                      {`cd ~/projects/synthqa-playwright-suite-name`}
-                    </pre>
+                    <pre>cd ~/projects/synthqa-playwright-suite-name</pre>
                   </div>
                 </AccordionContent>
               </AccordionItem>
@@ -890,59 +1080,35 @@ test.describe('User Login Test', () => {
                   Step 2: Install dependencies
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>Install Node.js dependencies and Playwright browsers.</p>
-
                   <Tabs defaultValue="pnpm" className="w-full">
                     <TabsList className="grid w-full grid-cols-3">
                       <TabsTrigger value="pnpm">pnpm</TabsTrigger>
                       <TabsTrigger value="npm">npm</TabsTrigger>
                       <TabsTrigger value="yarn">yarn</TabsTrigger>
                     </TabsList>
-
-                    <TabsContent value="pnpm" className="space-y-3 mt-3">
+                    <TabsContent value="pnpm" className="mt-3">
                       <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                        <pre className="text-muted-foreground">
-                          {`# Install dependencies
-pnpm install
-
-# Install Playwright browsers
-npx playwright install`}
-                        </pre>
+                        <pre>{`pnpm install\n\n# Playwright only — install browsers\nnpx playwright install`}</pre>
                       </div>
                     </TabsContent>
-
-                    <TabsContent value="npm" className="space-y-3 mt-3">
+                    <TabsContent value="npm" className="mt-3">
                       <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                        <pre className="text-muted-foreground">
-                          {`# Install dependencies
-npm install
-
-# Install Playwright browsers
-npx playwright install`}
-                        </pre>
+                        <pre>{`npm install\n\n# Playwright only — install browsers\nnpx playwright install`}</pre>
                       </div>
                     </TabsContent>
-
-                    <TabsContent value="yarn" className="space-y-3 mt-3">
+                    <TabsContent value="yarn" className="mt-3">
                       <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                        <pre className="text-muted-foreground">
-                          {`# Install dependencies
-yarn install
-
-# Install Playwright browsers
-npx playwright install`}
-                        </pre>
+                        <pre>{`yarn install\n\n# Playwright only — install browsers\nnpx playwright install`}</pre>
                       </div>
                     </TabsContent>
                   </Tabs>
-
                   <Alert>
                     <Info className="h-4 w-4" />
-                    <AlertTitle>First-time Playwright setup</AlertTitle>
+                    <AlertTitle>Playwright browser download</AlertTitle>
                     <AlertDescription>
-                      <code className="mr-1">npx playwright install</code>{" "}
-                      downloads browser binaries (Chromium, Firefox, WebKit).
-                      This is a one-time download of ~500MB.
+                      <code>npx playwright install</code> downloads Chromium,
+                      Firefox, and WebKit (~500MB, one-time only). Other
+                      frameworks use your already-installed system browsers.
                     </AlertDescription>
                   </Alert>
                 </AccordionContent>
@@ -953,73 +1119,24 @@ npx playwright install`}
                   Step 3: Configure environment
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>
-                    Set up your environment variables for the application under
-                    test.
-                  </p>
-
                   <ol className="list-decimal pl-5 space-y-1">
                     <li>
                       Copy <code>.env.example</code> to <code>.env</code>
                     </li>
                     <li>
-                      Edit <code>.env</code> and set your BASE_URL
+                      Set <code>BASE_URL</code> to your app's URL
                     </li>
-                    <li>Add any other environment-specific variables</li>
+                    <li>Add any other test credentials or settings</li>
                   </ol>
-
                   <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                    <div className="text-foreground mb-2">
-                      Example .env file:
-                    </div>
-                    <pre className="text-muted-foreground">
-                      {`BASE_URL=https://staging.myapp.com
-API_URL=https://api.staging.myapp.com
-TEST_USERNAME=test@example.com
-TEST_PASSWORD=Test123!`}
-                    </pre>
+                    <pre>{`BASE_URL=https://staging.myapp.com\nTEST_USERNAME=test@example.com\nTEST_PASSWORD=Test123!`}</pre>
                   </div>
-
                   <Alert>
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Security reminder</AlertTitle>
                     <AlertDescription>
-                      Never commit the <code>.env</code> file to version
-                      control. It's already in <code>.gitignore</code>.
-                    </AlertDescription>
-                  </Alert>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="implement">
-                <AccordionTrigger>
-                  Step 4: Implement test details
-                </AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>
-                    Review and complete any TODO placeholders in your test
-                    files.
-                  </p>
-
-                  <div>
-                    <div className="font-medium text-foreground mb-2">
-                      What to implement:
-                    </div>
-                    <ul className="list-disc pl-5 space-y-1">
-                      <li>Element selectors (IDs, CSS selectors, test IDs)</li>
-                      <li>Specific assertions and expected values</li>
-                      <li>Wait conditions for dynamic content</li>
-                      <li>Test data and input values</li>
-                    </ul>
-                  </div>
-
-                  <Alert>
-                    <Zap className="h-4 w-4" />
-                    <AlertTitle>Pre-filled tests</AlertTitle>
-                    <AlertDescription>
-                      If your test cases have automation metadata (selectors,
-                      URLs), many TODOs will already be filled in. See the
-                      Enhancement section to learn about automation metadata.
+                      Never commit the <code>.env</code> file. It's already in{" "}
+                      <code>.gitignore</code>.
                     </AlertDescription>
                   </Alert>
                 </AccordionContent>
@@ -1031,158 +1148,68 @@ TEST_PASSWORD=Test123!`}
           <Section id="running-tests" title="Running Tests" kicker="Execution">
             <Card>
               <CardHeader>
-                <CardTitle>Running your Playwright tests</CardTitle>
+                <CardTitle>Run commands by framework</CardTitle>
                 <CardDescription>
-                  Different ways to execute your automated tests.
+                  Each framework has its own run command — all are
+                  pre-configured in the exported <code>package.json</code>.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid md:grid-cols-3 gap-3">
-                  <div className="p-3 rounded-lg border">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Terminal className="h-4 w-4 text-primary" />
-                      <div className="font-medium text-foreground text-sm">
-                        Headless Mode
-                      </div>
+              <CardContent>
+                <Tabs defaultValue="playwright" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3 mb-2">
+                    <TabsTrigger value="playwright">Playwright</TabsTrigger>
+                    <TabsTrigger value="cypress">Cypress</TabsTrigger>
+                    <TabsTrigger value="selenium">Selenium</TabsTrigger>
+                  </TabsList>
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="puppeteer">Puppeteer</TabsTrigger>
+                    <TabsTrigger value="testcafe">TestCafe</TabsTrigger>
+                    <TabsTrigger value="webdriverio">WebDriverIO</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="playwright" className="mt-4">
+                    <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs space-y-2">
+                      <pre>{`pnpm test               # headless\npnpm test:headed        # with browser UI\npnpm test:debug         # Playwright Inspector`}</pre>
                     </div>
-                    <p className="text-xs mb-2 text-muted-foreground">
-                      Fast execution without browser UI. Best for CI/CD.
-                    </p>
-                    <div className="p-2 rounded bg-muted font-mono text-xs">
-                      pnpm test
+                  </TabsContent>
+                  <TabsContent value="cypress" className="mt-4">
+                    <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs space-y-2">
+                      <pre>{`npx cypress run         # headless\nnpx cypress open        # interactive runner`}</pre>
                     </div>
-                  </div>
-
-                  <div className="p-3 rounded-lg border">
-                    <div className="flex items-center gap-2 mb-2">
-                      <PlayCircle className="h-4 w-4 text-primary" />
-                      <div className="font-medium text-foreground text-sm">
-                        Headed Mode
-                      </div>
+                  </TabsContent>
+                  <TabsContent value="selenium" className="mt-4">
+                    <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
+                      <pre>{`npm test                # run all specs`}</pre>
                     </div>
-                    <p className="text-xs mb-2 text-muted-foreground">
-                      See browser UI during test execution.
-                    </p>
-                    <div className="p-2 rounded bg-muted font-mono text-xs">
-                      pnpm test:headed
+                  </TabsContent>
+                  <TabsContent value="puppeteer" className="mt-4">
+                    <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
+                      <pre>{`npm test                # Jest + Puppeteer`}</pre>
                     </div>
-                  </div>
-
-                  <div className="p-3 rounded-lg border">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Settings className="h-4 w-4 text-primary" />
-                      <div className="font-medium text-foreground text-sm">
-                        Debug Mode
-                      </div>
+                  </TabsContent>
+                  <TabsContent value="testcafe" className="mt-4">
+                    <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
+                      <pre>{`npx testcafe chrome tests/     # Chrome\nnpx testcafe firefox tests/    # Firefox\nnpx testcafe all tests/        # All browsers`}</pre>
                     </div>
-                    <p className="text-xs mb-2 text-muted-foreground">
-                      Step through tests with Playwright Inspector.
-                    </p>
-                    <div className="p-2 rounded bg-muted font-mono text-xs">
-                      pnpm test:debug
+                  </TabsContent>
+                  <TabsContent value="webdriverio" className="mt-4">
+                    <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
+                      <pre>{`npx wdio run wdio.conf.js`}</pre>
                     </div>
-                  </div>
-                </div>
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
 
             <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="run-all">
-                <AccordionTrigger>Running all tests</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>Run the entire test suite:</p>
-
-                  <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                    <pre className="text-muted-foreground">
-                      {`# Run all tests in headless mode
-pnpm test
-
-# Run all tests and show browser
-pnpm test:headed`}
-                    </pre>
-                  </div>
-
-                  <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>Test results</AlertTitle>
-                    <AlertDescription>
-                      After tests complete, an HTML report opens automatically
-                      showing pass/fail status, screenshots, and videos for
-                      failed tests.
-                    </AlertDescription>
-                  </Alert>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="run-specific">
-                <AccordionTrigger>Running specific tests</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>Run a single test file or filter by name:</p>
-
-                  <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                    <pre className="text-muted-foreground whitespace-pre-wrap">
-                      {`# Run a specific test file
-npx playwright test tests/cases/login.spec.ts
-
-# Run tests matching a pattern
-npx playwright test --grep "login"
-
-# Run tests in a specific browser
-npx playwright test --project=chromium`}
-                    </pre>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="debugging">
-                <AccordionTrigger>Debugging failed tests</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <div>
-                    <div className="font-medium text-foreground mb-2">
-                      Debugging strategies:
-                    </div>
-                    <ul className="list-disc pl-5 space-y-1">
-                      <li>
-                        Use <code>pnpm test:debug</code> to step through tests
-                      </li>
-                      <li>
-                        Check screenshots automatically captured for failed
-                        tests
-                      </li>
-                      <li>Watch videos of failed test executions</li>
-                      <li>
-                        Use Playwright Inspector to pause and inspect elements
-                      </li>
-                      <li>
-                        Add <code>await page.pause()</code> to stop at specific
-                        points
-                      </li>
-                    </ul>
-                  </div>
-
-                  <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                    <pre className="text-muted-foreground">
-                      {`# Debug a specific test
-npx playwright test login.spec.ts --debug
-
-# Show trace viewer for last run
-npx playwright show-trace`}
-                    </pre>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
               <AccordionItem value="ci-cd">
                 <AccordionTrigger>CI/CD integration</AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>Integrate your tests into your CI/CD pipeline:</p>
-
+                  <p>
+                    All exported frameworks work with standard CI/CD pipelines.
+                    Here's a GitHub Actions example for Playwright:
+                  </p>
                   <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                    <div className="text-foreground mb-2">
-                      GitHub Actions example:
-                    </div>
-                    <pre className="text-muted-foreground whitespace-pre-wrap">
-                      {`name: Playwright Tests
+                    <pre className="whitespace-pre-wrap">{`name: Playwright Tests
 on: [push, pull_request]
 jobs:
   test:
@@ -1197,16 +1224,15 @@ jobs:
         if: always()
         with:
           name: playwright-report
-          path: playwright-report/`}
-                    </pre>
+          path: playwright-report/`}</pre>
                   </div>
-
                   <Alert>
-                    <Rocket className="h-4 w-4" />
-                    <AlertTitle>Automated testing</AlertTitle>
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Other frameworks</AlertTitle>
                     <AlertDescription>
-                      Run tests on every commit, pull request, or deployment to
-                      catch issues early and maintain quality.
+                      Replace the install and run commands with the
+                      framework-specific ones above. The overall pipeline
+                      structure is the same.
                     </AlertDescription>
                   </Alert>
                 </AccordionContent>
@@ -1224,233 +1250,64 @@ jobs:
               <CardHeader>
                 <CardTitle>Automation metadata</CardTitle>
                 <CardDescription>
-                  Pre-fill your tests with selectors, URLs, and test data.
+                  Pre-fill your tests with selectors, URLs, and test data across
+                  any framework.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
                 <p>
                   Instead of exporting tests with TODO placeholders, you can
-                  enhance your test cases with automation metadata to generate
-                  pre-filled, ready-to-run tests.
+                  enhance test cases with automation metadata to generate
+                  pre-filled, near-ready tests regardless of which framework you
+                  use.
                 </p>
-
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="p-4 rounded-lg border">
-                    <div className="font-medium text-foreground mb-2 text-sm"></div>
+                    <div className="font-medium text-foreground mb-2 text-sm">
+                      ❌ Without metadata
+                    </div>
                     <div className="p-2 rounded bg-muted/50 font-mono text-xs">
-                      <pre className="whitespace-pre-wrap text-muted-foreground">
-                        {`// TODO: Navigate to login page
+                      <pre className="whitespace-pre-wrap text-muted-foreground">{`// TODO: Navigate to login page
 await page.goto('???');
 
 // TODO: Fill email field
-await page.fill('???', '???');`}
-                      </pre>
+await page.fill('???', '???');`}</pre>
                     </div>
                   </div>
-
                   <div className="p-4 rounded-lg border">
                     <div className="font-medium text-foreground mb-2 text-sm">
                       ✅ With metadata
                     </div>
                     <div className="p-2 rounded bg-muted/50 font-mono text-xs">
-                      <pre className="whitespace-pre-wrap text-muted-foreground">
-                        {`// Navigate to login page
+                      <pre className="whitespace-pre-wrap text-muted-foreground">{`// Navigate to login page
 await page.goto('/login');
 
 // Fill email field
-await page.fill('#email', 
-  'test@example.com');`}
-                      </pre>
+await page.fill('#email',
+  'test@example.com');`}</pre>
                     </div>
                   </div>
                 </div>
+                <Alert>
+                  <Zap className="h-4 w-4" />
+                  <AlertTitle>80% time savings</AlertTitle>
+                  <AlertDescription>
+                    With automation metadata, tests are 90% ready to run. You
+                    only need to verify and fine-tune instead of implementing
+                    from scratch.
+                  </AlertDescription>
+                </Alert>
               </CardContent>
             </Card>
-
-            <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="what-is-metadata">
-                <AccordionTrigger>
-                  What is automation metadata?
-                </AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>
-                    Automation metadata is additional data you can add to test
-                    cases:
-                  </p>
-
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>Base URLs and navigation paths</li>
-                    <li>Element selectors (CSS, XPath, test IDs)</li>
-                    <li>Test credentials (username/password)</li>
-                    <li>Input values and test data</li>
-                    <li>Wait conditions and timeouts</li>
-                  </ul>
-
-                  <Alert>
-                    <Zap className="h-4 w-4" />
-                    <AlertTitle>80% time savings</AlertTitle>
-                    <AlertDescription>
-                      With automation metadata, tests are 90% ready to run. You
-                      only need to verify and fine-tune instead of implementing
-                      from scratch.
-                    </AlertDescription>
-                  </Alert>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="add-metadata">
-                <AccordionTrigger>
-                  How to add automation metadata
-                </AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>Adding metadata requires a database update first:</p>
-
-                  <ol className="list-decimal pl-5 space-y-1">
-                    <li>
-                      Add the <code>automation_metadata</code> column to your
-                      database (one-time setup)
-                    </li>
-                    <li>
-                      When creating/editing test cases, toggle on "Automation
-                      mode"
-                    </li>
-                    <li>
-                      Fill in selectors, URLs, and test data for each step
-                    </li>
-                    <li>See live preview of generated Playwright code</li>
-                    <li>
-                      Export tests - they'll be pre-filled with your metadata
-                    </li>
-                  </ol>
-
-                  <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>Optional enhancement</AlertTitle>
-                    <AlertDescription>
-                      Automation metadata is completely optional. Tests work
-                      fine without it - you'll just have more TODOs to fill in
-                      manually.
-                    </AlertDescription>
-                  </Alert>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="execution-tracking">
-                <AccordionTrigger>Execution history tracking</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>Track test execution results over time:</p>
-
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>See pass/fail history for each suite</li>
-                    <li>Identify flaky tests that sometimes fail</li>
-                    <li>Track execution duration trends</li>
-                    <li>View screenshots and logs for failed tests</li>
-                    <li>Compare results across environments</li>
-                  </ul>
-
-                  <div>
-                    <div className="font-medium text-foreground mb-2">
-                      Setup required:
-                    </div>
-                    <ol className="list-decimal pl-5 space-y-1 text-xs">
-                      <li>Add execution tracking tables to database</li>
-                      <li>Include custom Playwright reporter in exports</li>
-                      <li>Configure webhook endpoint for results</li>
-                      <li>View execution history in Automation Hub</li>
-                    </ol>
-                  </div>
-
-                  <Alert>
-                    <TrendingUp className="h-4 w-4" />
-                    <AlertTitle>Continuous improvement</AlertTitle>
-                    <AlertDescription>
-                      Execution tracking helps identify problematic tests and
-                      track quality trends over time. Great for data-driven
-                      decision making.
-                    </AlertDescription>
-                  </Alert>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
           </Section>
 
           {/* Best Practices */}
           <Section id="best-practices" title="Best Practices" kicker="Quality">
             <Card>
               <CardHeader>
-                <CardTitle>Test organization</CardTitle>
-                <CardDescription>
-                  Structuring tests for maintainability and clarity.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-3 text-sm">
-                  <div className="font-medium text-foreground">✅ Do</div>
-                  <ul className="space-y-2 text-muted-foreground">
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-                      <span>One test suite per feature or user flow</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-                      <span>Define clear test steps before exporting</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-                      <span>Use descriptive test and suite names</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-                      <span>Keep tests independent and isolated</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-                      <span>Use test data from environment variables</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-                      <span>Re-export when test cases are updated</span>
-                    </li>
-                  </ul>
-                </div>
-
-                <div className="space-y-3 text-sm">
-                  <div className="font-medium text-foreground">❌ Avoid</div>
-                  <ul className="space-y-2 text-muted-foreground">
-                    <li className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
-                      <span>Tests that depend on each other</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
-                      <span>Hardcoded URLs and credentials in tests</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
-                      <span>Exporting without defined test steps</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
-                      <span>Mixing multiple features in one suite</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
-                      <span>Ignoring failed tests without investigation</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
-                      <span>Committing .env files to version control</span>
-                    </li>
-                  </ul>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
                 <CardTitle>Selector strategies</CardTitle>
                 <CardDescription>
-                  Choosing the right selectors for reliable tests.
+                  Choosing reliable selectors — applies to all frameworks.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
@@ -1464,17 +1321,15 @@ await page.fill('#email',
                     </div>
                     <div>Stable, explicit, purpose-built for testing</div>
                   </div>
-
                   <div className="p-3 rounded-lg border">
                     <div className="font-medium text-foreground mb-2">
-                      ⚠️ OK: IDs/Names
+                      ⚠️ OK: IDs / Names
                     </div>
                     <div className="p-2 rounded bg-muted font-mono mb-2">
                       #email-input
                     </div>
                     <div>Reasonable if they're stable and semantic</div>
                   </div>
-
                   <div className="p-3 rounded-lg border">
                     <div className="font-medium text-foreground mb-2">
                       ❌ Avoid: CSS Classes
@@ -1482,7 +1337,7 @@ await page.fill('#email',
                     <div className="p-2 rounded bg-muted font-mono mb-2">
                       .btn-primary
                     </div>
-                    <div>Fragile, changes frequently with styling</div>
+                    <div>Fragile — changes with styling updates</div>
                   </div>
                 </div>
               </CardContent>
@@ -1490,30 +1345,44 @@ await page.fill('#email',
 
             <Card>
               <CardHeader>
-                <CardTitle>Version control</CardTitle>
-                <CardDescription>
-                  Managing your test automation in Git.
-                </CardDescription>
+                <CardTitle>Do's and Don'ts</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm text-muted-foreground">
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Initialize Git in your exported project directory</li>
-                  <li>
-                    Commit the entire project (the .gitignore is pre-configured)
-                  </li>
-                  <li>Create branches for test updates</li>
-                  <li>Use pull requests for test review</li>
-                  <li>Tag releases that match your application versions</li>
-                </ul>
-
-                <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                  <pre className="text-muted-foreground">
-                    {`git init
-git add .
-git commit -m "Initial Playwright tests export"
-git remote add origin <your-repo-url>
-git push -u origin main`}
-                  </pre>
+              <CardContent className="grid md:grid-cols-2 gap-6 text-sm">
+                <div className="space-y-3">
+                  <div className="font-medium text-foreground">✅ Do</div>
+                  <ul className="space-y-2 text-muted-foreground">
+                    {[
+                      "Define test steps before exporting",
+                      "Use descriptive suite and test names",
+                      "Keep tests independent and isolated",
+                      "Use environment variables for test data",
+                      "Re-export when test cases are updated",
+                      "Commit your exported project to version control",
+                    ].map((item) => (
+                      <li key={item} className="flex items-start gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="space-y-3">
+                  <div className="font-medium text-foreground">❌ Avoid</div>
+                  <ul className="space-y-2 text-muted-foreground">
+                    {[
+                      "Tests that depend on each other",
+                      "Hardcoded URLs and credentials in tests",
+                      "Exporting suites with no test steps defined",
+                      "Ignoring failed tests without investigation",
+                      "Committing .env files to version control",
+                      "Mixing multiple features in one suite",
+                    ].map((item) => (
+                      <li key={item} className="flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </CardContent>
             </Card>
@@ -1531,166 +1400,58 @@ git push -u origin main`}
                   Export button doesn't download anything
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <div>
-                    <div className="font-medium text-foreground mb-2">
-                      Possible causes:
-                    </div>
-                    <ul className="list-disc pl-5 space-y-1">
-                      <li>
-                        Browser blocking downloads - check download permissions
-                      </li>
-                      <li>
-                        Ad blocker interfering - try disabling temporarily
-                      </li>
-                      <li>Network issue - check console for errors</li>
-                      <li>
-                        API route not configured - verify export route exists
-                      </li>
-                    </ul>
-                  </div>
-
-                  <div>
-                    <div className="font-medium text-foreground mb-2">
-                      Solutions:
-                    </div>
-                    <ol className="list-decimal pl-5 space-y-1">
-                      <li>Check browser console (F12) for error messages</li>
-                      <li>Try a different browser</li>
-                      <li>
-                        Verify the API route at{" "}
-                        <code>/api/automation/export/playwright</code>
-                      </li>
-                      <li>Check network tab for failed requests</li>
-                    </ol>
-                  </div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>
+                      Browser blocking downloads — check download permissions
+                    </li>
+                    <li>Ad blocker interfering — try disabling temporarily</li>
+                    <li>Check browser console (F12) for error messages</li>
+                    <li>Verify the export API route is responding</li>
+                  </ul>
                 </AccordionContent>
               </AccordionItem>
-
-              <AccordionItem value="install-fails">
-                <AccordionTrigger>Installation fails or hangs</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <div>
-                    <div className="font-medium text-foreground mb-2">
-                      Common solutions:
-                    </div>
-                    <ul className="list-disc pl-5 space-y-1">
-                      <li>
-                        Ensure Node.js 18+ is installed:{" "}
-                        <code>node --version</code>
-                      </li>
-                      <li>
-                        Clear npm cache: <code>npm cache clean --force</code>
-                      </li>
-                      <li>
-                        Delete <code>node_modules</code> and reinstall
-                      </li>
-                      <li>Try a different package manager (pnpm, npm, yarn)</li>
-                      <li>
-                        Check internet connection for downloading Playwright
-                        browsers
-                      </li>
-                    </ul>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
               <AccordionItem value="tests-fail">
                 <AccordionTrigger>All tests fail immediately</AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <div>
-                    <div className="font-medium text-foreground mb-2">
-                      Check these:
-                    </div>
-                    <ul className="list-disc pl-5 space-y-1">
-                      <li>
-                        Is BASE_URL set correctly in <code>.env</code>?
-                      </li>
-                      <li>
-                        Is the application actually running and accessible?
-                      </li>
-                      <li>
-                        Are Playwright browsers installed? Run{" "}
-                        <code>npx playwright install</code>
-                      </li>
-                      <li>Are selectors correct for your application?</li>
-                      <li>
-                        Check screenshots in <code>test-results/</code> folder
-                      </li>
-                    </ul>
-                  </div>
-
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>
+                      Is <code>BASE_URL</code> set correctly in{" "}
+                      <code>.env</code>?
+                    </li>
+                    <li>Is the application running and accessible?</li>
+                    <li>Are framework dependencies fully installed?</li>
+                    <li>
+                      For Playwright: did you run{" "}
+                      <code>npx playwright install</code>?
+                    </li>
+                    <li>Are selectors correct for your application?</li>
+                  </ul>
                   <Alert>
                     <Info className="h-4 w-4" />
-                    <AlertTitle>First run failures</AlertTitle>
+                    <AlertTitle>First run failures are normal</AlertTitle>
                     <AlertDescription>
-                      It's normal for tests to fail on first run if they contain
-                      TODOs or if selectors need adjustment for your specific
-                      application.
+                      Tests with TODO placeholders will fail until you implement
+                      the missing selectors and assertions.
                     </AlertDescription>
                   </Alert>
                 </AccordionContent>
               </AccordionItem>
-
-              <AccordionItem value="slow-tests">
-                <AccordionTrigger>Tests run very slowly</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <div>
-                    <div className="font-medium text-foreground mb-2">
-                      Optimization strategies:
-                    </div>
-                    <ul className="list-disc pl-5 space-y-1">
-                      <li>Run in headless mode (default): faster execution</li>
-                      <li>
-                        Reduce wait times - remove unnecessary{" "}
-                        <code>page.waitForTimeout()</code>
-                      </li>
-                      <li>
-                        Use parallel execution: configure <code>workers</code>{" "}
-                        in playwright.config.ts
-                      </li>
-                      <li>Optimize selectors - use fast, specific selectors</li>
-                      <li>Disable video recording for passing tests</li>
-                    </ul>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="automation-hub-error">
+              <AccordionItem value="hub-error">
                 <AccordionTrigger>
                   "Suite not found" error in Automation Hub
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <div>
-                    <div className="font-medium text-foreground mb-2">
-                      This error occurs when:
-                    </div>
-                    <ul className="list-disc pl-5 space-y-1">
-                      <li>
-                        Database query is missing <code>user_id</code> filter
-                        (RLS issue)
-                      </li>
-                      <li>
-                        The <code>automation_metadata</code> column doesn't
-                        exist
-                      </li>
-                      <li>Suite ID in URL is incorrect</li>
-                    </ul>
-                  </div>
-
-                  <div>
-                    <div className="font-medium text-foreground mb-2">
-                      Solutions:
-                    </div>
-                    <ol className="list-decimal pl-5 space-y-1">
-                      <li>
-                        Run the database migration to add{" "}
-                        <code>automation_metadata</code> column
-                      </li>
-                      <li>Check browser console for specific error messages</li>
-                      <li>Verify suite exists in database</li>
-                      <li>Check RLS policies allow reading test_suites</li>
-                    </ol>
-                  </div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>The suite ID in the URL may be incorrect</li>
+                    <li>
+                      RLS policy may be blocking the query — check database
+                      permissions
+                    </li>
+                    <li>
+                      The <code>automation_metadata</code> column may be missing
+                      — run the migration
+                    </li>
+                  </ul>
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
@@ -1701,91 +1462,50 @@ git push -u origin main`}
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="cost">
                 <AccordionTrigger>
-                  Is Playwright export included in my plan?
+                  Is automation export included in my plan?
                 </AccordionTrigger>
                 <AccordionContent className="text-sm text-muted-foreground">
-                  Yes! Playwright export is available on all plans including
-                  free. There are no additional charges or limits for exporting
-                  test suites.
+                  Automation export is available on Pro and above. There are no
+                  limits on the number of exports.
                 </AccordionContent>
               </AccordionItem>
-
-              <AccordionItem value="languages">
+              <AccordionItem value="all-frameworks">
                 <AccordionTrigger>
-                  Can I export tests in other languages?
+                  Can I export the same suite to multiple frameworks?
                 </AccordionTrigger>
                 <AccordionContent className="text-sm text-muted-foreground">
-                  Currently, exports are TypeScript only. Support for
-                  JavaScript, Python, and C# is planned for future releases.
+                  Yes. Export to as many frameworks as you need from the same
+                  suite. Each export is independent.
                 </AccordionContent>
               </AccordionItem>
-
               <AccordionItem value="modify">
                 <AccordionTrigger>
                   Can I modify the exported tests?
                 </AccordionTrigger>
                 <AccordionContent className="text-sm text-muted-foreground">
-                  Absolutely! The exported project is yours to modify. Add
-                  custom helpers, change test structure, add more tests -
-                  whatever you need. Think of the export as a starting point.
+                  Absolutely. The exported project is yours. Add helpers, change
+                  structure, or extend tests as needed. Think of the export as a
+                  well-structured starting point.
                 </AccordionContent>
               </AccordionItem>
-
               <AccordionItem value="re-export">
                 <AccordionTrigger>
                   What happens if I update test cases and re-export?
                 </AccordionTrigger>
                 <AccordionContent className="text-sm text-muted-foreground">
                   Each export creates a fresh project. If you've modified the
-                  previously exported tests, you'll need to manually merge your
-                  changes or use version control to manage updates.
+                  previous export, use version control to manage merging updates
+                  from a new export.
                 </AccordionContent>
               </AccordionItem>
-
-              <AccordionItem value="frameworks">
+              <AccordionItem value="languages">
                 <AccordionTrigger>
-                  Why Playwright instead of Selenium or Cypress?
+                  What languages are the exported projects in?
                 </AccordionTrigger>
                 <AccordionContent className="text-sm text-muted-foreground">
-                  Playwright offers modern features: auto-waiting, multiple
-                  browsers, mobile emulation, network interception, and
-                  excellent debugging tools. It's also faster and more reliable
-                  for modern web apps. Support for other frameworks may be added
-                  in the future.
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="browsers">
-                <AccordionTrigger>
-                  Which browsers are supported?
-                </AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground">
-                  Exported projects are configured for Chromium, Firefox, and
-                  WebKit (Safari). You can run tests in all three browsers or
-                  configure specific browsers in
-                  <code className="ml-1">playwright.config.ts</code>.
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="metadata-required">
-                <AccordionTrigger>
-                  Do I need to add automation metadata?
-                </AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground">
-                  No, it's optional. Tests export fine without it - they'll just
-                  have more TODO placeholders to fill in. Metadata saves time by
-                  pre-filling selectors, URLs, and test data.
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="empty-suite">
-                <AccordionTrigger>
-                  Can I export a suite with no test cases?
-                </AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground">
-                  Yes, but it's not useful. The export will contain the project
-                  structure but no test files. Add test cases to your suite
-                  before exporting.
+                  Playwright exports use TypeScript. All other frameworks export
+                  JavaScript. If your team uses Java, Python, or C#, use the
+                  export as a structural reference and adapt accordingly.
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
@@ -1796,9 +1516,6 @@ git push -u origin main`}
             <Card>
               <CardHeader>
                 <CardTitle>Getting help</CardTitle>
-                <CardDescription>
-                  Resources and contact information for assistance.
-                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-sm text-muted-foreground">
                 <div>
@@ -1810,85 +1527,72 @@ git push -u origin main`}
                       Email:{" "}
                       <span className="font-medium">support@synthqa.app</span>
                     </li>
-                    <li>Use the feedback button in the dashboard</li>
-                    <li>Check our knowledge base for common issues</li>
+                    <li>Use the feedback button in your dashboard</li>
                   </ul>
                 </div>
-
                 <Separator />
-
                 <div>
                   <div className="font-medium text-foreground mb-2">
                     When reporting export issues, include:
                   </div>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>Suite ID and name</li>
-                    <li>Number of test cases in the suite</li>
+                    <li>Framework selected</li>
                     <li>Browser console errors (if any)</li>
                     <li>Whether download started or failed silently</li>
                   </ul>
                 </div>
-
                 <Separator />
-
-                <div>
-                  <div className="font-medium text-foreground mb-2">
-                    When reporting test execution issues, include:
-                  </div>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>
-                      Playwright version: <code>npx playwright --version</code>
-                    </li>
-                    <li>
-                      Node version: <code>node --version</code>
-                    </li>
-                    <li>Operating system</li>
-                    <li>Error messages and stack traces</li>
-                    <li>Screenshots or videos if available</li>
-                  </ul>
-                </div>
-
-                <Separator />
-
                 <div>
                   <div className="font-medium text-foreground mb-2">
                     Additional resources:
                   </div>
                   <div className="space-y-1">
-                    <Link
-                      href="https://playwright.dev/docs/intro"
-                      className="flex items-center gap-2 text-primary hover:underline"
-                      target="_blank"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      Official Playwright Documentation
-                    </Link>
-                    <Link
-                      href="https://playwright.dev/docs/best-practices"
-                      className="flex items-center gap-2 text-primary hover:underline"
-                      target="_blank"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      Playwright Best Practices
-                    </Link>
-                    <Link
-                      href="/docs/requirements"
-                      className="flex items-center gap-2 text-primary hover:underline"
-                    >
-                      <FileText className="h-4 w-4" />
-                      Requirements Management Guide
-                    </Link>
+                    {[
+                      {
+                        href: "https://playwright.dev/docs/intro",
+                        label: "Playwright Documentation",
+                      },
+                      {
+                        href: "https://docs.cypress.io",
+                        label: "Cypress Documentation",
+                      },
+                      {
+                        href: "https://www.selenium.dev/documentation/",
+                        label: "Selenium Documentation",
+                      },
+                      {
+                        href: "https://pptr.dev",
+                        label: "Puppeteer Documentation",
+                      },
+                      {
+                        href: "https://testcafe.io/documentation",
+                        label: "TestCafe Documentation",
+                      },
+                      {
+                        href: "https://webdriver.io/docs/gettingstarted",
+                        label: "WebDriverIO Documentation",
+                      },
+                    ].map(({ href, label }) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        className="flex items-center gap-2 text-primary hover:underline"
+                        target="_blank"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        {label}
+                      </Link>
+                    ))}
                   </div>
                 </div>
-
                 <div className="text-xs text-muted-foreground pt-4 border-t">
-                  Last updated: January 2026 · Guide version: 1.0
+                  Last updated: March 2026 · Guide version: 2.0
                 </div>
               </CardContent>
             </Card>
           </Section>
         </main>
-        <div className="h-2" />
       </div>
       <SiteFooter />
     </div>

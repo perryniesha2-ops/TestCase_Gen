@@ -276,7 +276,7 @@ export default function TestManagementGuidePage() {
                   key={item.id}
                   href={`#${item.id}`}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   {item.icon}
@@ -568,27 +568,40 @@ export default function TestManagementGuidePage() {
           </Section>
 
           {/* Test Suites */}
-          <Section id="test-suites" title="Test Suites" kicker="Organization">
+
+          <Section
+            id="test-suites"
+            title="Test Suites"
+            kicker="Organization & execution"
+          >
             <Card>
               <CardHeader>
                 <CardTitle>What are test suites?</CardTitle>
                 <CardDescription>
-                  Collections of test cases grouped for execution and tracking.
+                  Collections of test cases grouped for execution, tracking, and
+                  reporting.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
-                <div>
-                  <div className="font-medium text-foreground mb-2">
-                    Key benefits:
-                  </div>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>Execute multiple related tests in one session</li>
-                    <li>Track execution progress and results</li>
-                    <li>Organize tests by testing phase or feature</li>
-                    <li>Schedule and plan test execution</li>
-                    <li>Generate suite-level reports</li>
-                  </ul>
-                </div>
+                <p>
+                  A test suite is a named container that groups related test
+                  cases together so you can run them as a unit, track their
+                  results over time, and generate reports on pass rates and
+                  trends.
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Execute multiple related tests in a single session</li>
+                  <li>Track execution progress and results per run</li>
+                  <li>
+                    Organize tests by testing phase, feature, or risk level
+                  </li>
+                  <li>
+                    Export to automation frameworks (Playwright, Cypress, and
+                    more)
+                  </li>
+                  <li>View run history, pass rate trends, and problem tests</li>
+                  <li>Generate suite-level analytics and reports</li>
+                </ul>
               </CardContent>
             </Card>
 
@@ -599,62 +612,102 @@ export default function TestManagementGuidePage() {
                 <AccordionTrigger>Creating a test suite</AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <ol className="list-decimal pl-5 space-y-1">
-                    <li>Navigate to Test Suites page</li>
+                    <li>Navigate to Test Suites (Test Library)</li>
                     <li>Click "New Test Suite"</li>
                     <li>Enter suite name and description</li>
-                    <li>Select suite type (Manual, Regression, Smoke, etc.)</li>
-                    <li>Assign to a project (optional)</li>
-                    <li>Set planned start/end dates (optional)</li>
+                    <li>
+                      Select suite type (Manual, Regression, Smoke, Integration)
+                    </li>
+                    <li>Assign to a project (optional but recommended)</li>
+                    <li>Set planned start / end dates (optional)</li>
                     <li>Click "Create Suite"</li>
                   </ol>
-
                   <Alert>
                     <Info className="h-4 w-4" />
-                    <AlertTitle>Empty suite</AlertTitle>
+                    <AlertTitle>Suites start empty</AlertTitle>
                     <AlertDescription>
-                      Suites start empty. Add test cases after creation using
-                      the "Manage Test Cases" button.
+                      Add test cases after creation using the "Manage Test
+                      Cases" button inside the suite.
                     </AlertDescription>
                   </Alert>
                 </AccordionContent>
               </AccordionItem>
 
               <AccordionItem value="add-tests">
-                <AccordionTrigger>Adding tests to suite</AccordionTrigger>
+                <AccordionTrigger>Adding tests to a suite</AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <Tabs defaultValue="manual" className="w-full">
                     <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="manual">Manual Add</TabsTrigger>
-                      <TabsTrigger value="bulk">Bulk Add</TabsTrigger>
+                      <TabsTrigger value="manual">From the suite</TabsTrigger>
+                      <TabsTrigger value="bulk">
+                        Bulk add from test cases
+                      </TabsTrigger>
                     </TabsList>
-
                     <TabsContent value="manual" className="space-y-2 mt-3">
                       <ol className="list-decimal pl-5 space-y-1">
-                        <li>Open the test suite</li>
+                        <li>Open the suite detail page</li>
                         <li>Click "Manage Test Cases"</li>
                         <li>Browse or search available test cases</li>
                         <li>Click "+" to add individual tests</li>
                         <li>Reorder using drag handles</li>
-                        <li>Set priority and estimated duration</li>
                         <li>Save changes</li>
                       </ol>
                     </TabsContent>
-
                     <TabsContent value="bulk" className="space-y-2 mt-3">
                       <ol className="list-decimal pl-5 space-y-1">
                         <li>Go to Test Cases page</li>
-                        <li>Select multiple test cases (checkboxes)</li>
-                        <li>Click "Add to Suite" in bulk actions toolbar</li>
+                        <li>Select multiple test cases using checkboxes</li>
+                        <li>
+                          Click "Add to Suite" in the bulk actions toolbar
+                        </li>
                         <li>Select the target suite</li>
-                        <li>Confirm addition</li>
+                        <li>Confirm</li>
                       </ol>
                     </TabsContent>
                   </Tabs>
+                </AccordionContent>
+              </AccordionItem>
 
-                  <div className="p-3 rounded-lg border bg-muted/20 text-xs">
-                    <strong>Pro tip:</strong> Use bulk add when creating large
-                    test suites. Add related tests all at once, then fine-tune
-                    the order in suite management.
+              <AccordionItem value="suite-detail">
+                <AccordionTrigger>Suite detail page</AccordionTrigger>
+                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    Click any suite to open its detail page. The detail page has
+                    three tabs:
+                  </p>
+                  <div className="space-y-2">
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground mb-1 text-sm">
+                        Test Cases tab
+                      </div>
+                      <p className="text-xs">
+                        View and manage all test cases in the suite. Run the
+                        suite, manage test case membership, and access the
+                        Automation Hub to export to your preferred framework.
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground mb-1 text-sm">
+                        Run History tab
+                      </div>
+                      <p className="text-xs">
+                        See every execution session for this suite — pass/fail
+                        breakdown, duration, environment, and links to
+                        individual test results. Resume paused sessions from
+                        here. After completing a test run, the page
+                        automatically switches to this tab.
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-lg border">
+                      <div className="font-medium text-foreground mb-1 text-sm">
+                        Reports tab
+                      </div>
+                      <p className="text-xs">
+                        Analytics scoped to this suite: overall pass rate,
+                        execution trends, test case performance breakdown, and
+                        failure patterns over time.
+                      </p>
+                    </div>
                   </div>
                 </AccordionContent>
               </AccordionItem>
@@ -666,7 +719,7 @@ export default function TestManagementGuidePage() {
                     <div className="flex items-center gap-2 p-2 rounded border">
                       <Badge variant="outline">Draft</Badge>
                       <span className="text-xs">
-                        Initial creation, not ready for execution
+                        Initial creation, being built out
                       </span>
                     </div>
                     <div className="flex items-center gap-2 p-2 rounded border">
@@ -681,19 +734,123 @@ export default function TestManagementGuidePage() {
                     </div>
                     <div className="flex items-center gap-2 p-2 rounded border">
                       <Badge variant="outline">Archived</Badge>
-                      <span className="text-xs">No longer actively used</span>
+                      <span className="text-xs">
+                        No longer actively used, preserved for history
+                      </span>
                     </div>
                   </div>
-
                   <Alert>
                     <Info className="h-4 w-4" />
-                    <AlertTitle>Status management</AlertTitle>
+                    <AlertTitle>Status doesn't block execution</AlertTitle>
                     <AlertDescription>
-                      Change status using the suite edit dialog or the three-dot
-                      menu. Status doesn't block execution - it's for
-                      organizational purposes.
+                      You can run any suite regardless of status. Status is for
+                      organization — it doesn't lock or restrict anything.
                     </AlertDescription>
                   </Alert>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="run-history">
+                <AccordionTrigger>Run history and tracking</AccordionTrigger>
+                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    Every time you run a suite, a session record is created. The
+                    Run History tab shows all sessions — past, current, and
+                    paused.
+                  </p>
+                  <div>
+                    <div className="font-medium text-foreground mb-2">
+                      What each session shows:
+                    </div>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Session name, date, and duration</li>
+                      <li>Environment (staging, production, etc.)</li>
+                      <li>Pass / fail / blocked / skipped counts</li>
+                      <li>
+                        Individual test results with notes and screenshots
+                      </li>
+                      <li>Resume button for paused sessions</li>
+                    </ul>
+                  </div>
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Automation runs also appear here</AlertTitle>
+                    <AlertDescription>
+                      If you've set up the Playwright reporter integration,
+                      automation run results appear in the Run History tab
+                      alongside manual sessions.
+                    </AlertDescription>
+                  </Alert>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="suite-reports">
+                <AccordionTrigger>Suite analytics and reports</AccordionTrigger>
+                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    The Reports tab on each suite provides three views of
+                    execution data:
+                  </p>
+                  <div className="space-y-2">
+                    <div className="p-3 rounded border">
+                      <div className="font-medium text-foreground mb-1">
+                        Overview
+                      </div>
+                      <div className="text-xs">
+                        Total executions, pass rate, average duration, and a
+                        summary of recent sessions.
+                      </div>
+                    </div>
+                    <div className="p-3 rounded border">
+                      <div className="font-medium text-foreground mb-1">
+                        Test Performance
+                      </div>
+                      <div className="text-xs">
+                        Per-test breakdown — which individual test cases pass or
+                        fail most, and how often.
+                      </div>
+                    </div>
+                    <div className="p-3 rounded border">
+                      <div className="font-medium text-foreground mb-1">
+                        Trends
+                      </div>
+                      <div className="text-xs">
+                        Daily pass/fail trend chart showing quality improvement
+                        or regression over time.
+                      </div>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="automation-export">
+                <AccordionTrigger>
+                  Exporting suites to automation frameworks
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    Every suite can be exported as a ready-to-run automation
+                    project. Supported frameworks include Playwright, Cypress,
+                    Selenium, Puppeteer, TestCafe, and WebDriverIO.
+                  </p>
+                  <ol className="list-decimal pl-5 space-y-1">
+                    <li>Open the suite detail page</li>
+                    <li>
+                      Click the "Automation" button (or the Automation tab)
+                    </li>
+                    <li>Select your framework</li>
+                    <li>Click "Export" to download a ZIP project</li>
+                  </ol>
+                  <div className="p-3 rounded-lg border bg-muted/20 text-xs">
+                    See the{" "}
+                    <Link
+                      href="/guides/automation"
+                      className="text-primary hover:underline"
+                    >
+                      Automation Guide
+                    </Link>{" "}
+                    for full setup and running instructions for each framework.
+                  </div>
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
