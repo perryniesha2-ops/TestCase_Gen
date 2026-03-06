@@ -50,6 +50,11 @@ import {
   Terminal,
   FileText,
   Sparkles,
+  Activity,
+  CheckCircle,
+  XCircle,
+  TrendingUp,
+  Zap,
 } from "lucide-react";
 import { Logo } from "@/components/pagecomponents/brandlogo";
 import { Footer } from "@/components/landingpage/footer";
@@ -259,7 +264,7 @@ export default function ProjectsGuidePage() {
                   key={item.id}
                   href={`#${item.id}`}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   {item.icon}
@@ -993,6 +998,242 @@ export default function ProjectsGuidePage() {
             </Accordion>
           </Section>
 
+          <Section
+            id="dashboard"
+            title="Project Dashboard"
+            kicker="Metrics & insights"
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle>What's on the project dashboard?</CardTitle>
+                <CardDescription>
+                  Each project has a dedicated dashboard showing execution
+                  metrics, trends, and problem tests.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  Click any project to open its dashboard. You'll see a live
+                  snapshot of everything happening across manual and automated
+                  test runs for that project.
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    KPI cards for total executions, pass rate, failures, and
+                    artifact counts
+                  </li>
+                  <li>
+                    Execution trend chart covering the last 30 days — both
+                    manual and automation runs
+                  </li>
+                  <li>
+                    Top problem tests ranked by failure count and flakiness
+                    score
+                  </li>
+                  <li>
+                    Test suites summary with pass rates and last run dates
+                  </li>
+                  <li>
+                    Quick links to requirements, test cases, and failed tests
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>KPI cards</CardTitle>
+                <CardDescription>
+                  Four summary cards give you an at-a-glance health check for
+                  the project.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid md:grid-cols-2 gap-3 text-sm">
+                  <div className="p-3 rounded-lg border">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Activity className="h-4 w-4 text-slate-600" />
+                      <div className="font-medium text-foreground">
+                        Executions
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Total test executions in the last 30 days — combines
+                      manual runs, automated test executions, and automation
+                      suite runs. Shows combined pass rate and average duration.
+                      Automation run count appears as a violet annotation when
+                      automation data is present.
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg border">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <div className="font-medium text-foreground">Passed</div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Total passing executions. Shows failed count in the
+                      subtitle. If automation runs are present, a violet "Auto:
+                      X/Y" note shows automation pass rate separately.
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg border">
+                    <div className="flex items-center gap-2 mb-1">
+                      <XCircle className="h-4 w-4 text-red-600" />
+                      <div className="font-medium text-foreground">
+                        Blocked / Skipped
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Combined blocked and skipped executions. Broken down
+                      individually in the subtitle.
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg border">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap className="h-4 w-4 text-blue-600" />
+                      <div className="font-medium text-foreground">
+                        Artifacts
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Counts of test suites, total test cases, requirements, and
+                      templates attached to this project.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Execution trend chart</CardTitle>
+                <CardDescription>
+                  A 30-day line chart showing pass and fail counts over time.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm text-muted-foreground">
+                <p>The chart plots four lines:</p>
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center gap-3 p-2 rounded border">
+                    <div className="w-8 h-0.5 bg-green-500" />
+                    <span>
+                      <strong>Manual passed</strong> — solid green line
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 p-2 rounded border">
+                    <div className="w-8 h-0.5 bg-red-500" />
+                    <span>
+                      <strong>Manual failed</strong> — solid red line
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 p-2 rounded border">
+                    <div className="w-8 border-t-2 border-dashed border-green-500" />
+                    <span>
+                      <strong>Auto passed</strong> — dashed green line
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 p-2 rounded border">
+                    <div className="w-8 border-t-2 border-dashed border-red-500" />
+                    <span>
+                      <strong>Auto failed</strong> — dashed red line
+                    </span>
+                  </div>
+                </div>
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Automation data source</AlertTitle>
+                  <AlertDescription>
+                    Automation lines reflect runs from the Automation Hub. Days
+                    with no automation activity show zero — this is expected if
+                    automation runs don't happen daily.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Top problem tests</CardTitle>
+                <CardDescription>
+                  Tests ranked by failure frequency to help you focus on what
+                  matters most.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  The problem tests panel surfaces the most frequently failing
+                  tests from the last 30 days. It covers three sources:
+                </p>
+                <div className="space-y-2">
+                  <div className="p-3 rounded-lg border">
+                    <div className="font-medium text-foreground mb-1 text-sm">
+                      Regular test cases
+                    </div>
+                    <p className="text-xs">
+                      Manual and automated executions linked to your standard
+                      test cases. Shows failure count, priority badge, and
+                      flakiness percentage.
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg border">
+                    <div className="font-medium text-foreground mb-1 text-sm">
+                      Platform test cases
+                    </div>
+                    <p className="text-xs">
+                      Cross-platform tests (Web, Mobile, API, Accessibility)
+                      that are failing. Same failure count and flakiness
+                      metrics.
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg border">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge className="text-xs bg-violet-100 text-violet-700 border-violet-200">
+                        automation
+                      </Badge>
+                      <div className="font-medium text-foreground text-sm">
+                        Automation suite runs
+                      </div>
+                    </div>
+                    <p className="text-xs">
+                      Suite-level failures from the Automation Hub where
+                      individual test breakdowns aren't available. Shown with a
+                      violet "automation" badge and link to the Automation Hub.
+                      Displays the suite name, framework, and branch alongside
+                      failed test count.
+                    </p>
+                  </div>
+                </div>
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Sorted by impact</AlertTitle>
+                  <AlertDescription>
+                    Problem tests are ordered by failure count first, then
+                    flakiness score. The top 10 most impactful failures are
+                    shown.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Test suites summary</CardTitle>
+                <CardDescription>
+                  A quick view of the project's test suites with pass rates and
+                  last run dates.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  The dashboard shows the five most recent suites. Each entry
+                  shows the suite name, test case count, pass rate, and when it
+                  was last run. Click "View All" to open the full Test Library
+                  filtered to this project.
+                </p>
+              </CardContent>
+            </Card>
+          </Section>
+
           {/* Filtering */}
           <Section
             id="filtering"
@@ -1475,21 +1716,21 @@ export default function ProjectsGuidePage() {
                   </div>
                   <div className="space-y-1">
                     <Link
-                      href="/guides/test-management"
+                      href="/docs/test-management"
                       className="flex items-center gap-2 text-primary hover:underline"
                     >
                       <Layers className="h-4 w-4" />
                       Test Case Management Guide
                     </Link>
                     <Link
-                      href="/guides/requirements"
+                      href="/docs/requirements"
                       className="flex items-center gap-2 text-primary hover:underline"
                     >
                       <FileText className="h-4 w-4" />
                       Requirements Management Guide
                     </Link>
                     <Link
-                      href="/guides/ai-generator"
+                      href="/docs/generator"
                       className="flex items-center gap-2 text-primary hover:underline"
                     >
                       <Sparkles className="h-4 w-4" />

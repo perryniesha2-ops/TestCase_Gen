@@ -160,7 +160,7 @@ export default function BestPracticesGuidePage() {
                   key={item.id}
                   href={`#${item.id}`}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   {item.icon}
@@ -1386,7 +1386,7 @@ export default function BestPracticesGuidePage() {
                   className="flex items-center gap-2 text-primary hover:underline"
                 >
                   <Code2 className="h-4 w-4" />
-                  Playwright Automation Guide
+                  Automation Guide
                 </Link>
                 <Separator className="my-4" />
 

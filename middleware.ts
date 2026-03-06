@@ -39,6 +39,7 @@ export async function middleware(request: NextRequest) {
     "/privacy",
     "/terms",
     "/contact",
+    "/docs",
   ];
 
   // Requires login, accessible to free tier
