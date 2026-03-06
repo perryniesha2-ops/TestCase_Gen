@@ -12,8 +12,15 @@ class SynthQAReporter implements Reporter {
   private testResults: any[] = [];
 
   constructor(options: { suiteId: string }) {
-    this.suiteId = options.suiteId;
+    this.suiteId = options.suiteId || process.env.SYNTHQA_SUITE_ID || "unknown";
     this.sessionId = `playwright-${Date.now()}`;
+  }
+
+  private getOS(): string {
+    const p = process.platform;
+    if (p === "darwin") return "macOS";
+    if (p === "win32") return "Windows";
+    return "Linux";
   }
 
   onTestEnd(test: TestCase, result: TestResult) {
@@ -29,7 +36,7 @@ class SynthQAReporter implements Reporter {
       failure_reason: result.error?.message || null,
       stack_trace: result.error?.stack || null,
       browser: process.env.BROWSER || "chromium",
-      os_version: process.platform,
+      os_version: this.getOS(),
       test_environment: process.env.TEST_ENV || "local",
       framework: "playwright",
       framework_version: this.getPlaywrightVersion(),
@@ -122,8 +129,6 @@ class SynthQAReporter implements Reporter {
     try {
       console.log("📤 Sending test results to SynthQA...");
 
-      const controller = new AbortController();
-
       const response = await fetch(webhookUrl, {
         method: "POST",
         headers: {
@@ -131,7 +136,6 @@ class SynthQAReporter implements Reporter {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(data),
-        signal: controller.signal,
       });
 
       if (!response.ok) {

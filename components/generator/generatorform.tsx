@@ -516,11 +516,16 @@ export function GeneratorForm() {
       }
 
       if (!response.ok) {
-        throw new Error(
-          data.error ||
-            data.details ||
-            `HTTP ${response.status}: Failed to generate test cases`,
-        );
+        if (
+          response.status === 504 ||
+          response.status === 502 ||
+          response.status === 503
+        ) {
+          toast.error(
+            "Generation timed out. This can happen with larger test case counts — please try again.",
+          );
+          return;
+        }
       }
 
       toast.success("Test cases generated!", {

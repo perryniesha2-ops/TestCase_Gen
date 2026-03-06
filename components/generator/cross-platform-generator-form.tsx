@@ -659,6 +659,13 @@ export function CrossPlatformGeneratorForm() {
           return;
         }
 
+        if (res.status === 504 || res.status === 502 || res.status === 503) {
+          toast.error(
+            "Generation timed out. This can happen with larger test case counts — please try again.",
+          );
+          return;
+        }
+
         if (res.status === 429) {
           const remaining = data.remaining ?? 0;
           const requested = data.requested ?? requestedTotal;

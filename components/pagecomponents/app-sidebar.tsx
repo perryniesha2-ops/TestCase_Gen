@@ -48,6 +48,8 @@ import {
   Layout,
   Newspaper,
   Layers,
+  Zap,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -64,6 +66,18 @@ interface SidebarProps {
   initialCollapsed?: boolean;
 }
 
+// Pro-only routes — must match middleware
+const PRO_ONLY_ROUTES = [
+  "/automation",
+  "/test-library",
+  "/requirements",
+  "/project-manager",
+  "/template-manager",
+  "/analytics",
+  "/integrations",
+  "/test-runs",
+];
+
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
   { name: "Projects", href: "/project-manager", icon: Newspaper },
@@ -72,6 +86,7 @@ const navigation = [
   { name: "Cross-Platform Tests", href: "/cross-platform-cases", icon: Layers },
   { name: "Test Cases", href: "/test-cases", icon: FileText },
   { name: "Test Suites", href: "/test-library", icon: Library },
+  { name: "Automation", href: "/automation", icon: Zap },
   { name: "Templates", href: "/template-manager", icon: Layout },
 ];
 
@@ -86,10 +101,10 @@ export function AppSidebar({
   initialCollapsed = false,
 }: SidebarProps) {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [userTier, setUserTier] = useState<"free" | "pro">("free");
   const [loading, setLoading] = useState(true);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
-  // Persist collapsed state in localStorage
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("sidebar-collapsed");
@@ -115,6 +130,18 @@ export function AppSidebar({
             full_name: user.user_metadata?.full_name || "",
             avatar_url: user.user_metadata?.avatar_url || "",
           });
+
+          // Fetch subscription tier
+          const { data: profile } = await supabase
+            .from("user_profiles")
+            .select("subscription_tier, subscription_status")
+            .eq("id", user.id)
+            .single();
+
+          const status = profile?.subscription_status ?? "inactive";
+          const tier = profile?.subscription_tier ?? "free";
+          const isActive = status === "active" || status === "trial";
+          setUserTier(isActive && tier !== "free" ? "pro" : "free");
         }
       } finally {
         setLoading(false);
@@ -122,20 +149,17 @@ export function AppSidebar({
     })();
   }, [supabase]);
 
-  // Save collapsed state to localStorage
   useEffect(() => {
     localStorage.setItem("sidebar-collapsed", JSON.stringify(collapsed));
   }, [collapsed]);
 
-  // Keyboard shortcut: Ctrl/Cmd + B to toggle sidebar
   useEffect(() => {
     const handleKeyboard = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault();
-        setCollapsed((c: boolean) => !c); // Add type here
+        setCollapsed((c: boolean) => !c);
       }
     };
-
     window.addEventListener("keydown", handleKeyboard);
     return () => window.removeEventListener("keydown", handleKeyboard);
   }, []);
@@ -169,6 +193,23 @@ export function AppSidebar({
     return pathname.startsWith(href);
   };
 
+  const isPro = (href: string) =>
+    PRO_ONLY_ROUTES.some((r) => href.startsWith(r));
+
+  const isLocked = (href: string) => isPro(href) && userTier === "free";
+
+  // Handles click — locked items go to billing instead
+  const handleNavClick = (href: string) => {
+    if (isLocked(href)) {
+      router.push(
+        `/billing?upgrade=required&feature=${href.split("/")[1]}&redirect=${href}`,
+      );
+    } else {
+      router.push(href);
+    }
+    setIsMobileOpen(false);
+  };
+
   const NavButton = ({
     name,
     href,
@@ -178,6 +219,8 @@ export function AppSidebar({
     href: string;
     Icon: React.ElementType;
   }) => {
+    const locked = isLocked(href);
+
     const button = (
       <Button
         variant={isActive(href) ? "secondary" : "ghost"}
@@ -185,14 +228,18 @@ export function AppSidebar({
           "w-full h-10 transition justify-start relative",
           collapsed ? "px-0 mx-auto w-10" : "gap-3 px-3",
           isActive(href) && "bg-secondary font-medium",
+          locked && "opacity-60",
         )}
-        onClick={() => {
-          router.push(href);
-          setIsMobileOpen(false);
-        }}
+        onClick={() => handleNavClick(href)}
       >
         <Icon className="h-4 w-4 shrink-0" />
-        {!collapsed && <span className="truncate">{name}</span>}
+        {!collapsed && (
+          <span className="truncate flex-1 text-left">{name}</span>
+        )}
+        {/* Lock badge — expanded sidebar */}
+        {!collapsed && locked && (
+          <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />
+        )}
         {/* Active indicator when collapsed */}
         {collapsed && isActive(href) && (
           <span className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-l" />
@@ -200,12 +247,19 @@ export function AppSidebar({
       </Button>
     );
 
-    // Show tooltip when collapsed
+    // Collapsed: tooltip shows name + Pro label if locked
     if (collapsed) {
       return (
         <Tooltip>
           <TooltipTrigger asChild>{button}</TooltipTrigger>
-          <TooltipContent side="right">{name}</TooltipContent>
+          <TooltipContent side="right">
+            <span>{name}</span>
+            {locked && (
+              <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-400">
+                Pro
+              </span>
+            )}
+          </TooltipContent>
         </Tooltip>
       );
     }
@@ -225,7 +279,6 @@ export function AppSidebar({
         >
           <Link href="/dashboard" className="flex items-center justify-center">
             {collapsed ? (
-              // Collapsed icon - centered and larger
               <div className="h-10 w-10 rounded-lg flex items-center justify-center">
                 <Image
                   src="/logo-icon-dark.svg"
@@ -266,7 +319,6 @@ export function AppSidebar({
             )}
           </Link>
 
-          {/* Collapse button */}
           <Button
             type="button"
             size="icon"
@@ -286,6 +338,7 @@ export function AppSidebar({
             )}
           </Button>
         </div>
+
         {/* Primary nav */}
         <div className={cn("flex-1 px-2 py-4", collapsed && "px-1")}>
           <nav className="space-y-2">
@@ -300,7 +353,29 @@ export function AppSidebar({
               ))}
             </div>
 
-            {/* Secondary */}
+            {/* Upgrade nudge for free users — expanded only */}
+            {!collapsed && userTier === "free" && !loading && (
+              <div className="mt-4 pt-4 border-t">
+                <div className="mx-1 rounded-lg bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-500/20 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                    <Zap className="h-3 w-3" />
+                    Upgrade to Pro
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Unlock automation, test suites, requirements, and more.
+                  </p>
+                  <Button
+                    size="sm"
+                    className="w-full h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white"
+                    onClick={() => router.push("/billing")}
+                  >
+                    View Plans
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Secondary nav */}
             <div
               className={cn("pt-4 mt-4 border-t", collapsed ? "mx-1" : "")}
             />
@@ -358,9 +433,16 @@ export function AppSidebar({
                   {!collapsed && (
                     <>
                       <div className="flex-1 text-left min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {user.full_name || "User"}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium truncate">
+                            {user.full_name || "User"}
+                          </p>
+                          {userTier !== "free" && (
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-amber-500 shrink-0">
+                              Pro
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground truncate">
                           {user.email}
                         </p>
@@ -423,7 +505,7 @@ export function AppSidebar({
 
   return (
     <>
-      {/* Desktop Sidebar (collapsible width) */}
+      {/* Desktop Sidebar */}
       <aside
         className={cn(
           "hidden md:block border-r bg-background transition-[width] duration-200 ease-in-out",
@@ -434,7 +516,7 @@ export function AppSidebar({
         <SidebarContent />
       </aside>
 
-      {/* Mobile Sidebar (Sheet) */}
+      {/* Mobile Sidebar */}
       <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
         <SheetTrigger asChild>
           <Button
@@ -451,6 +533,7 @@ export function AppSidebar({
           </SheetHeader>
           <MobileSidebar
             user={user}
+            userTier={userTier}
             loading={loading}
             handleSignOut={handleSignOut}
             setIsMobileOpen={setIsMobileOpen}
@@ -461,14 +544,15 @@ export function AppSidebar({
   );
 }
 
-/** Mobile sidebar content */
 function MobileSidebar({
   user,
+  userTier,
   loading,
   handleSignOut,
   setIsMobileOpen,
 }: {
   user: UserProfile | null;
+  userTier: "free" | "pro";
   loading: boolean;
   handleSignOut: () => Promise<void>;
   setIsMobileOpen: (open: boolean) => void;
@@ -481,9 +565,22 @@ function MobileSidebar({
       ? pathname === "/dashboard" || pathname === "/"
       : pathname.startsWith(href);
 
+  const isLocked = (href: string) =>
+    PRO_ONLY_ROUTES.some((r) => href.startsWith(r)) && userTier === "free";
+
+  const handleNavClick = (href: string) => {
+    if (isLocked(href)) {
+      router.push(
+        `/billing?upgrade=required&feature=${href.split("/")[1]}&redirect=${href}`,
+      );
+    } else {
+      router.push(href);
+    }
+    setIsMobileOpen(false);
+  };
+
   return (
     <div className="flex h-full flex-col">
-      {/* Logo */}
       <div className="flex h-16 items-center px-4 border-b">
         <Link href="/dashboard" className="flex items-center gap-2">
           <Image
@@ -503,11 +600,11 @@ function MobileSidebar({
         </Link>
       </div>
 
-      {/* Navigation */}
-      <div className="flex-1 px-4 py-6">
-        <nav className="space-y-2">
+      <div className="flex-1 px-4 py-6 overflow-y-auto">
+        <nav className="space-y-1">
           {[...navigation, ...secondaryNavigation].map((item) => {
             const Icon = item.icon;
+            const locked = isLocked(item.href);
             return (
               <Button
                 key={item.name}
@@ -515,21 +612,44 @@ function MobileSidebar({
                 className={cn(
                   "w-full justify-start gap-3 h-10",
                   isActive(item.href) && "bg-secondary font-medium",
+                  locked && "opacity-60",
                 )}
-                onClick={() => {
-                  router.push(item.href);
-                  setIsMobileOpen(false);
-                }}
+                onClick={() => handleNavClick(item.href)}
               >
-                <Icon className="h-4 w-4" />
-                {item.name}
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="flex-1 text-left truncate">{item.name}</span>
+                {locked && (
+                  <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />
+                )}
               </Button>
             );
           })}
         </nav>
+
+        {/* Upgrade nudge */}
+        {userTier === "free" && !loading && (
+          <div className="mt-4 rounded-lg bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-500/20 p-3 space-y-2">
+            <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+              <Zap className="h-3 w-3" />
+              Upgrade to Pro
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Unlock automation, test suites, requirements, and more.
+            </p>
+            <Button
+              size="sm"
+              className="w-full h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white"
+              onClick={() => {
+                router.push("/billing");
+                setIsMobileOpen(false);
+              }}
+            >
+              View Plans
+            </Button>
+          </div>
+        )}
       </div>
 
-      {/* User section */}
       <div className="border-t p-4">
         {loading ? (
           <div className="flex items-center gap-3 px-2 py-2">

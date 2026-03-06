@@ -645,16 +645,17 @@ function renderEnvExample() {
   return `# Required
 BASE_URL="https://app.example.com"
 
-# Authentication (Required if tests need login)
-# Leave empty if testing public pages only
+# Authentication
 USER_EMAIL="test@example.com"
 USER_PASSWORD="yourpassword123"
 
-
-# SynthQA Integration (optional - to sync results back to platform)
-# Get these from: https://synthqa.com/settings/integrations
+# SynthQA Integration
 SYNTHQA_WEBHOOK_URL=""
 SYNTHQA_API_KEY=""
+SYNTHQA_SUITE_ID=""
+TEST_USER_EMAIL=""
+TEST_USER_PASSWORD=""
+TEST_USER_USERNAME=""
 `;
 }
 
@@ -858,6 +859,7 @@ class SynthQAReporter implements Reporter {
     this.sessionId = \`run-\${Date.now()}\`;
   }
 
+
   onTestEnd(test: TestCase, result: TestResult) {
     const duration = result.duration / 1000 / 60; // Convert to minutes
 
@@ -874,6 +876,8 @@ class SynthQAReporter implements Reporter {
       os_version: process.platform,
       test_environment: process.env.TEST_ENV || "local",
       playwright_version: this.getPlaywrightVersion(),
+      framework: 'playwright',
+      framework_version: this.getPlaywrightVersion(),
     });
   }
 
@@ -891,6 +895,7 @@ class SynthQAReporter implements Reporter {
     const payload = {
       suite_id: this.suiteId,
       session_id: this.sessionId,
+      framework: 'playwright',    
       test_results: this.testResults,
       metadata: {
         total_tests: this.testResults.length,
@@ -934,6 +939,14 @@ class SynthQAReporter implements Reporter {
       return "unknown";
     }
   }
+
+  private getOS(): string {
+    const p = process.platform;
+    if (p === 'darwin') return 'macOS';
+    if (p === 'win32') return 'Windows';
+    return 'Linux';
+  }
+
 
   private async sendToSynthQA(data: any) {
     const webhookUrl = process.env.SYNTHQA_WEBHOOK_URL;

@@ -28,6 +28,8 @@ export function ExecutionDetailsClient({
   const [testResults, setTestResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const stripAnsi = (str: string) => str.replace(/\u001b\[[0-9;]*m/g, "");
+
   useEffect(() => {
     loadExecutionDetails();
   }, [executionId]);
@@ -130,7 +132,7 @@ export function ExecutionDetailsClient({
             </Button>
             <div>
               <h1 className="text-3xl font-bold">
-                {execution.test_suites?.name || "Test Execution"}
+                {execution.suites?.name || "Test Execution"}
               </h1>
               <p className="text-muted-foreground mt-1">
                 {new Date(execution.started_at).toLocaleString()} •{" "}
@@ -289,14 +291,14 @@ export function ExecutionDetailsClient({
                           </h3>
                           <Badge
                             variant={
-                              result.status === "passed"
+                              result.execution_status === "passed"
                                 ? "default"
-                                : result.status === "failed"
+                                : result.execution_status === "failed"
                                   ? "destructive"
                                   : "secondary"
                             }
                           >
-                            {result.status}
+                            {result.execution_status}
                           </Badge>
                         </div>
                         {testCase?.description && (
@@ -312,7 +314,7 @@ export function ExecutionDetailsClient({
                       </div>
                       <div className="text-right ml-4">
                         <p className="text-sm font-medium">
-                          {(result.duration_ms / 1000).toFixed(1)}s
+                          {(result.duration_minutes * 60).toFixed(1)}s
                         </p>
                         {testCase?.id && (
                           <Button
@@ -330,33 +332,33 @@ export function ExecutionDetailsClient({
                     </div>
 
                     {/* Error Details */}
-                    {result.status === "failed" && result.error_message && (
-                      <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-lg p-3 space-y-2">
-                        <div className="flex items-start gap-2">
-                          <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-red-900 dark:text-red-100">
-                              Error Message
-                            </p>
-                            <p className="text-sm text-red-800 dark:text-red-200 mt-1 whitespace-pre-wrap">
-                              {result.error_message}
-                            </p>
+                    {result.execution_status === "failed" &&
+                      result.failure_reason && (
+                        <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-lg p-3 space-y-2">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-red-900 dark:text-red-100">
+                                Failure Reason
+                              </p>
+                              <p className="text-sm text-red-800 dark:text-red-200 mt-1 whitespace-pre-wrap">
+                                {stripAnsi(result.failure_reason)}
+                              </p>
+                            </div>
                           </div>
-                        </div>
 
-                        {/* Stack Trace */}
-                        {result.stack_trace && (
-                          <details className="mt-2">
-                            <summary className="text-sm font-medium cursor-pointer text-red-900 dark:text-red-100 hover:underline">
-                              Show Stack Trace
-                            </summary>
-                            <pre className="mt-2 text-xs bg-black/5 dark:bg-black/20 p-3 rounded overflow-x-auto">
-                              {result.stack_trace}
-                            </pre>
-                          </details>
-                        )}
-                      </div>
-                    )}
+                          {result.stack_trace && (
+                            <details className="mt-2">
+                              <summary className="text-sm font-medium cursor-pointer text-red-900 dark:text-red-100 hover:underline">
+                                Show Stack Trace
+                              </summary>
+                              <pre className="mt-2 text-xs bg-black/5 dark:bg-black/20 p-3 rounded overflow-x-auto">
+                                {stripAnsi(result.stack_trace)}
+                              </pre>
+                            </details>
+                          )}
+                        </div>
+                      )}
                   </div>
                 );
               })}

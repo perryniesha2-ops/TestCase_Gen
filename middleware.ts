@@ -5,7 +5,6 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  // Start with a pass-through response we can attach cookies to
   const response = NextResponse.next();
 
   const supabase = createServerClient(
@@ -25,6 +24,9 @@ export async function middleware(request: NextRequest) {
     },
   );
 
+  // ─── Route Definitions ──────────────────────────────────────────────────────
+
+  // Fully public — no auth required, no tier check
   const publicRoutes = [
     "/",
     "/login",
@@ -37,21 +39,27 @@ export async function middleware(request: NextRequest) {
     "/privacy",
     "/terms",
     "/contact",
-    "/billing",
-    "/generate",
-    "/cross-platform",
-    "/test-cases",
   ];
 
+  // Requires login, accessible to free tier
+  const freeAuthRoutes = [
+    "/dashboard",
+    "/billing",
+    "/settings",
+    "/generate",
+    "/test-cases",
+    "/cross-platform-cases",
+  ];
+
+  // Requires login + active paid subscription
   const proOnlyRoutes = [
     "/automation",
     "/test-library",
-    "/analytics",
-    "/integrations",
     "/requirements",
-    "/projects",
     "/project-manager",
     "/template-manager",
+    "/analytics",
+    "/integrations",
     "/test-runs",
   ];
 
@@ -60,62 +68,65 @@ export async function middleware(request: NextRequest) {
     pathname === "/privacy" ||
     pathname === "/terms";
   const isAuthCallback = pathname.startsWith("/auth/callback");
+
   const isPublicRoute =
-    publicRoutes.includes(pathname) || isAuthCallback || isDocPage;
+    publicRoutes.some((r) => pathname === r) || isAuthCallback || isDocPage;
 
-  // Check if current route is Pro-only
-  const isProOnlyRoute = proOnlyRoutes.some((route) =>
-    pathname.startsWith(route),
-  );
+  const isFreeAuthRoute = freeAuthRoutes.some((r) => pathname.startsWith(r));
 
-  // Get user session
+  const isProOnlyRoute = proOnlyRoutes.some((r) => pathname.startsWith(r));
+
+  // ─── Get User ───────────────────────────────────────────────────────────────
+
   const {
     data: { user },
     error,
   } = await supabase.auth.getUser();
 
-  // Handle auth errors on protected routes
-  if (error && !isPublicRoute) {
+  // ─── Auth Error on Protected Routes ────────────────────────────────────────
+
+  if (error && (isFreeAuthRoute || isProOnlyRoute)) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set(
       "message",
       "Session expired. Please log in again.",
     );
-
     const cleared = NextResponse.redirect(loginUrl);
-
     [
       "sb-access-token",
       "sb-refresh-token",
       "supabase-auth-token",
       "supabase.auth.token",
     ].forEach((name) => cleared.cookies.delete(name));
-
     return cleared;
   }
 
-  // Redirect unauthenticated users from protected routes
+  // ─── Unauthenticated Users ──────────────────────────────────────────────────
+
   if (!user && !isPublicRoute) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Redirect authenticated users away from auth pages
-  if (user && pathname === "/login") {
+  // ─── Redirect Logged-in Users Away from Auth Pages ─────────────────────────
+
+  if (user && (pathname === "/login" || pathname === "/signup")) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  // ⭐ Check subscription tier for Pro-only routes
+  // ─── Pro-Only Route Gate ────────────────────────────────────────────────────
+
   if (user && isProOnlyRoute) {
     const cachedTier = request.cookies.get("user_tier")?.value;
-    let userTier: string = cachedTier || "free";
-
     const tierCacheTime = request.cookies.get("tier_cache_time")?.value;
     const now = Date.now();
     const cacheAge = tierCacheTime ? now - parseInt(tierCacheTime) : Infinity;
     const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+    let userTier: string = "free";
+
+    // Always fetch fresh if cache is stale or missing
     if (!cachedTier || cacheAge > CACHE_TTL) {
       const { data: profile } = await supabase
         .from("user_profiles")
@@ -123,10 +134,16 @@ export async function middleware(request: NextRequest) {
         .eq("id", user.id)
         .single();
 
-      userTier = profile?.subscription_tier || "free";
-      const subscriptionStatus = profile?.subscription_status || "inactive";
+      const subscriptionStatus = profile?.subscription_status ?? "inactive";
+      const rawTier = profile?.subscription_tier ?? "free";
 
-      // Cache tier info (5 min TTL)
+      // Only grant pro access if subscription is actually active
+      const isActive =
+        subscriptionStatus === "active" || subscriptionStatus === "trial";
+
+      userTier = isActive && rawTier !== "free" ? rawTier : "free";
+
+      // Cache the resolved tier
       response.cookies.set("user_tier", userTier, {
         maxAge: CACHE_TTL / 1000,
         httpOnly: true,
@@ -137,20 +154,15 @@ export async function middleware(request: NextRequest) {
         httpOnly: true,
         sameSite: "lax",
       });
-
-      // If subscription is not active, treat as free
-      if (subscriptionStatus !== "active" && subscriptionStatus !== "trial") {
-        userTier = "free";
-      }
+    } else {
+      userTier = cachedTier;
     }
 
-    // Block free users from Pro-only routes
     if (userTier === "free") {
       const upgradeUrl = new URL("/billing", request.url);
       upgradeUrl.searchParams.set("upgrade", "required");
-      upgradeUrl.searchParams.set("feature", pathname.split("/")[1]); // e.g., "automation"
+      upgradeUrl.searchParams.set("feature", pathname.split("/")[1]);
       upgradeUrl.searchParams.set("redirect", pathname);
-
       return NextResponse.redirect(upgradeUrl);
     }
   }

@@ -57,6 +57,7 @@ type ProjectDashboardRpc = {
     test_cases_total: number;
     suites: number;
   };
+
   executions: {
     regular: {
       total: number;
@@ -91,6 +92,15 @@ type ProjectDashboardRpc = {
       blocked: number;
       skipped: number;
       not_run: number;
+      in_progress: number;
+      pass_rate: number;
+    };
+    automation: {
+      total: number;
+      passed: number;
+      failed: number;
+      skipped: number;
+      runs: number;
       pass_rate: number;
     };
   };
@@ -103,6 +113,9 @@ type ExecutionTimeline = Array<{
   passed: number;
   failed: number;
   total: number;
+  auto_passed: number;
+  auto_failed: number;
+  auto_total: number;
 }>;
 
 type ProblemTest = {
@@ -203,12 +216,17 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
   const c = dashboard?.counts;
   const reg = dashboard?.executions?.regular;
   const plat = dashboard?.executions?.platform;
+  const auto = dashboard?.executions?.automation; // ← NEW
 
-  const totalExecutions = (reg?.total ?? 0) + (plat?.total ?? 0);
-  const passedExecutions = (reg?.passed ?? 0) + (plat?.passed ?? 0);
-  const failedExecutions = (reg?.failed ?? 0) + (plat?.failed ?? 0);
-  const blockedExecutions = (reg?.blocked ?? 0) + (plat?.blocked ?? 0);
-  const skippedExecutions = (reg?.skipped ?? 0) + (plat?.skipped ?? 0);
+  const totalExecutions =
+    (reg?.total ?? 0) + (plat?.total ?? 0) + (auto?.total ?? 0);
+  const passedExecutions =
+    (reg?.passed ?? 0) + (plat?.passed ?? 0) + (auto?.passed ?? 0);
+  const failedExecutions =
+    (reg?.failed ?? 0) + (plat?.failed ?? 0) + (auto?.failed ?? 0);
+  const blockedExecutions = (reg?.blocked ?? 0) + (plat?.blocked ?? 0); // automation has no blocked
+  const skippedExecutions =
+    (reg?.skipped ?? 0) + (plat?.skipped ?? 0) + (auto?.skipped ?? 0);
 
   const combinedPassRate =
     totalExecutions > 0
@@ -352,6 +370,12 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                       <p className="text-xs text-muted-foreground mt-1">
                         {combinedPassRate}% pass rate · Avg{" "}
                         {dashboard.avg_duration_minutes ?? 0}m
+                        {(auto?.runs ?? 0) > 0 && (
+                          <span className="ml-1 text-violet-600">
+                            · {auto?.runs} auto run
+                            {(auto?.runs ?? 0) !== 1 ? "s" : ""}
+                          </span>
+                        )}
                       </p>
                     </CardContent>
                   </Card>
@@ -371,6 +395,11 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
                         Failed: {failedExecutions}
+                        {(auto?.total ?? 0) > 0 && (
+                          <span className="ml-1 text-violet-600">
+                            · Auto: {auto?.passed ?? 0}/{auto?.total ?? 0}
+                          </span>
+                        )}
                       </p>
                     </CardContent>
                   </Card>
@@ -450,21 +479,41 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                           }}
                         />
                         <Legend />
+                        {/* Manual execution lines — solid */}
                         <Line
                           type="monotone"
                           dataKey="passed"
                           stroke="#10b981"
                           strokeWidth={2}
-                          dot={{ fill: "#10b981", r: 4 }}
-                          name="Passed"
+                          dot={{ fill: "#10b981", r: 3 }}
+                          name="Manual passed"
                         />
                         <Line
                           type="monotone"
                           dataKey="failed"
                           stroke="#ef4444"
                           strokeWidth={2}
-                          dot={{ fill: "#ef4444", r: 4 }}
-                          name="Failed"
+                          dot={{ fill: "#ef4444", r: 3 }}
+                          name="Manual failed"
+                        />
+                        {/* Automation lines — dashed */}
+                        <Line
+                          type="monotone"
+                          dataKey="auto_passed"
+                          stroke="#10b981"
+                          strokeWidth={2}
+                          strokeDasharray="5 3"
+                          dot={{ fill: "#10b981", r: 3 }}
+                          name="Auto passed"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="auto_failed"
+                          stroke="#ef4444"
+                          strokeWidth={2}
+                          strokeDasharray="5 3"
+                          dot={{ fill: "#ef4444", r: 3 }}
+                          name="Auto failed"
                         />
                       </LineChart>
                     </ResponsiveContainer>

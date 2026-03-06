@@ -17,7 +17,6 @@ import {
   FileText,
   CheckCircle,
   XCircle,
-  Clock,
   AlertTriangle,
   ArrowUpRight,
   Activity,
@@ -30,13 +29,10 @@ import {
   AlertCircle,
   ArrowRight,
   Sparkles,
-  HeartPulseIcon,
 } from "lucide-react";
 import {
   LineChart,
   Line,
-  BarChart,
-  Bar,
   PieChart,
   Pie,
   Cell,
@@ -57,15 +53,15 @@ interface DashboardMetrics {
     skipped: number;
     not_run: number;
     pass_rate: number;
-    trend?: "up" | "down" | "stable"; // New
-    trend_value?: number; // New: percentage change
+    trend?: "up" | "down" | "stable";
+    trend_value?: number;
   };
   requirements: {
     total: number;
     tested: number;
     coverage_percentage: number;
     by_priority: Record<string, number>;
-    trend?: "up" | "down" | "stable"; // New
+    trend?: "up" | "down" | "stable";
   };
   recent_activity: Array<{
     id: string;
@@ -74,8 +70,11 @@ interface DashboardMetrics {
     timestamp: string;
     status?: string;
   }>;
-  // New fields for enhanced dashboard
-  health_score?: number; // 0-100
+  automation_runs?: {
+    total: number;
+    pass_rate: number;
+    last_run?: string;
+  };
   execution_timeline?: Array<{
     date: string;
     passed: number;
@@ -93,21 +92,7 @@ interface DashboardMetrics {
     priority: string;
     failed_count: number;
   }>;
-  coverage_gaps?: Array<{
-    area: string;
-    gap_percentage: number;
-  }>;
 }
-
-const PRIORITY_ORDER = ["critical", "high", "medium", "low"] as const;
-
-const CHART_COLORS = {
-  passed: "#10b981",
-  failed: "#ef4444",
-  blocked: "#f59e0b",
-  skipped: "#6b7280",
-  not_run: "#9ca3af",
-};
 
 const PIE_COLORS = ["#10b981", "#ef4444", "#f59e0b", "#9ca3af"];
 
@@ -129,11 +114,10 @@ export function TestManagementDashboard() {
       by_priority: {},
     },
     recent_activity: [],
-    health_score: 0,
+    automation_runs: { total: 0, pass_rate: 0 },
     execution_timeline: [],
     flaky_tests: [],
     priority_failures: [],
-    coverage_gaps: [],
   });
 
   const [loading, setLoading] = useState(true);
@@ -144,7 +128,6 @@ export function TestManagementDashboard() {
     async function load() {
       try {
         setLoading(true);
-
         const res = await fetch("/api/dashboard/metrics", {
           cache: "no-store",
           credentials: "include",
@@ -184,28 +167,27 @@ export function TestManagementDashboard() {
     ].filter((item) => item.value > 0);
   }, [metrics.test_cases]);
 
+  // Split recent activity into manual and automation
+  const manualActivity = useMemo(
+    () =>
+      metrics.recent_activity.filter((a) => a.type === "execution").slice(0, 5),
+    [metrics.recent_activity],
+  );
+
+  const automationActivity = useMemo(
+    () =>
+      metrics.recent_activity
+        .filter((a) => a.type === "suite_started")
+        .slice(0, 5),
+    [metrics.recent_activity],
+  );
+
   function getTrendIcon(trend?: "up" | "down" | "stable") {
     if (trend === "up")
       return <TrendingUp className="h-4 w-4 text-green-600" />;
     if (trend === "down")
       return <TrendingDown className="h-4 w-4 text-red-600" />;
     return <Minus className="h-4 w-4 text-muted-foreground" />;
-  }
-
-  function getHealthColor(score: number) {
-    if (score >= 80) return "text-green-600";
-    if (score >= 60) return "text-yellow-600";
-    if (score === 0) return "text-blue-600";
-
-    return "text-red-600";
-  }
-
-  function getHealthBgGradient(score: number) {
-    if (score === 0) return "from-blue-500/10 to-blue-500/5";
-
-    if (score >= 80) return "from-green-500/10 to-green-500/5";
-    if (score >= 60) return "from-yellow-500/10 to-yellow-500/5";
-    return "from-red-500/10 to-red-500/5";
   }
 
   function getPassRateColor(rate: number) {
@@ -243,6 +225,18 @@ export function TestManagementDashboard() {
     }
   }
 
+  function getActivityIcon(activity: DashboardMetrics["recent_activity"][0]) {
+    if (activity.status === "passed")
+      return <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />;
+    if (activity.status === "failed")
+      return <XCircle className="h-4 w-4 text-red-600 flex-shrink-0" />;
+    if (activity.status === "blocked")
+      return (
+        <AlertTriangle className="h-4 w-4 text-orange-600 flex-shrink-0" />
+      );
+    return <Activity className="h-4 w-4 text-blue-600 flex-shrink-0" />;
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -255,125 +249,101 @@ export function TestManagementDashboard() {
   }
 
   const hasData = metrics.test_cases.total > 0;
+  const hasPriorityFailures = (metrics.priority_failures?.length ?? 0) > 0;
 
   return (
     <div className="space-y-8 px-1 md:px-2">
-      {/* Health Score Hero Card */}
-      {hasData && (
-        <Card
-          className={`bg-gradient-to-br ${getHealthBgGradient(
-            metrics.health_score ?? 0,
-          )} border-none shadow-lg`}
-        >
-          <CardContent className="p-8">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <HeartPulseIcon className="h-5 w-5 text-primary" />
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Test Suite Health Score
-                  </p>
-                </div>
-                <div className="flex items-end gap-3">
-                  <span
-                    className={`text-6xl font-bold ${getHealthColor(
-                      metrics.health_score ?? 0,
-                    )}`}
-                  >
-                    {metrics.health_score ?? 0}
-                  </span>
-                  <span className="text-2xl text-muted-foreground mb-2">
-                    / 100
-                  </span>
-                </div>
-                <p className="text-sm text-muted-foreground max-w-md">
-                  {(() => {
-                    const score = metrics.health_score ?? 0;
-
-                    if (score === 0) {
-                      return "No tests have been executed yet. Run your tests to see your health score.";
-                    }
-
-                    // Normal messages
-                    if (score >= 80) {
-                      return "Excellent! Your test suite is in great shape.";
-                    }
-                    if (score >= 60) {
-                      return "Good, but there's room for improvement.";
-                    }
-                    return "Needs attention. Focus on fixing failing tests.";
-                  })()}
-                </p>
-              </div>
-              {/* ... rest of the card */}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Link href="/generate">
+          <Button
+            variant="outline"
+            className="w-full h-auto py-3 flex flex-col items-center gap-1.5 hover:bg-primary hover:text-primary-foreground transition-colors"
+          >
+            <Sparkles className="h-5 w-5" />
+            <span className="text-xs font-medium">Generate Tests</span>
+          </Button>
+        </Link>
+        <Link href="/automation">
+          <Button
+            variant="outline"
+            className="w-full h-auto py-3 flex flex-col items-center gap-1.5 hover:bg-primary hover:text-primary-foreground transition-colors"
+          >
+            <Zap className="h-5 w-5" />
+            <span className="text-xs font-medium">Automation</span>
+          </Button>
+        </Link>
+        <Link href="/test-cases?runStatus=failed">
+          <Button
+            variant="outline"
+            className="w-full h-auto py-3 flex flex-col items-center gap-1.5 hover:bg-destructive hover:text-destructive-foreground transition-colors"
+          >
+            <XCircle className="h-5 w-5" />
+            <span className="text-xs font-medium">View Failures</span>
+          </Button>
+        </Link>
+        <Link href="/test-cases">
+          <Button
+            variant="outline"
+            className="w-full h-auto py-3 flex flex-col items-center gap-1.5 hover:bg-primary hover:text-primary-foreground transition-colors"
+          >
+            <Play className="h-5 w-5" />
+            <span className="text-xs font-medium">Run Tests</span>
+          </Button>
+        </Link>
+      </div>
 
       {/* Key Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Total Test Cases */}
-        <Card className="overflow-hidden">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total Test Cases
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Total Tests</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{metrics.test_cases.total}</div>
-            <div className="flex items-center gap-2 mt-2">
-              <p className="text-xs text-muted-foreground">
-                {metrics.test_cases.trend_value
-                  ? `${metrics.test_cases.trend_value > 0 ? "+" : ""}${metrics.test_cases.trend_value}% from last week`
-                  : `${metrics.test_cases.not_run} not executed`}
-              </p>
-            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              {metrics.test_cases.not_run} not yet executed
+            </p>
           </CardContent>
         </Card>
 
         {/* Pass Rate */}
-        <Card className="overflow-hidden">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Pass Rate</CardTitle>
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div
-              className={`text-3xl font-bold ${getPassRateColor(
-                metrics.test_cases.pass_rate,
-              )}`}
+              className={`text-3xl font-bold ${getPassRateColor(metrics.test_cases.pass_rate)}`}
             >
               {metrics.test_cases.pass_rate}%
             </div>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-green-500 h-2 transition-all duration-500"
-                  style={{ width: `${metrics.test_cases.pass_rate}%` }}
-                />
-              </div>
+            <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden mt-3">
+              <div
+                className="bg-green-500 h-2 transition-all duration-500"
+                style={{ width: `${metrics.test_cases.pass_rate}%` }}
+              />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              {metrics.test_cases.passed} passed of {metrics.test_cases.total}
+              {metrics.test_cases.passed} of {metrics.test_cases.total} passed
             </p>
           </CardContent>
         </Card>
 
-        {/* Coverage */}
-        <Card className="overflow-hidden">
+        {/* Requirements Coverage */}
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Requirements Coverage
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Coverage</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
               {metrics.requirements.coverage_percentage}%
             </div>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2 mt-3">
               {getTrendIcon(metrics.requirements.trend)}
               <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
                 <div
@@ -392,11 +362,9 @@ export function TestManagementDashboard() {
         </Card>
 
         {/* Failed Tests */}
-        <Card className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 p-4 rounded-lg border border-red-200 dark:border-red-800 shadow-sm">
-          <CardHeader className="flex flex-row items-left justify-between pb-2">
-            <CardTitle className="text-sm font-medium justify-left">
-              Failed Tests
-            </CardTitle>
+        <Card className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Failed Tests</CardTitle>
             <XCircle className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
@@ -413,127 +381,147 @@ export function TestManagementDashboard() {
             </Link>
           </CardContent>
         </Card>
+
+        {/* Automation Runs */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">
+              Automation Runs
+            </CardTitle>
+            <Zap className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">
+              {metrics.automation_runs?.total ?? 0}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              {metrics.automation_runs?.pass_rate ?? 0}% pass rate
+            </p>
+            {metrics.automation_runs?.last_run && (
+              <p className="text-xs text-muted-foreground">
+                Last: {getRelativeTime(metrics.automation_runs.last_run)}
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Charts Row */}
+      {/* Execution Timeline - full width */}
       {hasData && (
-        <div className="grid grid-cols-2 lg:grid-cols-7 gap-6">
-          {/* Execution Timeline */}
-          <Card className="lg:col-span-8">
-            <CardHeader>
-              <CardTitle>Execution Trend (Last 7 Days)</CardTitle>
-              <CardDescription>
-                Daily test execution results over time
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {metrics.execution_timeline &&
-              metrics.execution_timeline.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={metrics.execution_timeline}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                    <XAxis
-                      dataKey="date"
-                      style={{ fontSize: "12px" }}
-                      tickFormatter={(value) => {
-                        const date = new Date(value);
-                        return `${date.getMonth() + 1}/${date.getDate()}`;
-                      }}
-                    />
-                    <YAxis style={{ fontSize: "12px" }} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "rgba(255, 255, 255, 0.95)",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "8px",
-                      }}
-                    />
-                    <Legend />
-                    <Line
-                      type="monotone"
-                      dataKey="passed"
-                      stroke="#10b981"
-                      strokeWidth={2}
-                      dot={{ fill: "#10b981", r: 4 }}
-                      name="Passed"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="failed"
-                      stroke="#ef4444"
-                      strokeWidth={2}
-                      dot={{ fill: "#ef4444", r: 4 }}
-                      name="Failed"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">
-                  <div className="text-center space-y-2">
-                    <Activity className="h-8 w-8 mx-auto opacity-50" />
-                    <p className="text-sm">No execution data yet</p>
-                    <Link href="/test-cases">
-                      <Button variant="outline" size="sm">
-                        <Play className="h-4 w-4 mr-2" />
-                        Run Tests
-                      </Button>
-                    </Link>
-                  </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Execution Trend</CardTitle>
+            <CardDescription>
+              Daily test results over the last 7 days
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {metrics.execution_timeline &&
+            metrics.execution_timeline.length > 0 ? (
+              <ResponsiveContainer width="100%" height={360}>
+                <LineChart data={metrics.execution_timeline}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                  <XAxis
+                    dataKey="date"
+                    style={{ fontSize: "12px" }}
+                    tickFormatter={(value) => {
+                      const date = new Date(value);
+                      return `${date.getMonth() + 1}/${date.getDate()}`;
+                    }}
+                  />
+                  <YAxis style={{ fontSize: "12px" }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "rgba(255, 255, 255, 0.95)",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                    }}
+                  />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="passed"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    dot={{ fill: "#10b981", r: 4 }}
+                    name="Passed"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="failed"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    dot={{ fill: "#ef4444", r: 4 }}
+                    name="Failed"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[360px] flex items-center justify-center text-muted-foreground">
+                <div className="text-center space-y-2">
+                  <Activity className="h-8 w-8 mx-auto opacity-50" />
+                  <p className="text-sm">No execution data yet</p>
+                  <Link href="/test-cases">
+                    <Button variant="outline" size="sm">
+                      <Play className="h-4 w-4 mr-2" />
+                      Run Tests
+                    </Button>
+                  </Link>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Status Distribution Pie Chart */}
-          <Card className="lg:col-span-8">
-            <CardHeader>
-              <CardTitle>Test Status Distribution</CardTitle>
-              <CardDescription>
-                Breakdown of current test states
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {pieChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <PieChart>
-                    <Pie
-                      data={pieChartData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) =>
-                        `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
-                      }
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {pieChartData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={PIE_COLORS[index % PIE_COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">
-                  <div className="text-center space-y-2">
-                    <Target className="h-8 w-8 mx-auto opacity-50" />
-                    <p className="text-sm">No test data available</p>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
-      {/* Action Items Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Priority Failures */}
+      {/* Status Distribution - full width */}
+      {hasData && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Test Status Distribution</CardTitle>
+            <CardDescription>Breakdown of current test states</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {pieChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={360}>
+                <PieChart>
+                  <Pie
+                    data={pieChartData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={true}
+                    label={({ name, percent }) =>
+                      `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
+                    }
+                    outerRadius={140}
+                    dataKey="value"
+                  >
+                    {pieChartData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={PIE_COLORS[index % PIE_COLORS.length]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[360px] flex items-center justify-center text-muted-foreground">
+                <div className="text-center space-y-2">
+                  <Target className="h-8 w-8 mx-auto opacity-50" />
+                  <p className="text-sm">No test data available</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Priority Failures — only render when there's data */}
+      {hasPriorityFailures && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <div>
@@ -552,169 +540,129 @@ export function TestManagementDashboard() {
             </Link>
           </CardHeader>
           <CardContent>
-            {metrics.priority_failures &&
-            metrics.priority_failures.length > 0 ? (
-              <div className="space-y-3">
-                {metrics.priority_failures.slice(0, 5).map((test) => (
-                  <Link
-                    key={test.id}
-                    href={`/test-cases/${test.id}`}
-                    className="block"
-                  >
-                    <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent transition-colors">
-                      <XCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {test.title}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge
-                            variant="outline"
-                            className={`text-xs ${getPriorityBadgeClass(test.priority)}`}
-                          >
-                            {test.priority}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            Failed {test.failed_count}x
-                          </span>
-                        </div>
+            <div className="space-y-3">
+              {metrics.priority_failures!.slice(0, 5).map((test) => (
+                <Link
+                  key={test.id}
+                  href={`/test-cases/${test.id}`}
+                  className="block"
+                >
+                  <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent transition-colors">
+                    <XCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {test.title}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge
+                          variant="outline"
+                          className={`text-xs ${getPriorityBadgeClass(test.priority)}`}
+                        >
+                          {test.priority}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          Failed {test.failed_count}x
+                        </span>
                       </div>
                     </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 space-y-2">
-                <CheckCircle className="h-8 w-8 mx-auto text-green-600 opacity-50" />
-                <p className="text-sm text-muted-foreground">
-                  No failed priority tests
-                </p>
-              </div>
-            )}
+                  </div>
+                </Link>
+              ))}
+            </div>
           </CardContent>
         </Card>
+      )}
 
-        {/* Flaky Tests */}
+      {/* Recent Activity — split into two columns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Manual Executions */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Zap className="h-5 w-5 text-orange-600" />
-                Flaky Tests
-              </CardTitle>
-              <CardDescription>Tests with inconsistent results</CardDescription>
-            </div>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5" />
+              Manual Executions
+            </CardTitle>
+            <CardDescription>Recent manual test runs</CardDescription>
           </CardHeader>
           <CardContent>
-            {metrics.flaky_tests && metrics.flaky_tests.length > 0 ? (
-              <div className="space-y-3">
-                {metrics.flaky_tests.slice(0, 5).map((test) => (
-                  <Link
-                    key={test.id}
-                    href={`/test-cases/${test.id}`}
-                    className="block"
-                  >
-                    <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent transition-colors">
-                      <Zap className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {test.title}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden">
-                            <div
-                              className="bg-orange-500 h-1.5"
-                              style={{
-                                width: `${test.flakiness_score}%`,
-                              }}
-                            />
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {test.flakiness_score}%
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 space-y-2">
-                <CheckCircle className="h-8 w-8 mx-auto text-green-600 opacity-50" />
+            {manualActivity.length === 0 ? (
+              <div className="text-center py-8 space-y-3">
+                <Activity className="h-8 w-8 mx-auto text-muted-foreground opacity-50" />
                 <p className="text-sm text-muted-foreground">
-                  No flaky tests detected
+                  No manual executions yet
                 </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent Activity */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5" />
-            Recent Activity
-          </CardTitle>
-          <CardDescription>Latest test executions and updates</CardDescription>
-        </CardHeader>
-        <CardContent className="pt-2">
-          {metrics.recent_activity.length === 0 ? (
-            <div className="text-center py-10 space-y-3">
-              <Activity className="h-10 w-10 mx-auto text-muted-foreground opacity-50" />
-              <div>
-                <p className="text-sm font-medium">No recent activity</p>
-                <p className="text-sm text-muted-foreground">
-                  Start by running some tests or generating new ones
-                </p>
-              </div>
-              <div className="flex items-center gap-2 justify-center">
                 <Link href="/test-cases">
                   <Button variant="outline" size="sm">
                     <Play className="h-4 w-4 mr-2" />
                     Run Tests
                   </Button>
                 </Link>
-                <Link href="/generate">
-                  <Button size="sm">
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {manualActivity.map((activity) => (
+                  <div
+                    key={activity.id}
+                    className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent/50 transition-colors"
+                  >
+                    {getActivityIcon(activity)}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm truncate">{activity.description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {getRelativeTime(activity.timestamp)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Automation Runs Activity */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5" />
+              Automation Activity
+            </CardTitle>
+            <CardDescription>Recent automated test runs</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {automationActivity.length === 0 ? (
+              <div className="text-center py-8 space-y-3">
+                <Zap className="h-8 w-8 mx-auto text-muted-foreground opacity-50" />
+                <p className="text-sm text-muted-foreground">
+                  No automation runs yet
+                </p>
+                <Link href="/automation">
+                  <Button variant="outline" size="sm">
                     <Plus className="h-4 w-4 mr-2" />
-                    Generate Tests
+                    Automation{" "}
                   </Button>
                 </Link>
               </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {metrics.recent_activity.slice(0, 10).map((activity) => (
-                <div
-                  key={activity.id}
-                  className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent/50 transition-colors"
-                >
-                  {activity.status === "passed" && (
-                    <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-                  )}
-                  {activity.status === "failed" && (
-                    <XCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
-                  )}
-                  {activity.status === "blocked" && (
-                    <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
-                  )}
-                  {!activity.status && (
-                    <Activity className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm">{activity.description}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {getRelativeTime(activity.timestamp)}
-                    </p>
+            ) : (
+              <div className="space-y-2">
+                {automationActivity.map((activity) => (
+                  <div
+                    key={activity.id}
+                    className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent/50 transition-colors"
+                  >
+                    {getActivityIcon(activity)}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm truncate">{activity.description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {getRelativeTime(activity.timestamp)}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="h-2" />
     </div>

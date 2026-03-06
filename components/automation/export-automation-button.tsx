@@ -15,7 +15,7 @@ import { toast } from "sonner";
 interface ExportAutomationButtonProps {
   suiteId: string;
   suiteName?: string;
-  framework?: string; // ✅ NEW: Framework prop
+  framework?: string;
   variant?: "default" | "outline" | "ghost" | "secondary";
   size?: "default" | "sm" | "lg" | "icon";
   showLabel?: boolean;
@@ -25,7 +25,7 @@ interface ExportAutomationButtonProps {
 export function ExportAutomationButton({
   suiteId,
   suiteName,
-  framework = "playwright", // ✅ Default to playwright
+  framework = "playwright",
   variant = "outline",
   size = "default",
   showLabel = true,
@@ -68,7 +68,7 @@ export function ExportAutomationButton({
       "playwright",
       "cypress",
       "selenium",
-      // "puppeteer",  // Coming soon
+      "puppeteer",
       // "testcafe",   // Coming soon
       // "webdriverio" // Coming soon
     ];

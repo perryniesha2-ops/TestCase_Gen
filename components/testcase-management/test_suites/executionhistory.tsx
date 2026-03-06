@@ -315,7 +315,9 @@ function IssueLink({
   return <span className="text-xs text-muted-foreground">—</span>;
 }
 
-export function ExecutionHistory() {
+export function ExecutionHistory({
+  suiteId: propSuiteId,
+}: { suiteId?: string } = {}) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
 
@@ -323,7 +325,7 @@ export function ExecutionHistory() {
   const [availableSuites, setAvailableSuites] = useState<
     Array<{ id: string; name: string }>
   >([]);
-  const [suiteId, setSuiteId] = useState<string>("all");
+  const [suiteId, setSuiteId] = useState<string>(propSuiteId ?? "all");
   const [dateFilter, setDateFilter] = useState<string>("all"); // all, today, week, month, year
 
   // runs tab
@@ -380,6 +382,10 @@ export function ExecutionHistory() {
     "blocked",
     "skipped",
   ];
+
+  useEffect(() => {
+    if (propSuiteId) setSuiteId(propSuiteId);
+  }, [propSuiteId]);
 
   useEffect(() => {
     void fetchSuites();
@@ -1519,20 +1525,21 @@ export function ExecutionHistory() {
                   </SelectContent>
                 </Select>
 
-                <Select value={suiteId} onValueChange={setSuiteId}>
-                  <SelectTrigger className="w-[220px]">
-                    <SelectValue placeholder="All suites" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All suites</SelectItem>
-                    {availableSuites.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
+                {!propSuiteId && (
+                  <Select value={suiteId} onValueChange={setSuiteId}>
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue placeholder="All suites" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All suites</SelectItem>
+                      {availableSuites.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <div className="flex items-center gap-2">
                   <Checkbox
                     checked={showAborted}
@@ -1792,19 +1799,21 @@ export function ExecutionHistory() {
                   </SelectContent>
                 </Select>
 
-                <Select value={suiteId} onValueChange={setSuiteId}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="All suites" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All suites</SelectItem>
-                    {availableSuites.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {!propSuiteId && (
+                  <Select value={suiteId} onValueChange={setSuiteId}>
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue placeholder="All suites" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All suites</SelectItem>
+                      {availableSuites.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
 
                 <Select
                   value={status}

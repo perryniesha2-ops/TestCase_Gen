@@ -158,9 +158,6 @@ export function Hero() {
                       User Login – Cross-platform suite
                     </CardTitle>
                   </div>
-                  <Badge variant="outline" className="text-xs">
-                    Beta
-                  </Badge>
                 </div>
               </CardHeader>
 

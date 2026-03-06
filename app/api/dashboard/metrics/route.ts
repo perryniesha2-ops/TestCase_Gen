@@ -17,7 +17,6 @@ export async function GET() {
   try {
     const supabase = await createClient();
 
-    // Server-side auth
     const {
       data: { user },
       error: authErr,
@@ -30,8 +29,6 @@ export async function GET() {
     // -------------------------
     // 1) Test case metrics (BOTH regular and cross-platform)
     // -------------------------
-
-    // ✅ Fetch regular test cases
     const { data: regularTestCases, error: tcErr } = await supabase
       .from("test_cases")
       .select("id, execution_status")
@@ -42,7 +39,6 @@ export async function GET() {
       return NextResponse.json({ error: tcErr.message }, { status: 500 });
     }
 
-    // ✅ Fetch cross-platform test cases
     const { data: platformTestCases, error: ptcErr } = await supabase
       .from("platform_test_cases")
       .select("id, execution_status")
@@ -53,7 +49,6 @@ export async function GET() {
       return NextResponse.json({ error: ptcErr.message }, { status: 500 });
     }
 
-    // ✅ Combine both types
     const testCases = [
       ...(regularTestCases ?? []),
       ...(platformTestCases ?? []),
@@ -62,13 +57,11 @@ export async function GET() {
     const regularIds = (regularTestCases ?? []).map((t) => t.id);
     const platformIds = (platformTestCases ?? []).map((t) => t.id);
 
-    // ✅ Fetch latest execution status from BOTH tables
     let latestRows: Array<{
       test_case_id: string;
       execution_status: ExecutionStatus;
     }> = [];
 
-    // Fetch regular executions
     if (regularIds.length > 0) {
       const { data: regularExecs, error: reErr } = await supabase
         .from("test_executions")
@@ -77,7 +70,6 @@ export async function GET() {
         .order("created_at", { ascending: false });
 
       if (!reErr && regularExecs) {
-        // Get most recent per test case
         const seen = new Set<string>();
         regularExecs.forEach((exec) => {
           if (!seen.has(exec.test_case_id)) {
@@ -88,7 +80,6 @@ export async function GET() {
       }
     }
 
-    // Fetch platform executions
     if (platformIds.length > 0) {
       const { data: platformExecs, error: peErr } = await supabase
         .from("platform_test_executions")
@@ -97,7 +88,6 @@ export async function GET() {
         .order("created_at", { ascending: false });
 
       if (!peErr && platformExecs) {
-        // Get most recent per test case
         const seen = new Set<string>();
         platformExecs.forEach((exec) => {
           if (!seen.has(exec.test_case_id)) {
@@ -113,7 +103,13 @@ export async function GET() {
       latestMap.set(r.test_case_id, r.execution_status);
     }
 
-    const counts = { passed: 0, failed: 0, blocked: 0, skipped: 0, not_run: 0 };
+    const counts = {
+      passed: 0,
+      failed: 0,
+      blocked: 0,
+      skipped: 0,
+      not_run: 0,
+    };
     for (const id of testCaseIds) {
       const s = latestMap.get(id) ?? "not_run";
       if (s === "passed") counts.passed++;
@@ -127,7 +123,7 @@ export async function GET() {
     const pass_rate = total > 0 ? Math.round((counts.passed / total) * 100) : 0;
 
     // -------------------------
-    // 2) Requirements metrics (unchanged)
+    // 2) Requirements metrics
     // -------------------------
     const { data: reqs, error: reqErr } = await supabase
       .from("requirements")
@@ -173,46 +169,37 @@ export async function GET() {
     // -------------------------
     // 3) Recent activity (BOTH types)
     // -------------------------
-
-    // ✅ Fetch recent regular executions
-    const { data: recentRegular, error: rrErr } = await supabase
+    const { data: recentRegular } = await supabase
       .from("test_executions")
       .select(
-        `
-          id,
-          execution_status,
-          created_at,
-          test_case_id,
-          test_cases ( title )
-        `,
+        "id, execution_status, created_at, test_case_id, test_cases ( title )",
       )
       .eq("executed_by", user.id)
+      .is("automation_run_id", null)
       .order("created_at", { ascending: false })
       .limit(5);
 
-    // ✅ Fetch recent platform executions
-    const { data: recentPlatform, error: rpErr } = await supabase
+    const { data: recentPlatform } = await supabase
       .from("platform_test_executions")
       .select(
-        `
-          id,
-          execution_status,
-          created_at,
-          test_case_id,
-          platform_test_cases ( title )
-        `,
+        "id, execution_status, created_at, test_case_id, platform_test_cases ( title )",
       )
       .eq("executed_by", user.id)
+      .is("automation_run_id", null)
       .order("created_at", { ascending: false })
       .limit(5);
 
-    // ✅ Merge and sort recent activity
+    const { data: recentAutomation } = await supabase
+      .from("automation_runs")
+      .select("id, status, started_at, framework, suite_id, suites ( name )")
+      .eq("user_id", user.id)
+      .order("started_at", { ascending: false })
+      .limit(5);
+
     const recentRegularMapped = (recentRegular ?? []).map((exec: any) => ({
       id: exec.id,
       type: "execution" as const,
-      description: `Test "${exec.test_cases?.title ?? "Unknown Test"}" ${
-        exec.execution_status
-      }`,
+      description: `Test "${exec.test_cases?.title ?? "Unknown Test"}" ${exec.execution_status}`,
       timestamp: exec.created_at,
       status: exec.execution_status,
     }));
@@ -220,14 +207,24 @@ export async function GET() {
     const recentPlatformMapped = (recentPlatform ?? []).map((exec: any) => ({
       id: exec.id,
       type: "execution" as const,
-      description: `Cross-Platform Test "${
-        exec.platform_test_cases?.title ?? "Unknown Test"
-      }" ${exec.execution_status}`,
+      description: `Cross-Platform Test "${exec.platform_test_cases?.title ?? "Unknown Test"}" ${exec.execution_status}`,
       timestamp: exec.created_at,
       status: exec.execution_status,
     }));
 
-    const recent_activity = [...recentRegularMapped, ...recentPlatformMapped]
+    const recentAutomationMapped = (recentAutomation ?? []).map((run: any) => ({
+      id: run.id,
+      type: "suite_started" as const,
+      description: `${run.framework} run for "${run.suites?.name ?? "Unknown Suite"}" ${run.status}`,
+      timestamp: run.started_at,
+      status: run.status,
+    }));
+
+    const recent_activity = [
+      ...recentRegularMapped,
+      ...recentPlatformMapped,
+      ...recentAutomationMapped,
+    ]
       .sort(
         (a, b) =>
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
@@ -235,32 +232,44 @@ export async function GET() {
       .slice(0, 10);
 
     // -------------------------
-    // 4) Health Score
+    // 4) Automation Runs Stats — NEW
     // -------------------------
-    const health_score = calculateHealthScore({
-      passRate: pass_rate,
-      coverage: coverage_percentage,
-      failedCount: counts.failed,
-      totalTests: total,
-      notRunCount: counts.not_run,
-    });
+    const { data: automationRuns } = await supabase
+      .from("automation_runs")
+      .select("id, status, started_at")
+      .eq("user_id", user.id)
+      .order("started_at", { ascending: false });
+
+    const automationTotal = (automationRuns ?? []).length;
+    const automationPassed = (automationRuns ?? []).filter(
+      (r) => r.status === "passed",
+    ).length;
+    const automationPassRate =
+      automationTotal > 0
+        ? Math.round((automationPassed / automationTotal) * 100)
+        : 0;
+    const lastAutomationRun = automationRuns?.[0]?.started_at ?? null;
+
+    const automation_runs = {
+      total: automationTotal,
+      pass_rate: automationPassRate,
+      last_run: lastAutomationRun,
+    };
 
     // -------------------------
-    // 5) Execution Timeline (Last 7 days) - BOTH types
+    // 5) Execution Timeline (Last 7 days)
     // -------------------------
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    // ✅ Fetch regular executions
-    const { data: regularHistory, error: rhErr } = await supabase
+    const { data: regularHistory } = await supabase
       .from("test_executions")
       .select("created_at, execution_status")
       .eq("executed_by", user.id)
       .gte("created_at", sevenDaysAgo.toISOString())
       .order("created_at", { ascending: true });
 
-    // ✅ Fetch platform executions
-    const { data: platformHistory, error: phErr } = await supabase
+    const { data: platformHistory } = await supabase
       .from("platform_test_executions")
       .select("created_at, execution_status")
       .eq("executed_by", user.id)
@@ -275,11 +284,9 @@ export async function GET() {
     const execution_timeline = groupExecutionsByDay(executionHistory);
 
     // -------------------------
-    // 6) Priority Failures (BOTH types)
+    // 6) Priority Failures
     // -------------------------
-
-    // ✅ Regular priority failures
-    const { data: regularPriorityFailed, error: rpfErr } = await supabase
+    const { data: regularPriorityFailed } = await supabase
       .from("test_cases")
       .select("id, title, priority, execution_status")
       .eq("user_id", user.id)
@@ -288,8 +295,7 @@ export async function GET() {
       .order("priority", { ascending: true })
       .limit(3);
 
-    // ✅ Platform priority failures
-    const { data: platformPriorityFailed, error: ppfErr } = await supabase
+    const { data: platformPriorityFailed } = await supabase
       .from("platform_test_cases")
       .select("id, title, priority, execution_status")
       .eq("user_id", user.id)
@@ -304,14 +310,12 @@ export async function GET() {
         title: test.title,
         priority: test.priority,
         failed_count: 1,
-        type: "regular" as const,
       })),
       ...(platformPriorityFailed ?? []).map((test) => ({
         id: test.id,
         title: test.title,
         priority: test.priority,
         failed_count: 1,
-        type: "cross-platform" as const,
       })),
     ]
       .sort((a, b) => {
@@ -324,20 +328,18 @@ export async function GET() {
       .slice(0, 5);
 
     // -------------------------
-    // 7) Flaky Tests (BOTH types)
+    // 7) Flaky Tests
     // -------------------------
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // ✅ Regular executions
-    const { data: regularRecentExecs, error: rreErr } = await supabase
+    const { data: regularRecentExecs } = await supabase
       .from("test_executions")
       .select("test_case_id, execution_status, test_cases(title)")
       .eq("executed_by", user.id)
       .gte("created_at", thirtyDaysAgo.toISOString());
 
-    // ✅ Platform executions
-    const { data: platformRecentExecs, error: preErr } = await supabase
+    const { data: platformRecentExecs } = await supabase
       .from("platform_test_executions")
       .select("test_case_id, execution_status, platform_test_cases(title)")
       .eq("executed_by", user.id)
@@ -371,12 +373,8 @@ export async function GET() {
     const flaky_tests = calculateFlakyTests(allRecentExecutions);
 
     // -------------------------
-    // 8) Trends (compare with last week) - BOTH types
+    // 8) Trends
     // -------------------------
-    const fourteenDaysAgo = new Date();
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-
-    // ✅ Previous regular test cases
     const { data: previousRegularCases } = await supabase
       .from("test_cases")
       .select("id")
@@ -384,7 +382,6 @@ export async function GET() {
       .neq("status", "archived")
       .lt("created_at", sevenDaysAgo.toISOString());
 
-    // ✅ Previous platform test cases
     const { data: previousPlatformCases } = await supabase
       .from("platform_test_cases")
       .select("id")
@@ -429,7 +426,7 @@ export async function GET() {
         trend: reqTrend,
       },
       recent_activity,
-      health_score,
+      automation_runs,
       execution_timeline,
       flaky_tests,
       priority_failures,
@@ -445,36 +442,8 @@ export async function GET() {
 }
 
 // -------------------------
-// Helper Functions (unchanged)
+// Helper Functions
 // -------------------------
-
-function calculateHealthScore(params: {
-  passRate: number;
-  coverage: number;
-  failedCount: number;
-  totalTests: number;
-  notRunCount: number;
-}): number {
-  const { passRate, coverage, failedCount, totalTests, notRunCount } = params;
-
-  if (totalTests === 0) return 100;
-  if (notRunCount === totalTests) return 0;
-
-  const executedTests = totalTests - notRunCount;
-
-  if (executedTests === 0) {
-    return Math.round(coverage * 0.5);
-  }
-
-  const passRateScore = passRate * 0.4;
-  const coverageScore = coverage * 0.3;
-  const failurePenalty =
-    totalTests > 0 ? (failedCount / totalTests) * 100 * 0.3 : 0;
-
-  const score = passRateScore + coverageScore - failurePenalty;
-
-  return Math.max(0, Math.min(100, Math.round(score)));
-}
 
 function calculateTrend(
   current: number,
