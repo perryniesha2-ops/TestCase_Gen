@@ -48,6 +48,7 @@ import {
   Layout,
   Newspaper,
   Layers,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -72,6 +73,7 @@ const navigation = [
   { name: "Cross-Platform Tests", href: "/cross-platform-cases", icon: Layers },
   { name: "Test Cases", href: "/test-cases", icon: FileText },
   { name: "Test Suites", href: "/test-library", icon: Library },
+  { name: "Automation", href: "/automation", icon: Zap },
   { name: "Templates", href: "/template-manager", icon: Layout },
 ];
 
