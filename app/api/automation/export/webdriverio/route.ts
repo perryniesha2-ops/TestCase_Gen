@@ -98,12 +98,14 @@ export async function POST(req: Request) {
     );
 
     // wdio.conf.ts
+    // wdio.conf.ts
     zip.file(
       `${root}/wdio.conf.ts`,
       `import * as dotenv from 'dotenv';
 dotenv.config();
 import type { Options } from '@wdio/types';
 import { synthqaReporter } from './support/synthqa-reporter';
+import './support/setup';  // ← Import setup directly
 
 export const config: Options.Testrunner = {
   runner: 'local',
@@ -136,8 +138,43 @@ export const config: Options.Testrunner = {
   mochaOpts: {
     ui: 'bdd',
     timeout: 60000,
+    require: ['./support/setup.ts'],  // ← Move require here inside mochaOpts
   },
-  onComplete: async () => {
+  
+  before: function() {
+    console.log('[WDIO HOOK] before() called');
+  },
+  
+  beforeTest: function(test, context) {
+    console.log('[WDIO HOOK] beforeTest() called for:', test.title);
+  },
+  
+  afterTest: async function(test, context, result) {
+    console.log('[WDIO HOOK] afterTest() called for:', test.title);
+    console.log('[WDIO HOOK] Test result:', result.passed ? 'PASSED' : 'FAILED');
+    console.log('[WDIO HOOK] Error:', result.error?.message || 'none');
+    
+    const testCaseId = test.title;
+    
+    synthqaReporter.collect(
+      synthqaReporter.makeResult({
+        test_case_id: testCaseId,
+        execution_status: result.passed ? 'passed' : 'failed',
+        started_at: new Date(Date.now() - result.duration).toISOString(),
+        completed_at: new Date().toISOString(),
+        duration_minutes: result.duration / 60000,
+        failure_reason: result.error?.message || null,
+        stack_trace: result.error?.stack || null,
+      })
+    );
+  },
+  
+  after: function() {
+    console.log('[WDIO HOOK] after() called');
+  },
+  
+  onComplete: async function() {
+    console.log('[WDIO HOOK] onComplete() called');
     await synthqaReporter.flush();
   },
 };
@@ -184,6 +221,14 @@ export const config: Options.Testrunner = {
   framework_version: string;
 }
 
+interface WebhookResponse {
+  success: boolean;
+  automation_run_id: string;
+  run_number: number;
+  executions_saved: number;
+  message: string;
+}
+
 const WEBHOOK_URL = process.env.SYNTHQA_WEBHOOK_URL;
 const API_KEY = process.env.SYNTHQA_API_KEY;
 const SUITE_ID = process.env.SYNTHQA_SUITE_ID;
@@ -205,8 +250,14 @@ const getOS = (): string => {
 class SynthQAReporter {
   private results: TestResult[] = [];
 
+  constructor() {
+    console.log('[SynthQA] Reporter initialized');
+  }
+
   collect(result: TestResult): void {
+    console.log('[SynthQA] Collecting result:', result.test_case_id, '-', result.execution_status);
     this.results.push(result);
+    console.log('[SynthQA] Total results collected:', this.results.length);
   }
 
   makeResult(
@@ -231,8 +282,13 @@ class SynthQAReporter {
   }
 
   async flush(): Promise<void> {
+    console.log('[SynthQA] Flush called with', this.results.length, 'results');
+    
     if (!WEBHOOK_URL || !API_KEY || !SUITE_ID) {
-      console.warn('[SynthQA] Missing SYNTHQA_WEBHOOK_URL, SYNTHQA_API_KEY, or SYNTHQA_SUITE_ID — skipping result sync');
+      console.warn('[SynthQA] Missing environment variables:');
+      console.warn('  WEBHOOK_URL:', WEBHOOK_URL ? 'SET' : 'MISSING');
+      console.warn('  API_KEY:', API_KEY ? 'SET' : 'MISSING');
+      console.warn('  SUITE_ID:', SUITE_ID ? 'SET' : 'MISSING');
       return;
     }
 
@@ -242,7 +298,7 @@ class SynthQAReporter {
 
     const payload = {
       suite_id: SUITE_ID,
-      session_id: \`wdio-\${Date.now()}\`,
+      session_id: 'wdio-' + Date.now(),
       framework: 'webdriverio',
       test_results: this.results,
       metadata: {
@@ -250,29 +306,31 @@ class SynthQAReporter {
         passed_tests: passed,
         failed_tests: failed,
         skipped_tests: skipped,
-        overall_status: failed > 0 ? 'failed' : 'passed',
+        overall_status: (failed > 0 ? 'failed' : 'passed') as 'passed' | 'failed',
         branch: process.env.GIT_BRANCH ?? process.env.GITHUB_REF_NAME ?? null,
         commit_sha: process.env.GIT_COMMIT ?? process.env.GITHUB_SHA ?? null,
         ci_provider: process.env.CI ? 'github-actions' : null,
       },
     };
 
+    console.log('[SynthQA] Sending payload with', this.results.length, 'results to', WEBHOOK_URL);
+
     try {
       const res = await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: \`Bearer \${API_KEY}\`,
+          Authorization: 'Bearer ' + API_KEY,
         },
         body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const text = await res.text();
-        console.error(\`[SynthQA] Webhook failed (\${res.status}): \${text}\`);
+        console.error('[SynthQA] Webhook failed (' + res.status + '):', text);
       } else {
-        const json = await res.json();
-        console.log(\`[SynthQA] ✅ Synced run #\${json.run_number} — \${passed} passed, \${failed} failed, \${skipped} skipped\`);
+        const json = (await res.json()) as WebhookResponse;
+        console.log('[SynthQA] ✅ Synced run #' + json.run_number + ' — ' + passed + ' passed, ' + failed + ' failed, ' + skipped + ' skipped');
       }
     } catch (err) {
       console.error('[SynthQA] Webhook error:', err);
@@ -281,6 +339,54 @@ class SynthQAReporter {
 }
 
 export const synthqaReporter = new SynthQAReporter();
+`,
+    );
+
+    // support/setup.ts with debug logging
+
+    zip.file(
+      `${root}/support/setup.ts`,
+      `import { synthqaReporter } from './synthqa-reporter';
+
+console.log('[SETUP] Loading setup.ts');
+
+let currentTestId: string | null = null;
+let currentTestStart: number = 0;
+
+// Make these available globally
+(global as any).setCurrentTest = (id: string) => {
+  console.log('[SETUP] setCurrentTest called with:', id);
+  currentTestId = id;
+  currentTestStart = Date.now();
+};
+
+(global as any).reportTestResult = (passed: boolean, error?: Error) => {
+  console.log('[SETUP] reportTestResult called:', passed, currentTestId);
+  
+  if (!currentTestId) {
+    console.warn('[SETUP] No current test ID set!');
+    return;
+  }
+  
+  synthqaReporter.collect(
+    synthqaReporter.makeResult({
+      test_case_id: currentTestId,
+      execution_status: passed ? 'passed' : 'failed',
+      started_at: new Date(currentTestStart).toISOString(),
+      completed_at: new Date().toISOString(),
+      duration_minutes: (Date.now() - currentTestStart) / 60000,
+      failure_reason: error?.message || null,
+      stack_trace: error?.stack || null,
+    })
+  );
+  
+  currentTestId = null;
+};
+
+console.log('[SETUP] Global functions registered:', {
+  setCurrentTest: typeof (global as any).setCurrentTest,
+  reportTestResult: typeof (global as any).reportTestResult,
+});
 `,
     );
 
@@ -302,6 +408,9 @@ SYNTHQA_SUITE_ID=${suite.id}
 BASE_URL=${suite.base_url}
 TEST_ENVIRONMENT=local
 HEADLESS=true
+TEST_USER_EMAIL=your_test_email@example.com
+TEST_USER_PASSWORD=your_test_password
+TEST_USER_USERNAME=your_test_username
 `,
     );
 
@@ -338,7 +447,9 @@ logs/
 function escapeForJs(str: string): string {
   return str
     .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
     .replace(/'/g, "\\'")
+    .replace(/\$/g, "\\$")
     .replace(/\n/g, "\\n")
     .replace(/\r/g, "\\r");
 }
@@ -369,14 +480,30 @@ function generateWdioTest(
       } else if (step.action_type === "click") {
         lines.push(`await (await $('${sel}')).click();`);
       } else if (step.action_type === "fill" || step.action_type === "type") {
+        const isEmailField =
+          sel.includes("email") ||
+          step.action?.toLowerCase().includes("email") ||
+          val.includes("@");
+        const isPasswordField =
+          sel.includes("password") ||
+          step.action?.toLowerCase().includes("password");
+        const isUsernameField =
+          sel.includes("username") ||
+          step.action?.toLowerCase().includes("username");
+
+        let typedVal: string;
+        if (isEmailField) {
+          typedVal = `' + (process.env.TEST_USER_EMAIL || '${val}') + '`;
+        } else if (isPasswordField) {
+          typedVal = `' + (process.env.TEST_USER_PASSWORD || '${val}') + '`;
+        } else if (isUsernameField) {
+          typedVal = `' + (process.env.TEST_USER_USERNAME || '${val}') + '`;
+        } else {
+          typedVal = val;
+        }
+
         lines.push(`await (await $('${sel}')).clearValue();`);
-        lines.push(`await (await $('${sel}')).setValue('${val}');`);
-      } else if (step.action_type === "check") {
-        lines.push(`await (await $('${sel}')).click();`);
-      } else if (step.action_type === "select") {
-        lines.push(`await (await $('${sel}')).selectByVisibleText('${val}');`);
-      } else {
-        lines.push(`// TODO: ${step.action}`);
+        lines.push(`await (await $('${sel}')).setValue('${typedVal}');`);
       }
 
       if (step.assertion?.type === "visible") {
@@ -407,32 +534,44 @@ function generateWdioTest(
 
 const BASE_URL = process.env.BASE_URL || '${escapeForJs(baseUrl)}';
 
+declare global {
+  var setCurrentTest: (id: string) => void;
+  var reportTestResult: (passed: boolean, error?: Error) => void;
+}
+
 describe('${escapeForJs(testCase.title)}', () => {
   it('${testCase.id}', async () => {
-    const startedAt = new Date().toISOString();
-    let status: 'passed' | 'failed' = 'passed';
-    let failureReason: string | null = null;
-    let stackTrace: string | null = null;
-
+    console.log('[TEST] Starting test: ${testCase.id}');
+    
+    if (typeof global.setCurrentTest === 'function') {
+      console.log('[TEST] Calling setCurrentTest');
+      global.setCurrentTest('${testCase.id}');
+    } else {
+      console.error('[TEST] setCurrentTest is not a function!', typeof global.setCurrentTest);
+    }
+    
     try {
+      console.log('[TEST] Executing test steps...');
 ${stepsCode}
+      console.log('[TEST] Test steps completed successfully');
+      
+      if (typeof global.reportTestResult === 'function') {
+        console.log('[TEST] Reporting success');
+        global.reportTestResult(true);
+      } else {
+        console.error('[TEST] reportTestResult is not a function!');
+      }
     } catch (err: any) {
-      status = 'failed';
-      failureReason = err?.message ?? String(err);
-      stackTrace = err?.stack ?? null;
+      console.log('[TEST] Test failed with error:', err.message);
+      
+      if (typeof global.reportTestResult === 'function') {
+        console.log('[TEST] Reporting failure');
+        global.reportTestResult(false, err);
+      } else {
+        console.error('[TEST] reportTestResult is not a function!');
+      }
+      
       throw err;
-    } finally {
-      synthqaReporter.collect(
-        synthqaReporter.makeResult({
-          test_case_id: '${testCase.id}',
-          execution_status: status,
-          started_at: startedAt,
-          completed_at: new Date().toISOString(),
-          duration_minutes: (Date.now() - new Date(startedAt).getTime()) / 60000,
-          failure_reason: failureReason,
-          stack_trace: stackTrace,
-        })
-      );
     }
   });
 });

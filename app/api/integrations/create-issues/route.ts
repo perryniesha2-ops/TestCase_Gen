@@ -2,6 +2,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { JiraIntegration } from "@/lib/integration/jira-client";
 import { NextResponse } from "next/server";
+import { toastInfo, toastWarning } from "@/lib/utils/toast-utils";
 
 export const runtime = "nodejs";
 
@@ -183,7 +184,7 @@ export async function POST(request: Request) {
             issueInsertError,
           );
         } else {
-          console.log("Saved to integration_issues table");
+          toastInfo("Saved!");
         }
 
         // Update test execution with Jira issue key
@@ -197,8 +198,6 @@ export async function POST(request: Request) {
           throw new Error(`Failed to update execution: ${updateError.message}`);
         }
 
-        console.log("Updated test_executions with issue key");
-
         results.push({
           success: true,
           execution_id: exec.execution_id,
@@ -208,10 +207,7 @@ export async function POST(request: Request) {
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
-        console.error(`❌ Failed to create issue for ${exec.execution_id}:`, {
-          error: errorMessage,
-          stack: error instanceof Error ? error.stack : undefined,
-        });
+
         results.push({
           success: false,
           execution_id: exec.execution_id,

@@ -312,9 +312,7 @@ export function TabbedTestCaseTable() {
       setRunnerCaseType(type);
       try {
         await hydrateOne(tc.id);
-      } catch (e) {
-        console.warn("hydrateOne failed (non-fatal):", e);
-      }
+      } catch (e) {}
       setShowRunnerDialog(true);
     },
     [hydrateOne],

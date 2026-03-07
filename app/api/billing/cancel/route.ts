@@ -90,11 +90,8 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      console.log("❌ Unauthorized - no user found");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    console.log("👤 User:", user.id);
 
     // 2. Get user profile with subscription info
     const { data: profile, error: profileError } = await supabase
@@ -121,9 +118,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("📦 Subscription:", profile.subscription_id);
-    console.log("💳 Plan:", profile.subscription_tier);
-
     // 3. Get optional feedback from request
     const body = await request.json().catch(() => ({}));
     const { reasons = [], feedback = null } = body;
@@ -146,8 +140,6 @@ export async function POST(request: NextRequest) {
     const periodEndTimestamp = sub.current_period_end;
     const accessUntilDate = formatDate(periodEndTimestamp);
 
-    console.log("📅 Access until:", accessUntilDate);
-
     // 6. Update database
     const { error: updateError } = await supabase
       .from("user_profiles")
@@ -159,9 +151,7 @@ export async function POST(request: NextRequest) {
 
     if (updateError) {
       console.error("⚠️ Database update warning:", updateError);
-      // Don't fail - Stripe is the source of truth
     } else {
-      console.log("✅ Database updated");
     }
 
     // 7. Log cancellation event

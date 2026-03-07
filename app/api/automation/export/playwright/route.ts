@@ -722,12 +722,10 @@ setup('authenticate', async ({ page }) => {
   const password = process.env.USER_PASSWORD;
   
   if (!email || !password) {
-    console.log('⚠️  USER_EMAIL and USER_PASSWORD not set - skipping auth setup');
-    console.log('⚠️  Tests requiring authentication will fail');
+    console.log('⚠️  USER_EMAIL and USER_PASSWORD not set);
     return;
   }
   
-  console.log('🔐 Authenticating...');
   
   await page.goto(baseUrl + '/login');
   
@@ -742,7 +740,6 @@ setup('authenticate', async ({ page }) => {
   // Save authentication state
   await page.context().storageState({ path: 'auth.json' });
   
-  console.log('✅ Authentication saved to auth.json');
 });
 `;
 }

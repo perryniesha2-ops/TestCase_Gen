@@ -117,15 +117,6 @@ export function UnifiedExportButton({
   const hasAnyOptions =
     suiteKind === "regular" ? hasRegularOptions : hasCrossPlatformOptions;
 
-  if (!hasAnyOptions) {
-    console.warn("⚠️ No export options available", {
-      suiteKind,
-      platforms,
-      hasRegularOptions,
-      hasCrossPlatformOptions,
-    });
-  }
-
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>

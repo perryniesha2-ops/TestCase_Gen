@@ -58,6 +58,7 @@ import {
   MODEL_GROUPS,
 } from "@/lib/ai-models/config";
 import { Separator } from "@radix-ui/react-separator";
+import { toastWarning } from "@/lib/utils/toast-utils";
 
 /* =========================
    Types
@@ -672,7 +673,7 @@ export function CrossPlatformGeneratorForm() {
           const used = data.used ?? 0;
           const limit = data.limit ?? 50;
 
-          console.log("Quota exceeded:", { remaining, requested, used, limit });
+          toastWarning("Quota exceeded");
 
           if (remaining === 0) {
             toast.error("Monthly usage limit reached", {

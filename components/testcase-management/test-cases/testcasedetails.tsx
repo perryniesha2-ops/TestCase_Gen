@@ -27,6 +27,12 @@ import { TestCaseFormDialog } from "@/components/testcase-management/test-cases/
 import { TestRunnerDialog } from "@/components/testcase-management/test-cases/dialogs/test-runner-dialog";
 import { ExecutionHistoryTab } from "@/components/testcase-management/test-cases/executionhistory";
 import { useExecutions } from "@/hooks/useExecutions";
+import {
+  toastError,
+  toastInfo,
+  toastSuccess,
+  toastWarning,
+} from "@/lib/utils/toast-utils";
 
 const platformIcons = {
   web: Monitor,
@@ -215,25 +221,20 @@ export function TestCaseDetailsPageClient({
       const table = isRegular ? "test_cases" : "platform_test_cases";
       const idColumn = isRegular ? "test_case_id" : "platform_test_case_id";
 
-      console.log("🗑️ Starting deletion process for test case:", testCase.id);
-
       // Delete in order to respect foreign key constraints
 
       // 1. Delete test attachments
-      console.log("1️⃣ Deleting attachments...");
       const { error: attachmentsError } = await supabase
         .from("test_attachments")
         .delete()
         .eq(idColumn, testCase.id);
 
       if (attachmentsError) {
-        console.warn("⚠️ Failed to delete attachments:", attachmentsError);
+        toastError("⚠️ Failed to delete attachments");
       } else {
-        console.log("✅ Attachments deleted");
       }
 
       // 2. Delete requirement links
-      console.log("2️⃣ Deleting requirement links...");
       if (isRegular) {
         const { error: reqLinksError } = await supabase
           .from("requirement_test_cases")
@@ -241,9 +242,9 @@ export function TestCaseDetailsPageClient({
           .eq("test_case_id", testCase.id);
 
         if (reqLinksError) {
-          console.warn("⚠️ Failed to delete requirement links:", reqLinksError);
+          toastWarning("⚠️ Failed to delete requirement links");
         } else {
-          console.log("✅ Requirement links deleted");
+          toastInfo("✅ Requirement links deleted");
         }
       } else {
         const { error: reqLinksError } = await supabase
@@ -252,43 +253,37 @@ export function TestCaseDetailsPageClient({
           .eq("test_case_id", testCase.id);
 
         if (reqLinksError) {
-          console.warn(
-            "⚠️ Failed to delete platform requirement links:",
-            reqLinksError,
-          );
+          toastWarning("⚠️ Failed to delete platform requirement links:");
         } else {
-          console.log("✅ Platform requirement links deleted");
+          toastInfo("✅ Platform requirement links deleted");
         }
       }
 
       // 3. Delete test executions
-      console.log("3️⃣ Deleting test executions...");
       const { error: executionsError } = await supabase
         .from("test_executions")
         .delete()
         .eq(idColumn, testCase.id);
 
       if (executionsError) {
-        console.warn("⚠️ Failed to delete executions:", executionsError);
+        toastWarning("⚠️ Failed to delete executions");
       } else {
-        console.log("✅ Executions deleted");
+        toastInfo("✅ Executions deleted");
       }
 
       // 4. Delete suite assignments
-      console.log("4️⃣ Deleting suite assignments...");
       const { error: suiteItemsError } = await supabase
         .from("suite_items")
         .delete()
         .eq(idColumn, testCase.id);
 
       if (suiteItemsError) {
-        console.warn("⚠️ Failed to delete suite items:", suiteItemsError);
+        toastWarning("⚠️ Failed to delete suite items");
       } else {
-        console.log("✅ Suite items deleted");
+        toastInfo("✅ Suite items deleted");
       }
 
       // 5. Finally, delete the test case itself
-      console.log("5️⃣ Deleting test case...");
       const { error: deleteError } = await supabase
         .from(table)
         .delete()
@@ -298,12 +293,10 @@ export function TestCaseDetailsPageClient({
         throw deleteError;
       }
 
-      console.log("✅ Test case deleted successfully");
-      toast.success("Test case deleted successfully");
+      toastSuccess("Test case deleted successfully");
       router.push("/test-cases");
     } catch (error: any) {
-      console.error("❌ Delete error:", error);
-      toast.error(
+      toastError(
         error?.message ||
           "Failed to delete test case. It may be linked to other records.",
       );
@@ -324,9 +317,7 @@ export function TestCaseDetailsPageClient({
 
     try {
       await hydrateOne(testCase.id, type);
-    } catch (e) {
-      console.warn("hydrateOne failed (non-fatal):", e);
-    }
+    } catch (e) {}
 
     setShowRunnerDialog(true);
   };

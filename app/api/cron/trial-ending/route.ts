@@ -41,11 +41,6 @@ export async function GET(request: NextRequest) {
     const threeDaysFromNowEnd = new Date(threeDaysFromNow);
     threeDaysFromNowEnd.setHours(23, 59, 59, 999); // End of day
 
-    console.log(
-      "🔍 Looking for trials ending on:",
-      threeDaysFromNow.toISOString(),
-    );
-
     // Find users whose trial ends in 3 days
     const { data: users, error } = await supabaseAdmin
       .from("user_profiles")
@@ -69,8 +64,6 @@ export async function GET(request: NextRequest) {
         sent: 0,
       });
     }
-
-    console.log(`📧 Found ${users.length} users whose trial ends in 3 days`);
 
     // Send emails
     let sentCount = 0;
@@ -96,21 +89,16 @@ export async function GET(request: NextRequest) {
 
         if (success) {
           sentCount++;
-          console.log(`✅ Sent trial ending email to: ${user.email}`);
         } else {
           failedCount++;
-          console.error(`❌ Failed to send to: ${user.email}`);
         }
 
         // Small delay to avoid rate limiting
         await new Promise((resolve) => setTimeout(resolve, 100));
       } catch (error) {
         failedCount++;
-        console.error(`❌ Error sending email to ${user.email}:`, error);
       }
     }
-
-    console.log(`📊 Results: ${sentCount} sent, ${failedCount} failed`);
 
     return NextResponse.json({
       success: true,

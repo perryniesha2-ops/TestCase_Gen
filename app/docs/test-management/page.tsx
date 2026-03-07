@@ -831,7 +831,7 @@ export default function TestManagementGuidePage() {
                   <p>
                     Every suite can be exported as a ready-to-run automation
                     project. Supported frameworks include Playwright, Cypress,
-                    Selenium, Puppeteer, TestCafe, and WebDriverIO.
+                    Selenium and Puppeteer.
                   </p>
                   <ol className="list-decimal pl-5 space-y-1">
                     <li>Open the suite detail page</li>

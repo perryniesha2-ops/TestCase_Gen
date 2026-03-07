@@ -1,5 +1,4 @@
 // service-worker.js
-console.log("[SynthQA Extension] service worker started");
 
 const CHANNEL = "synthqa-evidence-extension";
 const ARMED_KEY = "armedByTabId";

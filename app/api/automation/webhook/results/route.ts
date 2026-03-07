@@ -164,11 +164,6 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log("✅ AUTOMATION RUN CREATED:", {
-      id: automationRun.id,
-      run_number: automationRun.run_number,
-    });
-
     // ============================================================================
     // UPDATE SUITE PASS RATE
     // ============================================================================
@@ -224,30 +219,6 @@ export async function POST(req: Request) {
         skipped_tests: payload.metadata.skipped_tests,
       };
     });
-    console.log("📝 CREATING TEST EXECUTIONS:", {
-      count: executions.length,
-      automation_run_id: automationRun.id,
-      sample: executions[0],
-    });
-
-    if (executions.length > 0) {
-      const { data: insertedExecs, error: execError } = await supabase
-        .from("test_executions")
-        .insert(executions)
-        .select();
-
-      if (execError) {
-        console.error("❌ FAILED TO INSERT TEST EXECUTIONS:", {
-          error: execError,
-          message: execError.message,
-          code: execError.code,
-        });
-      } else {
-        console.log("✅ INSERTED TEST EXECUTIONS:", insertedExecs?.length);
-      }
-    } else {
-      console.warn("⚠️  NO EXECUTIONS TO INSERT");
-    }
 
     return NextResponse.json({
       success: true,
