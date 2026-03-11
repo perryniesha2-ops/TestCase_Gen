@@ -18,6 +18,7 @@ import {
   type ModelKey,
   AI_MODELS,
 } from "@/lib/ai-models/config";
+import { toastError, toastWarning } from "@/lib/utils/toast-utils";
 
 export const runtime = "nodejs";
 
@@ -492,39 +493,30 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     };
 
     if (!content) {
-      console.warn("⚠️ structureTestCases: Empty response from OpenAI");
+      toastWarning("Empty response from OpenAI or Anthropic");
     }
 
     const cases = parsed.test_cases ?? parsed.testCases ?? [];
 
     if (cases.length !== expectedCount) {
-      console.warn(
-        `⚠️ structureTestCases: Expected ${expectedCount} test cases, got ${cases.length}`,
-      );
+      toastWarning(`Expected ${expectedCount} test cases, got ${cases.length}`);
     }
 
     return cases;
   } catch (error) {
-    console.error("❌ structureTestCases: JSON parsing failed:", error);
+    toastError("JSON parsing failed:");
 
     // Last resort: pull a bare JSON array out of the raw text
     const match = rawText.match(/\[[\s\S]*\]/);
     if (!match) {
-      console.error("❌ structureTestCases: No JSON array found in fallback");
       return [];
     }
 
     try {
       const fallbackCases = JSON.parse(match[0]) as GeneratedTestCase[];
-      console.warn(
-        `⚠️ structureTestCases: Used fallback parsing, got ${fallbackCases.length} cases (expected ${expectedCount})`,
-      );
+
       return fallbackCases;
     } catch (fallbackError) {
-      console.error(
-        "❌ structureTestCases: Fallback parsing failed:",
-        fallbackError,
-      );
       return [];
     }
   }

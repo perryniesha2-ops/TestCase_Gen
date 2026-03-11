@@ -56,9 +56,7 @@ export class SessionManager {
       // Clear sessionStorage completely
       try {
         sessionStorage.clear();
-      } catch (e) {
-        console.warn("Failed to clear sessionStorage", e);
-      }
+      } catch (e) {}
 
       // Clear any IndexedDB data if we use it in the future
       if ("indexedDB" in window) {
@@ -80,16 +78,14 @@ export class SessionManager {
       if ("caches" in window) {
         const cacheNames = await caches.keys();
         await Promise.all(
-          cacheNames.map((cacheName) => caches.delete(cacheName))
+          cacheNames.map((cacheName) => caches.delete(cacheName)),
         );
       }
 
       // Clear any SWR or React Query cache if we add them later
       // SWR: mutate(() => true, undefined, { revalidate: false })
       // React Query: queryClient.clear()
-    } catch (error) {
-      console.warn("API cache cleanup failed:", error);
-    }
+    } catch (error) {}
   }
 
   /**
@@ -184,13 +180,16 @@ export class SessionManager {
     });
 
     // Optional: Check session validity periodically
-    setInterval(async () => {
-      const isValid = await this.isSessionValid();
-      if (!isValid && !window.location.pathname.startsWith("/login")) {
-        await this.logout();
-        this.forceReload();
-      }
-    }, 5 * 60 * 1000); // Check every 5 minutes
+    setInterval(
+      async () => {
+        const isValid = await this.isSessionValid();
+        if (!isValid && !window.location.pathname.startsWith("/login")) {
+          await this.logout();
+          this.forceReload();
+        }
+      },
+      5 * 60 * 1000,
+    ); // Check every 5 minutes
   }
 }
 

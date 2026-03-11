@@ -340,9 +340,6 @@ function postProcessSteps(
         );
         if (extractedUrl) {
           processedStep.input_value = extractedUrl;
-          console.log(
-            `[Automation] Extracted URL for step ${processedStep.step_number}: ${extractedUrl}`,
-          );
         } else {
           console.warn(
             `[Automation] Navigation step ${processedStep.step_number} missing URL - check: ${processedStep.action}`,
@@ -375,9 +372,6 @@ function postProcessSteps(
       );
       if (extractedUrl) {
         processedStep.input_value = extractedUrl;
-        console.log(
-          `[Automation] Inferred navigation for step ${processedStep.step_number}`,
-        );
       }
     }
 
@@ -423,12 +417,6 @@ export async function POST(req: Request) {
     const regenerate = Boolean(body.regenerate);
     const framework = body.automation_framework ?? "playwright";
 
-    console.log("[Automation] Request:", {
-      test_case_ids: testCaseIds.length,
-      suite_id: suiteId,
-      application_url: applicationUrl,
-    });
-
     // Validate input
     if (!testCaseIds.length && !suiteId) {
       return NextResponse.json(
@@ -458,7 +446,6 @@ export async function POST(req: Request) {
       }
 
       suiteKind = suite.kind;
-      console.log(`[Automation] Suite kind: ${suiteKind}`);
     }
 
     // Get test case IDs from suite if provided
@@ -503,10 +490,6 @@ export async function POST(req: Request) {
       finalTestCaseIds = regularIds;
       platformTestCaseIds = platformIds;
 
-      console.log(
-        `[Automation] Found ${regularIds.length} regular + ${platformIds.length} platform test cases`,
-      );
-
       // Check if suite is empty
       if (regularIds.length === 0 && platformIds.length === 0) {
         return NextResponse.json(
@@ -541,10 +524,6 @@ export async function POST(req: Request) {
         );
       }
 
-      console.log(
-        `[Automation] Fetched ${testCases.length} regular test cases`,
-      );
-
       // Filter out test cases that already have automation data
       const casesToProcess = testCases.filter((tc) => {
         const steps = Array.isArray(tc.test_steps) ? tc.test_steps : [];
@@ -557,10 +536,6 @@ export async function POST(req: Request) {
         }
         return true;
       });
-
-      console.log(
-        `[Automation] ${casesToProcess.length} regular test cases need automation`,
-      );
 
       // Process each test case
       for (const tc of casesToProcess) {
@@ -583,10 +558,6 @@ export async function POST(req: Request) {
             totalFailed++;
             continue;
           }
-
-          console.log(
-            `[Automation] Processing: ${tc.title} (${steps.length} steps)`,
-          );
 
           const prompt = `${AUTOMATION_ENHANCEMENT_PROMPT}
 
@@ -646,7 +617,6 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
             });
             totalFailed++;
           } else {
-            console.log(`[Automation] ✓ Enhanced: ${tc.title}`);
             allEnhanced.push({
               id: tc.id,
               title: tc.title,
@@ -679,10 +649,6 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
       if (fetchError || !platformCases) {
         console.error("[Automation] Fetch error:", fetchError);
       } else {
-        console.log(
-          `[Automation] Fetched ${platformCases.length} platform test cases`,
-        );
-
         const casesNeedingAutomation = platformCases.filter((tc: any) => {
           const steps = Array.isArray(tc.steps) ? tc.steps : [];
           // Platform test cases might have string steps or object steps
@@ -692,10 +658,6 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
           if (hasAutomation) totalSkipped++;
           return !hasAutomation;
         });
-
-        console.log(
-          `[Automation] ${casesNeedingAutomation.length} platform test cases need automation`,
-        );
 
         for (const tc of casesNeedingAutomation) {
           try {
@@ -781,7 +743,6 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
               });
               totalFailed++;
             } else {
-              console.log(`[Automation] ✓ Enhanced platform test: ${tc.title}`);
               allEnhanced.push({
                 id: tc.id,
                 title: tc.title,
@@ -819,15 +780,8 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
       if (updateError) {
         console.error("Failed to update suite metadata:", updateError);
       } else {
-        console.log(
-          `[Automation] ✓ Updated suite metadata: ${totalEnhanced} tests ready`,
-        );
       }
     }
-
-    console.log(
-      `[Automation] Complete: ${totalEnhanced} enhanced, ${totalSkipped} skipped, ${totalFailed} failed`,
-    );
 
     return NextResponse.json({
       success: true,
@@ -857,8 +811,6 @@ async function handleCrossPlatformAutomation(
   platformTestCaseIds: string[],
   applicationUrl: string,
 ) {
-  console.log("[Automation] Processing cross-platform suite");
-
   // Fetch platform test cases
   const { data: platformCases, error: fetchError } = await supabase
     .from("platform_test_cases")

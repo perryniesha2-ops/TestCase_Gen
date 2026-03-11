@@ -140,8 +140,6 @@ export function AutomationConfigDialog({
                 <SelectItem value="cypress">Cypress</SelectItem>
                 <SelectItem value="selenium">Selenium</SelectItem>
                 <SelectItem value="puppeteer">Puppeteer</SelectItem>
-                <SelectItem value="testcafe">TestCafe</SelectItem>
-                <SelectItem value="webdriverio">WebdriverIO</SelectItem>
               </SelectContent>
             </Select>
           </div>

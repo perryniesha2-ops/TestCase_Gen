@@ -146,7 +146,6 @@ function FrameworkComparisonTable() {
             </td>
           </tr>
           <tr>
-            <td className="p-3 font-medium">WebDriverIO</td>
             <td className="p-3 text-muted-foreground">JavaScript</td>
             <td className="p-3 text-muted-foreground">
               Web + mobile, W3C WebDriver
@@ -286,8 +285,7 @@ export default function AutomationGuidePage() {
           </h1>
           <p className="max-w-2xl text-muted-foreground">
             Export your test suites as complete, ready-to-run automation
-            projects. Supports Playwright, Cypress, Selenium, Puppeteer,
-            TestCafe, and WebDriverIO.
+            projects. Supports Playwright, Cypress, Selenium and Puppeteer.
           </p>
           <Badge variant="secondary">Guide</Badge>
         </div>
@@ -341,7 +339,7 @@ export default function AutomationGuidePage() {
                   <li>One-click export of entire test suites</li>
                   <li>
                     Six supported frameworks: Playwright, Cypress, Selenium,
-                    Puppeteer, TestCafe, WebDriverIO
+                    Puppeteer
                   </li>
                   <li>Complete project structure with all dependencies</li>
                   <li>Pre-configured settings and test files</li>
@@ -543,57 +541,6 @@ export default function AutomationGuidePage() {
                 </AccordionContent>
               </AccordionItem>
 
-              <AccordionItem value="testcafe">
-                <AccordionTrigger>TestCafe</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>
-                    No WebDriver required — TestCafe injects scripts directly
-                    into pages for reliable cross-browser testing.
-                  </p>
-                  <div className="font-medium text-foreground mb-2">
-                    Strengths:
-                  </div>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>No WebDriver or browser plugins needed</li>
-                    <li>Runs on any browser including mobile browsers</li>
-                    <li>Built-in concurrency for parallel test runs</li>
-                    <li>Smart assertion retry for stable tests</li>
-                    <li>Simple setup — works out of the box</li>
-                  </ul>
-                  <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                    <div className="text-foreground mb-1">Run command:</div>
-                    <pre>npx testcafe chrome tests/</pre>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="webdriverio">
-                <AccordionTrigger>WebDriverIO</AccordionTrigger>
-                <AccordionContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>
-                    W3C WebDriver-compliant framework with first-class support
-                    for web and native mobile apps.
-                  </p>
-                  <div className="font-medium text-foreground mb-2">
-                    Strengths:
-                  </div>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>Supports both web and mobile (Appium integration)</li>
-                    <li>W3C WebDriver and DevTools protocol support</li>
-                    <li>Rich plugin and reporter ecosystem</li>
-                    <li>Works with any CI/CD system</li>
-                    <li>
-                      Powerful selector strategies including accessibility
-                      selectors
-                    </li>
-                  </ul>
-                  <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                    <div className="text-foreground mb-1">Run command:</div>
-                    <pre>npx wdio run wdio.conf.js</pre>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
               <AccordionItem value="which-to-choose">
                 <AccordionTrigger>
                   Which framework should I choose?
@@ -640,18 +587,10 @@ export default function AutomationGuidePage() {
                       <div className="font-medium text-foreground mb-1">
                         No WebDriver setup, mobile browsers
                       </div>
-                      <div className="text-xs">
-                        → <strong>TestCafe.</strong> No driver needed, runs in
-                        any browser.
-                      </div>
                     </div>
                     <div className="p-3 rounded-lg border">
                       <div className="font-medium text-foreground mb-1">
                         Web + native mobile testing
-                      </div>
-                      <div className="text-xs">
-                        → <strong>WebDriverIO.</strong> Best Appium integration
-                        for mobile.
                       </div>
                     </div>
                   </div>
@@ -1011,9 +950,7 @@ export default function AutomationGuidePage() {
               </AccordionItem>
 
               <AccordionItem value="other-structures">
-                <AccordionTrigger>
-                  Selenium, Puppeteer, TestCafe, WebDriverIO
-                </AccordionTrigger>
+                <AccordionTrigger>Selenium, Puppeteer</AccordionTrigger>
                 <AccordionContent className="space-y-3 text-sm text-muted-foreground">
                   <p>
                     All other frameworks follow the same pattern — a{" "}
@@ -1038,12 +975,6 @@ export default function AutomationGuidePage() {
                       <span className="font-medium">TestCafe</span>
                       <code className="text-muted-foreground">
                         tests/*.test.js + .testcaferc.json
-                      </code>
-                    </div>
-                    <div className="p-2 rounded border flex items-center justify-between">
-                      <span className="font-medium">WebDriverIO</span>
-                      <code className="text-muted-foreground">
-                        test/specs/*.js + wdio.conf.js
                       </code>
                     </div>
                   </div>
@@ -1163,8 +1094,6 @@ export default function AutomationGuidePage() {
                   </TabsList>
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="puppeteer">Puppeteer</TabsTrigger>
-                    <TabsTrigger value="testcafe">TestCafe</TabsTrigger>
-                    <TabsTrigger value="webdriverio">WebDriverIO</TabsTrigger>
                   </TabsList>
                   <TabsContent value="playwright" className="mt-4">
                     <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs space-y-2">
@@ -1184,16 +1113,6 @@ export default function AutomationGuidePage() {
                   <TabsContent value="puppeteer" className="mt-4">
                     <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
                       <pre>{`npm test                # Jest + Puppeteer`}</pre>
-                    </div>
-                  </TabsContent>
-                  <TabsContent value="testcafe" className="mt-4">
-                    <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                      <pre>{`npx testcafe chrome tests/     # Chrome\nnpx testcafe firefox tests/    # Firefox\nnpx testcafe all tests/        # All browsers`}</pre>
-                    </div>
-                  </TabsContent>
-                  <TabsContent value="webdriverio" className="mt-4">
-                    <div className="p-3 rounded-lg border bg-muted/20 font-mono text-xs">
-                      <pre>{`npx wdio run wdio.conf.js`}</pre>
                     </div>
                   </TabsContent>
                 </Tabs>
@@ -1568,10 +1487,6 @@ await page.fill('#email',
                       {
                         href: "https://testcafe.io/documentation",
                         label: "TestCafe Documentation",
-                      },
-                      {
-                        href: "https://webdriver.io/docs/gettingstarted",
-                        label: "WebDriverIO Documentation",
                       },
                     ].map(({ href, label }) => (
                       <Link

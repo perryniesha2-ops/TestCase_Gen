@@ -27,11 +27,8 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      console.log("❌ Unauthorized");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    console.log("👤 User:", user.id);
 
     // 2. Get subscription info
     const { data: profile, error: profileError } = await supabase
@@ -57,14 +54,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (!profile.cancel_at_period_end) {
-      console.log("⚠️ Subscription not cancelled");
       return NextResponse.json(
         { error: "Subscription is not cancelled" },
         { status: 400 },
       );
     }
-
-    console.log("📦 Subscription:", profile.subscription_id);
 
     // 3. Reactivate in Stripe
     const subscription = await stripe.subscriptions.update(
@@ -89,8 +83,6 @@ export async function POST(request: NextRequest) {
 
     if (updateError) {
       console.error("⚠️ Database update warning:", updateError);
-    } else {
-      console.log("Database updated");
     }
 
     // 5. Log reactivation event
@@ -120,14 +112,8 @@ export async function POST(request: NextRequest) {
     response.cookies.set("user_tier", "", { maxAge: 0 });
     response.cookies.set("tier_cache_time", "", { maxAge: 0 });
 
-    console.log("🎉 Reactivation completed successfully");
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
     return response;
   } catch (error: any) {
-    console.error("❌ Reactivation error:", error);
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
     return NextResponse.json(
       {
         error: "Failed to reactivate subscription",

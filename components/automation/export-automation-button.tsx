@@ -40,8 +40,8 @@ export function ExportAutomationButton({
       cypress: "Cypress",
       selenium: "Selenium",
       puppeteer: "Puppeteer",
-      testcafe: "TestCafe",
-      webdriverio: "WebdriverIO",
+      //testcafe: "TestCafe",
+      // webdriverio: "WebdriverIO",
     };
     return names[framework.toLowerCase()] || "Playwright";
   };
@@ -70,7 +70,7 @@ export function ExportAutomationButton({
       "selenium",
       "puppeteer",
       // "testcafe",   // Coming soon
-      // "webdriverio" // Coming soon
+      //"webdriverio",
     ];
     return supported.includes(framework.toLowerCase());
   };

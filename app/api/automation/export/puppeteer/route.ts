@@ -233,7 +233,6 @@ async function reportResults(results) {
       console.error(\`[SynthQA] Webhook failed (\${res.status}): \${text}\`);
     } else {
       const json = await res.json();
-      console.log(\`[SynthQA] ✅ Synced run #\${json.run_number} — \${passed} passed, \${failed} failed, \${skipped} skipped\`);
     }
   } catch (err) {
     console.error('[SynthQA] Webhook error:', err);

@@ -72,8 +72,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("Price ID:", priceId);
-
     // Check for existing profile
     const { data: existingProfile } = await supabase
       .from("user_profiles")
@@ -92,7 +90,6 @@ export async function POST(request: NextRequest) {
           existingSubscription.status === "active" ||
           existingSubscription.status === "trialing"
         ) {
-          console.log("⚠️ User already has active subscription");
           return NextResponse.json(
             {
               error:
@@ -119,7 +116,6 @@ export async function POST(request: NextRequest) {
       } catch (error: any) {
         if (error.code === "resource_missing") {
           // Customer doesn't exist in Stripe - create a new one
-          console.log("⚠️ Customer not found in Stripe, creating new one");
 
           const customer = await stripe.customers.create({
             email: user.email,
@@ -135,8 +131,6 @@ export async function POST(request: NextRequest) {
             .from("user_profiles")
             .update({ stripe_customer_id: customerId })
             .eq("id", userId);
-
-          console.log("✅ Updated database with new customer ID");
         } else {
           // Some other error occurred
           console.error("❌ Error checking customer:", error);
@@ -145,7 +139,6 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // No customer ID in database - create new customer
-      console.log("🆕 Creating new Stripe customer...");
 
       const customer = await stripe.customers.create({
         email: user.email,
@@ -164,7 +157,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Create Stripe checkout session
-    console.log("🛒 Creating checkout session...");
 
     const headersList = await headers();
     const origin =

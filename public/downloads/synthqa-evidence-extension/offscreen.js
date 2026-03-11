@@ -1,5 +1,3 @@
-console.log("[SynthQA Extension] offscreen ready");
-
 const recorders = new Map(); // tabId -> { recorder, chunks, stream }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -8,7 +6,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message?.command === "OFFSCREEN_START_RECORDING") {
         const tabId = message?.payload?.tabId;
         if (!tabId) return sendResponse({ ok: false, error: "Missing tabId" });
-        if (recorders.has(tabId)) return sendResponse({ ok: false, error: "Already recording this tab" });
+        if (recorders.has(tabId))
+          return sendResponse({
+            ok: false,
+            error: "Already recording this tab",
+          });
 
         const stream = await new Promise((resolve, reject) => {
           chrome.tabCapture.capture({ video: true, audio: false }, (s) => {
@@ -20,7 +22,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
 
         const chunks = [];
-        const recorder = new MediaRecorder(stream, { mimeType: "video/webm;codecs=vp8" });
+        const recorder = new MediaRecorder(stream, {
+          mimeType: "video/webm;codecs=vp8",
+        });
 
         recorder.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) chunks.push(e.data);
@@ -37,11 +41,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 tabId,
                 dataUrl,
                 mimeType: "video/webm",
-                fileName: `recording-${Date.now()}.webm`
-              }
+                fileName: `recording-${Date.now()}.webm`,
+              },
             });
           } finally {
-            try { stream.getTracks().forEach(t => t.stop()); } catch {}
+            try {
+              stream.getTracks().forEach((t) => t.stop());
+            } catch {}
             recorders.delete(tabId);
           }
         };
@@ -54,7 +60,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message?.command === "OFFSCREEN_STOP_RECORDING") {
         const tabId = message?.payload?.tabId;
         const entry = recorders.get(tabId);
-        if (!entry) return sendResponse({ ok: false, error: "Not recording this tab" });
+        if (!entry)
+          return sendResponse({ ok: false, error: "Not recording this tab" });
 
         entry.recorder.stop();
         return sendResponse({ ok: true });
@@ -63,7 +70,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return sendResponse({ ok: false, error: "Unknown offscreen command" });
     } catch (e) {
       console.error("[SynthQA Extension] offscreen error:", e);
-      return sendResponse({ ok: false, error: e?.message || "Offscreen error" });
+      return sendResponse({
+        ok: false,
+        error: e?.message || "Offscreen error",
+      });
     }
   })();
 

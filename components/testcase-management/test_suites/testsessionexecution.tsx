@@ -59,7 +59,11 @@ import type {
   TestAttachment,
 } from "@/types/test-cases";
 import { ScreenshotUpload } from "../ScreenshotUpload";
-import { toastSuccess, toastError } from "@/lib/utils/toast-utils";
+import {
+  toastSuccess,
+  toastError,
+  toastWarning,
+} from "@/lib/utils/toast-utils";
 
 interface TestCase {
   id: string;
@@ -267,7 +271,7 @@ export function TestSessionExecution({
       }
 
       if (!suiteLinks || suiteLinks.length === 0) {
-        console.warn("⚠️ No test cases linked to this suite");
+        toastWarning("⚠️ No test cases linked to this suite");
         setSuiteTestCases([]);
         return [];
       }
@@ -340,7 +344,7 @@ export function TestSessionExecution({
           const testCase = testCaseMap.get(actualTestCaseId);
 
           if (!testCase) {
-            console.warn(`⚠️ Test case ${actualTestCaseId} not found`);
+            toastWarning(`⚠️ Test case ${actualTestCaseId} not found`);
             return null;
           }
 

@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import Stripe from "stripe";
 import { createEmailService } from "@/lib/email-service";
+import { toastError, toastInfo } from "@/lib/utils/toast-utils";
 
 function getStripeClient() {
   const apiKey = process.env.STRIPE_SECRET_KEY;
@@ -65,7 +66,6 @@ export async function POST(request: NextRequest) {
           );
           await handleSubscriptionCreated(subscription, session);
         } else {
-          console.log("⚠️ No subscription in checkout session");
         }
         break;
       }
@@ -128,11 +128,6 @@ async function handleSubscriptionCreated(
     const mappedStatus = mapSubscriptionStatus(subscription.status);
 
     const subscriptionData = subscription as any;
-    console.log("📅 Raw Stripe data:", {
-      current_period_start: subscriptionData.current_period_start,
-      current_period_end: subscriptionData.current_period_end,
-      trial_end: subscriptionData.trial_end,
-    });
 
     // Update user profile
     const { error: profileError } = await supabaseAdmin
@@ -160,8 +155,6 @@ async function handleSubscriptionCreated(
       throw profileError;
     }
 
-    console.log("✅ User profile updated");
-
     if (mappedStatus === "trial" && emailService) {
       try {
         const { data: profile } = await supabaseAdmin
@@ -188,12 +181,11 @@ async function handleSubscriptionCreated(
             trialEndDate,
             planName: planId.toUpperCase(),
           });
-
-          console.log("✅ Trial started email sent to", profile.email);
         }
       } catch (emailError) {
-        console.error("⚠️ Failed to send trial started email:", emailError);
-        // Don't throw - email failure shouldn't break webhook
+        toastError(
+          "Failed to send trial started email. Please contact customer support.",
+        );
       }
     }
 
@@ -212,8 +204,6 @@ async function handleSubscriptionCreated(
 
     // Update usage limits
     await updateUsageLimits(userId, planId);
-
-    console.log("🎉 Subscription created successfully");
   } catch (error: any) {
     console.error("❌ Error in handleSubscriptionCreated:", error);
     throw error;
@@ -314,14 +304,8 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
           userName: userProfile.full_name || undefined,
           planName: userProfile.subscription_tier.toUpperCase(),
         });
-
-        console.log("✅ Subscription ended email sent to", userProfile.email);
       } catch (emailError) {
-        console.error(
-          "⚠️ Failed to send subscription ended email:",
-          emailError,
-        );
-        // Don't throw - email failure shouldn't break webhook
+        toastError("⚠️ Failed to send subscription ended email");
       }
     }
 
@@ -362,7 +346,6 @@ async function handleInvoicePaymentSucceeded(
   }
 
   if (!subscriptionId) {
-    console.log("⚪ Invoice not related to subscription");
     return;
   }
 
@@ -371,7 +354,6 @@ async function handleInvoicePaymentSucceeded(
     const userId = subscription.metadata?.user_id;
 
     if (!userId) {
-      console.log("⚪ No user_id in subscription metadata");
       return;
     }
 
@@ -422,8 +404,6 @@ async function handleInvoicePaymentSucceeded(
             nextBillingDate,
             amount,
           });
-
-          console.log("✅ Welcome to Pro email sent to", profile.email);
         }
       } catch (emailError) {
         console.error("⚠️ Failed to send welcome email:", emailError);
@@ -472,7 +452,6 @@ async function handleInvoicePaymentFailed(
   }
 
   if (!subscriptionId) {
-    console.log("⚪ Invoice not related to subscription");
     return;
   }
 
@@ -481,7 +460,6 @@ async function handleInvoicePaymentFailed(
     const userId = subscription.metadata?.user_id;
 
     if (!userId) {
-      console.log("⚪ No user_id in subscription metadata");
       return;
     }
 

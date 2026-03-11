@@ -469,8 +469,6 @@ export function AutomationHub() {
                 <SelectItem value="selenium">Selenium</SelectItem>
                 <SelectItem value="cypress">Cypress</SelectItem>
                 <SelectItem value="puppeteer">Puppeteer</SelectItem>
-                <SelectItem value="testcafe">TestCafe</SelectItem>
-                <SelectItem value="webdriverio">WebdriverIO</SelectItem>
               </SelectContent>
             </Select>
 

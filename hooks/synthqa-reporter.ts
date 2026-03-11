@@ -114,7 +114,7 @@ class SynthQAReporter implements Reporter {
     const apiKey = process.env.SYNTHQA_API_KEY;
 
     if (!webhookUrl) {
-      console.log("⚠️  SYNTHQA_WEBHOOK_URL not set - skipping result upload");
+      console.log("⚠️  SYNTHQA_WEBHOOK_URL not set.");
       console.log(
         "   To sync results back to SynthQA, add SYNTHQA_WEBHOOK_URL to .env",
       );
@@ -122,7 +122,7 @@ class SynthQAReporter implements Reporter {
     }
 
     if (!apiKey) {
-      console.log("⚠️  SYNTHQA_API_KEY not set - skipping result upload");
+      console.log("⚠️  SYNTHQA_API_KEY not set.");
       return;
     }
 
@@ -143,9 +143,6 @@ class SynthQAReporter implements Reporter {
         console.error(`❌ Failed to send results: ${response.statusText}`);
         console.error(`   Response: ${error}`);
       } else {
-        console.log(
-          `✅ Test results synced to SynthQA (${data.metadata.total_tests} tests)`,
-        );
       }
     } catch (error) {
       console.error("❌ Error sending results to SynthQA:", error);
