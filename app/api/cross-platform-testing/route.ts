@@ -19,6 +19,7 @@ import {
 } from "@/lib/ai-models/config";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 // ----- Types -----
 type PlatformId = "web" | "mobile" | "api" | "accessibility" | "performance";
@@ -418,7 +419,7 @@ Test Cases to Convert:
 ${rawText}
 
 IMPORTANT: Every test case MUST have a valid "api" object with "method" and "path" fields.
-Return ONLY valid JSON, no markdown, no explanation.`;
+Return ONLY valid JSON, no markdown code fences, no explanation.`;
   }
 
   return `Convert the following test cases into a structured JSON object.
@@ -441,28 +442,134 @@ Return format:
 Test Cases to Convert:
 ${rawText}
 
-Return ONLY valid JSON, no markdown, no explanation.`;
+Return ONLY valid JSON, no markdown code fences, no explanation.`;
 }
 
-async function structureTestCasesWithOpenAI(
+// UPDATED: Use Anthropic instead of OpenAI for structuring
+async function structureTestCasesWithAnthropic(
   rawText: string,
   isApi: boolean,
 ): Promise<PlatformTestCase[]> {
+  console.log("[structureTestCases] Starting with Anthropic...");
+  console.log("[structureTestCases] Is API?", isApi);
+  console.log("[structureTestCases] Raw text length:", rawText.length);
+
+  if (!rawText || rawText.trim().length === 0) {
+    console.error("[structureTestCases] Empty rawText provided");
+    return [];
+  }
+
   const structurePrompt = buildStructurePrompt(isApi, rawText);
 
   try {
-    const structured = await openai.chat.completions.create({
-      model: "gpt-4o-mini-2024-07-18",
-      messages: [{ role: "user", content: structurePrompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 4096,
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 8192, // Increased from 4096 to handle larger responses
+      messages: [
+        {
+          role: "user",
+          content: structurePrompt,
+        },
+      ],
     });
 
-    const content = structured.choices?.[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(content) as {
+    // Extract text from response using existing helper
+    const textContent = anthropicTextFromContent(response.content);
+
+    console.log("[Anthropic] Response received, length:", textContent.length);
+    console.log("[Anthropic] First 200 chars:", textContent.substring(0, 200));
+
+    // Check if response was cut off (stop_reason)
+    if (response.stop_reason === "max_tokens") {
+      console.warn(
+        "[Anthropic] Response hit max_tokens limit - may be incomplete",
+      );
+    }
+
+    // Remove markdown code fences if present
+    let jsonText = textContent.trim();
+    if (jsonText.startsWith("```json")) {
+      jsonText = jsonText.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    } else if (jsonText.startsWith("```")) {
+      jsonText = jsonText.replace(/^```\s*/, "").replace(/\s*```$/, "");
+    }
+
+    console.log(
+      "[Anthropic] After removing fences, first 200 chars:",
+      jsonText.substring(0, 200),
+    );
+    console.log(
+      "[Anthropic] Last 200 chars:",
+      jsonText.substring(Math.max(0, jsonText.length - 200)),
+    );
+
+    // Try to parse JSON
+    let parsed: {
       test_cases?: PlatformTestCase[];
       testCases?: PlatformTestCase[];
     };
+
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (parseError) {
+      console.error("[Anthropic] JSON parse failed, attempting repair...");
+
+      // Try to repair incomplete JSON by closing it properly
+      let repairedJson = jsonText;
+
+      // Count open braces/brackets
+      const openBraces = (repairedJson.match(/{/g) || []).length;
+      const closeBraces = (repairedJson.match(/}/g) || []).length;
+      const openBrackets = (repairedJson.match(/\[/g) || []).length;
+      const closeBrackets = (repairedJson.match(/\]/g) || []).length;
+
+      console.log(
+        "[Anthropic] Braces - Open:",
+        openBraces,
+        "Close:",
+        closeBraces,
+      );
+      console.log(
+        "[Anthropic] Brackets - Open:",
+        openBrackets,
+        "Close:",
+        closeBrackets,
+      );
+
+      // Remove any incomplete string at the end
+      if (
+        repairedJson.includes('"') &&
+        repairedJson.lastIndexOf('"') !== repairedJson.indexOf('"')
+      ) {
+        const lastCompleteQuote = repairedJson.lastIndexOf('",');
+        if (lastCompleteQuote > 0) {
+          repairedJson = repairedJson.substring(0, lastCompleteQuote + 2);
+          console.log("[Anthropic] Truncated to last complete field");
+        }
+      }
+
+      // Close any open arrays/objects
+      if (closeBrackets < openBrackets) {
+        repairedJson += "]".repeat(openBrackets - closeBrackets);
+      }
+      if (closeBraces < openBraces) {
+        repairedJson += "}".repeat(openBraces - closeBraces);
+      }
+
+      console.log("[Anthropic] Attempting to parse repaired JSON...");
+      parsed = JSON.parse(repairedJson);
+      console.log("[Anthropic] Successfully parsed repaired JSON");
+    }
+
+    console.log("[Anthropic] Parsed keys:", Object.keys(parsed));
+    console.log(
+      "[Anthropic] test_cases is array?",
+      Array.isArray(parsed.test_cases),
+    );
+    console.log(
+      "[Anthropic] testCases is array?",
+      Array.isArray(parsed.testCases),
+    );
 
     const parsedCases = Array.isArray(parsed.test_cases)
       ? parsed.test_cases
@@ -470,13 +577,78 @@ async function structureTestCasesWithOpenAI(
         ? parsed.testCases
         : [];
 
-    return isApi
-      ? parsedCases.map((tc) => ({
+    console.log("[Anthropic] Parsed cases count:", parsedCases.length);
+
+    if (isApi) {
+      console.log("[API] Normalizing API specs...");
+
+      const withNormalizedApi = parsedCases.map((tc, index) => {
+        const normalizedApi = normalizeApiSpec((tc as any).api);
+
+        if (!normalizedApi || !normalizedApi.method || !normalizedApi.path) {
+          console.warn(
+            `[API] Case ${index + 1} "${tc.title}" has invalid api:`,
+            (tc as any).api,
+          );
+        }
+
+        return {
           ...tc,
-          api: normalizeApiSpec((tc as any).api),
-        }))
-      : parsedCases;
-  } catch {
+          api: normalizedApi,
+        };
+      });
+
+      // Filter out invalid API cases
+      const validCases = withNormalizedApi.filter((tc) => {
+        return tc.api && tc.api.method && tc.api.path;
+      });
+
+      console.log(
+        "[API] Valid cases after filtering:",
+        validCases.length,
+        "of",
+        parsedCases.length,
+      );
+
+      if (validCases.length === 0 && parsedCases.length > 0) {
+        console.error(
+          "[API] All cases were filtered out! First case api field was:",
+          (parsedCases[0] as any)?.api,
+        );
+      }
+
+      return validCases;
+    }
+
+    return parsedCases;
+  } catch (error) {
+    console.error("[structureTestCases] ERROR:", error);
+
+    if (error instanceof Error) {
+      console.error("[structureTestCases] Error message:", error.message);
+      console.error("[structureTestCases] Error stack:", error.stack);
+
+      // If JSON parsing failed due to size, suggest reducing count
+      if (
+        error.message.includes("JSON") ||
+        error.message.includes("Unterminated")
+      ) {
+        console.error(
+          "[structureTestCases] HINT: Response may be too large. Try reducing testCaseCount or using multiple smaller requests.",
+        );
+      }
+    }
+
+    console.error(
+      "[structureTestCases] Raw text (first 500 chars):",
+      rawText.substring(0, 500),
+    );
+    console.error(
+      "[structureTestCases] Raw text (last 500 chars):",
+      rawText.substring(Math.max(0, rawText.length - 500)),
+    );
+    console.error("[structureTestCases] Is API?", isApi);
+
     return [];
   }
 }
@@ -712,26 +884,62 @@ Return plain text test cases (no JSON).`;
             });
             rawText = res.choices?.[0]?.message?.content ?? "";
           }
-        } catch {
-          if (fallbackProvider === "anthropic") {
-            const res = await anthropic.messages.create({
-              model: fallbackModelId,
-              max_tokens: 4096,
-              messages: [{ role: "user", content: promptUsed }],
-            });
-            rawText = anthropicTextFromContent(res.content);
-          } else {
-            const res = await openai.chat.completions.create({
-              model: fallbackModelId,
-              messages: [{ role: "user", content: promptUsed }],
-              max_tokens: 4096,
-            });
-            rawText = res.choices?.[0]?.message?.content ?? "";
+        } catch (llmError) {
+          console.error(
+            `[LLM] Primary call failed for ${platformId}/${framework}:`,
+            llmError,
+          );
+
+          // Try fallback
+          try {
+            if (fallbackProvider === "anthropic") {
+              const res = await anthropic.messages.create({
+                model: fallbackModelId,
+                max_tokens: 4096,
+                messages: [{ role: "user", content: promptUsed }],
+              });
+              rawText = anthropicTextFromContent(res.content);
+            } else {
+              const res = await openai.chat.completions.create({
+                model: fallbackModelId,
+                messages: [{ role: "user", content: promptUsed }],
+                max_tokens: 4096,
+              });
+              rawText = res.choices?.[0]?.message?.content ?? "";
+            }
+          } catch (fallbackError) {
+            console.error(
+              `[LLM] Fallback call also failed for ${platformId}/${framework}:`,
+              fallbackError,
+            );
           }
         }
 
-        // Structure / normalize JSON
-        let testCases = await structureTestCasesWithOpenAI(rawText, isApi);
+        // Check if we got any text
+        if (!rawText || rawText.trim().length === 0) {
+          console.error(
+            `[Generation] Empty LLM response for ${platformId}/${framework}`,
+          );
+          generationResults.push({
+            platform: platformId,
+            framework,
+            count: 0,
+            error: "LLM returned empty response",
+          });
+          continue;
+        }
+
+        console.log(
+          `[Generation] Got LLM text for ${platformId}/${framework}, length: ${rawText.length}`,
+        );
+        console.log(`[Generation] First 300 chars:`, rawText.substring(0, 300));
+
+        // Structure / normalize JSON - UPDATED to use Anthropic
+        let testCases = await structureTestCasesWithAnthropic(rawText, isApi);
+
+        console.log(
+          `[Generation] Structured test cases for ${platformId}/${framework}: ${testCases.length}`,
+        );
 
         if (testCases.length > testCaseCount)
           testCases = testCases.slice(0, testCaseCount);
@@ -762,6 +970,10 @@ Return plain text test cases (no JSON).`;
           .select("id, title, platform, framework, automation_metadata");
 
         if (insertError) {
+          console.error(
+            `[DB] Insert failed for ${platformId}/${framework}:`,
+            insertError,
+          );
           generationResults.push({
             platform: platformId,
             framework,
@@ -793,6 +1005,10 @@ Return plain text test cases (no JSON).`;
           count: insertedCount,
         });
       } catch (err) {
+        console.error(
+          `[Generation] Unexpected error for ${platformId}/${framework}:`,
+          err,
+        );
         generationResults.push({
           platform: String((platformData as any)?.platform ?? "unknown"),
           framework: String((platformData as any)?.framework ?? "unknown"),
@@ -811,6 +1027,7 @@ Return plain text test cases (no JSON).`;
         { status: 500 },
       );
     }
+
     try {
       await recordSuccessfulGeneration(user.id, totalInserted);
     } catch (recordError) {
