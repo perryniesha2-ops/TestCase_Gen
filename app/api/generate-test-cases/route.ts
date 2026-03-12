@@ -18,9 +18,9 @@ import {
   type ModelKey,
   AI_MODELS,
 } from "@/lib/ai-models/config";
-import { toastError, toastWarning } from "@/lib/utils/toast-utils";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -440,12 +440,21 @@ async function callWithFallback(
   throw new Error("All LLM providers failed");
 }
 
-// ─── Enhanced structuring with retry ────────────────────────────────────────
+// ─── Enhanced structuring with Anthropic ────────────────────────────────────
 
 async function structureTestCases(
   rawText: string,
   expectedCount: number,
 ): Promise<GeneratedTestCase[]> {
+  console.log("[structureTestCases] Starting with Anthropic...");
+  console.log("[structureTestCases] Expected count:", expectedCount);
+  console.log("[structureTestCases] Raw text length:", rawText.length);
+
+  if (!rawText || rawText.trim().length === 0) {
+    console.error("[structureTestCases] Empty rawText provided");
+    return [];
+  }
+
   const prompt = `Convert the following test cases into a structured JSON array. Each test case should have this exact format:
 
 {
@@ -476,35 +485,155 @@ Return a JSON object with a "test_cases" key containing the array, e.g. {"test_c
 Test Cases to Convert:
 ${rawText}
 
-Return ONLY valid JSON, no markdown, no explanation.`;
+Return ONLY valid JSON, no markdown code fences, no explanation.`;
 
   try {
-    const res = await openai.chat.completions.create({
-      model: "gpt-4o-mini-2024-07-18",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 8000,
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 8192,
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
     });
 
-    const content = res.choices?.[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(content) as {
+    // Extract text from response
+    const textContent = extractAnthropicText(response.content);
+
+    console.log("[Anthropic] Response received, length:", textContent.length);
+    console.log("[Anthropic] First 200 chars:", textContent.substring(0, 200));
+
+    // Check if response was cut off
+    if (response.stop_reason === "max_tokens") {
+      console.warn(
+        "[Anthropic] Response hit max_tokens limit - may be incomplete",
+      );
+    }
+
+    // Remove markdown code fences if present
+    let jsonText = textContent.trim();
+    if (jsonText.startsWith("```json")) {
+      jsonText = jsonText.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    } else if (jsonText.startsWith("```")) {
+      jsonText = jsonText.replace(/^```\s*/, "").replace(/\s*```$/, "");
+    }
+
+    console.log(
+      "[Anthropic] After removing fences, first 200 chars:",
+      jsonText.substring(0, 200),
+    );
+    console.log(
+      "[Anthropic] Last 200 chars:",
+      jsonText.substring(Math.max(0, jsonText.length - 200)),
+    );
+
+    // Try to parse JSON
+    let parsed: {
       test_cases?: GeneratedTestCase[];
       testCases?: GeneratedTestCase[];
     };
 
-    if (!content) {
-      toastWarning("Empty response from OpenAI or Anthropic");
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (parseError) {
+      console.error("[Anthropic] JSON parse failed, attempting repair...");
+
+      // Try to repair incomplete JSON by closing it properly
+      let repairedJson = jsonText;
+
+      // Count open braces/brackets
+      const openBraces = (repairedJson.match(/{/g) || []).length;
+      const closeBraces = (repairedJson.match(/}/g) || []).length;
+      const openBrackets = (repairedJson.match(/\[/g) || []).length;
+      const closeBrackets = (repairedJson.match(/\]/g) || []).length;
+
+      console.log(
+        "[Anthropic] Braces - Open:",
+        openBraces,
+        "Close:",
+        closeBraces,
+      );
+      console.log(
+        "[Anthropic] Brackets - Open:",
+        openBrackets,
+        "Close:",
+        closeBrackets,
+      );
+
+      // Remove any incomplete string at the end
+      if (
+        repairedJson.includes('"') &&
+        repairedJson.lastIndexOf('"') !== repairedJson.indexOf('"')
+      ) {
+        const lastCompleteQuote = repairedJson.lastIndexOf('",');
+        if (lastCompleteQuote > 0) {
+          repairedJson = repairedJson.substring(0, lastCompleteQuote + 2);
+          console.log("[Anthropic] Truncated to last complete field");
+        }
+      }
+
+      // Close any open arrays/objects
+      if (closeBrackets < openBrackets) {
+        repairedJson += "]".repeat(openBrackets - closeBrackets);
+      }
+      if (closeBraces < openBraces) {
+        repairedJson += "}".repeat(openBraces - closeBraces);
+      }
+
+      console.log("[Anthropic] Attempting to parse repaired JSON...");
+      parsed = JSON.parse(repairedJson);
+      console.log("[Anthropic] Successfully parsed repaired JSON");
     }
+
+    console.log("[Anthropic] Parsed keys:", Object.keys(parsed));
+    console.log(
+      "[Anthropic] test_cases is array?",
+      Array.isArray(parsed.test_cases),
+    );
+    console.log(
+      "[Anthropic] testCases is array?",
+      Array.isArray(parsed.testCases),
+    );
 
     const cases = parsed.test_cases ?? parsed.testCases ?? [];
 
+    console.log("[Anthropic] Parsed cases count:", cases.length);
+
     if (cases.length !== expectedCount) {
-      toastWarning(`Expected ${expectedCount} test cases, got ${cases.length}`);
+      console.warn(
+        `[Anthropic] Expected ${expectedCount} test cases, got ${cases.length}`,
+      );
     }
 
     return cases;
   } catch (error) {
-    toastError("JSON parsing failed:");
+    console.error("[structureTestCases] ERROR:", error);
+
+    if (error instanceof Error) {
+      console.error("[structureTestCases] Error message:", error.message);
+      console.error("[structureTestCases] Error stack:", error.stack);
+
+      // If JSON parsing failed due to size, suggest reducing count
+      if (
+        error.message.includes("JSON") ||
+        error.message.includes("Unterminated")
+      ) {
+        console.error(
+          "[structureTestCases] HINT: Response may be too large. Try reducing testCaseCount.",
+        );
+      }
+    }
+
+    console.error(
+      "[structureTestCases] Raw text (first 500 chars):",
+      rawText.substring(0, 500),
+    );
+    console.error(
+      "[structureTestCases] Raw text (last 500 chars):",
+      rawText.substring(Math.max(0, rawText.length - 500)),
+    );
 
     // Last resort: pull a bare JSON array out of the raw text
     const match = rawText.match(/\[[\s\S]*\]/);
@@ -514,9 +643,14 @@ Return ONLY valid JSON, no markdown, no explanation.`;
 
     try {
       const fallbackCases = JSON.parse(match[0]) as GeneratedTestCase[];
-
+      console.log(
+        "[structureTestCases] Fallback regex extraction succeeded:",
+        fallbackCases.length,
+        "cases",
+      );
       return fallbackCases;
     } catch (fallbackError) {
+      console.error("[structureTestCases] Fallback extraction also failed");
       return [];
     }
   }
@@ -828,7 +962,7 @@ Generate the FULL ${testCaseCount} test cases now. Do not skip any.`;
       generation_id: generation.id,
       test_cases: savedCases,
       count: savedCases.length,
-      requested_count: testCaseCount, // ✅ Show what was requested
+      requested_count: testCaseCount,
       provider_used: llmResult.provider,
       model_used: llmResult.model,
       statistics: {
