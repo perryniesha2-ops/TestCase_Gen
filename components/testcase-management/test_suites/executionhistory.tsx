@@ -57,9 +57,9 @@ import {
   ClipboardCheck,
   ListChecks,
 } from "lucide-react";
-import { toast } from "sonner";
 
 import { RunReviewDialog } from "./dialogs/run-review-dialog";
+import { toastError, toastInfo, toastSuccess } from "@/lib/utils/toast-utils";
 
 type ExecutionStatus =
   | "not_run"
@@ -278,7 +278,7 @@ function IssueLink({
         onClick={(e) => {
           if (!href) {
             e.preventDefault();
-            toast.error("Jira URL not configured");
+            toastError("Jira URL not configured");
           }
         }}
       >
@@ -302,7 +302,7 @@ function IssueLink({
         onClick={(e) => {
           if (!href) {
             e.preventDefault();
-            toast.error("TestRail URL not configured");
+            toastError("TestRail URL not configured");
           }
         }}
       >
@@ -458,11 +458,11 @@ export function ExecutionHistory({
 
   async function createIssuesFromReview() {
     if (!activeRun) {
-      toast.error("No active run");
+      toastError("No active run");
       return;
     }
     if (selectedIntegrationId === "none") {
-      toast.error("Select an integration first");
+      toastError("Select an integration first");
       return;
     }
 
@@ -473,7 +473,7 @@ export function ExecutionHistory({
     );
 
     if (targets.length === 0) {
-      toast.info("No rows selected (or already linked).");
+      toastInfo("No rows selected (or already linked).");
       return;
     }
 
@@ -527,14 +527,14 @@ export function ExecutionHistory({
         }),
       );
 
-      toast.success(
+      toastSuccess(
         `Created ${json.created ?? 0} of ${json.total ?? targets.length} issues`,
       );
       void fetchHistory();
       void fetchRuns();
     } catch (e) {
       console.error(e);
-      toast.error(e instanceof Error ? e.message : "Failed to create issues");
+      toastError(e instanceof Error ? e.message : "Failed to create issues");
     } finally {
       setCreatingIssues(false);
     }
@@ -737,7 +737,7 @@ export function ExecutionHistory({
       setRuns(mapped);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to load run history");
+      toastError("Failed to load run history");
       setRuns([]);
     } finally {
       setRunsLoading(false);
@@ -942,7 +942,7 @@ export function ExecutionHistory({
       );
     } catch (err) {
       console.error(err);
-      toast.error("Failed to load execution history");
+      toastError("Failed to load execution history");
       setRows([]);
     } finally {
       setLoading(false);
@@ -1024,7 +1024,7 @@ export function ExecutionHistory({
       setEvidence((data ?? []) as AttachmentRow[]);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to load evidence");
+      toastError("Failed to load evidence");
       setEvidence([]);
     } finally {
       setEvidenceLoading(false);
@@ -1034,7 +1034,7 @@ export function ExecutionHistory({
   async function downloadEvidence() {
     if (evidence.length === 0) return;
 
-    toast.info("Downloading evidence files...");
+    toastInfo("Downloading evidence files...");
     for (const att of evidence) {
       try {
         const url = await createSignedUrl(att.file_path, 60 * 60);
@@ -1051,7 +1051,7 @@ export function ExecutionHistory({
 
   function exportToCSV() {
     if (rows.length === 0) {
-      toast.error("No data to export");
+      toastError("No data to export");
       return;
     }
 
@@ -1126,12 +1126,12 @@ export function ExecutionHistory({
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    toast.success(`Exported ${rows.length} executions to CSV`);
+    toastSuccess(`Exported ${rows.length} executions to CSV`);
   }
 
   function exportTrendReport() {
     if (rows.length === 0) {
-      toast.error("No data to export");
+      toastError("No data to export");
       return;
     }
 
@@ -1189,7 +1189,7 @@ export function ExecutionHistory({
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    toast.success("Exported trend report");
+    toastSuccess("Exported trend report");
   }
 
   // ========= Post-run review =========
@@ -1203,7 +1203,7 @@ export function ExecutionHistory({
     try {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) {
-        toast.error("You must be signed in");
+        toastError("You must be signed in");
         return;
       }
 
@@ -1344,7 +1344,7 @@ export function ExecutionHistory({
       setRunRows(mapped);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to load run details");
+      toastError("Failed to load run details");
       setRunRows([]);
     } finally {
       setRunRowsLoading(false);
@@ -1392,7 +1392,7 @@ export function ExecutionHistory({
   async function saveRunReview() {
     if (!activeRun) return;
     if (runRows.length === 0) {
-      toast.error("Nothing to save");
+      toastError("Nothing to save");
       return;
     }
 
@@ -1417,13 +1417,13 @@ export function ExecutionHistory({
         }
       }
 
-      toast.success("Run review saved");
+      toastSuccess("Run review saved");
       void fetchRuns();
       void fetchHistory();
       setIsRunReviewOpen(false);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to save review");
+      toastError("Failed to save review");
     } finally {
       setRunSaveBusy(false);
     }
@@ -2381,7 +2381,7 @@ function AttachmentCardWithSignedUrl({
       e.stopPropagation();
       const freshUrl = await getSignedUrl(attachment.file_path, 60 * 60);
       if (!freshUrl) {
-        toast.error("Failed to download file");
+        toastError("Failed to download file");
         return;
       }
       const a = document.createElement("a");

@@ -646,13 +646,6 @@ export function TemplateManager() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)}>
-        <TabsList>
-          <TabsTrigger value="my-templates" disabled={!user}>
-            My Templates
-          </TabsTrigger>
-          <TabsTrigger value="public">Public Templates</TabsTrigger>
-        </TabsList>
-
         <TabsContent value="my-templates" className="mt-6">
           {!user ? (
             <Card>
@@ -815,117 +808,6 @@ export function TemplateManager() {
                         </div>
                       </div>
                     </CardContent>
-
-                    <CardFooter className="pt-0">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                        onClick={() =>
-                          toast.success(
-                            "Template selected (integrate with generator)",
-                          )
-                        }
-                      >
-                        Use Template
-                      </Button>
-                    </CardFooter>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="public" className="mt-6">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredTemplates.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <Globe className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">
-                  No public templates available
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  Check back later for community templates
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredTemplates.map((template) => {
-                const CategoryIcon = CATEGORY_ICONS[template.category];
-                const categoryColor = CATEGORY_COLORS[template.category];
-
-                return (
-                  <Card
-                    key={template.id}
-                    className="relative hover:shadow-lg transition-shadow"
-                  >
-                    <div
-                      className={`absolute top-0 left-0 w-full h-1 ${categoryColor} rounded-t-lg`}
-                    />
-
-                    <CardHeader className="pt-6">
-                      <div className="flex items-start gap-2">
-                        <CategoryIcon className="h-5 w-5 text-muted-foreground mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <CardTitle
-                            className="text-lg leading-snug line-clamp-2 break-words"
-                            title={template.name}
-                          >
-                            {template.name}
-                          </CardTitle>
-                          {template.description && (
-                            <CardDescription className="line-clamp-2 mt-1">
-                              {template.description}
-                            </CardDescription>
-                          )}
-                        </div>
-                      </div>
-                    </CardHeader>
-
-                    <CardContent className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {template.category}
-                        </Badge>
-                        <Badge variant="secondary" className="text-xs">
-                          {template.template_content.testCaseCount} tests
-                        </Badge>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Used {template.usage_count} times by the community
-                      </div>
-                    </CardContent>
-
-                    <CardFooter className="pt-0 gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => duplicateTemplate(template)}
-                        disabled={!user}
-                        title={!user ? "Sign in to copy templates" : undefined}
-                      >
-                        <Copy className="h-4 w-4 mr-1" />
-                        Copy
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1"
-                        onClick={() =>
-                          toast.success(
-                            "Template selected (integrate with generator)",
-                          )
-                        }
-                      >
-                        Use Template
-                      </Button>
-                    </CardFooter>
                   </Card>
                 );
               })}

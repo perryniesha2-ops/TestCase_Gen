@@ -341,8 +341,10 @@ export function EditRequirementModal({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="archived">Archived</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="implemented">Implemented</SelectItem>
+                    <SelectItem value="tested">Tested</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

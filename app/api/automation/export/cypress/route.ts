@@ -24,6 +24,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Get webhook URL
+    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://app.synthqa.com"}/api/automation/webhook/results`;
+
+    // Get user's API key
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("api_key")
+      .eq("id", user.id)
+      .single();
+
     // Fetch suite
     const { data: suite, error: suiteErr } = await supabase
       .from("suites")
@@ -330,7 +340,7 @@ export {};
       JSON.stringify(
         {
           SYNTHQA_WEBHOOK_URL: `${process.env.NEXT_PUBLIC_APP_URL}/api/automation/webhook/results`,
-          SYNTHQA_API_KEY: "your_api_key_here",
+          SYNTHQA_API_KEY: profile?.api_key || " ",
           SYNTHQA_SUITE_ID: suite.id,
           BASE_URL: suite.base_url,
           TEST_ENVIRONMENT: "local",
