@@ -58,6 +58,7 @@ type SuiteRow = {
   id: string;
   name: string;
   description?: string | null;
+  base_url?: string | null;
 };
 
 type SuiteLinkRow = {
@@ -641,18 +642,24 @@ jobs:
 Generated with ❤️ by SynthQA
 `;
 }
-function renderEnvExample() {
+
+function renderEnvExample(opts: {
+  baseUrl?: string;
+  suiteId?: string;
+  webhookUrl?: string;
+  apiKey?: string;
+}) {
   return `# Required
-BASE_URL="https://app.example.com"
+BASE_URL="${opts.baseUrl || "https://app.example.com"}"
 
 # Authentication
 USER_EMAIL="test@example.com"
 USER_PASSWORD="yourpassword123"
 
 # SynthQA Integration
-SYNTHQA_WEBHOOK_URL=""
-SYNTHQA_API_KEY=""
-SYNTHQA_SUITE_ID=""
+SYNTHQA_WEBHOOK_URL="${opts.webhookUrl || ""}"
+SYNTHQA_API_KEY="${opts.apiKey || ""}"
+SYNTHQA_SUITE_ID="${opts.suiteId || ""}"
 TEST_USER_EMAIL=""
 TEST_USER_PASSWORD=""
 TEST_USER_USERNAME=""
@@ -744,7 +751,7 @@ setup('authenticate', async ({ page }) => {
 `;
 }
 
-function renderPlaywrightConfig(suiteId: string) {
+function renderPlaywrightConfig(suiteId: string, baseUrl?: string) {
   return `import { defineConfig } from "@playwright/test";
 import "dotenv/config";
 
@@ -774,7 +781,7 @@ export default defineConfig({
       name: 'chromium',
       testMatch: /.*\\.spec\\.ts/,
       use: {
-        baseURL: process.env.BASE_URL,
+        baseURL: process.env.BASE_URL${baseUrl ? ` || "${baseUrl}"` : ""},
         headless: true,
         trace: "on-first-retry",
         screenshot: "on",
@@ -1026,10 +1033,20 @@ export async function POST(req: Request) {
       );
     }
 
+    //Get Webhook
+    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://app.synthqa.com"}/api/automation/webhook/results`;
+
+    // Get api key if it exists
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("api_key")
+      .eq("id", user.id)
+      .single();
+
     // Fetch suite
     const { data: suite, error: suiteErr } = await supabase
       .from("suites")
-      .select("id, name, description")
+      .select("id, name, description, base_url")
       .eq("id", suiteId)
       .single<SuiteRow>();
 
@@ -1200,9 +1217,26 @@ export async function POST(req: Request) {
       zip.file(`${root}/${p}`, content);
 
     add("package.json", renderPackageJson());
-    add("playwright.config.ts", renderPlaywrightConfig(suiteId));
+    add(
+      "playwright.config.ts",
+      renderPlaywrightConfig(suiteId, suite.base_url ?? undefined),
+    );
     add("tsconfig.json", renderTsconfig());
-    add(".env.example", renderEnvExample());
+    add(
+      ".env.example",
+      renderEnvExample({
+        baseUrl: suite.base_url ?? undefined,
+        suiteId: suite.id,
+        webhookUrl,
+        apiKey: profile?.api_key ?? undefined,
+      }),
+    );
+
+    add(
+      "playwright.config.ts",
+      renderPlaywrightConfig(suiteId, suite.base_url ?? undefined),
+    );
+
     add("tests/auth.setup.ts", renderAuthSetup());
     add(".gitignore", renderGitignore());
     add("synthqa-reporter.ts", renderSynthQAReporter());

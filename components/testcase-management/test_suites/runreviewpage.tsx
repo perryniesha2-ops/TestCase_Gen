@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +28,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { toastError, toastInfo, toastSuccess } from "@/lib/utils/toast-utils";
 
 type AllowedStatus = "passed" | "failed" | "skipped" | "blocked";
 
@@ -122,7 +122,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
     try {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) {
-        toast.error("You must be signed in");
+        toastError("You must be signed in");
         router.push("/login");
         return;
       }
@@ -303,7 +303,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
       }
     } catch (error) {
       console.error(error);
-      toast.error("Failed to load run data");
+      toastError("Failed to load run data");
       router.push("/test-library");
     } finally {
       setLoading(false);
@@ -359,10 +359,10 @@ export function RunReviewPage({ runId }: { runId: string }) {
 
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
-      toast.success("Review saved");
+      toastSuccess("Review saved");
     } catch (error) {
       console.error(error);
-      toast.error("Failed to save review");
+      toastError("Failed to save review");
     } finally {
       setSaving(false);
     }
@@ -370,7 +370,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
 
   async function createIssues() {
     if (selectedIntegrationId === "none") {
-      toast.error("Select an integration first");
+      toastError("Select an integration first");
       return;
     }
 
@@ -380,7 +380,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
     );
 
     if (targets.length === 0) {
-      toast.info("No rows selected for issue creation");
+      toastInfo("No rows selected for issue creation");
       return;
     }
 
@@ -429,19 +429,19 @@ export function RunReviewPage({ runId }: { runId: string }) {
 
       // ← IMPROVED: Show detailed feedback
       if (json.created > 0) {
-        toast.success(`Created ${json.created} of ${json.total} issues`);
+        toastSuccess(`Created ${json.created} of ${json.total} issues`);
       }
 
       if (json.failed > 0) {
         // Show first error as an example
         const firstError = failures[0]?.error ?? "Unknown error";
-        toast.error(
+        toastError(
           `Failed to create ${json.failed} issues. First error: ${firstError}`,
         );
       }
     } catch (error) {
       console.error("Create issues error:", error);
-      toast.error(
+      toastError(
         error instanceof Error ? error.message : "Failed to create issues",
       );
     } finally {
