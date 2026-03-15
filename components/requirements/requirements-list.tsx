@@ -448,6 +448,7 @@ export function RequirementsList({
         onRowClick={handleRowClick}
         onPageChange={setCurrentPage}
       />
+      <div className="h-4" />
     </div>
   );
 }

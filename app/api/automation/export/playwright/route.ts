@@ -680,7 +680,6 @@ function renderPackageJson() {
     {
       name: "synthqa-playwright",
       private: true,
-      type: "module",
       scripts: {
         test: "playwright test",
         "test:ui": "playwright test --ui",
@@ -729,7 +728,7 @@ setup('authenticate', async ({ page }) => {
   const password = process.env.USER_PASSWORD;
   
   if (!email || !password) {
-    console.log('⚠️  USER_EMAIL and USER_PASSWORD not set);
+    console.log('⚠️  USER_EMAIL and USER_PASSWORD not set');
     return;
   }
   
@@ -860,12 +859,18 @@ class SynthQAReporter implements Reporter {
 
   constructor(options: { suiteId: string }) {
     this.suiteId = options.suiteId || process.env.SYNTHQA_SUITE_ID || 'unknown';
-    this.sessionId = \`run-\${Date.now()}\`;
+    this.sessionId = \`playwright-\${Date.now()}\`;
   }
 
+  private getOS(): string {
+    const p = process.platform;
+    if (p === 'darwin') return 'macOS';
+    if (p === 'win32') return 'Windows';
+    return 'Linux';
+  }
 
   onTestEnd(test: TestCase, result: TestResult) {
-    const duration = result.duration / 1000 / 60; // Convert to minutes
+    const duration = result.duration / 1000 / 60;
 
     this.testResults.push({
       test_case_id: this.extractTestCaseId(test),
@@ -876,30 +881,23 @@ class SynthQAReporter implements Reporter {
       execution_notes: this.getExecutionNotes(result),
       failure_reason: result.error?.message || null,
       stack_trace: result.error?.stack || null,
-      browser: process.env.BROWSER || "chromium",
-      os_version: process.platform,
-      test_environment: process.env.TEST_ENV || "local",
-      playwright_version: this.getPlaywrightVersion(),
+      browser: process.env.BROWSER || 'chromium',
+      os_version: this.getOS(),
+      test_environment: process.env.TEST_ENV || 'local',
       framework: 'playwright',
       framework_version: this.getPlaywrightVersion(),
     });
   }
 
   async onEnd(result: FullResult) {
-    const passed = this.testResults.filter(
-      (t) => t.execution_status === "passed",
-    ).length;
-    const failed = this.testResults.filter(
-      (t) => t.execution_status === "failed",
-    ).length;
-    const skipped = this.testResults.filter(
-      (t) => t.execution_status === "skipped",
-    ).length;
+    const passed = this.testResults.filter((t) => t.execution_status === 'passed').length;
+    const failed = this.testResults.filter((t) => t.execution_status === 'failed').length;
+    const skipped = this.testResults.filter((t) => t.execution_status === 'skipped').length;
 
     const payload = {
       suite_id: this.suiteId,
       session_id: this.sessionId,
-      framework: 'playwright',    
+      framework: 'playwright',
       test_results: this.testResults,
       metadata: {
         total_tests: this.testResults.length,
@@ -907,6 +905,10 @@ class SynthQAReporter implements Reporter {
         failed_tests: failed,
         skipped_tests: skipped,
         overall_status: failed > 0 ? 'failed' : 'passed',
+        ci_provider: process.env.CI_PROVIDER || null,
+        branch: process.env.GIT_BRANCH || null,
+        commit_sha: process.env.GIT_COMMIT || null,
+        commit_message: process.env.GIT_COMMIT_MESSAGE || null,
       },
     };
 
@@ -914,43 +916,32 @@ class SynthQAReporter implements Reporter {
   }
 
   private mapStatus(status: string): string {
-    if (status === "passed") return "passed";
-    if (status === "failed") return "failed";
-    if (status === "skipped") return "skipped";
-    return "failed";
+    if (status === 'passed') return 'passed';
+    if (status === 'failed') return 'failed';
+    if (status === 'skipped') return 'skipped';
+    return 'failed';
   }
 
   private extractTestCaseId(test: TestCase): string | null {
-    // Extract from test title (the UUID we set)
-    const titleMatch = test.title.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
-    if (titleMatch) {
-      return titleMatch[0];
-    }
-    return null;
+    const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    const match = test.title.match(uuidRegex);
+    return match ? match[0] : null;
   }
 
   private getExecutionNotes(result: TestResult): string | null {
     if (result.retry > 0) {
       return \`Test retried \${result.retry} time(s)\`;
     }
-    return result.status === "passed" ? "Test passed successfully" : null;
+    return result.status === 'passed' ? 'Test passed successfully' : null;
   }
 
   private getPlaywrightVersion(): string {
     try {
-      return require("@playwright/test/package.json").version;
+      return require('@playwright/test/package.json').version;
     } catch {
-      return "unknown";
+      return 'unknown';
     }
   }
-
-  private getOS(): string {
-    const p = process.platform;
-    if (p === 'darwin') return 'macOS';
-    if (p === 'win32') return 'Windows';
-    return 'Linux';
-  }
-
 
   private async sendToSynthQA(data: any) {
     const webhookUrl = process.env.SYNTHQA_WEBHOOK_URL;
@@ -969,25 +960,31 @@ class SynthQAReporter implements Reporter {
 
     try {
       console.log('📤 Sending test results to SynthQA...');
-      
+      console.log('   Suite ID:', data.suite_id);
+      console.log('   Total results:', data.test_results.length);
+      console.log('   Test case IDs:', data.test_results.map((r: any) => r.test_case_id));
+      console.log('   Statuses:', data.test_results.map((r: any) => r.execution_status));
+
       const response = await fetch(webhookUrl, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": \`Bearer \${apiKey}\`,
+          'Content-Type': 'application/json',
+          'Authorization': \`Bearer \${apiKey}\`,
         },
         body: JSON.stringify(data),
       });
 
+      const responseText = await response.text();
+      console.log('   Response status:', response.status);
+      console.log('   Response body:', responseText);
+
       if (!response.ok) {
-        const error = await response.text();
         console.error(\`❌ Failed to send results: \${response.statusText}\`);
-        console.error(\`   Response: \${error}\`);
       } else {
         console.log(\`✅ Test results synced to SynthQA (\${data.metadata.total_tests} tests)\`);
       }
     } catch (error) {
-      console.error("❌ Error sending results to SynthQA:", error);
+      console.error('❌ Error sending results to SynthQA:', error);
     }
   }
 }
@@ -1230,11 +1227,6 @@ export async function POST(req: Request) {
         webhookUrl,
         apiKey: profile?.api_key ?? undefined,
       }),
-    );
-
-    add(
-      "playwright.config.ts",
-      renderPlaywrightConfig(suiteId, suite.base_url ?? undefined),
     );
 
     add("tests/auth.setup.ts", renderAuthSetup());
