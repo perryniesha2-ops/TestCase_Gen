@@ -759,23 +759,12 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   retries: 1,
-
- // Reporters
   reporter: [
     ["html", { open: "never" }],
     ["list"],
-    // SynthQA reporter - syncs results back to platform
     ["./synthqa-reporter.ts", { suiteId: "${suiteId}" }],
   ],  
-  // Projects setup
   projects: [
-    // Setup authentication
-    { 
-      name: 'setup', 
-      testMatch: /.*\\.setup\\.ts/,
-    },
-    
-    // Run tests with authentication
     {
       name: 'chromium',
       testMatch: /.*\\.spec\\.ts/,
@@ -785,11 +774,7 @@ export default defineConfig({
         trace: "on-first-retry",
         screenshot: "on",
         video: "retain-on-failure",
-        
-        // Use saved authentication state
-        storageState: 'auth.json',
       },
-      dependencies: ['setup'],
     },
   ],
 });
@@ -820,7 +805,7 @@ function renderCaseSpec(opts: {
     })
     .join("\n");
 
-  return `import { test, expect } from "@playwright/test";
+  return `import { test, expect } from "../fixtures";
 
 test.describe(\`${escapeTemplateLiteral(opts.title)}\`, () => {
   test(\`${opts.caseId}\`, async ({ page }, testInfo) => {
@@ -841,6 +826,31 @@ ${stepsCode}
     });
   });
 });
+`;
+}
+
+function renderFixtures() {
+  return `import { test as base } from '@playwright/test';
+
+export const test = base.extend({
+  page: async ({ page }, use) => {
+    const email = process.env.USER_EMAIL;
+    const password = process.env.USER_PASSWORD;
+    const baseUrl = process.env.BASE_URL;
+
+    if (email && password && baseUrl) {
+      await page.goto(baseUrl + '/login');
+      await page.fill('[name="email"]', email);
+      await page.fill('[name="password"]', password);
+      await page.click('button[type="submit"]');
+      await page.waitForURL('**/dashboard', { timeout: 10000 }).catch(() => {});
+    }
+
+    await use(page);
+  },
+});
+
+export { expect } from '@playwright/test';
 `;
 }
 
@@ -980,9 +990,7 @@ class SynthQAReporter implements Reporter {
 
       if (!response.ok) {
         console.error(\`❌ Failed to send results: \${response.statusText}\`);
-      } else {
-        console.log(\`✅ Test results synced to SynthQA (\${data.metadata.total_tests} tests)\`);
-      }
+      } 
     } catch (error) {
       console.error('❌ Error sending results to SynthQA:', error);
     }
@@ -1229,8 +1237,8 @@ export async function POST(req: Request) {
       }),
     );
 
-    add("tests/auth.setup.ts", renderAuthSetup());
     add(".gitignore", renderGitignore());
+    add("tests/fixtures.ts", renderFixtures());
     add("synthqa-reporter.ts", renderSynthQAReporter());
     add(
       "README.md",

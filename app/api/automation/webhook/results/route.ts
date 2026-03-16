@@ -219,23 +219,7 @@ export async function POST(req: Request) {
         skipped_tests: payload.metadata.skipped_tests,
       };
     });
-    if (executions.length > 0) {
-      const { error: executionsError } = await supabase
-        .from("test_executions")
-        .insert(executions);
 
-      if (executionsError) {
-        console.error("❌ FAILED TO INSERT TEST EXECUTIONS:", {
-          message: executionsError.message,
-          code: executionsError.code,
-          details: executionsError.details,
-          hint: executionsError.hint,
-          sample: JSON.stringify(executions[0], null, 2),
-        });
-      } else {
-        console.log(`✅ Inserted ${executions.length} test executions`);
-      }
-    }
     return NextResponse.json({
       success: true,
       automation_run_id: automationRun.id,
@@ -244,7 +228,6 @@ export async function POST(req: Request) {
       message: `Saved ${framework} automation run #${runNumber} with ${executions.length} test results`,
     });
   } catch (error) {
-    console.error("❌ WEBHOOK ERROR:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
