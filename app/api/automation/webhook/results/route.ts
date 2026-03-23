@@ -228,7 +228,6 @@ export async function POST(req: Request) {
       message: `Saved ${framework} automation run #${runNumber} with ${executions.length} test results`,
     });
   } catch (error) {
-    console.error("❌ WEBHOOK ERROR:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

@@ -162,7 +162,6 @@ export function TestSuitesPage() {
           New Test Suite
         </Button>
       </div>
-
       {loading ? (
         <div className="flex items-center justify-center py-10 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin mr-2" />
@@ -182,12 +181,12 @@ export function TestSuitesPage() {
           getProjectColor={getProjectColor}
         />
       )}
-
       <CreateSuiteDialog
         open={showCreateDialog}
         onClose={() => setShowCreateDialog(false)}
         onSuccess={() => void refreshSuites()}
-      />
+      />{" "}
+      <div className="h-4" />
     </div>
   );
 }
