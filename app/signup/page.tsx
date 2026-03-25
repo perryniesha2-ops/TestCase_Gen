@@ -1,46 +1,28 @@
-import { GalleryVerticalEnd } from "lucide-react";
-
 import { SignupForm } from "@/components/auth/signup-form";
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-  FieldSeparator,
-} from "@/components/ui/field";
-import { Separator, SeparatorDemo } from "@/components/ui/separator";
-import Image from "next/image";
-
-import { PrivacySheet } from "@/components/legal/PrivacySheet";
-import { TermsSheet } from "@/components/legal/TermsSheet";
-import { ContactSheet } from "@/components/legal/contactSheet";
-import { SiteFooter } from "@/components/pagecomponents/site-footer";
-import { Logo } from "@/components/pagecomponents/brandlogo";
+import Link from "next/link";
 
 export default function SignupPage() {
   return (
-    <div className="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
-      {" "}
-      <div className="flex w-full max-w-sm flex-col gap-0">
-        {" "}
-        <div className="flex justify-center">
-          <Logo size="xl" />{" "}
-        </div>
-        <main className="space-y-5">
-          {" "}
-          <SignupForm />
-        </main>{" "}
-      </div>{" "}
-      <FieldDescription className="px-6 text-center">
-        {" "}
-        By clicking continue, you agree to our Terms of and Privacy Policy.
-      </FieldDescription>{" "}
-      <div className="flex-1" />{" "}
-      <div className="flex h-4 items-center space-x-4 text-sm"></div>{" "}
-      <SiteFooter />{" "}
+    <div className="landing-bg relative flex min-h-svh flex-col">
+      <SignupForm />
+
+      <div className="relative z-10 flex flex-col items-center gap-4 pb-8">
+        <p className="px-6 text-center text-xs text-gray-400 dark:text-white/20">
+          By proceeding, you agree to our{" "}
+          <span className="cursor-pointer text-gray-600 transition-colors hover:text-gray-800 dark:text-white/40 dark:hover:text-white/60">
+            <Link href="/docs/terms">Terms of Service </Link>
+          </span>{" "}
+          and{" "}
+          <span className="cursor-pointer text-gray-600 transition-colors hover:text-gray-800 dark:text-white/40 dark:hover:text-white/60">
+            <Link href="/docs/privacy">Privacy Policy</Link>
+          </span>
+          .
+        </p>
+      </div>
     </div>
   );
 }
+
 export const metadata = {
   title: "SynthQA - Sign Up",
 };
