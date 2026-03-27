@@ -13,6 +13,7 @@ import { motion } from "framer-motion";
 import { Logo } from "../pagecomponents/brandlogo";
 
 const COOLDOWN_SECONDS = 3;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const inputCn = cn(
   "h-10 rounded-xl border-gray-300 bg-white text-sm text-gray-900 placeholder:text-gray-400",
@@ -74,6 +75,15 @@ export function SignupForm() {
 
     const password = (formData.get("password") ?? "").toString();
     const confirmPassword = (formData.get("confirmPassword") ?? "").toString();
+    const email = (formData.get("email") ?? "").toString();
+
+    if (email.length > 254) {
+      toast.error("Email address must not exceed 254 characters");
+      setLoading(false);
+      inFlightRef.current = false;
+      startCooldown(COOLDOWN_SECONDS);
+      return;
+    }
 
     if (password !== confirmPassword) {
       toast.error("Passwords don't match");
@@ -210,6 +220,7 @@ export function SignupForm() {
                   name="email"
                   type="email"
                   required
+                  maxLength={254}
                   disabled={disabled}
                   placeholder="you@company.com"
                   className={inputCn}
@@ -232,6 +243,7 @@ export function SignupForm() {
                       type={showPassword ? "text" : "password"}
                       required
                       minLength={6}
+                      maxLength={72}
                       disabled={disabled}
                       placeholder="••••••••"
                       className={cn(inputCn, "pr-10")}
@@ -268,6 +280,7 @@ export function SignupForm() {
                       type={showConfirmPassword ? "text" : "password"}
                       required
                       minLength={6}
+                      maxLength={72}
                       disabled={disabled}
                       placeholder="••••••••"
                       className={cn(inputCn, "pr-10")}

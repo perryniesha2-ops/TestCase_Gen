@@ -80,6 +80,19 @@ export async function POST(req: Request) {
 
     const payload: TestResultPayload = await req.json();
 
+    // ── Log incoming payload for debugging ──
+    console.log("[webhook] suite_id:", payload.suite_id);
+    console.log("[webhook] framework:", payload.framework);
+    console.log("[webhook] total results:", payload.test_results.length);
+    console.log(
+      "[webhook] test_case_ids:",
+      payload.test_results.map((r) => r.test_case_id),
+    );
+    console.log(
+      "[webhook] frameworks in results:",
+      payload.test_results.map((r) => r.framework),
+    );
+
     const { data: suite, error: suiteError } = await supabase
       .from("suites")
       .select("id, user_id, total_automation_runs")
@@ -88,7 +101,7 @@ export async function POST(req: Request) {
       .single();
 
     if (suiteError || !suite) {
-      console.error("Suite verification failed:", suiteError);
+      console.error("[webhook] Suite verification failed:", suiteError);
       return NextResponse.json(
         { error: "Suite not found or access denied" },
         { status: 404 },
@@ -100,7 +113,6 @@ export async function POST(req: Request) {
     );
     const endTime = new Date();
     const durationMs = endTime.getTime() - startTime.getTime();
-
     const runNumber = (suite.total_automation_runs || 0) + 1;
 
     const framework =
@@ -112,6 +124,9 @@ export async function POST(req: Request) {
       payload.test_results[0]?.selenium_version ||
       payload.test_results[0]?.cypress_version ||
       null;
+
+    console.log("[webhook] resolved framework:", framework);
+    console.log("[webhook] resolved frameworkVersion:", frameworkVersion);
 
     // ============================================================================
     // CREATE AUTOMATION RUN
@@ -164,6 +179,8 @@ export async function POST(req: Request) {
       );
     }
 
+    console.log("[webhook] automation run created:", automationRun.id);
+
     // ============================================================================
     // UPDATE SUITE PASS RATE
     // ============================================================================
@@ -177,14 +194,32 @@ export async function POST(req: Request) {
     );
 
     if (passRateError) {
-      console.error("Failed to update suite pass rate:", passRateError);
+      console.error(
+        "[webhook] Failed to update suite pass rate:",
+        passRateError,
+      );
     }
 
     // ============================================================================
     // CREATE TEST EXECUTIONS
     // ============================================================================
-    const executions = payload.test_results.map((r) => {
-      const testFramework = r.framework || framework;
+
+    // Filter out any results with no test_case_id (e.g. auth setup steps)
+    const validResults = payload.test_results.filter(
+      (r) => r.test_case_id !== null,
+    );
+
+    console.log(
+      "[webhook] valid results (with test_case_id):",
+      validResults.length,
+    );
+    console.log(
+      "[webhook] filtered out:",
+      payload.test_results.length - validResults.length,
+    );
+
+    const executions = validResults.map((r) => {
+      const testFramework = (r.framework || framework).toLowerCase();
       const testFrameworkVersion =
         r.framework_version ||
         r.playwright_version ||
@@ -196,7 +231,7 @@ export async function POST(req: Request) {
         user_id: profile.id,
         executed_by: profile.id,
         suite_id: payload.suite_id,
-        test_case_id: r.test_case_id || null,
+        test_case_id: r.test_case_id,
         execution_type: "automated",
         execution_status: r.execution_status,
         started_at: r.started_at,
@@ -220,14 +255,52 @@ export async function POST(req: Request) {
       };
     });
 
+    console.log("[webhook] inserting", executions.length, "executions");
+    console.log(
+      "[webhook] framework values:",
+      executions.map((e) => e.framework),
+    );
+
+    // ── Insert executions ──
+    const { data: insertedExecutions, error: executionsError } = await supabase
+      .from("test_executions")
+      .insert(executions)
+      .select("id");
+
+    if (executionsError) {
+      console.error("❌ FAILED TO INSERT EXECUTIONS:", {
+        error: executionsError,
+        message: executionsError.message,
+        code: executionsError.code,
+        details: executionsError.details,
+        hint: executionsError.hint,
+      });
+      // Don't fail the whole request — automation run was saved successfully
+      // Just report the partial failure
+      return NextResponse.json({
+        success: true,
+        automation_run_id: automationRun.id,
+        run_number: runNumber,
+        executions_saved: 0,
+        executions_error: executionsError.message,
+        message: `Automation run #${runNumber} saved but test executions failed: ${executionsError.message}`,
+      });
+    }
+
+    console.log(
+      "[webhook] ✅ executions inserted:",
+      insertedExecutions?.length ?? 0,
+    );
+
     return NextResponse.json({
       success: true,
       automation_run_id: automationRun.id,
       run_number: runNumber,
-      executions_saved: executions.length,
+      executions_saved: insertedExecutions?.length ?? executions.length,
       message: `Saved ${framework} automation run #${runNumber} with ${executions.length} test results`,
     });
   } catch (error) {
+    console.error("[webhook] Unexpected error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

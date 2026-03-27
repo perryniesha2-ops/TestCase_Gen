@@ -149,6 +149,19 @@ function escapeString(s: string) {
 // NEW: Generate executable Playwright code for a step
 // ============================================================================
 
+function resolveEnvVar(selector: string | undefined, value: string): string {
+  const sel = (selector || "").toLowerCase();
+
+  if (sel.includes("email") || sel.includes("username")) {
+    return `process.env.TEST_USER_EMAIL || '${escapeString(value)}'`;
+  }
+  if (sel.includes("password")) {
+    return `process.env.TEST_USER_PASSWORD || '${escapeString(value)}'`;
+  }
+
+  return `'${escapeString(value)}'`;
+}
+
 function generateExecutableStep(step: TestStep): string {
   const lines: string[] = [];
 
@@ -163,21 +176,19 @@ function generateExecutableStep(step: TestStep): string {
         lines.push(`await page.locator('${sel}').click();`);
         break;
 
-      case "fill":
-        if (step.input_value !== undefined) {
-          const val = escapeString(step.input_value);
-          lines.push(`await page.locator('${sel}').fill('${val}');`);
-        }
-        break;
+     case "fill":
+  if (step.input_value !== undefined) {
+    const val = resolveEnvVar(step.selector, step.input_value);
+    lines.push(`await page.locator('${sel}').fill(${val});`);
+  }
+  break;
 
-      case "type":
-        if (step.input_value !== undefined) {
-          const val = escapeString(step.input_value);
-          lines.push(
-            `await page.locator('${sel}').pressSequentially('${val}');`,
-          );
-        }
-        break;
+     case "type":
+  if (step.input_value !== undefined) {
+    const val = resolveEnvVar(step.selector, step.input_value);
+    lines.push(`await page.locator('${sel}').pressSequentially(${val});`);
+  }
+  break;
 
       case "select":
         if (step.input_value !== undefined) {
