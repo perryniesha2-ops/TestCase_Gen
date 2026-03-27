@@ -59,6 +59,7 @@ type ExecutionHistoryRow = {
 type RunWithStats = {
   id: string;
   suite_name: string;
+  suite_id: string | null;
   name: string;
   status: string;
   test_cases_total: number;
@@ -149,6 +150,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
 
       const runWithStats: RunWithStats = {
         id: runData.id,
+        suite_id: runData.suite_id ?? null,
         suite_name: suiteName,
         name: runData.name,
         status: runData.status,
@@ -502,13 +504,19 @@ export function RunReviewPage({ runId }: { runId: string }) {
       <div className="space-y-4">
         {/* Breadcrumb */}
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
-          onClick={() => router.push("/test-library")}
+          onClick={() => {
+            if (run?.suite_id) {
+              router.push(`/test-library/${run.suite_id}`);
+            } else {
+              router.push("/test-library");
+            }
+          }}
           className="gap-2"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Execution History
+          Back
         </Button>
 
         {/* Title & Save */}
