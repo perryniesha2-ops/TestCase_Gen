@@ -80,19 +80,6 @@ export async function POST(req: Request) {
 
     const payload: TestResultPayload = await req.json();
 
-    // ── Log incoming payload for debugging ──
-    console.log("[webhook] suite_id:", payload.suite_id);
-    console.log("[webhook] framework:", payload.framework);
-    console.log("[webhook] total results:", payload.test_results.length);
-    console.log(
-      "[webhook] test_case_ids:",
-      payload.test_results.map((r) => r.test_case_id),
-    );
-    console.log(
-      "[webhook] frameworks in results:",
-      payload.test_results.map((r) => r.framework),
-    );
-
     const { data: suite, error: suiteError } = await supabase
       .from("suites")
       .select("id, user_id, total_automation_runs")
@@ -124,9 +111,6 @@ export async function POST(req: Request) {
       payload.test_results[0]?.selenium_version ||
       payload.test_results[0]?.cypress_version ||
       null;
-
-    console.log("[webhook] resolved framework:", framework);
-    console.log("[webhook] resolved frameworkVersion:", frameworkVersion);
 
     // ============================================================================
     // CREATE AUTOMATION RUN
@@ -179,8 +163,6 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log("[webhook] automation run created:", automationRun.id);
-
     // ============================================================================
     // UPDATE SUITE PASS RATE
     // ============================================================================
@@ -207,15 +189,6 @@ export async function POST(req: Request) {
     // Filter out any results with no test_case_id (e.g. auth setup steps)
     const validResults = payload.test_results.filter(
       (r) => r.test_case_id !== null,
-    );
-
-    console.log(
-      "[webhook] valid results (with test_case_id):",
-      validResults.length,
-    );
-    console.log(
-      "[webhook] filtered out:",
-      payload.test_results.length - validResults.length,
     );
 
     const executions = validResults.map((r) => {
@@ -255,12 +228,6 @@ export async function POST(req: Request) {
       };
     });
 
-    console.log("[webhook] inserting", executions.length, "executions");
-    console.log(
-      "[webhook] framework values:",
-      executions.map((e) => e.framework),
-    );
-
     // ── Insert executions ──
     const { data: insertedExecutions, error: executionsError } = await supabase
       .from("test_executions")
@@ -286,11 +253,6 @@ export async function POST(req: Request) {
         message: `Automation run #${runNumber} saved but test executions failed: ${executionsError.message}`,
       });
     }
-
-    console.log(
-      "[webhook] ✅ executions inserted:",
-      insertedExecutions?.length ?? 0,
-    );
 
     return NextResponse.json({
       success: true,
