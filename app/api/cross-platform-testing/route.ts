@@ -21,9 +21,18 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// ----- Types -----
-type PlatformId = "web" | "mobile" | "api" | "accessibility" | "performance";
+// ─── Types ────────────────────────────────────────────────────────────────────
 
+type PlatformId = "web" | "mobile" | "api" | "accessibility" | "performance";
+type Priority = "low" | "medium" | "high" | "critical";
+type ApiMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "HEAD"
+  | "OPTIONS";
 type ApiProtocol = "REST" | "SOAP" | "GraphQL" | "gRPC" | "WebSocket";
 type ApiAuth =
   | "None"
@@ -34,21 +43,27 @@ type ApiAuth =
   | "mTLS"
   | "OAuth2 client_credentials";
 type ApiFormat = "JSON" | "XML";
+type CoverageKey = keyof typeof COVERAGE_PROMPTS;
 
-type ApiMethod =
-  | "GET"
-  | "POST"
-  | "PUT"
-  | "PATCH"
-  | "DELETE"
-  | "HEAD"
-  | "OPTIONS";
+type ApiAuthOut =
+  | { type: "none" }
+  | { type: "bearer"; tokenVar?: string }
+  | { type: "apiKey"; headerName?: string; apiKeyVar?: string }
+  | { type: "basic"; usernameVar?: string; passwordVar?: string }
+  | { type: "oauth2"; tokenVar?: string };
+
+type ApiSpecOut = {
+  method: ApiMethod;
+  path: string;
+  headers?: Record<string, string>;
+  query?: Record<string, string>;
+  body?: unknown;
+  auth?: ApiAuthOut;
+  expectedStatus?: number;
+};
 
 type PlatformConfig =
-  | {
-      platform: Exclude<PlatformId, "api">;
-      framework: string;
-    }
+  | { platform: Exclude<PlatformId, "api">; framework: string }
   | {
       platform: "api";
       framework: string;
@@ -71,23 +86,6 @@ type RequestBody = {
   project_id?: string | null;
 };
 
-type ApiAuthOut =
-  | { type: "none" }
-  | { type: "bearer"; tokenVar?: string }
-  | { type: "apiKey"; headerName?: string; apiKeyVar?: string }
-  | { type: "basic"; usernameVar?: string; passwordVar?: string }
-  | { type: "oauth2"; tokenVar?: string };
-
-type ApiSpecOut = {
-  method: ApiMethod;
-  path: string;
-  headers?: Record<string, string>;
-  query?: Record<string, string>;
-  body?: unknown;
-  auth?: ApiAuthOut;
-  expectedStatus?: number;
-};
-
 interface PlatformTestCase {
   title: string;
   description: string;
@@ -95,11 +93,98 @@ interface PlatformTestCase {
   steps: string[];
   expected_results: string[];
   automation_hints?: string[];
-  priority: "low" | "medium" | "high" | "critical";
+  priority: Priority;
   api?: ApiSpecOut;
 }
 
-// ----- Helpers -----
+// ─── Structured output schema ─────────────────────────────────────────────────
+
+// Base schema shared by all platforms
+const BASE_TEST_CASE_SCHEMA = {
+  type: "object",
+  required: [
+    "title",
+    "description",
+    "preconditions",
+    "steps",
+    "expected_results",
+    "automation_hints",
+    "priority",
+  ],
+  additionalProperties: false,
+  properties: {
+    title: { type: "string" },
+    description: { type: "string" },
+    preconditions: { type: "array", items: { type: "string" } },
+    steps: { type: "array", items: { type: "string" } },
+    expected_results: { type: "array", items: { type: "string" } },
+    automation_hints: { type: "array", items: { type: "string" } },
+    priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
+  },
+};
+
+// Extended schema for API platform — includes required "api" field
+const API_TEST_CASE_SCHEMA = {
+  ...BASE_TEST_CASE_SCHEMA,
+  required: [...BASE_TEST_CASE_SCHEMA.required, "api"],
+  properties: {
+    ...BASE_TEST_CASE_SCHEMA.properties,
+    api: {
+      type: "object",
+      required: ["method", "path"],
+      additionalProperties: false,
+      properties: {
+        method: {
+          type: "string",
+          enum: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+        },
+        path: { type: "string" },
+        headers: { type: "object", additionalProperties: { type: "string" } },
+        query: { type: "object", additionalProperties: { type: "string" } },
+        body: { type: "object", additionalProperties: true },
+        expectedStatus: { type: "integer" },
+        auth: {
+          type: "object",
+          required: ["type"],
+          additionalProperties: false,
+          properties: {
+            type: {
+              type: "string",
+              enum: ["none", "bearer", "apiKey", "basic", "oauth2"],
+            },
+            tokenVar: { type: "string" },
+            headerName: { type: "string" },
+            apiKeyVar: { type: "string" },
+            usernameVar: { type: "string" },
+            passwordVar: { type: "string" },
+          },
+        },
+      },
+    },
+  },
+};
+
+function buildResponseSchema(isApi: boolean): Anthropic.Tool["input_schema"] {
+  return {
+    type: "object",
+    required: ["test_cases"],
+    additionalProperties: false,
+    properties: {
+      test_cases: {
+        type: "array",
+        items: isApi ? API_TEST_CASE_SCHEMA : BASE_TEST_CASE_SCHEMA,
+      },
+    },
+  };
+}
+
+// ─── AI clients ───────────────────────────────────────────────────────────────
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const ALLOWED_METHODS = new Set<ApiMethod>([
   "GET",
   "POST",
@@ -109,6 +194,38 @@ const ALLOWED_METHODS = new Set<ApiMethod>([
   "HEAD",
   "OPTIONS",
 ]);
+const ALLOWED_PRIORITIES = new Set<Priority>([
+  "low",
+  "medium",
+  "high",
+  "critical",
+]);
+
+const COVERAGE_PROMPTS = {
+  standard:
+    "Generate standard test cases covering the main functionality and common scenarios.",
+  comprehensive:
+    "Generate comprehensive test cases covering main functionality, edge cases, error handling, and validation scenarios.",
+  exhaustive:
+    "Generate exhaustive test cases covering all possible scenarios including main functionality, all edge cases, boundary conditions, error handling, security considerations, performance scenarios, and negative test cases.",
+} as const;
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+
+function clampCount(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.floor(Number(n) || 0)));
+}
+
+function looksLikeUuid(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    s,
+  );
+}
+
+function normalizePriority(p: unknown): Priority {
+  const s = (typeof p === "string" ? p : "").toLowerCase().trim();
+  return ALLOWED_PRIORITIES.has(s as Priority) ? (s as Priority) : "medium";
+}
 
 function normalizeMethod(v: unknown): ApiMethod {
   const up = String(v ?? "")
@@ -127,11 +244,39 @@ function safeRecord(v: unknown): Record<string, string> | undefined {
   if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
   const out: Record<string, string> = {};
   for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-    if (!k) continue;
-    if (val == null) continue;
+    if (!k || val == null) continue;
     out[k] = String(val);
   }
   return Object.keys(out).length ? out : undefined;
+}
+
+function normalizeAuthOut(raw: unknown): ApiAuthOut | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const t = String(o.type ?? "bearer").toLowerCase();
+
+  if (t === "none") return { type: "none" };
+  if (t === "apikey")
+    return {
+      type: "apiKey",
+      headerName: o.headerName ? String(o.headerName) : undefined,
+      apiKeyVar: o.apiKeyVar ? String(o.apiKeyVar) : "apiKey",
+    };
+  if (t === "basic")
+    return {
+      type: "basic",
+      usernameVar: o.usernameVar ? String(o.usernameVar) : "username",
+      passwordVar: o.passwordVar ? String(o.passwordVar) : "password",
+    };
+  if (t === "oauth2")
+    return {
+      type: "oauth2",
+      tokenVar: o.tokenVar ? String(o.tokenVar) : "token",
+    };
+  return {
+    type: "bearer",
+    tokenVar: o.tokenVar ? String(o.tokenVar) : "token",
+  };
 }
 
 function normalizeApiSpec(v: unknown): ApiSpecOut | undefined {
@@ -140,133 +285,61 @@ function normalizeApiSpec(v: unknown): ApiSpecOut | undefined {
 
   const method = normalizeMethod(o.method);
   const path = normalizePath(o.path);
-
-  const headers = safeRecord(o.headers);
-  const query = safeRecord(o.query);
-
-  const authRaw = o.auth as any;
-  const auth: ApiAuthOut | undefined =
-    authRaw && typeof authRaw === "object"
-      ? (() => {
-          const t = String(authRaw.type ?? "bearer").toLowerCase();
-          if (t === "none") return { type: "none" };
-          if (t === "apikey") {
-            return {
-              type: "apiKey",
-              headerName: authRaw.headerName
-                ? String(authRaw.headerName)
-                : undefined,
-              apiKeyVar: authRaw.apiKeyVar
-                ? String(authRaw.apiKeyVar)
-                : "apiKey",
-            };
-          }
-          if (t === "basic") {
-            return {
-              type: "basic",
-              usernameVar: authRaw.usernameVar
-                ? String(authRaw.usernameVar)
-                : "username",
-              passwordVar: authRaw.passwordVar
-                ? String(authRaw.passwordVar)
-                : "password",
-            };
-          }
-          if (t === "oauth2") {
-            return {
-              type: "oauth2",
-              tokenVar: authRaw.tokenVar ? String(authRaw.tokenVar) : "token",
-            };
-          }
-          return {
-            type: "bearer",
-            tokenVar: authRaw.tokenVar ? String(authRaw.tokenVar) : "token",
-          };
-        })()
-      : undefined;
-
-  const expectedStatus =
-    typeof o.expectedStatus === "number" && Number.isFinite(o.expectedStatus)
-      ? o.expectedStatus
-      : undefined;
-
-  const body = o.body;
+  if (!path) return undefined;
 
   return {
     method,
     path,
-    headers,
-    query,
-    body,
-    auth,
-    expectedStatus,
+    headers: safeRecord(o.headers),
+    query: safeRecord(o.query),
+    body: o.body,
+    auth: normalizeAuthOut(o.auth),
+    expectedStatus:
+      typeof o.expectedStatus === "number" && Number.isFinite(o.expectedStatus)
+        ? o.expectedStatus
+        : undefined,
   };
 }
 
-function isAnthropicTextBlock(b: unknown): b is { type: "text"; text: string } {
-  return (
-    typeof b === "object" &&
-    b !== null &&
-    "type" in b &&
-    "text" in b &&
-    (b as Record<string, unknown>).type === "text" &&
-    typeof (b as Record<string, unknown>).text === "string"
-  );
+function normalizeApiProtocol(v: unknown): ApiProtocol {
+  const s = String(v ?? "")
+    .trim()
+    .toLowerCase();
+  if (s === "soap") return "SOAP";
+  if (s === "graphql") return "GraphQL";
+  if (s === "grpc") return "gRPC";
+  if (s === "websocket") return "WebSocket";
+  return "REST";
 }
 
-function anthropicTextFromContent(blocks: unknown): string {
-  if (!Array.isArray(blocks)) return "";
-  return blocks
-    .filter(isAnthropicTextBlock)
-    .map((b) => b.text)
-    .join("\n\n")
-    .trim();
+function normalizeApiAuth(v: unknown): ApiAuth {
+  const s = String(v ?? "")
+    .trim()
+    .toLowerCase();
+  if (s === "none") return "None";
+  if (s === "basic") return "Basic";
+  if (s === "bearer") return "Bearer";
+  if (s === "oauth2") return "OAuth2";
+  if (s === "api key" || s === "apikey") return "API Key";
+  if (s === "mtls") return "mTLS";
+  if (s === "oauth2 client_credentials" || s === "client_credentials")
+    return "OAuth2 client_credentials";
+  return "Bearer";
 }
 
-const ALLOWED_PRIORITIES = new Set([
-  "low",
-  "medium",
-  "high",
-  "critical",
-] as const);
-type Priority = "low" | "medium" | "high" | "critical";
-
-function normalizePriority(p: unknown): Priority {
-  const s = (typeof p === "string" ? p : "").toLowerCase().trim();
-  return ALLOWED_PRIORITIES.has(s as Priority) ? (s as Priority) : "medium";
-}
-
-const COVERAGE_PROMPTS = {
-  standard:
-    "Generate standard test cases covering the main functionality and common scenarios.",
-  comprehensive:
-    "Generate comprehensive test cases covering main functionality, edge cases, error handling, and validation scenarios.",
-  exhaustive:
-    "Generate exhaustive test cases covering all possible scenarios including main functionality, all edge cases, boundary conditions, error handling, security considerations, performance scenarios, and negative test cases.",
-} as const;
-
-type CoverageKey = keyof typeof COVERAGE_PROMPTS;
-
-// ----- Clients -----
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-
-function clampCount(n: number, min: number, max: number) {
-  const x = Math.floor(Number(n) || 0);
-  return Math.min(max, Math.max(min, x));
-}
-
-function looksLikeUuid(s: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    s,
-  );
+function normalizeApiFormat(v: unknown): ApiFormat {
+  return String(v ?? "")
+    .trim()
+    .toLowerCase() === "xml"
+    ? "XML"
+    : "JSON";
 }
 
 async function resolveTemplateText(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   templateMaybeId: string,
-) {
+): Promise<string> {
   const trimmed = (templateMaybeId ?? "").trim();
   if (!trimmed) return "";
 
@@ -279,379 +352,303 @@ async function resolveTemplateText(
       .single();
 
     if (error) throw new Error(`Template lookup failed: ${error.message}`);
-
     return JSON.stringify(data?.template_content ?? {}, null, 2);
   }
 
   return trimmed;
 }
 
-function normalizeApiProtocol(v: unknown): ApiProtocol | null {
-  const s = String(v ?? "")
-    .trim()
-    .toLowerCase();
-  if (s === "rest") return "REST";
-  if (s === "soap") return "SOAP";
-  if (s === "graphql") return "GraphQL";
-  if (s === "grpc") return "gRPC";
-  if (s === "websocket") return "WebSocket";
-  return null;
-}
-
-function normalizeApiAuth(v: unknown): ApiAuth | null {
-  const s = String(v ?? "")
-    .trim()
-    .toLowerCase();
-
-  if (s === "none") return "None";
-  if (s === "basic") return "Basic";
-  if (s === "bearer") return "Bearer";
-  if (s === "oauth2") return "OAuth2";
-  if (s === "api key" || s === "apikey") return "API Key";
-  if (s === "mtls") return "mTLS";
-  if (s === "oauth2 client_credentials" || s === "client_credentials") {
-    return "OAuth2 client_credentials";
-  }
-  return null;
-}
-
-function normalizeApiFormat(v: unknown): ApiFormat | null {
-  const s = String(v ?? "")
-    .trim()
-    .toLowerCase();
-  if (s === "json") return "JSON";
-  if (s === "xml") return "XML";
-  return null;
-}
+// ─── Prompt building ──────────────────────────────────────────────────────────
 
 function buildApiContextBlock(
   cfg: Extract<PlatformConfig, { platform: "api" }>,
-) {
-  const protocol = normalizeApiProtocol(cfg.protocol) ?? "REST";
-  const auth = normalizeApiAuth(cfg.auth) ?? "Bearer";
-  const format = normalizeApiFormat(cfg.format) ?? "JSON";
-
+): string {
+  const protocol = normalizeApiProtocol(cfg.protocol);
+  const auth = normalizeApiAuth(cfg.auth);
+  const format = normalizeApiFormat(cfg.format);
   const checks = Array.isArray(cfg.required_checks)
     ? cfg.required_checks.map((c) => String(c).trim()).filter(Boolean)
     : [];
 
-  const lines: string[] = [
-    "API CONTEXT (use this for API test generation)",
+  const lines = [
+    "API CONTEXT:",
     `- Protocol: ${protocol}`,
     `- Auth: ${auth}`,
-    `- Payload: ${format}`,
+    `- Payload format: ${format}`,
   ];
-
-  if (cfg.contract && String(cfg.contract).trim()) {
-    lines.push(`- Contract: provided`);
-  }
-  if (checks.length) {
-    lines.push(`- Required checks: ${checks.join(", ")}`);
-  }
-
+  if (cfg.contract && String(cfg.contract).trim())
+    lines.push("- Contract: provided");
+  if (checks.length) lines.push(`- Required checks: ${checks.join(", ")}`);
   return lines.join("\n");
 }
 
-function buildStructurePrompt(isApi: boolean, rawText: string) {
-  if (isApi) {
-    return `Convert the following test cases into a structured JSON object.
+function buildPlatformPrompt(params: {
+  requirement: string;
+  platformId: PlatformId;
+  framework: string;
+  testCaseCount: number;
+  coverage: CoverageKey;
+  apiContext?: string;
+  templateText?: string;
+}): string {
+  const {
+    requirement,
+    platformId,
+    framework,
+    testCaseCount,
+    coverage,
+    apiContext,
+    templateText,
+  } = params;
+  const coverageInstruction = COVERAGE_PROMPTS[coverage];
+  const apiCtx = apiContext ? `\n\n${apiContext}` : "";
+  const tmplCtx = templateText
+    ? `\n\nTemplate structure:\n${templateText}`
+    : "";
 
-CRITICAL: For API platform, each test case MUST include a complete "api" object.
+  return `${coverageInstruction}
 
-Required "api" fields:
-- method: Must be one of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
-- path: Relative path starting with / (e.g. "/v1/users" or "/address/verify")
+You are a QA expert specialising in cross-platform testing.
+Generate EXACTLY ${testCaseCount} test case${testCaseCount !== 1 ? "s" : ""} for the "${platformId}" platform using "${framework}".
 
-Optional "api" fields:
-- headers: Object with header key-value pairs
-- query: Object with query parameter key-value pairs  
-- body: JSON object (for POST/PUT/PATCH)
-- auth: Object with type and credentials
-- expectedStatus: Number (default 200)
+Requirement:
+${requirement}${apiCtx}${tmplCtx}
 
-Example valid API object:
-{
-  "method": "POST",
-  "path": "/v1/address/verify",
-  "headers": {
-    "Content-Type": "application/json"
-  },
-  "query": {
-    "format": "json"
-  },
-  "body": {
-    "address": "123 Main St",
-    "city": "Boston",
-    "state": "MA"
-  },
-  "auth": {
-    "type": "apiKey",
-    "headerName": "x-api-key",
-    "apiKeyVar": "apiKey"
-  },
-  "expectedStatus": 200
+Call the generate_test_cases tool with a test_cases array containing EXACTLY ${testCaseCount} objects.
+Each object must have: title, description, preconditions (array), steps (array), expected_results (array), automation_hints (array), priority.${platformId === "api" ? '\nEach object MUST also include a valid "api" object with at minimum "method" and "path".' : ""}`;
 }
 
-Return format:
-{
-  "test_cases": [
-    {
-      "title": "Verify valid US address",
-      "description": "Test address validation with complete US address",
-      "preconditions": ["API key is valid", "Service is available"],
-      "steps": ["Send POST request with address data", "Verify response format"],
-      "expected_results": ["Status 200", "Valid address returned"],
-      "automation_hints": ["Check ZIP code format", "Validate state abbreviation"],
-      "priority": "high",
-      "api": {
-        "method": "POST",
-        "path": "/v1/address/verify",
-        "headers": { "Content-Type": "application/json" },
-        "body": { "address": "123 Main St", "city": "Boston", "state": "MA" },
-        "auth": { "type": "apiKey", "headerName": "x-api-key", "apiKeyVar": "apiKey" },
-        "expectedStatus": 200
-      }
-    }
-  ]
+// ─── Structured LLM calls ─────────────────────────────────────────────────────
+
+interface PlatformBatchResult {
+  platformId: PlatformId;
+  framework: string;
+  cases: PlatformTestCase[];
+  provider: "anthropic" | "openai";
+  model: string;
+  error?: string;
 }
 
-Test Cases to Convert:
-${rawText}
-
-IMPORTANT: Every test case MUST have a valid "api" object with "method" and "path" fields.
-Return ONLY valid JSON, no markdown code fences, no explanation.`;
-  }
-
-  return `Convert the following test cases into a structured JSON object.
-
-Return format:
-{
-  "test_cases": [
-    {
-      "title": "string",
-      "description": "string",
-      "preconditions": ["string"],
-      "steps": ["string"],
-      "expected_results": ["string"],
-      "automation_hints": ["string"],
-      "priority": "low|medium|high|critical"
-    }
-  ]
-}
-
-Test Cases to Convert:
-${rawText}
-
-Return ONLY valid JSON, no markdown code fences, no explanation.`;
-}
-
-// UPDATED: Use Anthropic instead of OpenAI for structuring
-async function structureTestCasesWithAnthropic(
-  rawText: string,
+async function callAnthropic(
+  modelId: string,
+  prompt: string,
   isApi: boolean,
+  expectedCount: number,
 ): Promise<PlatformTestCase[]> {
-  console.log("[structureTestCases] Starting with Anthropic...");
-  console.log("[structureTestCases] Is API?", isApi);
-  console.log("[structureTestCases] Raw text length:", rawText.length);
+  const schema = buildResponseSchema(isApi);
+  const res = await anthropic.messages.create({
+    model: modelId,
+    max_tokens: Math.min(32000, Math.max(4000, expectedCount * 600)),
+    tools: [
+      {
+        name: "generate_test_cases",
+        description: "Output the generated test cases as structured data.",
+        input_schema: schema,
+      },
+    ],
+    tool_choice: { type: "any" },
+    messages: [{ role: "user", content: prompt }],
+  });
 
-  if (!rawText || rawText.trim().length === 0) {
-    console.error("[structureTestCases] Empty rawText provided");
-    return [];
+  const toolUse = res.content.find(
+    (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+  );
+  if (!toolUse) throw new Error("Anthropic did not call the tool");
+
+  const input = toolUse.input as { test_cases?: PlatformTestCase[] };
+  return input.test_cases ?? [];
+}
+
+async function callOpenAI(
+  modelId: string,
+  prompt: string,
+  isApi: boolean,
+  expectedCount: number,
+): Promise<PlatformTestCase[]> {
+  const schema = buildResponseSchema(isApi);
+  const res = await openai.chat.completions.create({
+    model: modelId,
+    max_tokens: Math.min(16384, Math.max(4000, expectedCount * 600)),
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "generate_test_cases",
+        strict: true,
+        schema: schema as unknown as Record<string, unknown>,
+      },
+    },
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const raw = res.choices?.[0]?.message?.content ?? "{}";
+  const parsed = JSON.parse(raw) as { test_cases?: PlatformTestCase[] };
+  return parsed.test_cases ?? [];
+}
+
+async function callWithFallback(params: {
+  modelKey: ModelKey;
+  prompt: string;
+  isApi: boolean;
+  expectedCount: number;
+  label: string;
+}): Promise<{
+  cases: PlatformTestCase[];
+  provider: "anthropic" | "openai";
+  model: string;
+}> {
+  const { modelKey, prompt, isApi, expectedCount, label } = params;
+  const primaryIsAnthropic = isAnthropicModel(modelKey);
+  const primaryModelId = getModelId(modelKey);
+  const fallbackKey = getFallbackModel(
+    primaryIsAnthropic ? "openai" : "anthropic",
+  );
+  const fallbackModelId = getModelId(fallbackKey);
+
+  // Primary
+  try {
+    if (primaryIsAnthropic) {
+      const cases = await callAnthropic(
+        primaryModelId,
+        prompt,
+        isApi,
+        expectedCount,
+      );
+      console.log(`[LLM] ${label}: anthropic OK, ${cases.length} cases`);
+      return { cases, provider: "anthropic", model: primaryModelId };
+    } else {
+      const cases = await callOpenAI(
+        primaryModelId,
+        prompt,
+        isApi,
+        expectedCount,
+      );
+      console.log(`[LLM] ${label}: openai OK, ${cases.length} cases`);
+      return { cases, provider: "openai", model: primaryModelId };
+    }
+  } catch (err) {
+    console.error(`[LLM] ${label}: primary (${primaryModelId}) failed:`, err);
   }
 
-  const structurePrompt = buildStructurePrompt(isApi, rawText);
+  // Fallback
+  try {
+    if (primaryIsAnthropic) {
+      const cases = await callOpenAI(
+        fallbackModelId,
+        prompt,
+        isApi,
+        expectedCount,
+      );
+      console.log(`[LLM] ${label}: openai fallback OK, ${cases.length} cases`);
+      return { cases, provider: "openai", model: fallbackModelId };
+    } else {
+      const cases = await callAnthropic(
+        fallbackModelId,
+        prompt,
+        isApi,
+        expectedCount,
+      );
+      console.log(
+        `[LLM] ${label}: anthropic fallback OK, ${cases.length} cases`,
+      );
+      return { cases, provider: "anthropic", model: fallbackModelId };
+    }
+  } catch (err) {
+    console.error(
+      `[LLM] ${label}: fallback (${fallbackModelId}) also failed:`,
+      err,
+    );
+    throw new Error(`All LLM providers failed for ${label}`);
+  }
+}
+
+// ─── Per-platform batch ───────────────────────────────────────────────────────
+
+async function generateForPlatform(params: {
+  platformData: PlatformConfig;
+  requirement: string;
+  testCaseCount: number;
+  coverage: CoverageKey;
+  modelKey: ModelKey;
+  templateText: string;
+}): Promise<PlatformBatchResult> {
+  const {
+    platformData,
+    requirement,
+    testCaseCount,
+    coverage,
+    modelKey,
+    templateText,
+  } = params;
+  const platformId = platformData.platform as PlatformId;
+  const framework = String(platformData.framework ?? "").trim();
+  const isApi = platformId === "api";
+  const label = `${platformId}/${framework}`;
+
+  const apiContext = isApi
+    ? buildApiContextBlock(
+        platformData as Extract<PlatformConfig, { platform: "api" }>,
+      )
+    : undefined;
+
+  const prompt = buildPlatformPrompt({
+    requirement,
+    platformId,
+    framework,
+    testCaseCount,
+    coverage,
+    apiContext,
+    templateText: templateText || undefined,
+  });
 
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 8192, // Increased from 4096 to handle larger responses
-      messages: [
-        {
-          role: "user",
-          content: structurePrompt,
-        },
-      ],
+    const result = await callWithFallback({
+      modelKey,
+      prompt,
+      isApi,
+      expectedCount: testCaseCount,
+      label,
     });
 
-    // Extract text from response using existing helper
-    const textContent = anthropicTextFromContent(response.content);
-
-    console.log("[Anthropic] Response received, length:", textContent.length);
-    console.log("[Anthropic] First 200 chars:", textContent.substring(0, 200));
-
-    // Check if response was cut off (stop_reason)
-    if (response.stop_reason === "max_tokens") {
-      console.warn(
-        "[Anthropic] Response hit max_tokens limit - may be incomplete",
-      );
-    }
-
-    // Remove markdown code fences if present
-    let jsonText = textContent.trim();
-    if (jsonText.startsWith("```json")) {
-      jsonText = jsonText.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-    } else if (jsonText.startsWith("```")) {
-      jsonText = jsonText.replace(/^```\s*/, "").replace(/\s*```$/, "");
-    }
-
-    console.log(
-      "[Anthropic] After removing fences, first 200 chars:",
-      jsonText.substring(0, 200),
-    );
-    console.log(
-      "[Anthropic] Last 200 chars:",
-      jsonText.substring(Math.max(0, jsonText.length - 200)),
-    );
-
-    // Try to parse JSON
-    let parsed: {
-      test_cases?: PlatformTestCase[];
-      testCases?: PlatformTestCase[];
-    };
-
-    try {
-      parsed = JSON.parse(jsonText);
-    } catch (parseError) {
-      console.error("[Anthropic] JSON parse failed, attempting repair...");
-
-      // Try to repair incomplete JSON by closing it properly
-      let repairedJson = jsonText;
-
-      // Count open braces/brackets
-      const openBraces = (repairedJson.match(/{/g) || []).length;
-      const closeBraces = (repairedJson.match(/}/g) || []).length;
-      const openBrackets = (repairedJson.match(/\[/g) || []).length;
-      const closeBrackets = (repairedJson.match(/\]/g) || []).length;
-
-      console.log(
-        "[Anthropic] Braces - Open:",
-        openBraces,
-        "Close:",
-        closeBraces,
-      );
-      console.log(
-        "[Anthropic] Brackets - Open:",
-        openBrackets,
-        "Close:",
-        closeBrackets,
-      );
-
-      // Remove any incomplete string at the end
-      if (
-        repairedJson.includes('"') &&
-        repairedJson.lastIndexOf('"') !== repairedJson.indexOf('"')
-      ) {
-        const lastCompleteQuote = repairedJson.lastIndexOf('",');
-        if (lastCompleteQuote > 0) {
-          repairedJson = repairedJson.substring(0, lastCompleteQuote + 2);
-          console.log("[Anthropic] Truncated to last complete field");
-        }
-      }
-
-      // Close any open arrays/objects
-      if (closeBrackets < openBrackets) {
-        repairedJson += "]".repeat(openBrackets - closeBrackets);
-      }
-      if (closeBraces < openBraces) {
-        repairedJson += "}".repeat(openBraces - closeBraces);
-      }
-
-      console.log("[Anthropic] Attempting to parse repaired JSON...");
-      parsed = JSON.parse(repairedJson);
-      console.log("[Anthropic] Successfully parsed repaired JSON");
-    }
-
-    console.log("[Anthropic] Parsed keys:", Object.keys(parsed));
-    console.log(
-      "[Anthropic] test_cases is array?",
-      Array.isArray(parsed.test_cases),
-    );
-    console.log(
-      "[Anthropic] testCases is array?",
-      Array.isArray(parsed.testCases),
-    );
-
-    const parsedCases = Array.isArray(parsed.test_cases)
-      ? parsed.test_cases
-      : Array.isArray(parsed.testCases)
-        ? parsed.testCases
-        : [];
-
-    console.log("[Anthropic] Parsed cases count:", parsedCases.length);
-
+    // For API cases, run normalizeApiSpec so method/path are always clean
+    let cases = result.cases;
     if (isApi) {
-      console.log("[API] Normalizing API specs...");
-
-      const withNormalizedApi = parsedCases.map((tc, index) => {
-        const normalizedApi = normalizeApiSpec((tc as any).api);
-
-        if (!normalizedApi || !normalizedApi.method || !normalizedApi.path) {
-          console.warn(
-            `[API] Case ${index + 1} "${tc.title}" has invalid api:`,
-            (tc as any).api,
-          );
-        }
-
-        return {
+      cases = cases
+        .map((tc) => ({
           ...tc,
-          api: normalizedApi,
-        };
-      });
+          api: normalizeApiSpec(
+            (tc as PlatformTestCase & { api?: unknown }).api,
+          ),
+        }))
+        .filter((tc) => tc.api?.method && tc.api?.path) as PlatformTestCase[];
 
-      // Filter out invalid API cases
-      const validCases = withNormalizedApi.filter((tc) => {
-        return tc.api && tc.api.method && tc.api.path;
-      });
-
-      console.log(
-        "[API] Valid cases after filtering:",
-        validCases.length,
-        "of",
-        parsedCases.length,
-      );
-
-      if (validCases.length === 0 && parsedCases.length > 0) {
-        console.error(
-          "[API] All cases were filtered out! First case api field was:",
-          (parsedCases[0] as any)?.api,
-        );
-      }
-
-      return validCases;
-    }
-
-    return parsedCases;
-  } catch (error) {
-    console.error("[structureTestCases] ERROR:", error);
-
-    if (error instanceof Error) {
-      console.error("[structureTestCases] Error message:", error.message);
-      console.error("[structureTestCases] Error stack:", error.stack);
-
-      // If JSON parsing failed due to size, suggest reducing count
-      if (
-        error.message.includes("JSON") ||
-        error.message.includes("Unterminated")
-      ) {
-        console.error(
-          "[structureTestCases] HINT: Response may be too large. Try reducing testCaseCount or using multiple smaller requests.",
+      if (cases.length < result.cases.length) {
+        console.warn(
+          `[${label}] Filtered ${result.cases.length - cases.length} invalid API cases`,
         );
       }
     }
 
-    console.error(
-      "[structureTestCases] Raw text (first 500 chars):",
-      rawText.substring(0, 500),
-    );
-    console.error(
-      "[structureTestCases] Raw text (last 500 chars):",
-      rawText.substring(Math.max(0, rawText.length - 500)),
-    );
-    console.error("[structureTestCases] Is API?", isApi);
-
-    return [];
+    const { cases: _raw, ...resultMeta } = result;
+    return {
+      platformId,
+      framework,
+      cases: cases.slice(0, testCaseCount),
+      ...resultMeta,
+    };
+  } catch (err) {
+    console.error(`[${label}] Failed:`, err);
+    return {
+      platformId,
+      framework,
+      cases: [],
+      provider: "anthropic",
+      model: getModelId(modelKey),
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }
+
+// ─── Insert row builder ───────────────────────────────────────────────────────
 
 function buildInsertRow(args: {
   platformId: PlatformId;
@@ -663,15 +660,9 @@ function buildInsertRow(args: {
   const { platformId, framework, tc, userId, projectId } = args;
   const isApi = platformId === "api";
 
-  if (isApi) {
-    if (!tc.api || !tc.api.method || !tc.api.path) {
-      throw new Error(
-        `API test case "${tc.title}" missing method or path. Got: ${JSON.stringify(tc.api)}`,
-      );
-    }
+  if (isApi && (!tc.api?.method || !tc.api?.path)) {
+    throw new Error(`API test case "${tc.title}" missing method or path`);
   }
-
-  const automation_metadata = isApi ? { api: tc.api } : {};
 
   return {
     platform: platformId,
@@ -688,26 +679,22 @@ function buildInsertRow(args: {
       : [],
     priority: normalizePriority(tc.priority),
     status: "draft",
-    automation_metadata,
+    automation_metadata: isApi ? { api: tc.api } : {},
     user_id: userId,
     project_id: projectId,
   };
 }
 
-// ----- Handler -----
-export async function POST(request: Request) {
-  const apiCaseDetails: Array<{ id?: string; title: string; api: ApiSpecOut }> =
-    [];
+// ─── Route handler ────────────────────────────────────────────────────────────
 
+export async function POST(request: Request) {
   try {
     const supabase = await createClient();
 
-    // Auth
     const {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser();
-
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -721,7 +708,11 @@ export async function POST(request: Request) {
       ? migrateModelKey(rawModelKey)
       : getDefaultModel();
     const testCaseCount = clampCount(Number(body.testCaseCount ?? 10), 1, 100);
-    const coverage = (body.coverage as CoverageKey) || "comprehensive";
+    const coverage = (
+      (body.coverage ?? "comprehensive") in COVERAGE_PROMPTS
+        ? body.coverage
+        : "comprehensive"
+    ) as CoverageKey;
     const project_id = body.project_id || null;
     const templateText = await resolveTemplateText(
       supabase,
@@ -729,7 +720,7 @@ export async function POST(request: Request) {
       String(body.template ?? ""),
     );
 
-    // Validation
+    // ── Validation ────────────────────────────────────────────────────────────
     if (!requirement) {
       return NextResponse.json(
         { error: "Requirement is required", field: "requirement" },
@@ -760,15 +751,8 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!(coverage in COVERAGE_PROMPTS)) {
-      return NextResponse.json(
-        { error: "Invalid coverage level", field: "coverage" },
-        { status: 400 },
-      );
-    }
-
+    // ── Usage quota ───────────────────────────────────────────────────────────
     const requestedTotal = testCaseCount * platforms.length;
-
     try {
       await checkUsageQuota(user.id, requestedTotal);
     } catch (e) {
@@ -781,48 +765,75 @@ export async function POST(request: Request) {
             used: e.used,
             limit: e.limit,
             upgradeRequired: true,
-            usage: {
-              requested: requestedTotal,
-              perPlatform: testCaseCount,
-              platforms: platforms.length,
-            },
           },
           { status: 429 },
         );
       }
-
-      // Generic error fallback
-      const msg = e instanceof Error ? e.message : "Usage limit exceeded";
       return NextResponse.json(
         {
-          error: msg,
+          error: e instanceof Error ? e.message : "Usage limit exceeded",
           upgradeRequired: true,
           remaining: 0,
           requested: requestedTotal,
-          usage: {
-            requested: requestedTotal,
-            perPlatform: testCaseCount,
-            platforms: platforms.length,
-          },
         },
         { status: 429 },
       );
     }
 
-    // Provider routing (from central config)
-    const selectedModelId = getModelId(modelKey);
-    const primary: "anthropic" | "openai" = isAnthropicModel(modelKey)
-      ? "anthropic"
-      : "openai";
+    // ── Generate all platforms in parallel ────────────────────────────────────
+    const firstWave = await Promise.allSettled(
+      platforms.map((platformData) =>
+        generateForPlatform({
+          platformData,
+          requirement,
+          testCaseCount,
+          coverage,
+          modelKey,
+          templateText,
+        }),
+      ),
+    );
 
-    const fallbackProvider: "anthropic" | "openai" =
-      primary === "anthropic" ? "openai" : "anthropic";
+    // Collect results; retry any platform that hard-failed or came back empty
+    const batchResults: PlatformBatchResult[] = [];
+    const retryPlatforms: PlatformConfig[] = [];
 
-    const fallbackModelKey = getFallbackModel(fallbackProvider);
-    const fallbackModelId = getModelId(fallbackModelKey);
+    for (let i = 0; i < firstWave.length; i++) {
+      const r = firstWave[i];
+      if (
+        r.status === "rejected" ||
+        (r.status === "fulfilled" && r.value.cases.length === 0)
+      ) {
+        retryPlatforms.push(platforms[i]);
+      } else if (r.status === "fulfilled") {
+        batchResults.push(r.value);
+      }
+    }
 
+    // Sequential retry for failed platforms
+    for (const platformData of retryPlatforms) {
+      console.warn(
+        `[retry] ${platformData.platform}/${platformData.framework}`,
+      );
+      const retried = await generateForPlatform({
+        platformData,
+        requirement,
+        testCaseCount,
+        coverage,
+        modelKey,
+        templateText,
+      });
+      batchResults.push(retried);
+    }
+
+    // ── Save ──────────────────────────────────────────────────────────────────
+    const apiCaseDetails: Array<{
+      id?: string;
+      title: string;
+      api: ApiSpecOut;
+    }> = [];
     let totalInserted = 0;
-    const allInsertedCases: any[] = [];
+    const allInsertedCases: unknown[] = [];
     const generationResults: Array<{
       platform: string;
       framework: string;
@@ -830,192 +841,64 @@ export async function POST(request: Request) {
       error?: string;
     }> = [];
 
-    for (const platformData of platforms) {
-      const platformId = platformData.platform as PlatformId;
-      const framework = String(platformData.framework ?? "").trim();
-      const isApi = platformId === "api";
-
-      try {
-        const coverageInstruction = COVERAGE_PROMPTS[coverage];
-        const templateInstruction = templateText
-          ? `\n\nUse this template structure:\n${templateText}`
-          : "";
-
-        const apiContext = isApi
-          ? `\n\n${buildApiContextBlock(
-              platformData as Extract<PlatformConfig, { platform: "api" }>,
-            )}`
-          : "";
-
-        const promptUsed = `${coverageInstruction}
-
-You are a QA expert specializing in cross-platform testing.
-Generate EXACTLY ${testCaseCount} test cases for the requirement on the "${platformId}" platform using "${framework}".
-
-Requirement:
-${requirement}${apiContext}${templateInstruction}
-
-For each test case, provide:
-- title
-- description
-- preconditions (array of strings)
-- steps (array of strings)
-- expected_results (array of strings)
-- automation_hints (array of strings)
-- priority (low, medium, high, critical)
-
-Return plain text test cases (no JSON).`;
-
-        // Call LLM
-        let rawText = "";
-        try {
-          if (primary === "anthropic") {
-            const res = await anthropic.messages.create({
-              model: selectedModelId,
-              max_tokens: 4096,
-              messages: [{ role: "user", content: promptUsed }],
-            });
-            rawText = anthropicTextFromContent(res.content);
-          } else {
-            const res = await openai.chat.completions.create({
-              model: selectedModelId,
-              messages: [{ role: "user", content: promptUsed }],
-              max_tokens: 4096,
-            });
-            rawText = res.choices?.[0]?.message?.content ?? "";
-          }
-        } catch (llmError) {
-          console.error(
-            `[LLM] Primary call failed for ${platformId}/${framework}:`,
-            llmError,
-          );
-
-          // Try fallback
-          try {
-            if (fallbackProvider === "anthropic") {
-              const res = await anthropic.messages.create({
-                model: fallbackModelId,
-                max_tokens: 4096,
-                messages: [{ role: "user", content: promptUsed }],
-              });
-              rawText = anthropicTextFromContent(res.content);
-            } else {
-              const res = await openai.chat.completions.create({
-                model: fallbackModelId,
-                messages: [{ role: "user", content: promptUsed }],
-                max_tokens: 4096,
-              });
-              rawText = res.choices?.[0]?.message?.content ?? "";
-            }
-          } catch (fallbackError) {
-            console.error(
-              `[LLM] Fallback call also failed for ${platformId}/${framework}:`,
-              fallbackError,
-            );
-          }
-        }
-
-        // Check if we got any text
-        if (!rawText || rawText.trim().length === 0) {
-          console.error(
-            `[Generation] Empty LLM response for ${platformId}/${framework}`,
-          );
-          generationResults.push({
-            platform: platformId,
-            framework,
-            count: 0,
-            error: "LLM returned empty response",
-          });
-          continue;
-        }
-
-        console.log(
-          `[Generation] Got LLM text for ${platformId}/${framework}, length: ${rawText.length}`,
-        );
-        console.log(`[Generation] First 300 chars:`, rawText.substring(0, 300));
-
-        // Structure / normalize JSON - UPDATED to use Anthropic
-        let testCases = await structureTestCasesWithAnthropic(rawText, isApi);
-
-        console.log(
-          `[Generation] Structured test cases for ${platformId}/${framework}: ${testCases.length}`,
-        );
-
-        if (testCases.length > testCaseCount)
-          testCases = testCases.slice(0, testCaseCount);
-
-        if (testCases.length === 0) {
-          generationResults.push({
-            platform: platformId,
-            framework,
-            count: 0,
-            error: "No test cases generated",
-          });
-          continue;
-        }
-
-        const testCasesToInsert = testCases.map((tc) =>
-          buildInsertRow({
-            platformId,
-            framework,
-            tc,
-            userId: user.id,
-            projectId: project_id,
-          }),
-        );
-
-        const { data: insertedCases, error: insertError } = await supabase
-          .from("platform_test_cases")
-          .insert(testCasesToInsert)
-          .select("id, title, platform, framework, automation_metadata");
-
-        if (insertError) {
-          console.error(
-            `[DB] Insert failed for ${platformId}/${framework}:`,
-            insertError,
-          );
-          generationResults.push({
-            platform: platformId,
-            framework,
-            count: 0,
-            error: insertError.message,
-          });
-          continue;
-        }
-
-        if (isApi && Array.isArray(insertedCases)) {
-          for (const row of insertedCases as any[]) {
-            const api = normalizeApiSpec(row?.automation_metadata?.api);
-            if (api) {
-              apiCaseDetails.push({
-                id: row.id,
-                title: row.title,
-                api,
-              });
-            }
-          }
-        }
-
-        const insertedCount = insertedCases?.length ?? 0;
-        totalInserted += insertedCount;
-        allInsertedCases.push(...(insertedCases || []));
+    for (const batch of batchResults) {
+      if (batch.cases.length === 0) {
         generationResults.push({
-          platform: platformId,
-          framework,
-          count: insertedCount,
-        });
-      } catch (err) {
-        console.error(
-          `[Generation] Unexpected error for ${platformId}/${framework}:`,
-          err,
-        );
-        generationResults.push({
-          platform: String((platformData as any)?.platform ?? "unknown"),
-          framework: String((platformData as any)?.framework ?? "unknown"),
+          platform: batch.platformId,
+          framework: batch.framework,
           count: 0,
-          error: err instanceof Error ? err.message : "Unknown error",
+          error: batch.error ?? "No cases generated",
         });
+        continue;
       }
+
+      const rows = batch.cases.map((tc) =>
+        buildInsertRow({
+          platformId: batch.platformId,
+          framework: batch.framework,
+          tc,
+          userId: user.id,
+          projectId: project_id,
+        }),
+      );
+
+      const { data: inserted, error: insertError } = await supabase
+        .from("platform_test_cases")
+        .insert(rows)
+        .select("id, title, platform, framework, automation_metadata");
+
+      if (insertError || !inserted) {
+        console.error(
+          `[DB] Insert failed for ${batch.platformId}/${batch.framework}:`,
+          insertError,
+        );
+        generationResults.push({
+          platform: batch.platformId,
+          framework: batch.framework,
+          count: 0,
+          error: insertError?.message ?? "Insert failed",
+        });
+        continue;
+      }
+
+      if (batch.platformId === "api") {
+        for (const row of inserted as Array<{
+          id?: string;
+          title: string;
+          automation_metadata?: { api?: unknown };
+        }>) {
+          const api = normalizeApiSpec(row.automation_metadata?.api);
+          if (api) apiCaseDetails.push({ id: row.id, title: row.title, api });
+        }
+      }
+
+      totalInserted += inserted.length;
+      allInsertedCases.push(...inserted);
+      generationResults.push({
+        platform: batch.platformId,
+        framework: batch.framework,
+        count: inserted.length,
+      });
     }
 
     if (totalInserted === 0) {
@@ -1028,11 +911,7 @@ Return plain text test cases (no JSON).`;
       );
     }
 
-    try {
-      await recordSuccessfulGeneration(user.id, totalInserted);
-    } catch (recordError) {
-      console.error("Failed to record usage:", recordError);
-    }
+    await recordSuccessfulGeneration(user.id, totalInserted).catch(() => {});
 
     const successfulPlatforms = generationResults.filter(
       (r) => r.count > 0,

@@ -109,6 +109,13 @@
   }
 }
 
+.landing-bg {
+  background: linear-gradient(180deg, #f0f6ff 0%, #f5f8ff 40%, #ffffff 100%);
+}
+.dark .landing-bg {
+  background: linear-gradient(180deg, #070b14 0%, #080d18 40%, #06090f 100%);
+}
+
 .test-type-scroll {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;

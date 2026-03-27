@@ -22,7 +22,9 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Priority = "low" | "medium" | "high" | "critical";
 
 interface TestStep {
   step_number: number;
@@ -58,14 +60,89 @@ interface RequestBody {
   application_url?: string;
 }
 
-// ─── AI Configuration ────────────────────────────────────────────────────────
+// ─── Structured output schema ─────────────────────────────────────────────────
+//
+// Both Anthropic (tool_use) and OpenAI (json_schema response_format) accept a
+// JSON Schema object describing the shape we want.  We define it once here and
+// pass it to whichever provider we're talking to.
 
-type Priority = "low" | "medium" | "high" | "critical";
+// Typed as Anthropic.Tool["input_schema"] so it can be passed directly to both
+// the Anthropic tools array and (cast once) to the OpenAI json_schema field
+// without `as const` making the arrays readonly.
+const RESPONSE_SCHEMA: Anthropic.Tool["input_schema"] = {
+  type: "object",
+  required: ["test_cases"],
+  additionalProperties: false,
+  properties: {
+    test_cases: {
+      type: "array",
+      items: {
+        type: "object",
+        required: [
+          "title",
+          "description",
+          "test_type",
+          "priority",
+          "preconditions",
+          "test_steps",
+          "expected_result",
+          "is_edge_case",
+          "is_negative_test",
+          "is_security_test",
+          "is_boundary_test",
+          "tags",
+        ],
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          test_type: {
+            type: "string",
+            enum: [
+              "functional",
+              "security",
+              "performance",
+              "integration",
+              "regression",
+              "smoke",
+            ],
+          },
+          priority: {
+            type: "string",
+            enum: ["low", "medium", "high", "critical"],
+          },
+          preconditions: { type: ["string", "null"] },
+          test_steps: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["step_number", "action", "expected"],
+              additionalProperties: false,
+              properties: {
+                step_number: { type: "integer" },
+                action: { type: "string" },
+                expected: { type: "string" },
+              },
+            },
+          },
+          expected_result: { type: "string" },
+          is_edge_case: { type: "boolean" },
+          is_negative_test: { type: "boolean" },
+          is_security_test: { type: "boolean" },
+          is_boundary_test: { type: "boolean" },
+          tags: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
+  },
+};
+
+// ─── AI clients ───────────────────────────────────────────────────────────────
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const PRIORITY_VALUES = new Set<Priority>([
   "low",
@@ -73,7 +150,6 @@ const PRIORITY_VALUES = new Set<Priority>([
   "high",
   "critical",
 ]);
-
 const PRIORITY_ALIASES: Record<string, Priority> = {
   p0: "critical",
   blocker: "critical",
@@ -94,264 +170,70 @@ const TEST_TYPE_LABELS: Record<string, string> = {
   smoke: "Smoke",
 };
 
-// ─── Test Type Instructions ─────────────────────────────────────────────────
+// ─── Test type instructions ───────────────────────────────────────────────────
 
 const TEST_TYPE_INSTRUCTIONS: Record<string, string> = {
   "happy-path": `
-HAPPY PATH / POSITIVE TESTS:
 Generate tests that verify the system works correctly with valid inputs and expected user flows.
-
-Focus on:
-- Valid user journeys from start to finish
-- Expected use cases and common scenarios
-- Successful operations with proper data
-- Normal workflow completion
-
-Example:
-  Title: Successful User Registration
-  Steps:
-    1. Navigate to https://app.example.com/register
-    2. Type "john@example.com" in input[name="email"]
-    3. Type "SecurePass123!" in input[name="password"]
-    4. Click button "Create Account"
-    5. Verify redirect to /dashboard
-    6. Verify welcome message "Welcome, John!" appears
-`,
+Focus on: valid user journeys, expected use cases, successful operations with proper data, normal workflow completion.`,
 
   negative: `
-NEGATIVE TESTS (UNHAPPY PATH):
 Generate tests that verify the system handles invalid inputs and error conditions correctly.
-
-Focus on:
-- Empty or missing required fields
-- Invalid data formats (malformed emails, bad dates)
-- Data exceeding limits (too long, too large)
-- Wrong data types (text in number fields)
-- Unauthorized access attempts
-
-Example:
-  Title: Login with Empty Password
-  Steps:
-    1. Navigate to https://app.example.com/login
-    2. Type "valid@email.com" in input[name="email"]
-    3. Leave password field empty
-    4. Click button "Sign In"
-    5. Verify error message "Password is required" appears
-    6. Verify URL remains at /login
-  Flags: is_negative_test = true
-`,
+Focus on: empty/missing required fields, invalid data formats, data exceeding limits, wrong data types, unauthorized access attempts.
+Set is_negative_test = true on every case.`,
 
   security: `
-SECURITY TESTS:
-Generate tests that verify security controls and protections.
-
-Focus on:
-1. AUTHENTICATION:
-   - SQL injection: ' OR '1'='1
-   - Brute force attempts
-   - Session fixation
-
-2. AUTHORIZATION:
-   - Access restricted pages without login
-   - Access other users' data (change user IDs in URL)
-   - Privilege escalation
-
-3. INPUT VALIDATION:
-   - XSS: <script>alert('XSS')</script>
-   - Path traversal: ../../etc/passwd
-   - Command injection: ; rm -rf /
-
-4. SESSION MANAGEMENT:
-   - Session timeout
-   - Concurrent sessions
-   - Logout functionality
-
-Example:
-  Title: XSS Attempt in Comment Field
-  Steps:
-    1. Navigate to https://app.example.com/posts/123
-    2. Type "<script>alert('XSS')</script>" in textarea[name="comment"]
-    3. Click button "Post Comment"
-    4. Verify comment is displayed as plain text, NOT executed
-    5. Verify page does not show alert popup
-  Flags: is_security_test = true
-`,
+Generate tests that verify security controls. Cover:
+- SQL injection: ' OR '1'='1
+- XSS: <script>alert('XSS')</script>
+- Path traversal: ../../etc/passwd
+- Access restricted pages without login
+- Changing user IDs in URLs to access other users' data
+- Session timeout and concurrent sessions
+Set is_security_test = true on every case.`,
 
   boundary: `
-BOUNDARY TESTS:
-Generate tests that test limits and boundaries.
-
-Focus on:
-1. NUMERIC BOUNDARIES:
-   - Minimum value (0, -1)
-   - Maximum value (max int)
-   - Just below minimum (min - 1)
-   - Just above maximum (max + 1)
-
-2. STRING LENGTH:
-   - Empty string ("")
-   - Single character
-   - Maximum length
-   - Maximum length + 1
-
-3. DATE/TIME:
-   - Past dates when future required
-   - Leap year dates (Feb 29)
-   - Invalid dates (Feb 30)
-
-4. FILE SIZE:
-   - 0 bytes
-   - Just under limit (9.99MB for 10MB limit)
-   - Exactly at limit (10MB)
-   - Just over limit (10.01MB)
-
-Example:
-  Title: Password Minimum Length Boundary
-  Steps:
-    1. Navigate to https://app.example.com/register
-    2. Type "Pass1!" (6 chars) in input[name="password"]
-    3. Click button "Register"
-    4. Verify error "Password must be at least 8 characters"
-    5. Type "Pass123!" (8 chars) in input[name="password"]
-    6. Click button "Register"
-    7. Verify registration succeeds
-  Flags: is_boundary_test = true
-`,
+Generate tests that probe limits. Cover:
+- Numeric: min value, min-1, max value, max+1
+- String length: empty, single char, max length, max+1
+- Dates: past when future required, leap year (Feb 29), invalid (Feb 30)
+- File size: 0 bytes, just under limit, at limit, just over limit
+Set is_boundary_test = true on every case.`,
 
   "edge-case": `
-EDGE CASES:
 Generate tests for unusual but valid scenarios.
-
-Focus on:
-- Rare but possible user actions
-- Uncommon data combinations
-- System limits and boundaries
-- Special characters in names/data
-- Concurrent operations
-- Network interruptions
-
-Example:
-  Title: User with Special Characters in Name
-  Steps:
-    1. Navigate to registration page
-    2. Enter name "José O'Brien-Smith" with accents and hyphens
-    3. Complete registration
-    4. Verify name displays correctly throughout app
-  Flags: is_edge_case = true
-`,
+Focus on: rare user actions, uncommon data combinations, special characters in names/data (e.g. José O'Brien-Smith), concurrent operations.
+Set is_edge_case = true on every case.`,
 
   performance: `
-PERFORMANCE TESTS:
 Generate tests that verify system performance and response times.
-
-Focus on:
-- Page load times
-- API response times
-- Database query performance
-- Large data sets
-- Concurrent users
-- Resource usage
-
-Example:
-  Title: Dashboard Load Time Under 2 Seconds
-  Steps:
-    1. Navigate to https://app.example.com/dashboard
-    2. Measure page load time
-    3. Verify page loads in under 2 seconds
-    4. Verify all dashboard widgets load
-`,
+Focus on: page load times under stated SLAs, API response times, large data sets, concurrent users.`,
 
   integration: `
-INTEGRATION TESTS:
 Generate tests that verify component interactions.
-
-Focus on:
-- Data flow between systems
-- API integrations
-- Third-party services
-- Database transactions
-- Message queues
-
-Example:
-  Title: Payment Processing Integration
-  Steps:
-    1. Add item to cart
-    2. Proceed to checkout
-    3. Enter payment details
-    4. Submit order
-    5. Verify payment processor receives request
-    6. Verify order status updates in database
-    7. Verify confirmation email sent
-`,
+Focus on: data flow between systems, third-party API integrations, database transactions, email/webhook delivery.`,
 
   regression: `
-REGRESSION TESTS:
 Generate tests that verify existing functionality still works after changes.
-
-Focus on:
-- Core user flows
-- Previously fixed bugs
-- Critical business logic
-- Common use cases
-
-Example:
-  Title: User Login Still Works After UI Update
-  Steps:
-    1. Navigate to login page
-    2. Enter valid credentials
-    3. Click login
-    4. Verify successful authentication
-    5. Verify redirect to correct page
-`,
+Focus on: core user flows, previously fixed bugs, critical business logic.`,
 
   smoke: `
-SMOKE TESTS:
-Generate critical path tests to verify basic functionality.
-
-Focus on:
-- Application starts/loads
-- Critical features accessible
-- Core functionality works
-- No blocking errors
-
-Example:
-  Title: Application Loads Successfully
-  Steps:
-    1. Navigate to https://app.example.com
-    2. Verify homepage loads
-    3. Verify navigation menu appears
-    4. Verify no JavaScript errors in console
-`,
+Generate critical path tests that verify basic functionality.
+Focus on: application loads, core features are accessible, no JavaScript errors, no blocking errors.`,
 };
 
 const AUTOMATION_GUIDELINES = `
-AUTOMATION REQUIREMENTS:
-You are creating test cases that will be AUTOMATICALLY CONVERTED to Playwright automation scripts.
-Follow these rules strictly:
+You are generating test cases that will be automatically converted to Playwright scripts.
 
-1. NAVIGATION STEPS:
-   ✅ GOOD: "Navigate to https://app.example.com/login"
-   ❌ BAD: "Go to the login page"
-
-2. CLICKING STEPS:
-   ✅ GOOD: "Click the button with text 'Sign In'" or "Click button[type='submit']"
-   ❌ BAD: "Click login" or "Submit the form"
-
-3. TYPING STEPS:
-   ✅ GOOD: "Type 'test@example.com' in the email input field (input[name='email'])"
-   ❌ BAD: "Enter email" or "Fill in credentials"
-
-4. VERIFICATION STEPS:
-   ✅ GOOD: "Verify the page URL contains '/dashboard'" or "Verify text 'Welcome, User' is visible"
-   ❌ BAD: "Check if login successful" or "Verify authentication"
-
-5. TEST DATA:
-   - Use realistic, specific test data
-   - Examples: "test@company.com", "John Doe", "123 Main Street"
-   - NOT: "valid email", "user name", "address"
+Step action rules:
+- Navigation:  "Navigate to https://app.example.com/path"
+- Click:       "Click the button with text 'Sign In'" or "Click button[type='submit']"
+- Type:        "Type 'test@example.com' in input[name='email']"
+- Verify:      "Verify text 'Welcome' is visible" or "Verify URL contains '/dashboard'"
+- Always use specific, realistic test data — not placeholders like "valid email".
 `;
 
-// ─── Utility Functions ──────────────────────────────────────────────────────
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 function normalizePriority(p: unknown): Priority {
   const s = (typeof p === "string" ? p : "").toLowerCase().trim();
@@ -359,385 +241,253 @@ function normalizePriority(p: unknown): Priority {
   return PRIORITY_VALUES.has(s as Priority) ? (s as Priority) : "medium";
 }
 
-function extractAnthropicText(blocks: unknown): string {
-  if (!Array.isArray(blocks)) return "";
-  return blocks
-    .filter(
-      (b): b is { type: "text"; text: string } =>
-        typeof b === "object" &&
-        b !== null &&
-        (b as Record<string, unknown>).type === "text" &&
-        typeof (b as Record<string, unknown>).text === "string",
-    )
-    .map((b) => b.text)
-    .join("\n\n")
-    .trim();
+/** Distribute N cases across types as evenly as possible, remainder front-loaded. */
+function distributeCount(
+  total: number,
+  types: string[],
+): Record<string, number> {
+  const perType = Math.floor(total / types.length);
+  const remainder = total % types.length;
+  return Object.fromEntries(
+    types.map((t, i) => [t, perType + (i < remainder ? 1 : 0)]),
+  );
 }
 
-// ─── LLM Interaction ─────────────────────────────────────────────────────────
+// ─── Prompt builder (per-type) ────────────────────────────────────────────────
 
-interface LLMResult {
-  text: string;
+function buildTypePrompt(params: {
+  requirements: string;
+  testType: string;
+  count: number;
+  application_url?: string;
+  template?: string;
+}): string {
+  const { requirements, testType, count, application_url, template } = params;
+  const label = TEST_TYPE_LABELS[testType] ?? testType;
+  const typeGuide = TEST_TYPE_INSTRUCTIONS[testType] ?? "";
+  const urlCtx = application_url
+    ? `\nApplication base URL: ${application_url}`
+    : "";
+  const tmplCtx = template ? `\nTemplate structure:\n${template}` : "";
+
+  return `${AUTOMATION_GUIDELINES}
+
+Generate EXACTLY ${count} ${label} test case${count !== 1 ? "s" : ""} for the following requirements:
+${requirements}${urlCtx}${tmplCtx}
+
+Test type guidance:
+${typeGuide}
+
+Return your response by calling the generate_test_cases tool with a test_cases array containing EXACTLY ${count} objects.`;
+}
+
+// ─── Structured LLM calls ─────────────────────────────────────────────────────
+
+interface BatchResult {
+  cases: GeneratedTestCase[];
   provider: "anthropic" | "openai";
   model: string;
 }
 
+/**
+ * Call Anthropic with tool_use forcing structured output.
+ * The model MUST call the tool — no free-text response possible.
+ */
+async function callAnthropic(
+  modelId: string,
+  prompt: string,
+  expectedCount: number,
+): Promise<GeneratedTestCase[]> {
+  const res = await anthropic.messages.create({
+    model: modelId,
+    max_tokens: Math.min(64000, Math.max(4000, expectedCount * 800)),
+    tools: [
+      {
+        name: "generate_test_cases",
+        description: "Output the generated test cases as structured data.",
+        input_schema: RESPONSE_SCHEMA,
+      },
+    ],
+    tool_choice: { type: "any" },
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const toolUse = res.content.find(
+    (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+  );
+  if (!toolUse) throw new Error("Anthropic did not call the tool");
+
+  const input = toolUse.input as { test_cases?: GeneratedTestCase[] };
+  return input.test_cases ?? [];
+}
+
+/**
+ * Call OpenAI with json_schema response_format forcing structured output.
+ */
+async function callOpenAI(
+  modelId: string,
+  prompt: string,
+  expectedCount: number,
+): Promise<GeneratedTestCase[]> {
+  const res = await openai.chat.completions.create({
+    model: modelId,
+    max_tokens: Math.min(16384, Math.max(4000, expectedCount * 800)),
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "generate_test_cases",
+        strict: true,
+        schema: RESPONSE_SCHEMA as unknown as Record<string, unknown>,
+      },
+    },
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const raw = res.choices?.[0]?.message?.content ?? "{}";
+  const parsed = JSON.parse(raw) as { test_cases?: GeneratedTestCase[] };
+  return parsed.test_cases ?? [];
+}
+
+/**
+ * Try primary provider, fall back to the other if it throws.
+ * Both branches now use structured outputs — no JSON parsing fragility.
+ */
 async function callWithFallback(
   modelKey: ModelKey,
   prompt: string,
-  maxTokens: number = 8000,
-): Promise<LLMResult> {
-  const primaryProvider: "anthropic" | "openai" = isAnthropicModel(modelKey)
-    ? "anthropic"
-    : "openai";
-
+  expectedCount: number,
+): Promise<BatchResult> {
+  const primaryIsAnthropic = isAnthropicModel(modelKey);
   const primaryModelId = getModelId(modelKey);
-
-  const fallbackProvider: "anthropic" | "openai" =
-    primaryProvider === "anthropic" ? "openai" : "anthropic";
-
-  const fallbackKey = getFallbackModel(fallbackProvider);
+  const fallbackKey = getFallbackModel(
+    primaryIsAnthropic ? "openai" : "anthropic",
+  );
   const fallbackModelId = getModelId(fallbackKey);
 
-  const providers: Array<{ type: "anthropic" | "openai"; model: string }> =
-    primaryProvider === "anthropic"
-      ? [
-          { type: "anthropic", model: primaryModelId },
-          { type: "openai", model: fallbackModelId },
-        ]
-      : [
-          { type: "openai", model: primaryModelId },
-          { type: "anthropic", model: fallbackModelId },
-        ];
-
-  for (const provider of providers) {
-    try {
-      if (provider.type === "anthropic") {
-        const res = await anthropic.messages.create({
-          model: provider.model,
-          max_tokens: maxTokens,
-          messages: [{ role: "user", content: prompt }],
-        });
-        const text = extractAnthropicText(res.content);
-
-        return { text, provider: "anthropic", model: provider.model };
-      }
-
-      const res = await openai.chat.completions.create({
-        model: provider.model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: maxTokens,
-      });
-
-      const text = res.choices?.[0]?.message?.content ?? "";
-      return { text, provider: "openai", model: provider.model };
-    } catch (err) {
-      console.error(`❌ ${provider.type} failed:`, err);
-      continue;
+  // Primary
+  try {
+    if (primaryIsAnthropic) {
+      const cases = await callAnthropic(primaryModelId, prompt, expectedCount);
+      return { cases, provider: "anthropic", model: primaryModelId };
+    } else {
+      const cases = await callOpenAI(primaryModelId, prompt, expectedCount);
+      return { cases, provider: "openai", model: primaryModelId };
     }
+  } catch (err) {
+    console.error(`[LLM] Primary (${primaryModelId}) failed:`, err);
+  }
+
+  // Fallback
+  try {
+    if (primaryIsAnthropic) {
+      // primary was Anthropic → fallback is OpenAI
+      const cases = await callOpenAI(fallbackModelId, prompt, expectedCount);
+      return { cases, provider: "openai", model: fallbackModelId };
+    } else {
+      // primary was OpenAI → fallback is Anthropic
+      const cases = await callAnthropic(fallbackModelId, prompt, expectedCount);
+      return { cases, provider: "anthropic", model: fallbackModelId };
+    }
+  } catch (err) {
+    console.error(`[LLM] Fallback (${fallbackModelId}) failed:`, err);
   }
 
   throw new Error("All LLM providers failed");
 }
 
-// ─── Enhanced structuring with Anthropic ────────────────────────────────────
+// ─── Per-type batch orchestration ─────────────────────────────────────────────
 
-async function structureTestCases(
-  rawText: string,
-  expectedCount: number,
-): Promise<GeneratedTestCase[]> {
-  console.log("[structureTestCases] Starting with Anthropic...");
-  console.log("[structureTestCases] Expected count:", expectedCount);
-  console.log("[structureTestCases] Raw text length:", rawText.length);
-
-  if (!rawText || rawText.trim().length === 0) {
-    console.error("[structureTestCases] Empty rawText provided");
-    return [];
-  }
-
-  const prompt = `Convert the following test cases into a structured JSON array. Each test case should have this exact format:
-
-{
-  "title": "string",
-  "description": "string",
-  "test_type": "string (functional, integration, unit, security, etc.)",
-  "priority": "string (low, medium, high, critical)",
-  "preconditions": "string or null",
-  "test_steps": [
-    {"step_number": 1, "action": "string", "expected": "string"},
-    {"step_number": 2, "action": "string", "expected": "string"}
-  ],
-  "expected_result": "string",
-  "is_edge_case": boolean,
-  "is_negative_test": boolean,
-  "is_security_test": boolean,
-  "is_boundary_test": boolean,
-  "tags": ["string"]
+interface TypeBatchResult {
+  testType: string;
+  cases: GeneratedTestCase[];
+  provider: "anthropic" | "openai";
+  model: string;
+  error?: string;
 }
 
-IMPORTANT: 
-- Correctly identify and flag each test based on its type
-- You should extract EXACTLY ${expectedCount} test cases from the text below
-- Do not skip any test cases
-
-Return a JSON object with a "test_cases" key containing the array, e.g. {"test_cases": [...]}
-
-Test Cases to Convert:
-${rawText}
-
-Return ONLY valid JSON, no markdown code fences, no explanation.`;
-
-  try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 8192,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-    });
-
-    // Extract text from response
-    const textContent = extractAnthropicText(response.content);
-
-    console.log("[Anthropic] Response received, length:", textContent.length);
-    console.log("[Anthropic] First 200 chars:", textContent.substring(0, 200));
-
-    // Check if response was cut off
-    if (response.stop_reason === "max_tokens") {
-      console.warn(
-        "[Anthropic] Response hit max_tokens limit - may be incomplete",
-      );
-    }
-
-    // Remove markdown code fences if present
-    let jsonText = textContent.trim();
-    if (jsonText.startsWith("```json")) {
-      jsonText = jsonText.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-    } else if (jsonText.startsWith("```")) {
-      jsonText = jsonText.replace(/^```\s*/, "").replace(/\s*```$/, "");
-    }
-
-    console.log(
-      "[Anthropic] After removing fences, first 200 chars:",
-      jsonText.substring(0, 200),
-    );
-    console.log(
-      "[Anthropic] Last 200 chars:",
-      jsonText.substring(Math.max(0, jsonText.length - 200)),
-    );
-
-    // Try to parse JSON
-    let parsed: {
-      test_cases?: GeneratedTestCase[];
-      testCases?: GeneratedTestCase[];
-    };
-
-    try {
-      parsed = JSON.parse(jsonText);
-    } catch (parseError) {
-      console.error("[Anthropic] JSON parse failed, attempting repair...");
-
-      // Try to repair incomplete JSON by closing it properly
-      let repairedJson = jsonText;
-
-      // Count open braces/brackets
-      const openBraces = (repairedJson.match(/{/g) || []).length;
-      const closeBraces = (repairedJson.match(/}/g) || []).length;
-      const openBrackets = (repairedJson.match(/\[/g) || []).length;
-      const closeBrackets = (repairedJson.match(/\]/g) || []).length;
-
-      console.log(
-        "[Anthropic] Braces - Open:",
-        openBraces,
-        "Close:",
-        closeBraces,
-      );
-      console.log(
-        "[Anthropic] Brackets - Open:",
-        openBrackets,
-        "Close:",
-        closeBrackets,
-      );
-
-      // Remove any incomplete string at the end
-      if (
-        repairedJson.includes('"') &&
-        repairedJson.lastIndexOf('"') !== repairedJson.indexOf('"')
-      ) {
-        const lastCompleteQuote = repairedJson.lastIndexOf('",');
-        if (lastCompleteQuote > 0) {
-          repairedJson = repairedJson.substring(0, lastCompleteQuote + 2);
-          console.log("[Anthropic] Truncated to last complete field");
-        }
-      }
-
-      // Close any open arrays/objects
-      if (closeBrackets < openBrackets) {
-        repairedJson += "]".repeat(openBrackets - closeBrackets);
-      }
-      if (closeBraces < openBraces) {
-        repairedJson += "}".repeat(openBraces - closeBraces);
-      }
-
-      console.log("[Anthropic] Attempting to parse repaired JSON...");
-      parsed = JSON.parse(repairedJson);
-      console.log("[Anthropic] Successfully parsed repaired JSON");
-    }
-
-    console.log("[Anthropic] Parsed keys:", Object.keys(parsed));
-    console.log(
-      "[Anthropic] test_cases is array?",
-      Array.isArray(parsed.test_cases),
-    );
-    console.log(
-      "[Anthropic] testCases is array?",
-      Array.isArray(parsed.testCases),
-    );
-
-    const cases = parsed.test_cases ?? parsed.testCases ?? [];
-
-    console.log("[Anthropic] Parsed cases count:", cases.length);
-
-    if (cases.length !== expectedCount) {
-      console.warn(
-        `[Anthropic] Expected ${expectedCount} test cases, got ${cases.length}`,
-      );
-    }
-
-    return cases;
-  } catch (error) {
-    console.error("[structureTestCases] ERROR:", error);
-
-    if (error instanceof Error) {
-      console.error("[structureTestCases] Error message:", error.message);
-      console.error("[structureTestCases] Error stack:", error.stack);
-
-      // If JSON parsing failed due to size, suggest reducing count
-      if (
-        error.message.includes("JSON") ||
-        error.message.includes("Unterminated")
-      ) {
-        console.error(
-          "[structureTestCases] HINT: Response may be too large. Try reducing testCaseCount.",
-        );
-      }
-    }
-
-    console.error(
-      "[structureTestCases] Raw text (first 500 chars):",
-      rawText.substring(0, 500),
-    );
-    console.error(
-      "[structureTestCases] Raw text (last 500 chars):",
-      rawText.substring(Math.max(0, rawText.length - 500)),
-    );
-
-    // Last resort: pull a bare JSON array out of the raw text
-    const match = rawText.match(/\[[\s\S]*\]/);
-    if (!match) {
-      return [];
-    }
-
-    try {
-      const fallbackCases = JSON.parse(match[0]) as GeneratedTestCase[];
-      console.log(
-        "[structureTestCases] Fallback regex extraction succeeded:",
-        fallbackCases.length,
-        "cases",
-      );
-      return fallbackCases;
-    } catch (fallbackError) {
-      console.error("[structureTestCases] Fallback extraction also failed");
-      return [];
-    }
-  }
-}
-
-// ─── Prompt Building ─────────────────────────────────────────────────────────
-
-function buildPrompt(params: {
+/**
+ * Run one structured LLM call per test type in parallel.
+ * Types that fail are retried once before being marked as failed.
+ */
+async function generateAllTypes(params: {
   requirements: string;
-  testCaseCount: number;
   testTypes: string[];
+  countPerType: Record<string, number>;
+  modelKey: ModelKey;
   application_url?: string;
   template?: string;
-}): string {
-  const { requirements, testCaseCount, testTypes, application_url, template } =
-    params;
+}): Promise<TypeBatchResult[]> {
+  const {
+    requirements,
+    testTypes,
+    countPerType,
+    modelKey,
+    application_url,
+    template,
+  } = params;
 
-  // Distribute cases as evenly as possible
-  const perType = Math.floor(testCaseCount / testTypes.length);
-  const remainder = testCaseCount % testTypes.length;
+  const runBatch = async (testType: string): Promise<TypeBatchResult> => {
+    const count = countPerType[testType] ?? 1;
+    const prompt = buildTypePrompt({
+      requirements,
+      testType,
+      count,
+      application_url,
+      template,
+    });
 
-  const distribution = testTypes
-    .map((type, i) => {
-      const count = perType + (i < remainder ? 1 : 0);
-      const label = TEST_TYPE_LABELS[type] ?? type;
-      return `- ${count} ${label} test${count !== 1 ? "s" : ""}`;
-    })
-    .join("\n");
+    try {
+      const result = await callWithFallback(modelKey, prompt, count);
+      console.log(
+        `[batch] ${testType}: got ${result.cases.length}/${count} via ${result.provider}`,
+      );
+      return { testType, ...result };
+    } catch (err) {
+      console.error(`[batch] ${testType} failed:`, err);
+      return {
+        testType,
+        cases: [],
+        provider: "anthropic",
+        model: "",
+        error: String(err),
+      };
+    }
+  };
 
-  const typeInstructions = testTypes
-    .map((type) => TEST_TYPE_INSTRUCTIONS[type] ?? "")
-    .filter(Boolean)
-    .join("\n\n");
+  // First wave — all types in parallel
+  const firstWave = await Promise.allSettled(testTypes.map(runBatch));
 
-  const urlContext = application_url
-    ? `\n\nAPPLICATION BASE URL: ${application_url}\nUse this as the base URL for all navigation steps.`
-    : "";
+  const results: TypeBatchResult[] = [];
+  const retryTypes: string[] = [];
 
-  const templateContext = template
-    ? `\n\nUse this template structure:\n${template}`
-    : "";
+  for (let i = 0; i < firstWave.length; i++) {
+    const r = firstWave[i];
+    if (r.status === "rejected") {
+      retryTypes.push(testTypes[i]);
+      continue;
+    }
+    // Also retry if we got significantly fewer cases than requested
+    const expected = countPerType[r.value.testType] ?? 1;
+    if (r.value.cases.length < Math.ceil(expected * 0.8)) {
+      retryTypes.push(r.value.testType);
+    } else {
+      results.push(r.value);
+    }
+  }
 
-  return `${AUTOMATION_GUIDELINES}
+  // Retry wave — sequential to avoid hammering the API
+  if (retryTypes.length > 0) {
+    console.warn(`[batch] Retrying types: ${retryTypes.join(", ")}`);
+    for (const testType of retryTypes) {
+      const retried = await runBatch(testType);
+      results.push(retried);
+    }
+  }
 
-CRITICAL: You MUST generate EXACTLY ${testCaseCount} test cases total. This is a hard requirement.
-
-TEST CASE DISTRIBUTION:
-${distribution}
-
-IMPORTANT: The above shows the TARGET distribution, but your PRIMARY goal is to generate EXACTLY ${testCaseCount} total test cases. If you cannot hit the exact distribution, adjust the numbers while maintaining ${testCaseCount} total.
-
-${typeInstructions}
-
-Generate test cases for the following requirements:
-
-${requirements}${urlContext}${templateContext}
-
-For each test case, provide:
-1. A clear, specific title describing what is being tested
-2. Detailed description of the test scenario
-3. Test type (functional, integration, e2e, security, performance, etc.)
-4. Priority level (critical, high, medium, low)
-5. Preconditions with specific setup requirements
-6. Step-by-step test steps with SPECIFIC actions and CLEAR expected results
-7. Overall expected result
-8. Flags for test categorization:
-   - is_edge_case: true/false
-   - is_negative_test: true/false (for negative/unhappy path tests)
-   - is_security_test: true/false (for security tests)
-   - is_boundary_test: true/false (for boundary/limit tests)
-9. Tags array (e.g., ["login", "authentication", "negative-test"])
-
-CRITICAL REQUIREMENTS:
-- Every step must be ACTIONABLE by Playwright automation
-- Include EXACT test data (emails, passwords, names, values)
-- Specify EXACT element selectors or button text
-- Define CLEAR, VERIFIABLE expected results
-- Use FULL URLs for navigation steps
-- Break complex actions into individual steps
-- Each step should map to a single Playwright command
-- CORRECTLY FLAG each test with appropriate boolean values based on the test type
-
-REMINDER: Generate EXACTLY ${testCaseCount} test cases. No more, no less.`;
+  return results;
 }
-// ─── Route Handlers ──────────────────────────────────────────────────────────
 
-// ─── Update POST handler ────────────────────────────────────────────────────
+// ─── Route handlers ───────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
   try {
@@ -747,7 +497,6 @@ export async function POST(request: Request) {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser();
-
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -768,15 +517,18 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+
     const testCaseCount = Number(body.testCaseCount ?? 10);
-    const testTypes = Array.isArray(body.testTypes)
-      ? body.testTypes
-      : ["happy-path"];
+    const testTypes =
+      Array.isArray(body.testTypes) && body.testTypes.length > 0
+        ? body.testTypes
+        : ["happy-path"];
     const template = body.template ?? "";
     const title = (body.title ?? "").trim();
     const description = body.description ?? null;
     const application_url = (body.application_url ?? "").trim();
 
+    // ── Validation ────────────────────────────────────────────────────────────
     if (!requirements) {
       return NextResponse.json(
         { error: "Requirements are required", field: "requirements" },
@@ -798,19 +550,24 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    if (testTypes.length === 0) {
-      return NextResponse.json(
-        {
-          error: "At least one test type must be selected",
-          field: "testTypes",
-        },
-        { status: 400 },
-      );
-    }
 
+    // ── Usage quota ───────────────────────────────────────────────────────────
     try {
       await checkUsageQuota(user.id, testCaseCount);
     } catch (e) {
+      if (e instanceof UsageQuotaError) {
+        return NextResponse.json(
+          {
+            error: e.message,
+            remaining: e.remaining,
+            requested: e.requested,
+            used: e.used,
+            limit: e.limit,
+            upgradeRequired: true,
+          },
+          { status: 429 },
+        );
+      }
       let remaining = 0;
       try {
         const { data: usage } = await supabase
@@ -818,30 +575,13 @@ export async function POST(request: Request) {
           .select("test_cases_generated, test_case_limit")
           .eq("user_id", user.id)
           .single();
-
         if (usage) {
-          const limit = usage.test_case_limit || 50; // Default free tier limit
-          const used = usage.test_cases_generated || 0;
-          remaining = Math.max(0, limit - used);
+          const limit = usage.test_case_limit || 50;
+          remaining = Math.max(0, limit - (usage.test_cases_generated || 0));
         }
-
-        if (e instanceof UsageQuotaError) {
-          return NextResponse.json(
-            {
-              error: e.message,
-              remaining: e.remaining,
-              requested: e.requested,
-              used: e.used,
-              limit: e.limit,
-              upgradeRequired: true,
-            },
-            { status: 429 },
-          );
-        }
-      } catch (usageError) {
-        console.error("Error fetching remaining usage:", usageError);
+      } catch {
+        /* ignore */
       }
-
       return NextResponse.json(
         {
           error: e instanceof Error ? e.message : "Usage limit exceeded",
@@ -853,18 +593,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const prompt = buildPrompt({
+    // ── Distribute counts and generate in parallel batches ────────────────────
+    const countPerType = distributeCount(testCaseCount, testTypes);
+    console.log("[generate] countPerType:", countPerType);
+
+    const batchResults = await generateAllTypes({
       requirements,
-      testCaseCount,
       testTypes,
-      application_url,
-      template,
+      countPerType,
+      modelKey,
+      application_url: application_url || undefined,
+      template: template || undefined,
     });
 
-    let llmResult: LLMResult;
-    try {
-      llmResult = await callWithFallback(modelKey, prompt);
-    } catch {
+    // Flatten all cases, trim to requested total
+    const allCases = batchResults
+      .flatMap((r) => r.cases)
+      .slice(0, testCaseCount);
+
+    if (allCases.length === 0) {
       return NextResponse.json(
         {
           error: "Generation temporarily unavailable. Please try again later.",
@@ -873,33 +620,20 @@ export async function POST(request: Request) {
       );
     }
 
-    let testCases = await structureTestCases(llmResult.text, testCaseCount);
+    // Derive a representative provider/model from whichever batch ran last successfully
+    const lastSuccessful = batchResults.findLast((r) => r.cases.length > 0);
+    const providerUsed = lastSuccessful?.provider ?? "anthropic";
+    const modelUsed = lastSuccessful?.model ?? getModelId(modelKey);
 
-    if (testCases.length < testCaseCount) {
-      const retryPrompt = `${prompt}
-
-CRITICAL CORRECTION: The previous generation only produced ${testCases.length} test cases but we need EXACTLY ${testCaseCount}.
-Generate the FULL ${testCaseCount} test cases now. Do not skip any.`;
-
-      try {
-        const retryResult = await callWithFallback(modelKey, retryPrompt);
-
-        const retryCases = await structureTestCases(
-          retryResult.text,
-          testCaseCount,
-        );
-
-        if (retryCases.length >= testCases.length) {
-          testCases = retryCases;
-          llmResult = retryResult; // Update to use retry result
-        }
-      } catch (retryError) {
-        console.error("❌ Retry failed:", retryError);
-        // Continue with original results
-      }
-    }
-
-    testCases = testCases.slice(0, testCaseCount);
+    // ── Save generation record ────────────────────────────────────────────────
+    // Use the prompt from the first batch as a representative sample
+    const samplePrompt = buildTypePrompt({
+      requirements,
+      testType: testTypes[0],
+      count: countPerType[testTypes[0]],
+      application_url: application_url || undefined,
+      template: template || undefined,
+    });
 
     const { data: generation, error: genError } = await supabase
       .from("test_case_generations")
@@ -907,9 +641,9 @@ Generate the FULL ${testCaseCount} test cases now. Do not skip any.`;
         user_id: user.id,
         title,
         description,
-        ai_provider: llmResult.provider,
-        ai_model: llmResult.model,
-        prompt_used: prompt,
+        ai_provider: providerUsed,
+        ai_model: modelUsed,
+        prompt_used: samplePrompt,
       })
       .select()
       .single();
@@ -921,7 +655,8 @@ Generate the FULL ${testCaseCount} test cases now. Do not skip any.`;
       );
     }
 
-    const rows = testCases.map((tc) => ({
+    // ── Save test cases ───────────────────────────────────────────────────────
+    const rows = allCases.map((tc) => ({
       generation_id: generation.id,
       requirement_id,
       project_id,
@@ -957,20 +692,32 @@ Generate the FULL ${testCaseCount} test cases now. Do not skip any.`;
       () => {},
     );
 
+    // ── Partial failure reporting ─────────────────────────────────────────────
+    const failedTypes = batchResults
+      .filter((r) => r.error || r.cases.length === 0)
+      .map((r) => r.testType);
+
     return NextResponse.json({
       success: true,
       generation_id: generation.id,
       test_cases: savedCases,
       count: savedCases.length,
       requested_count: testCaseCount,
-      provider_used: llmResult.provider,
-      model_used: llmResult.model,
+      provider_used: providerUsed,
+      model_used: modelUsed,
+      ...(failedTypes.length > 0 && {
+        partial: true,
+        failed_types: failedTypes,
+      }),
       statistics: {
         total: savedCases.length,
         negative: savedCases.filter((tc) => tc.is_negative_test).length,
         security: savedCases.filter((tc) => tc.is_security_test).length,
         boundary: savedCases.filter((tc) => tc.is_boundary_test).length,
         edge: savedCases.filter((tc) => tc.is_edge_case).length,
+        by_type: Object.fromEntries(
+          batchResults.map((r) => [r.testType, r.cases.length]),
+        ),
       },
     });
   } catch (error) {

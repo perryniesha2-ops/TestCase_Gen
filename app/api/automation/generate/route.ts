@@ -1,9 +1,12 @@
 // app/api/automation/enhance-test-cases/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
+
+const BATCH_SIZE = 4;
 
 // ============================================================================
 // TYPES
@@ -51,7 +54,7 @@ interface TestStep {
 // CONFIGURATION
 // ============================================================================
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -107,6 +110,26 @@ function stripAutomationFields(step: any) {
   return rest;
 }
 
+function truncateLongValues(step: any): any {
+  if (!step || typeof step !== "object") return step;
+  return {
+    ...step,
+    action:
+      step.action?.length > 500
+        ? step.action.slice(0, 500) + "... [truncated]"
+        : step.action,
+    input_value:
+      step.input_value?.length > 200
+        ? step.input_value.slice(0, 200) + "... [truncated]"
+        : step.input_value,
+  };
+}
+
+function extractJson(raw: string): string {
+  const match = raw.match(/\{[\s\S]*\}/);
+  return match ? match[0] : "{}";
+}
+
 // ============================================================================
 // AUTOMATION ENHANCEMENT PROMPT
 // ============================================================================
@@ -131,42 +154,12 @@ ACTION TYPES:
 - navigate: Navigate to URL (CRITICAL: MUST set input_value to full URL or path)
 - press: Press keyboard key
 
-🚨 CRITICAL NAVIGATION RULES 🚨
+CRITICAL NAVIGATION RULES:
 For ANY step that involves navigation (navigate to, go to, visit, open, load, access, browse to), you MUST:
 1. Set action_type = "navigate"
-2. Set selector = "body" (always use "body" for navigation)
-3. Set input_value = FULL URL OR PATH (this is REQUIRED - do not leave empty!)
-   - If step mentions full URL like "https://app.example.com/login" → use that
-   - If step mentions path like "/settings/profile" → use that
-   - If step says "login page" → infer common path like "/login"
+2. Set selector = "body"
+3. Set input_value = FULL URL OR PATH (REQUIRED)
 4. Set assertion with type "url" to verify navigation succeeded
-
-NAVIGATION EXAMPLES:
-{
-  "step_number": 1,
-  "action": "Navigate to https://app.example.com/settings/bank-accounts",
-  "expected": "Settings page loads",
-  "selector": "body",
-  "action_type": "navigate",
-  "input_value": "https://app.example.com/settings/bank-accounts",
-  "assertion": {
-    "type": "url",
-    "value": "/settings/bank-accounts"
-  }
-}
-
-{
-  "step_number": 1,
-  "action": "Go to the login page",
-  "expected": "Login form appears",
-  "selector": "body",
-  "action_type": "navigate",
-  "input_value": "/login",
-  "assertion": {
-    "type": "url",
-    "value": "/login"
-  }
-}
 
 SELECTOR PREFERENCES (in order):
 1. [data-testid="..."] - Most stable
@@ -176,142 +169,18 @@ SELECTOR PREFERENCES (in order):
 5. #id - If stable
 6. .class - Only if stable
 
-AVOID:
-- Generated classes (.css-xyz-123)
-- Fragile paths (div > div > button)
-- Position selectors (:nth-child)
+AVOID: Generated classes, fragile paths (div > div > button), position selectors (:nth-child)
 
 ASSERTION TYPES:
-- visible: Element is visible
-- hidden: Element is hidden
-- text: Contains text
-- exact-text: Exact text match
-- value: Input has value
-- url: Page URL matches (use for navigation!)
-- title: Page title matches
-- count: Element count (MUST be a NUMBER like 1, 5, 10 - NOT "> 0" or "< 5")
-- enabled/disabled: Element state
-- checked: Checkbox state
-- attribute: Has attribute with value
-
-COMPLETE EXAMPLES:
-
-1. NAVIGATION WITH FULL URL:
-{
-  "step_number": 1,
-  "action": "Navigate to https://app.example.com/dashboard",
-  "expected": "Dashboard loads",
-  "selector": "body",
-  "action_type": "navigate",
-  "input_value": "https://app.example.com/dashboard",
-  "assertion": {
-    "type": "url",
-    "value": "/dashboard"
-  }
-}
-
-2. NAVIGATION WITH PATH:
-{
-  "step_number": 1,
-  "action": "Open settings page",
-  "expected": "Settings page displays",
-  "selector": "body",
-  "action_type": "navigate",
-  "input_value": "/settings",
-  "assertion": {
-    "type": "url",
-    "value": "/settings"
-  }
-}
-
-3. FILL INPUT:
-{
-  "step_number": 2,
-  "action": "Enter email address",
-  "expected": "Email field contains value",
-  "selector": "input[name='email']",
-  "action_type": "fill",
-  "input_value": "test@example.com",
-  "assertion": {
-    "type": "value",
-    "value": "test@example.com"
-  }
-}
-
-4. TYPE PASSWORD:
-{
-  "step_number": 3,
-  "action": "Type password",
-  "expected": "Password field is masked",
-  "selector": "input[name='password']",
-  "action_type": "type",
-  "input_value": "SecurePass123!",
-  "assertion": {
-    "type": "attribute",
-    "attribute": "type",
-    "value": "password"
-  }
-}
-
-5. CLICK BUTTON:
-{
-  "step_number": 4,
-  "action": "Click submit button",
-  "expected": "Form submits successfully",
-  "selector": "button[type='submit']",
-  "action_type": "click",
-  "wait_time": 2000,
-  "assertion": {
-    "type": "url",
-    "value": "/dashboard"
-  }
-}
-
-6. VERIFY ELEMENT:
-{
-  "step_number": 5,
-  "action": "Verify success message appears",
-  "expected": "Success message is visible",
-  "selector": "[data-testid='success-message']",
-  "action_type": "wait",
-  "assertion": {
-    "type": "visible"
-  }
-}
-
-7. CHECK CHECKBOX:
-{
-  "step_number": 6,
-  "action": "Accept terms and conditions",
-  "expected": "Terms checkbox is checked",
-  "selector": "input[name='terms']",
-  "action_type": "check",
-  "assertion": {
-    "type": "checked"
-  }
-}
-
-8. SELECT DROPDOWN:
-{
-  "step_number": 7,
-  "action": "Select country",
-  "expected": "Country is selected",
-  "selector": "select[name='country']",
-  "action_type": "select",
-  "input_value": "United States",
-  "assertion": {
-    "type": "value",
-    "value": "US"
-  }
-}
+visible, hidden, text, exact-text, value, url, title, count (NUMBER only), enabled, disabled, checked, attribute
 
 CRITICAL RULES:
-✓ EVERY navigation step MUST have selector="body" and input_value with URL/path
-✓ Use realistic test data (john@example.com, not "valid email")
-✓ Infer selectors from action descriptions using semantic HTML when possible
-✓ Include assertions that verify the expected outcome
-✓ Add wait_time (milliseconds) for async operations
-✓ For verification steps without actions, use action_type="wait"`;
+- EVERY navigation step MUST have selector="body" and input_value with URL/path
+- Use realistic test data (john@example.com, not "valid email")
+- Infer selectors from action descriptions using semantic HTML
+- Include assertions that verify the expected outcome
+- Add wait_time (milliseconds) for async operations
+- For verification steps without actions, use action_type="wait"`;
 
 // ============================================================================
 // POST-PROCESSING
@@ -351,10 +220,7 @@ function postProcessSteps(
         const urlValue = processedStep.input_value || "";
         const pathMatch = urlValue.match(/\/[a-z0-9\/-]*/i);
         if (pathMatch) {
-          processedStep.assertion = {
-            type: "url",
-            value: pathMatch[0],
-          };
+          processedStep.assertion = { type: "url", value: pathMatch[0] };
         }
       }
     }
@@ -365,7 +231,6 @@ function postProcessSteps(
     ) {
       processedStep.action_type = "navigate";
       processedStep.selector = "body";
-
       const extractedUrl = extractUrlFromAction(
         processedStep.action,
         applicationUrl,
@@ -380,6 +245,39 @@ function postProcessSteps(
 }
 
 // ============================================================================
+// SHARED ANTHROPIC CALL
+// ============================================================================
+
+async function enhanceStepsWithAI(
+  prompt: string,
+): Promise<{ enhanced_steps?: TestStep[] }> {
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 4000,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const content =
+    response.content[0].type === "text" ? response.content[0].text : "{}";
+
+  return JSON.parse(extractJson(content)) as { enhanced_steps?: TestStep[] };
+}
+
+// ============================================================================
+// BATCH PROCESSOR — runs items in parallel chunks of BATCH_SIZE
+// ============================================================================
+
+async function processBatch<T>(
+  items: T[],
+  processor: (item: T) => Promise<void>,
+): Promise<void> {
+  for (let i = 0; i < items.length; i += BATCH_SIZE) {
+    const batch = items.slice(i, i + BATCH_SIZE);
+    await Promise.allSettled(batch.map(processor));
+  }
+}
+
+// ============================================================================
 // MAIN HANDLER
 // ============================================================================
 
@@ -387,7 +285,6 @@ export async function POST(req: Request) {
   try {
     const supabase = await createClient();
 
-    // Auth
     const {
       data: { user },
       error: authError,
@@ -396,7 +293,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Parse body
     const body = (await req.json()) as {
       test_case_ids?: string[];
       suite_id?: string;
@@ -415,9 +311,7 @@ export async function POST(req: Request) {
     const suiteId = body.suite_id;
     const applicationUrl = body.application_url || "https://app.example.com";
     const regenerate = Boolean(body.regenerate);
-    const framework = body.automation_framework ?? "playwright";
 
-    // Validate input
     if (!testCaseIds.length && !suiteId) {
       return NextResponse.json(
         { error: "Either test_case_ids or suite_id is required" },
@@ -425,7 +319,6 @@ export async function POST(req: Request) {
       );
     }
 
-    let suiteKind: string | null = null;
     if (suiteId) {
       const { data: suite, error: suiteError } = await supabase
         .from("suites")
@@ -435,7 +328,6 @@ export async function POST(req: Request) {
         .single();
 
       if (suiteError || !suite) {
-        console.error("[Automation] Suite not found:", suiteError);
         return NextResponse.json(
           {
             error: "Suite not found",
@@ -444,11 +336,8 @@ export async function POST(req: Request) {
           { status: 404 },
         );
       }
-
-      suiteKind = suite.kind;
     }
 
-    // Get test case IDs from suite if provided
     let finalTestCaseIds = testCaseIds;
     let platformTestCaseIds: string[] = [];
 
@@ -459,7 +348,6 @@ export async function POST(req: Request) {
         .eq("suite_id", suiteId);
 
       if (itemsError) {
-        console.error("[Automation] Error fetching suite items:", itemsError);
         return NextResponse.json(
           { error: "Failed to fetch suite items" },
           { status: 500 },
@@ -467,7 +355,6 @@ export async function POST(req: Request) {
       }
 
       if (!suiteItems || suiteItems.length === 0) {
-        console.warn("[Automation] Suite has no test cases");
         return NextResponse.json(
           {
             error: "No test cases found in suite",
@@ -477,12 +364,10 @@ export async function POST(req: Request) {
         );
       }
 
-      // Extract regular test case IDs
       const regularIds = suiteItems
         .map((item) => item.test_case_id)
         .filter((id): id is string => Boolean(id));
 
-      // Extract platform test case IDs
       const platformIds = suiteItems
         .map((item) => item.platform_test_case_id)
         .filter((id): id is string => Boolean(id));
@@ -490,7 +375,6 @@ export async function POST(req: Request) {
       finalTestCaseIds = regularIds;
       platformTestCaseIds = platformIds;
 
-      // Check if suite is empty
       if (regularIds.length === 0 && platformIds.length === 0) {
         return NextResponse.json(
           {
@@ -508,7 +392,7 @@ export async function POST(req: Request) {
     const allEnhanced: any[] = [];
     const allFailed: any[] = [];
 
-    // Process regular test cases if any
+    // ── Regular test cases ──────────────────────────────────────────────────
     if (finalTestCaseIds.length > 0) {
       const { data: testCases, error: fetchError } = await supabase
         .from("test_cases")
@@ -517,14 +401,12 @@ export async function POST(req: Request) {
         .eq("user_id", user.id);
 
       if (fetchError || !testCases) {
-        console.error("[Automation] Fetch error:", fetchError);
         return NextResponse.json(
           { error: "Failed to fetch test cases" },
           { status: 500 },
         );
       }
 
-      // Filter out test cases that already have automation data
       const casesToProcess = testCases.filter((tc) => {
         const steps = Array.isArray(tc.test_steps) ? tc.test_steps : [];
         const hasAutomation = steps.some(
@@ -537,27 +419,23 @@ export async function POST(req: Request) {
         return true;
       });
 
-      // Process each test case
-      for (const tc of casesToProcess) {
+      await processBatch(casesToProcess, async (tc) => {
         try {
-          const steps = Array.isArray(tc.test_steps) ? tc.test_steps : [];
-
           const rawSteps = Array.isArray(tc.test_steps) ? tc.test_steps : [];
 
-          const stepsForModel = regenerate
-            ? rawSteps.map(stripAutomationFields)
-            : rawSteps;
-
-          if (steps.length === 0) {
-            console.warn(`[Automation] Test case ${tc.id} has no steps`);
+          if (rawSteps.length === 0) {
             allFailed.push({
               id: tc.id,
               title: tc.title,
               reason: "No test steps",
             });
             totalFailed++;
-            continue;
+            return;
           }
+
+          const stepsForModel = (
+            regenerate ? rawSteps.map(stripAutomationFields) : rawSteps
+          ).map(truncateLongValues);
 
           const prompt = `${AUTOMATION_ENHANCEMENT_PROMPT}
 
@@ -570,28 +448,18 @@ EXPECTED RESULT: ${tc.expected_result || "N/A"}
 STEPS TO ENHANCE:
 ${JSON.stringify(stepsForModel, null, 2)}
 
-Return ONLY a JSON object with an "enhanced_steps" array.`;
+Return ONLY a valid JSON object with an "enhanced_steps" array. No explanation, no markdown, no backticks. Just the raw JSON.`;
 
-          const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [{ role: "user", content: prompt }],
-            response_format: { type: "json_object" },
-            max_tokens: 4000,
-            temperature: 0.3,
-          });
-
-          const content = response.choices?.[0]?.message?.content ?? "{}";
-          const parsed = JSON.parse(content) as { enhanced_steps?: TestStep[] };
+          const parsed = await enhanceStepsWithAI(prompt);
 
           if (!parsed.enhanced_steps || !Array.isArray(parsed.enhanced_steps)) {
-            console.error(`[Automation] Invalid AI response for ${tc.id}`);
             allFailed.push({
               id: tc.id,
               title: tc.title,
               reason: "Invalid AI response",
             });
             totalFailed++;
-            continue;
+            return;
           }
 
           const enhanced_steps = postProcessSteps(
@@ -599,17 +467,12 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
             applicationUrl,
           );
 
-          // Update test case with enhanced steps
           const { error: updateError } = await supabase
             .from("test_cases")
             .update({ test_steps: enhanced_steps })
             .eq("id", tc.id);
 
           if (updateError) {
-            console.error(
-              `[Automation] Update error for ${tc.id}:`,
-              updateError,
-            );
             allFailed.push({
               id: tc.id,
               title: tc.title,
@@ -625,10 +488,6 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
             totalEnhanced++;
           }
         } catch (error) {
-          console.error(
-            `[Automation] Failed to enhance test case ${tc.id}:`,
-            error,
-          );
           allFailed.push({
             id: tc.id,
             title: tc.title,
@@ -636,9 +495,10 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
           });
           totalFailed++;
         }
-      }
+      });
     }
 
+    // ── Platform test cases ─────────────────────────────────────────────────
     if (platformTestCaseIds.length > 0) {
       const { data: platformCases, error: fetchError } = await supabase
         .from("platform_test_cases")
@@ -651,7 +511,6 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
       } else {
         const casesNeedingAutomation = platformCases.filter((tc: any) => {
           const steps = Array.isArray(tc.steps) ? tc.steps : [];
-          // Platform test cases might have string steps or object steps
           const hasAutomation = steps.some(
             (s: any) => typeof s === "object" && s.selector && s.action_type,
           );
@@ -659,7 +518,7 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
           return !hasAutomation;
         });
 
-        for (const tc of casesNeedingAutomation) {
+        await processBatch(casesNeedingAutomation, async (tc: any) => {
           try {
             const steps = Array.isArray(tc.steps) ? tc.steps : [];
 
@@ -670,20 +529,25 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
                 reason: "No test steps",
               });
               totalFailed++;
-              continue;
+              return;
             }
 
-            // Convert string steps to objects if needed
             const stepObjects = steps.map((step: any, i: number) => {
               if (typeof step === "string") {
                 return {
                   step_number: i + 1,
                   action: step,
-                  expected: tc.expected_results?.[i] || "",
+                  expected: Array.isArray(tc.expected_results)
+                    ? tc.expected_results[i] || ""
+                    : "",
                 };
               }
               return step;
             });
+
+            const stepsForModel = (
+              regenerate ? stepObjects.map(stripAutomationFields) : stepObjects
+            ).map(truncateLongValues);
 
             const prompt = `${AUTOMATION_ENHANCEMENT_PROMPT}
 
@@ -694,22 +558,11 @@ TEST CASE: ${tc.title}
 DESCRIPTION: ${tc.description || "N/A"}
 
 STEPS TO ENHANCE:
-${JSON.stringify(stepObjects, null, 2)}
+${JSON.stringify(stepsForModel, null, 2)}
 
-Return ONLY a JSON object with an "enhanced_steps" array.`;
+Return ONLY a valid JSON object with an "enhanced_steps" array. No explanation, no markdown, no backticks. Just the raw JSON.`;
 
-            const response = await openai.chat.completions.create({
-              model: "gpt-4o-mini",
-              messages: [{ role: "user", content: prompt }],
-              response_format: { type: "json_object" },
-              max_tokens: 4000,
-              temperature: 0.3,
-            });
-
-            const content = response.choices?.[0]?.message?.content ?? "{}";
-            const parsed = JSON.parse(content) as {
-              enhanced_steps?: TestStep[];
-            };
+            const parsed = await enhanceStepsWithAI(prompt);
 
             if (
               !parsed.enhanced_steps ||
@@ -721,7 +574,7 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
                 reason: "Invalid AI response",
               });
               totalFailed++;
-              continue;
+              return;
             }
 
             const enhanced_steps = postProcessSteps(
@@ -729,7 +582,6 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
               applicationUrl,
             );
 
-            // Update platform test case
             const { error: updateError } = await supabase
               .from("platform_test_cases")
               .update({ steps: enhanced_steps })
@@ -759,13 +611,13 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
             });
             totalFailed++;
           }
-        }
+        });
       }
     }
 
-    if ((suiteId && totalEnhanced > 0) || regenerate) {
+    // ── Update suite metadata ───────────────────────────────────────────────
+    if (suiteId && (totalEnhanced > 0 || regenerate)) {
       const now = new Date().toISOString();
-
       const { error: updateError } = await supabase
         .from("suites")
         .update({
@@ -779,7 +631,6 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
 
       if (updateError) {
         console.error("Failed to update suite metadata:", updateError);
-      } else {
       }
     }
 
@@ -811,7 +662,6 @@ async function handleCrossPlatformAutomation(
   platformTestCaseIds: string[],
   applicationUrl: string,
 ) {
-  // Fetch platform test cases
   const { data: platformCases, error: fetchError } = await supabase
     .from("platform_test_cases")
     .select("id, title, description, steps, expected_results, platform")
@@ -819,7 +669,6 @@ async function handleCrossPlatformAutomation(
     .eq("user_id", userId);
 
   if (fetchError || !platformCases) {
-    console.error("[Automation] Fetch error:", fetchError);
     return NextResponse.json(
       { error: "Failed to fetch platform test cases" },
       { status: 500 },
@@ -844,13 +693,13 @@ async function handleCrossPlatformAutomation(
   const enhanced: any[] = [];
   const failed: any[] = [];
 
-  for (const tc of casesNeedingAutomation) {
+  await processBatch(casesNeedingAutomation, async (tc: any) => {
     try {
       const steps = Array.isArray(tc.steps) ? tc.steps : [];
 
       if (steps.length === 0) {
         failed.push({ id: tc.id, title: tc.title, reason: "No test steps" });
-        continue;
+        return;
       }
 
       const prompt = `${AUTOMATION_ENHANCEMENT_PROMPT}
@@ -864,18 +713,9 @@ DESCRIPTION: ${tc.description || "N/A"}
 STEPS TO ENHANCE:
 ${JSON.stringify(steps, null, 2)}
 
-Return ONLY a JSON object with an "enhanced_steps" array.`;
+Return ONLY a valid JSON object with an "enhanced_steps" array. No explanation, no markdown, no backticks. Just the raw JSON.`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        max_tokens: 4000,
-        temperature: 0.3,
-      });
-
-      const content = response.choices?.[0]?.message?.content ?? "{}";
-      const parsed = JSON.parse(content) as { enhanced_steps?: TestStep[] };
+      const parsed = await enhanceStepsWithAI(prompt);
 
       if (!parsed.enhanced_steps || !Array.isArray(parsed.enhanced_steps)) {
         failed.push({
@@ -883,7 +723,7 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
           title: tc.title,
           reason: "Invalid AI response",
         });
-        continue;
+        return;
       }
 
       const enhanced_steps = postProcessSteps(
@@ -891,7 +731,6 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
         applicationUrl,
       );
 
-      // Update platform test case
       const { error: updateError } = await supabase
         .from("platform_test_cases")
         .update({ steps: enhanced_steps })
@@ -918,10 +757,10 @@ Return ONLY a JSON object with an "enhanced_steps" array.`;
         reason: error instanceof Error ? error.message : "Unknown error",
       });
     }
-  }
+  });
+
   const now = new Date().toISOString();
 
-  // Update suite automation metadata
   if (enhanced.length > 0) {
     await supabase
       .from("suites")

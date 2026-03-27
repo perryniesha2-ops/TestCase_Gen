@@ -30,8 +30,16 @@ export async function signup(formData: FormData) {
     return { error: "Email and password are required" };
   }
 
+  if (data.email.length > 254) {
+    return { error: "Email address must not exceed 254 characters" };
+  }
+
   if (data.password.length < 6) {
     return { error: "Password must be at least 6 characters" };
+  }
+
+  if (data.password.length > 72) {
+    return { error: "Password must not exceed 72 characters" };
   }
 
   // Create user in Supabase Auth
@@ -196,6 +204,14 @@ export async function customSignup(formData: FormData) {
 
   if (data.password.length < 6) {
     return { error: "Password must be at least 6 characters" };
+  }
+
+  if (data.password.length > 72) {
+    return { error: "Password must not exceed 72 characters" };
+  }
+
+  if (data.email.length > 254) {
+    return { error: "Email address must not exceed 254 characters" };
   }
 
   try {
@@ -461,6 +477,9 @@ export async function customUpdatePassword(formData: FormData) {
   if (!password || password.length < 6) {
     return { error: "Password must be at least 6 characters" };
   }
+  if (password.length > 72) {
+    return { error: "Password must not exceed 72 characters" };
+  }
 
   try {
     // Verify token
@@ -499,6 +518,9 @@ export async function updatePassword(formData: FormData) {
 
   if (!password || password.length < 6) {
     return { error: "Password must be at least 6 characters" };
+  }
+  if (password.length > 72) {
+    return { error: "Password must not exceed 72 characters" };
   }
 
   const { error } = await supabase.auth.updateUser({

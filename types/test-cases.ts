@@ -271,25 +271,6 @@ export interface Attachment {
   uploaded_at: string;
 }
 
-export type ExecutionHistoryRow = {
-  execution_id: string;
-  suite_id: string;
-  suite_name: string;
-  session_id: string | null;
-
-  test_case_id: string;
-  test_title: string;
-
-  execution_status: ExecutionStatus;
-  failure_reason: string | null;
-
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-
-  evidence_count: number;
-};
-
 export interface TestAttachment {
   id: string;
   file_name: string;

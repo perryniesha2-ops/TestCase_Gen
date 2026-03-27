@@ -50,8 +50,8 @@ export function SiteNav() {
   const navAnimate = reduce
     ? undefined
     : hidden
-    ? { y: -92, opacity: 0 } // ~header height
-    : { y: 0, opacity: 1 };
+      ? { y: -92, opacity: 0 } // ~header height
+      : { y: 0, opacity: 1 };
 
   return (
     <motion.header
@@ -100,8 +100,8 @@ export function SiteNav() {
             <Image
               src="/logo-sq-light.svg"
               alt="SynthQA Logo"
-              width={1000}
-              height={100}
+              width={5000}
+              height={2000}
               className="inline-block dark:hidden h-20 w-auto sm:h-20"
               loading="eager"
               priority
