@@ -121,7 +121,7 @@ type BootstrapResponse = {
   defaults: BootstrapDefaults;
 };
 
-const MIN_REQUIREMENTS_LENGTH = 50;
+const MIN_REQUIREMENTS_LENGTH = 10;
 const MAX_REQUIREMENTS_LENGTH = 5000;
 
 const PLACEHOLDER_REQUIREMENTS: RequirementOption[] = [
@@ -696,7 +696,7 @@ export function GeneratorForm() {
                     </span>
                   </div>
 
-                  {customRequirements.length > 50 && (
+                  {customRequirements.length > 10 && (
                     <div
                       className="p-3 bg-blue-50 border border-blue-200 rounded-md"
                       data-testid="save-requirement-prompt"
