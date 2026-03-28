@@ -1,0 +1,20 @@
+# .github/workflows/weekly-summary.yml
+name: Weekly Test Summary
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'  # Every Monday at 8am UTC
+  workflow_dispatch:       # Allow manual trigger from GitHub UI
+
+jobs:
+  send-weekly-summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send weekly summary notifications
+        run: |
+          curl -X POST "${{ secrets.APP_URL }}/api/notifications/weekly-summary" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error

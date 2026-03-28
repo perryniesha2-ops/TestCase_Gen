@@ -176,19 +176,19 @@ function generateExecutableStep(step: TestStep): string {
         lines.push(`await page.locator('${sel}').click();`);
         break;
 
-     case "fill":
-  if (step.input_value !== undefined) {
-    const val = resolveEnvVar(step.selector, step.input_value);
-    lines.push(`await page.locator('${sel}').fill(${val});`);
-  }
-  break;
+      case "fill":
+        if (step.input_value !== undefined) {
+          const val = resolveEnvVar(step.selector, step.input_value);
+          lines.push(`await page.locator('${sel}').fill(${val});`);
+        }
+        break;
 
-     case "type":
-  if (step.input_value !== undefined) {
-    const val = resolveEnvVar(step.selector, step.input_value);
-    lines.push(`await page.locator('${sel}').pressSequentially(${val});`);
-  }
-  break;
+      case "type":
+        if (step.input_value !== undefined) {
+          const val = resolveEnvVar(step.selector, step.input_value);
+          lines.push(`await page.locator('${sel}').pressSequentially(${val});`);
+        }
+        break;
 
       case "select":
         if (step.input_value !== undefined) {
@@ -219,14 +219,16 @@ function generateExecutableStep(step: TestStep): string {
         if (step.input_value !== undefined) {
           const url = step.input_value;
 
-          if (url.startsWith("http://") || url.startsWith("https://")) {
-            // Full URL - use as-is (don't concatenate with baseUrl)
-            lines.push(`await page.goto('${escapeString(url)}');`);
-          } else {
-            // Relative path - concatenate with baseUrl
-            const path = url.startsWith("/") ? url : `/${url}`;
-            lines.push(`await page.goto(baseUrl + '${escapeString(path)}');`);
-          }
+          let path = url;
+          try {
+            const parsed = new URL(url);
+            path = parsed.pathname + parsed.search + parsed.hash;
+          } catch {}
+
+          const cleanPath = path.startsWith("/") ? path : `/${path}`;
+          lines.push(
+            `await page.goto(baseUrl + '${escapeString(cleanPath)}');`,
+          );
         }
         break;
 
@@ -288,14 +290,21 @@ function generateExecutableStep(step: TestStep): string {
 
         case "url":
           if (step.assertion.value !== undefined) {
-            const val = escapeString(String(step.assertion.value));
-            if (val.includes("/") || val.includes("^") || val.includes("$")) {
-              const escapedPattern = val.replace(/\//g, "\\/");
-              lines.push(`await expect(page).toHaveURL(/${escapedPattern}/);`);
-            } else {
-              // Simple string match - more reliable
-              lines.push(`await expect(page).toHaveURL('${val}');`);
+            const val = String(step.assertion.value);
+
+            // Extract just the path from full URLs
+            let assertPath = val;
+            try {
+              const parsed = new URL(val);
+              assertPath = parsed.pathname;
+            } catch {
+              // Already a path or pattern
             }
+
+            const escapedPath = escapeString(assertPath);
+            lines.push(
+              `await expect(page).toHaveURL(new RegExp(escapeRegex(baseUrl) + '${escapedPath}'));`,
+            );
           }
           break;
 

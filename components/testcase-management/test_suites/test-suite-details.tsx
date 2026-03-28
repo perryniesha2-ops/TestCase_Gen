@@ -160,6 +160,22 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
 
   const suiteName = details.suite?.name ?? "Suite";
 
+  if (!authLoading && !suiteName) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold mb-2">Suite not found</h2>
+          <p className="text-muted-foreground mb-4">
+            This suite doesn't exist or you don't have access to it.
+          </p>
+          <Button onClick={() => router.push("/test-library")}>
+            Back to Test Library
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Page header */}

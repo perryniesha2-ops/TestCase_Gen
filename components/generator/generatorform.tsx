@@ -121,6 +121,9 @@ type BootstrapResponse = {
   defaults: BootstrapDefaults;
 };
 
+const MIN_REQUIREMENTS_LENGTH = 10;
+const MAX_REQUIREMENTS_LENGTH = 5000;
+
 const PLACEHOLDER_REQUIREMENTS: RequirementOption[] = [
   {
     id: "login",
@@ -204,14 +207,12 @@ function coerceCanonicalTestTypes(
   fallback: CanonicalTestType[] = ["happy-path"],
 ): CanonicalTestType[] {
   if (!Array.isArray(v)) return fallback;
-
   const out = v
     .filter((x): x is string => typeof x === "string")
     .map((s) => s.trim())
     .filter((s): s is CanonicalTestType =>
       CANONICAL.has(s as CanonicalTestType),
     );
-
   return out.length > 0 ? out : fallback;
 }
 
@@ -220,13 +221,9 @@ function clampTestCount(n: number, min = 1, max = 100) {
   return Math.max(min, Math.min(max, Math.floor(n)));
 }
 
-/**
- * Single bootstrap loader: user + projects + requirements + defaults
- */
 function useGeneratorBootstrap(userId: string | undefined) {
   const router = useRouter();
   const [bootstrapping, setBootstrapping] = useState(true);
-  const [user, setUser] = useState<UserProfile | null>(null);
   const [projects, setProjects] = useState<ProjectRowLite[]>([]);
   const [requirements, setRequirements] = useState<RequirementOption[]>([]);
   const [defaults, setDefaults] = useState<BootstrapDefaults>(null);
@@ -264,28 +261,24 @@ function useGeneratorBootstrap(userId: string | undefined) {
         router.push("/login");
         return;
       }
-
-      if (!res.ok) {
+      if (!res.ok)
         throw new Error(
           data?.error ||
             data?.details ||
             `Bootstrap failed (HTTP ${res.status})`,
         );
-      }
 
       setProjects(data.projects ?? []);
       setRequirements(mapRequirementsToOptions(data.requirements ?? []));
       setDefaults(data.defaults ?? null);
     } catch (e) {
       if ((e as any)?.name === "AbortError") return;
-
       console.error("❌ Bootstrap load error:", e);
       toast.error("Unable to load generator data", {
         description: e instanceof Error ? e.message : "Please try again.",
         duration: 7000,
       });
-
-      setRequirements([]); // fallback to placeholders via useMemo
+      setRequirements([]);
     } finally {
       setBootstrapping(false);
     }
@@ -296,44 +289,30 @@ function useGeneratorBootstrap(userId: string | undefined) {
     return () => abortRef.current?.abort();
   }, [load, userId]);
 
-  return {
-    bootstrapping,
-    projects,
-    requirements,
-    defaults,
-    reload: load,
-  };
+  return { bootstrapping, projects, requirements, defaults, reload: load };
 }
 
 export function GeneratorForm() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
-  // Bootstrap
   const {
     bootstrapping,
-    projects,
     requirements: bootReqs,
     defaults,
   } = useGeneratorBootstrap(user?.id);
 
-  // UI state
   const [submitting, setSubmitting] = useState(false);
   const [mode, setMode] = useState<"quick" | "saved">("quick");
   const [selectedRequirement, setSelectedRequirement] = useState("");
   const [customRequirements, setCustomRequirements] = useState("");
-
   const [selectedTemplate, setSelectedTemplate] =
     useState<TemplateFromSelect | null>(null);
-
-  // Generation settings
   const [model, setModel] = useState(getDefaultModel);
   const [testCaseCount, setTestCaseCount] = useState("10");
   const [selectedTestTypes, setSelectedTestTypes] = useState<
     CanonicalTestType[]
   >(["happy-path", "negative", "boundary"]);
-
-  // Title/description + project
   const [generationTitle, setGenerationTitle] = useState("");
   const [generationDescription, setGenerationDescription] = useState("");
   const [selectedProject, setSelectedProject] = useState<string>("");
@@ -341,12 +320,10 @@ export function GeneratorForm() {
     "none",
   );
 
-  // Apply defaults from bootstrap once
   const defaultsAppliedRef = useRef(false);
   useEffect(() => {
     if (defaultsAppliedRef.current) return;
     if (!defaults) return;
-
     setModel(
       isModelAllowed(defaults.model ?? "")
         ? migrateModelKey(defaults.model!)
@@ -360,15 +337,14 @@ export function GeneratorForm() {
         "boundary",
       ]),
     );
-
     defaultsAppliedRef.current = true;
   }, [defaults]);
 
-  const availableRequirements = useMemo(() => {
-    return bootReqs.length > 0 ? bootReqs : PLACEHOLDER_REQUIREMENTS;
-  }, [bootReqs]);
+  const availableRequirements = useMemo(
+    () => (bootReqs.length > 0 ? bootReqs : PLACEHOLDER_REQUIREMENTS),
+    [bootReqs],
+  );
 
-  // Ensure selectedRequirement has a value when in saved mode
   useEffect(() => {
     if (mode !== "saved") return;
     if (selectedRequirement) return;
@@ -376,36 +352,29 @@ export function GeneratorForm() {
     setSelectedRequirement(availableRequirements[0].id);
   }, [mode, selectedRequirement, availableRequirements]);
 
-  const selectedReqData = useMemo(() => {
-    return availableRequirements.find((r) => r.id === selectedRequirement);
-  }, [availableRequirements, selectedRequirement]);
+  const selectedReqData = useMemo(
+    () => availableRequirements.find((r) => r.id === selectedRequirement),
+    [availableRequirements, selectedRequirement],
+  );
 
   const savedRequirementsText = selectedReqData?.value || "";
   const finalRequirementsText =
     mode === "quick" ? customRequirements : savedRequirementsText;
 
-  // Auto-fill title/description when a saved requirement is selected
   useEffect(() => {
-    if (mode !== "saved") return;
-    if (!selectedReqData) return;
-
+    if (mode !== "saved" || !selectedReqData) return;
     setGenerationTitle(`${selectedReqData.title} Test Cases`);
     setGenerationDescription(selectedReqData.description || "");
   }, [mode, selectedReqData?.id]);
 
-  // Auto-apply project from requirement if present
   useEffect(() => {
-    if (mode !== "saved") return;
-    if (!selectedReqData) return;
-
+    if (mode !== "saved" || !selectedReqData) return;
     const reqProjectId = selectedReqData.project_id ?? null;
-
     if (reqProjectId) {
       setSelectedProject(reqProjectId);
       setProjectSource("requirement");
       return;
     }
-
     if (projectSource === "requirement") {
       setSelectedProject("");
       setProjectSource("none");
@@ -417,10 +386,12 @@ export function GeneratorForm() {
   const switchMode = useCallback(
     (nextMode: "quick" | "saved") => {
       setMode(nextMode);
-      if (nextMode === "saved") {
-        if (!selectedRequirement && availableRequirements.length > 0) {
-          setSelectedRequirement(availableRequirements[0].id);
-        }
+      if (
+        nextMode === "saved" &&
+        !selectedRequirement &&
+        availableRequirements.length > 0
+      ) {
+        setSelectedRequirement(availableRequirements[0].id);
       }
     },
     [availableRequirements, selectedRequirement],
@@ -430,13 +401,19 @@ export function GeneratorForm() {
     (template: TemplateFromSelect | null) => {
       setSelectedTemplate(template);
       if (!template) return;
-
-      const settings = template.template_content;
-      setModel(migrateModelKey(settings.model));
-      setTestCaseCount(String(settings.testCaseCount));
+      setModel(migrateModelKey(template.template_content.model));
+      setTestCaseCount(String(template.template_content.testCaseCount));
     },
     [],
   );
+
+  function sanitizeInput(input: string): string {
+    return input
+      .replace(/<[^>]*>/g, "")
+      .replace(/javascript:/gi, "")
+      .replace(/on\w+\s*=/gi, "")
+      .trim();
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -458,38 +435,69 @@ export function GeneratorForm() {
         testCaseCountNum > 100
       ) {
         toast.error("Please select a valid number of test cases.");
-        setSubmitting(false);
-        return;
-      }
-
-      if (mode === "quick" && !customRequirements.trim()) {
-        toast.error("Please enter your requirements.");
-        setSubmitting(false);
-        return;
-      }
-
-      if (mode === "saved" && !savedRequirementsText.trim()) {
-        toast.error("Please select a requirement.");
-        setSubmitting(false);
         return;
       }
 
       if (!generationTitle.trim()) {
         toast.error("Please enter a generation title.");
-        setSubmitting(false);
+        return;
+      }
+
+      if (mode === "quick") {
+        const trimmed = customRequirements.trim();
+        if (!trimmed) {
+          toast.error("Please enter your requirements.");
+          return;
+        }
+        if (trimmed.length < MIN_REQUIREMENTS_LENGTH) {
+          toast.error("Requirements too short", {
+            description: `Please enter at least ${MIN_REQUIREMENTS_LENGTH} characters. Currently ${trimmed.length} characters.`,
+          });
+          return;
+        }
+        if (trimmed.length > MAX_REQUIREMENTS_LENGTH) {
+          toast.error("Requirements too long", {
+            description: `Please keep requirements under ${MAX_REQUIREMENTS_LENGTH} characters.`,
+          });
+          return;
+        }
+      }
+
+      if (mode === "saved" && !savedRequirementsText.trim()) {
+        toast.error("Please select a requirement.");
+        return;
+      }
+
+      const sanitizedTitle = sanitizeInput(generationTitle);
+      const sanitizedDescription = generationDescription
+        ? sanitizeInput(generationDescription)
+        : null;
+      const sanitizedRequirements = sanitizeInput(finalRequirementsText);
+
+      if (!sanitizedTitle) {
+        toast.error("Title contains invalid characters. Please revise.");
+        return;
+      }
+      if (
+        !sanitizedRequirements ||
+        sanitizedRequirements.length < MIN_REQUIREMENTS_LENGTH
+      ) {
+        toast.error(
+          "Requirements contain invalid content or are too short after sanitization.",
+        );
         return;
       }
 
       const requestPayload = {
-        requirements: finalRequirementsText.trim(),
+        requirements: sanitizedRequirements,
         requirement_id:
           mode === "saved" && selectedReqData ? selectedRequirement : null,
         model: model.trim(),
         testCaseCount: testCaseCountNum,
         testTypes: selectedTestTypes,
         template: selectedTemplate?.id || null,
-        title: generationTitle.trim(),
-        description: generationDescription?.trim() || null,
+        title: sanitizedTitle,
+        description: sanitizedDescription,
         project_id: selectedProject || null,
       };
 
@@ -503,35 +511,26 @@ export function GeneratorForm() {
 
       if (response.status === 429) {
         toast.error("Monthly usage limit reached", {
-          description: `You have ${
-            data.remaining || 0
-          } test cases remaining. Upgrade to Pro for 500 test cases/month.`,
+          description: `You have ${data.remaining || 0} test cases remaining. Upgrade to Pro for 500 test cases/month.`,
           duration: 8000,
-          action: {
-            label: "Upgrade",
-            onClick: () => router.push("/billing"),
-          },
+          action: { label: "Upgrade", onClick: () => router.push("/billing") },
         });
         return;
       }
 
       if (!response.ok) {
-        if (
-          response.status === 504 ||
-          response.status === 502 ||
-          response.status === 503
-        ) {
+        if ([502, 503, 504].includes(response.status)) {
           toast.error(
             "Generation timed out. This can happen with larger test case counts — please try again.",
           );
           return;
         }
+        throw new Error(data?.error || "Generation failed");
       }
 
       toast.success("Test cases generated!", {
         description: `Created ${data.count} test cases using ${data.provider_used}`,
       });
-
       router.push(`/test-cases?generation=${data.generation_id}`);
     } catch (err) {
       console.error("❌ Generation error:", err);
@@ -573,7 +572,6 @@ export function GeneratorForm() {
         </CardHeader>
 
         <CardContent>
-          {/* Bootstrap loading banner */}
           {bootstrapping && (
             <div className="mb-6 flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -583,7 +581,11 @@ export function GeneratorForm() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-6"
+            data-testid="generator-form"
+          >
             {/* Title / Description */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -591,6 +593,7 @@ export function GeneratorForm() {
                 <Input
                   id="title"
                   name="title"
+                  data-testid="input-generation-title"
                   value={generationTitle}
                   onChange={(e) => setGenerationTitle(e.target.value)}
                   placeholder="e.g., User Login Test Cases"
@@ -604,6 +607,7 @@ export function GeneratorForm() {
                 <Input
                   id="description"
                   name="description"
+                  data-testid="input-generation-description"
                   value={generationDescription}
                   onChange={(e) => setGenerationDescription(e.target.value)}
                   placeholder="Brief description..."
@@ -626,12 +630,16 @@ export function GeneratorForm() {
               </div>
 
               {/* Mode Toggle */}
-              <div className="flex items-center gap-2 p-1 bg-muted rounded-lg">
+              <div
+                className="flex items-center gap-2 p-1 bg-muted rounded-lg"
+                data-testid="requirements-mode-toggle"
+              >
                 <Button
                   type="button"
                   variant={mode === "quick" ? "default" : "ghost"}
                   size="sm"
                   className="flex-1 h-8"
+                  data-testid="btn-mode-quick"
                   onClick={() => switchMode("quick")}
                   disabled={pageBusy}
                 >
@@ -642,6 +650,7 @@ export function GeneratorForm() {
                   variant={mode === "saved" ? "default" : "ghost"}
                   size="sm"
                   className="flex-1 h-8"
+                  data-testid="btn-mode-saved"
                   onClick={() => switchMode("saved")}
                   disabled={pageBusy}
                 >
@@ -659,17 +668,39 @@ export function GeneratorForm() {
                     <span className="text-destructive">*</span>
                   </Label>
                   <textarea
-                    id="custom-requirements"
+                    name="requirements"
+                    data-testid="textarea-requirements"
                     className="w-full min-h-[200px] p-3 text-sm border rounded-md font-mono resize-y focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="Describe what you want to test. Be as detailed as possible."
                     value={customRequirements}
                     onChange={(e) => setCustomRequirements(e.target.value)}
-                    disabled={pageBusy}
-                    required
+                    placeholder="Describe what you want to test..."
+                    maxLength={MAX_REQUIREMENTS_LENGTH}
                   />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span data-testid="requirements-char-hint">
+                      {customRequirements.trim().length <
+                        MIN_REQUIREMENTS_LENGTH && customRequirements.length > 0
+                        ? `${MIN_REQUIREMENTS_LENGTH - customRequirements.trim().length} more characters needed`
+                        : ""}
+                    </span>
+                    <span
+                      data-testid="requirements-char-count"
+                      className={
+                        customRequirements.length >
+                        MAX_REQUIREMENTS_LENGTH * 0.9
+                          ? "text-orange-500"
+                          : ""
+                      }
+                    >
+                      {customRequirements.length} / {MAX_REQUIREMENTS_LENGTH}
+                    </span>
+                  </div>
 
-                  {customRequirements.length > 50 && (
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  {customRequirements.length > 10 && (
+                    <div
+                      className="p-3 bg-blue-50 border border-blue-200 rounded-md"
+                      data-testid="save-requirement-prompt"
+                    >
                       <div className="flex items-start gap-3">
                         <div className="bg-blue-500 rounded-full p-1 mt-0.5">
                           <Info className="h-3 w-3 text-white" />
@@ -706,7 +737,10 @@ export function GeneratorForm() {
                     onValueChange={setSelectedRequirement}
                     disabled={pageBusy}
                   >
-                    <SelectTrigger className="h-10">
+                    <SelectTrigger
+                      className="h-10"
+                      data-testid="select-saved-requirement"
+                    >
                       <SelectValue placeholder="Select a requirement" />
                     </SelectTrigger>
                     <SelectContent>
@@ -714,11 +748,7 @@ export function GeneratorForm() {
                         <SelectItem key={req.id} value={req.id}>
                           <div className="flex items-center gap-2">
                             <div
-                              className={`w-2 h-2 rounded-full ${
-                                bootReqs.length > 0
-                                  ? "bg-blue-500"
-                                  : "bg-gray-400"
-                              }`}
+                              className={`w-2 h-2 rounded-full ${bootReqs.length > 0 ? "bg-blue-500" : "bg-gray-400"}`}
                             />
                             {req.label}
                           </div>
@@ -728,17 +758,19 @@ export function GeneratorForm() {
                   </Select>
 
                   {selectedReqData && (
-                    <div className="border rounded-md bg-muted/20">
+                    <div
+                      className="border rounded-md bg-muted/20"
+                      data-testid="saved-requirement-preview"
+                    >
                       <div className="flex items-center justify-between p-3 border-b bg-muted/40">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium text-sm">
-                            {selectedReqData.title || selectedReqData.label}
-                          </h4>
-                        </div>
+                        <h4 className="font-medium text-sm">
+                          {selectedReqData.title || selectedReqData.label}
+                        </h4>
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
+                          data-testid="btn-customize-requirement"
                           onClick={() => {
                             setCustomRequirements(savedRequirementsText);
                             switchMode("quick");
@@ -760,7 +792,10 @@ export function GeneratorForm() {
             </div>
 
             {/* Project Selection */}
-            <div className="mt-4 space-y-3 border rounded-lg p-4 bg-muted/30">
+            <div
+              className="mt-4 space-y-3 border rounded-lg p-4 bg-muted/30"
+              data-testid="project-selection"
+            >
               <div>
                 <Label className="text-sm font-medium">Project</Label>
                 <p className="text-xs text-muted-foreground">
@@ -768,7 +803,6 @@ export function GeneratorForm() {
                   linking assets.
                 </p>
               </div>
-
               <ProjectSelect
                 value={selectedProject || undefined}
                 disabled={pageBusy}
@@ -777,7 +811,10 @@ export function GeneratorForm() {
             </div>
 
             {/* Template Selection */}
-            <div className="mt-4 space-y-3 border rounded-lg p-4 bg-muted/30">
+            <div
+              className="mt-4 space-y-3 border rounded-lg p-4 bg-muted/30"
+              data-testid="template-selection"
+            >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex-1">
                   <TemplateSelect
@@ -787,9 +824,11 @@ export function GeneratorForm() {
                   />
                 </div>
               </div>
-
               {selectedTemplate && (
-                <p className="text-xs text-muted-foreground">
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-testid="template-applied-notice"
+                >
                   Template{" "}
                   <span className="font-medium">
                     &quot;{selectedTemplate.name}&quot;
@@ -801,7 +840,10 @@ export function GeneratorForm() {
 
             {/* Settings */}
             {!templateApplied && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div
+                className="grid grid-cols-1 md:grid-cols-2 gap-6"
+                data-testid="generation-settings"
+              >
                 {/* AI Model */}
                 <div className="space-y-2">
                   <Label htmlFor="model">AI Model</Label>
@@ -811,7 +853,10 @@ export function GeneratorForm() {
                     onValueChange={(v) => setModel(migrateModelKey(v))}
                     disabled={pageBusy}
                   >
-                    <SelectTrigger className="h-10">
+                    <SelectTrigger
+                      className="h-10"
+                      data-testid="select-ai-model"
+                    >
                       <SelectValue placeholder="Select model" />
                     </SelectTrigger>
                     <SelectContent>
@@ -839,7 +884,10 @@ export function GeneratorForm() {
                     onValueChange={setTestCaseCount}
                     disabled={pageBusy}
                   >
-                    <SelectTrigger className="h-10">
+                    <SelectTrigger
+                      className="h-10"
+                      data-testid="select-test-case-count"
+                    >
                       <SelectValue placeholder="Select count" />
                     </SelectTrigger>
                     <SelectContent>
@@ -856,17 +904,16 @@ export function GeneratorForm() {
                 {/* Test Types */}
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="test-types" className="text-base font-medium">
-                    Test Types
-                    <span className="text-destructive ml-1">*</span>
+                    Test Types <span className="text-destructive ml-1">*</span>
                   </Label>
-
-                  <TestTypeMultiselect
-                    value={selectedTestTypes}
-                    onChange={setSelectedTestTypes}
-                    disabled={pageBusy}
-                    placeholder="Select test types to generate..."
-                  />
-
+                  <div data-testid="select-test-types">
+                    <TestTypeMultiselect
+                      value={selectedTestTypes}
+                      onChange={setSelectedTestTypes}
+                      disabled={pageBusy}
+                      placeholder="Select test types to generate..."
+                    />
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     Select which types of test cases to generate. More types =
                     more comprehensive coverage.
@@ -875,7 +922,12 @@ export function GeneratorForm() {
               </div>
             )}
 
-            <Button type="submit" className="w-full h-11" disabled={pageBusy}>
+            <Button
+              type="submit"
+              className="w-full h-11"
+              disabled={pageBusy}
+              data-testid="btn-generate"
+            >
               {pageBusy ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -891,7 +943,6 @@ export function GeneratorForm() {
           </form>
         </CardContent>
       </Card>
-
       <div className="h-2" />
     </div>
   );

@@ -1,6 +1,7 @@
 // app/api/automation/webhook/results/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendNotification } from "@/lib/notifications/send";
 
 export const runtime = "nodejs";
 
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
 
     const { data: suite, error: suiteError } = await supabase
       .from("suites")
-      .select("id, user_id, total_automation_runs")
+      .select("id, name, user_id, total_automation_runs")
       .eq("id", payload.suite_id)
       .eq("user_id", profile.id)
       .single();
@@ -242,8 +243,6 @@ export async function POST(req: Request) {
         details: executionsError.details,
         hint: executionsError.hint,
       });
-      // Don't fail the whole request — automation run was saved successfully
-      // Just report the partial failure
       return NextResponse.json({
         success: true,
         automation_run_id: automationRun.id,
@@ -251,6 +250,52 @@ export async function POST(req: Request) {
         executions_saved: 0,
         executions_error: executionsError.message,
         message: `Automation run #${runNumber} saved but test executions failed: ${executionsError.message}`,
+      });
+    }
+
+    // ── Fire notifications after successful insert ──
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.synthqa.com";
+    const durationStr = `${Math.round(durationMs / 1000)}s`;
+    const passRate =
+      payload.metadata.total_tests > 0
+        ? Math.round(
+            (payload.metadata.passed_tests / payload.metadata.total_tests) *
+              100,
+          )
+        : 0;
+
+    if (payload.metadata.failed_tests > 0) {
+      const failedResults = payload.test_results.filter(
+        (r) => r.execution_status === "failed",
+      );
+      void sendNotification({
+        event: "run_failed",
+        userId: profile.id,
+        suiteName: suite.name,
+        suiteId: payload.suite_id,
+        runNumber,
+        totalTests: payload.metadata.total_tests,
+        failedTests: payload.metadata.failed_tests,
+        failedCases: failedResults.map((r) => ({
+          title: r.test_case_id ?? "Unknown",
+          reason: r.failure_reason,
+        })),
+        appUrl,
+      });
+    } else {
+      void sendNotification({
+        event: "automation_completed",
+        userId: profile.id,
+        suiteName: suite.name,
+        suiteId: payload.suite_id,
+        runNumber,
+        framework,
+        totalTests: payload.metadata.total_tests,
+        passedTests: payload.metadata.passed_tests,
+        failedTests: 0,
+        passRate,
+        duration: durationStr,
+        appUrl,
       });
     }
 

@@ -41,7 +41,7 @@ export function TestSuiteTable({
   getProjectColor,
 }: Props) {
   return (
-    <div className="border rounded-lg">
+    <div className="border rounded-lg" data-testid="suite-table">
       <Table>
         <TableHeader>
           <TableRow>
@@ -56,7 +56,7 @@ export function TestSuiteTable({
           </TableRow>
         </TableHeader>
 
-        <TableBody>
+        <TableBody data-testid="suite-table-body">
           {suites.length === 0 ? (
             <TableRow>
               <TableCell colSpan={8} className="text-center py-12">
@@ -70,7 +70,12 @@ export function TestSuiteTable({
                     : "Create your first test suite to get started"}
                 </p>
                 {!searchTerm && filterType === "all" && (
-                  <Button onClick={onCreateSuite}>Create Test Suite</Button>
+                  <Button
+                    onClick={onCreateSuite}
+                    data-testid="btn-create-first-suite"
+                  >
+                    Create Test Suite
+                  </Button>
                 )}
               </TableCell>
             </TableRow>
@@ -79,10 +84,19 @@ export function TestSuiteTable({
               const suiteKind = (suite as any).kind || "regular";
 
               return (
-                <TableRow key={suite.id} className="group">
+                <TableRow
+                  key={suite.id}
+                  className="group"
+                  data-testid="suite-row"
+                  data-suite-id={suite.id}
+                  data-suite-name={suite.name}
+                >
                   <TableCell>
                     <div className="space-y-1">
-                      <div className="font-medium flex items-center gap-2">
+                      <div
+                        className="font-medium flex items-center gap-2"
+                        data-testid="suite-name"
+                      >
                         {getStatusIcon(suite.status)}
                         {suite.name}
                       </div>
@@ -98,6 +112,7 @@ export function TestSuiteTable({
                         suiteKind === "cross-platform" ? "secondary" : "outline"
                       }
                       className="capitalize"
+                      data-testid="suite-kind-badge"
                     >
                       <div className="flex items-center gap-1">
                         {suiteKind === "cross-platform" ? (
@@ -118,6 +133,7 @@ export function TestSuiteTable({
                   <TableCell>
                     <Badge
                       className={getSuiteTypeColor(getDisplaySuiteType(suite))}
+                      data-testid="suite-type-badge"
                     >
                       {getDisplaySuiteType(suite)}
                     </Badge>
@@ -125,7 +141,10 @@ export function TestSuiteTable({
 
                   <TableCell>
                     {suite.projects ? (
-                      <div className="flex items-center gap-2">
+                      <div
+                        className="flex items-center gap-2"
+                        data-testid="suite-project"
+                      >
                         <FolderOpen
                           className={`h-4 w-4 ${getProjectColor(
                             suite.projects.color,
@@ -136,16 +155,24 @@ export function TestSuiteTable({
                         </span>
                       </div>
                     ) : (
-                      <span className="text-xs text-muted-foreground">
+                      <span
+                        className="text-xs text-muted-foreground"
+                        data-testid="suite-no-project"
+                      >
                         No project
                       </span>
                     )}
                   </TableCell>
 
-                  <TableCell>{getStatusBadge(suite.status)}</TableCell>
+                  <TableCell data-testid="suite-status">
+                    {getStatusBadge(suite.status)}
+                  </TableCell>
 
                   <TableCell>
-                    <div className="flex items-center gap-2">
+                    <div
+                      className="flex items-center gap-2"
+                      data-testid="suite-test-case-count"
+                    >
                       <Target className="h-4 w-4 text-muted-foreground" />
                       <span className="font-medium">
                         {suite.test_case_count}
@@ -156,12 +183,15 @@ export function TestSuiteTable({
                   <TableCell>
                     {suite.execution_stats &&
                     suite.execution_stats.total > 0 ? (
-                      <div className="space-y-2">
+                      <div className="space-y-2" data-testid="suite-progress">
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-muted-foreground">
                             Pass Rate
                           </span>
-                          <span className="font-medium">
+                          <span
+                            className="font-medium"
+                            data-testid="suite-pass-rate"
+                          >
                             {Math.round(
                               (suite.execution_stats.passed /
                                 suite.execution_stats.total) *
@@ -179,19 +209,31 @@ export function TestSuiteTable({
                           className="h-2"
                         />
                         <div className="flex gap-3 text-xs">
-                          <span className="text-green-600">
+                          <span
+                            className="text-green-600"
+                            data-testid="suite-passed-count"
+                          >
                             ✓ {suite.execution_stats.passed}
                           </span>
-                          <span className="text-red-600">
+                          <span
+                            className="text-red-600"
+                            data-testid="suite-failed-count"
+                          >
                             ✗ {suite.execution_stats.failed}
                           </span>
-                          <span className="text-orange-600">
+                          <span
+                            className="text-orange-600"
+                            data-testid="suite-blocked-count"
+                          >
                             ⚠ {suite.execution_stats.blocked}
                           </span>
                         </div>
                       </div>
                     ) : (
-                      <span className="text-sm text-muted-foreground">
+                      <span
+                        className="text-sm text-muted-foreground"
+                        data-testid="suite-no-runs"
+                      >
                         No runs yet
                       </span>
                     )}
@@ -202,6 +244,8 @@ export function TestSuiteTable({
                       variant="ghost"
                       size="sm"
                       onClick={() => onViewDetails(suite)}
+                      data-testid="btn-suite-details"
+                      data-suite-id={suite.id}
                     >
                       Details
                     </Button>
