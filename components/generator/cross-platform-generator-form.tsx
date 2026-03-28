@@ -127,6 +127,9 @@ type BootstrapResponse = {
    Constants / Helpers
 ========================= */
 
+const MIN_REQUIREMENT_LENGTH = 10;
+const MAX_REQUIREMENT_LENGTH = 5000;
+
 const platformOptions: Array<{
   id: PlatformId;
   name: string;
@@ -614,6 +617,14 @@ export function CrossPlatformGeneratorForm() {
     apiFormat,
   ]);
 
+  function sanitizeInput(input: string): string {
+    return input
+      .replace(/<[^>]*>/g, "") // strip HTML tags
+      .replace(/javascript:/gi, "") // strip js: protocol
+      .replace(/on\w+\s*=/gi, "") // strip event handlers
+      .trim();
+  }
+
   const onSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -631,18 +642,41 @@ export function CrossPlatformGeneratorForm() {
         return;
       }
 
+      // Sanitize all user-provided text inputs
+      const sanitizedRequirement = sanitizeInput(finalRequirementText);
+      const sanitizedTitle = sanitizeInput(title);
+      const sanitizedDescription = description
+        ? sanitizeInput(description)
+        : null;
+
+      // Re-validate after sanitization
+      if (!sanitizedTitle) {
+        toast.error("Title contains invalid characters. Please revise.");
+        return;
+      }
+
+      if (
+        !sanitizedRequirement ||
+        sanitizedRequirement.length < MIN_REQUIREMENT_LENGTH
+      ) {
+        toast.error(
+          "Requirement contains invalid content or is too short after sanitization.",
+        );
+        return;
+      }
+
       setSubmitting(true);
       try {
         const payload = {
-          requirement: finalRequirementText.trim(),
+          requirement: sanitizedRequirement,
           requirement_id:
             mode === "saved" && selectedReqData ? selectedRequirementId : null,
           platforms: platformsPayload,
           model: model.trim(),
           testCaseCount: clampInt(perPlatformCount, 1, 100, 10),
           template: template?.id ?? null,
-          title: title.trim(),
-          description: description.trim() || null,
+          title: sanitizedTitle,
+          description: sanitizedDescription,
           project_id: projectId || null,
         };
 
@@ -876,12 +910,26 @@ export function CrossPlatformGeneratorForm() {
                     value={requirement}
                     onChange={(e) => setRequirement(e.target.value)}
                     disabled={pageBusy}
+                    maxLength={MAX_REQUIREMENT_LENGTH}
                     required
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Tip: Include roles, data rules, constraints, and environment
-                    assumptions.
-                  </p>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>
+                      {requirement.trim().length > 0 &&
+                      requirement.trim().length < MIN_REQUIREMENT_LENGTH
+                        ? `${MIN_REQUIREMENT_LENGTH - requirement.trim().length} more characters needed`
+                        : ""}
+                    </span>
+                    <span
+                      className={
+                        requirement.length > MAX_REQUIREMENT_LENGTH * 0.9
+                          ? "text-orange-500"
+                          : ""
+                      }
+                    >
+                      {requirement.length} / {MAX_REQUIREMENT_LENGTH}
+                    </span>
+                  </div>
                 </>
               )}
 
