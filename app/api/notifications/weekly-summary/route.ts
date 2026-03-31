@@ -11,7 +11,7 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } },
 );
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://app.synthqa.com";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://www.synthqa.app";
 
 export async function POST(req: Request) {
   // Verify cron secret so only GitHub Actions / Vercel cron can call this

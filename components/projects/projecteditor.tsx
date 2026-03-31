@@ -69,10 +69,8 @@ export function ProjectEditorDialog({
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
       <DialogContent
-        className="
-          w-[95vw] sm:max-w-3xl lg:max-w-4xl
-          max-h-[90vh] p-0 overflow-hidden
-        "
+        className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
+        onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader className="px-6 py-4 border-b sticky top-0 bg-background z-10">
           <DialogTitle>
@@ -203,23 +201,28 @@ export function ProjectEditorDialog({
           </div>
         </div>
 
-        <DialogFooter className="px-6 py-4 border-t bg-background sticky bottom-0 z-10">
-          <Button variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button onClick={onSave} disabled={loading || !formData.name.trim()}>
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving…
-              </>
-            ) : mode === "edit" ? (
-              "Update Project"
-            ) : (
-              "Create Project"
-            )}
-          </Button>
-        </DialogFooter>
+        <div className="border-t bg-background px-6 py-4">
+          <DialogFooter className="gap-2 sm:gap-3">
+            <Button variant="outline" onClick={onCancel}>
+              Cancel
+            </Button>
+            <Button
+              onClick={onSave}
+              disabled={loading || !formData.name.trim()}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving…
+                </>
+              ) : mode === "edit" ? (
+                "Update Project"
+              ) : (
+                "Create Project"
+              )}
+            </Button>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -254,7 +254,7 @@ export async function POST(req: Request) {
     }
 
     // ── Fire notifications after successful insert ──
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.synthqa.com";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.synthqa.app";
     const durationStr = `${Math.round(durationMs / 1000)}s`;
     const passRate =
       payload.metadata.total_tests > 0

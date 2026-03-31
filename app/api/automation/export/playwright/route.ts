@@ -1059,7 +1059,7 @@ export async function POST(req: Request) {
     }
 
     //Get Webhook
-    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://app.synthqa.com"}/api/automation/webhook/results`;
+    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://www.synthqa.app"}/api/automation/webhook/results`;
 
     // Get api key if it exists
     const { data: profile } = await supabase
