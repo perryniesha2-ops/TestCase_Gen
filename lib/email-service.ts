@@ -355,7 +355,7 @@ export class EmailService {
     try {
       const resend = this.getResend();
       const { data: emailData, error } = await resend.emails.send({
-        from: process.env.RESEND_FROM || "SynthQA <noreply@synthqa.com>",
+        from: process.env.RESEND_FROM || "SynthQA <noreply@synthqa.app>",
         to: data.to,
         subject: "Reset Your Password - SynthQA",
         html: emailHtml,
@@ -479,7 +479,7 @@ export class EmailService {
     try {
       const resend = this.getResend();
       const { data: emailData, error } = await resend.emails.send({
-        from: process.env.RESEND_FROM || "SynthQA <welcome@synthqa.com>",
+        from: process.env.RESEND_FROM || "SynthQA <welcome@synthqa.app>",
         to: data.to,
         subject: "Welcome to SynthQA - Confirm Your Email",
         html: emailHtml,
@@ -595,7 +595,7 @@ export class EmailService {
     try {
       const resend = this.getResend();
       const { error } = await resend.emails.send({
-        from: process.env.RESEND_FROM || "SynthQA <notifications@synthqa.com>",
+        from: process.env.RESEND_FROM || "SynthQA <notify@synthqa.app>",
         to: data.to,
         subject: `Welcome to ${data.planName}! Your trial has started 🎉`,
         html: emailHtml,
@@ -693,7 +693,7 @@ export class EmailService {
     try {
       const resend = this.getResend();
       const { error } = await resend.emails.send({
-        from: process.env.RESEND_FROM || "SynthQA <notifications@synthqa.com>",
+        from: process.env.RESEND_FROM || "SynthQA <notify@synthqa.app>",
         to: data.to,
         subject: `Your Pro trial ends in ${data.daysLeft} days`,
         html: emailHtml,
@@ -783,7 +783,7 @@ export class EmailService {
     try {
       const resend = this.getResend();
       const { error } = await resend.emails.send({
-        from: process.env.RESEND_FROM || "SynthQA <notifications@synthqa.com>",
+        from: process.env.RESEND_FROM || "SynthQA <notify@synthqa.app>",
         to: data.to,
         subject: "Welcome to SynthQA Pro! 🎉",
         html: emailHtml,
@@ -881,7 +881,7 @@ export class EmailService {
     try {
       const resend = this.getResend();
       const { error } = await resend.emails.send({
-        from: process.env.RESEND_FROM || "SynthQA <notifications@synthqa.com>",
+        from: process.env.RESEND_FROM || "SynthQA <notify@synthqa.app>",
         to: data.to,
         subject: "Subscription Cancelled - SynthQA",
         html: emailHtml,
@@ -988,7 +988,7 @@ export class EmailService {
     try {
       const resend = this.getResend();
       const { error } = await resend.emails.send({
-        from: process.env.RESEND_FROM || "SynthQA <notifications@synthqa.com>",
+        from: process.env.RESEND_FROM || "SynthQA <notify@synthqa.app>",
         to: data.to,
         subject: "Your subscription has ended - SynthQA",
         html: emailHtml,
