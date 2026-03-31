@@ -323,7 +323,7 @@ public class SynthQAReporter implements ITestListener, ISuiteListener {
                 System.out.println("✅ Test results synced to SynthQA (" + testResults.size() + " tests)");
             } else if (response.statusCode() == 401) {
                 System.err.println("❌ Authentication failed: Invalid API key");
-                System.err.println("   Get your API key from: https://app.synthqa.com/settings");
+                System.err.println("   Get your API key from: https://www.synthqa.app/settings");
             } else {
                 System.err.println("❌ Failed to send results: " + response.statusCode());
                 System.err.println("   Response: " + response.body());
@@ -790,7 +790,7 @@ SYNTHQA_WEBHOOK_URL=${webhookUrl}
 
 # API Key - REQUIRED for result syncing
 # Get your API key:
-# 1. Go to: https://app.synthqa.com/settings
+# 1. Go to: https://www.synthqa.app/settings
 # 2. Navigate to "Integrations" tab
 # 3. Click "Generate API Key" (if you don't have one)
 # 4. Copy your API key
@@ -831,7 +831,7 @@ TEST_USER_PASSWORD=password123
 # Webhook URL - Where test results are sent
 SYNTHQA_WEBHOOK_URL=${webhookUrl}
 
-# API Key - Get from: https://app.synthqa.com/settings (Integrations tab)
+# API Key - Get from: https://www.synthqa.app/settings (Integrations tab)
 SYNTHQA_API_KEY=""
 
 # Suite ID - Auto-populated when you export
@@ -926,7 +926,7 @@ TEST_USER_PASSWORD=yourpassword123
 
 **Steps:**
 
-1. **Go to Settings**: https://app.synthqa.com/settings
+1. **Go to Settings**: https://www.synthqa.app/settings
 2. **Click Integrations tab**
 3. **Generate API Key** (if you don't have one)
 4. **Copy your API key**
@@ -967,7 +967,7 @@ mvn test -Dbrowser=firefox
 **Local**: Check \`target/surefire-reports/\` for detailed HTML reports
 
 **SynthQA Dashboard**: 
-🔗 https://app.synthqa.com/automation/suites/${suiteId}
+🔗 https://www.synthqa.app/automation/suites/${suiteId}
 
 Results include:
 - ✅ Pass/Fail status
@@ -1059,7 +1059,7 @@ When reporting is enabled:
 ║          SynthQA Test Reporting - ENABLED                      ║
 ╚════════════════════════════════════════════════════════════════╝
 📊 Session ID: run-1707523456789
-🌐 Webhook URL: https://app.synthqa.com/***
+🌐 Webhook URL: https://www.synthqa.app/***
 
 ▶️  Starting: LoginTest
 ✅ PASSED: LoginTest (3s)
@@ -1245,8 +1245,8 @@ Add these secrets:
 
 ## 🆘 Support
 
-- **View Results**: https://app.synthqa.com/automation/suites/${suiteId}
-- **Get API Key**: https://app.synthqa.com/settings
+- **View Results**: https://www.synthqa.app/automation/suites/${suiteId}
+- **Get API Key**: https://www.synthqa.app/settings
 - **Documentation**: https://docs.synthqa.com
 - **Issues**: Contact SynthQA support
 
