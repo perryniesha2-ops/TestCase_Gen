@@ -241,4 +241,45 @@ export class JiraIntegration {
       };
     });
   }
+
+  // Add this method to your JiraIntegration class in lib/integration/jira-client.ts
+
+  async searchIssuesByKeys(keys: string[]): Promise<
+    Array<{
+      key: string;
+      fields: {
+        status: {
+          name: string;
+          statusCategory?: { key: string };
+        };
+        resolution: { name: string } | null;
+      };
+    }>
+  > {
+    if (!keys.length) return [];
+
+    // JQL IN clause accepts up to ~100 keys safely
+    const jql = `issueKey in (${keys.join(",")})`;
+
+    const result = await this.client.issueSearch.searchForIssuesUsingJql({
+      jql,
+      maxResults: keys.length,
+      fields: ["status", "resolution"],
+    });
+
+    return (result.issues ?? []).map((issue) => ({
+      key: issue.key ?? "",
+      fields: {
+        status: {
+          name: issue.fields.status?.name ?? "Unknown",
+          statusCategory: issue.fields.status?.statusCategory
+            ? { key: issue.fields.status.statusCategory.key ?? "" }
+            : undefined,
+        },
+        resolution: issue.fields.resolution
+          ? { name: (issue.fields.resolution as { name?: string }).name ?? "" }
+          : null,
+      },
+    }));
+  }
 }

@@ -57,6 +57,7 @@ import {
   ClipboardCheck,
   ListChecks,
   Zap,
+  UserStar,
 } from "lucide-react";
 
 import { toastError, toastInfo, toastSuccess } from "@/lib/utils/toast-utils";
@@ -64,13 +65,6 @@ import { ExecutionHistoryRow, AllowedStatus } from "@/types/executions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ExecutionStatus =
-  | "not_run"
-  | "in_progress"
-  | "passed"
-  | "failed"
-  | "skipped"
-  | "blocked";
 type StatusFilter = "all" | AllowedStatus;
 type RunStatus = "planned" | "in_progress" | "paused" | "completed" | "aborted";
 
@@ -123,7 +117,7 @@ type IntegrationRow = {
   integration_type: "jira" | "testrail";
   project_id: string | null;
   sync_enabled: boolean;
-  config: any;
+  config: Record<string, string>;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -182,7 +176,7 @@ function computeStartDate(dateFilterValue: string): string | null {
 }
 
 function mapExecToRow(
-  e: any,
+  e: Record<string, unknown>,
   suiteMap: Map<
     string,
     { id: string; name: string; project_id: string | null }
@@ -198,52 +192,53 @@ function mapExecToRow(
   evidenceCounts: Map<string, number>,
   suiteName?: string,
 ): ExecutionHistoryRow {
-  const suite = suiteMap.get(e.suite_id);
+  const suite = suiteMap.get(e.suite_id as string);
   const testCase = e.test_case_id
-    ? regularMap.get(e.test_case_id)
-    : platformMap.get(e.platform_test_case_id);
+    ? regularMap.get(e.test_case_id as string)
+    : platformMap.get(e.platform_test_case_id as string);
 
   const duration =
     e.started_at && e.completed_at
-      ? new Date(e.completed_at).getTime() - new Date(e.started_at).getTime()
+      ? new Date(e.completed_at as string).getTime() -
+        new Date(e.started_at as string).getTime()
       : null;
 
   return {
-    execution_id: e.id,
-    suite_id: e.suite_id,
+    execution_id: e.id as string,
+    suite_id: e.suite_id as string,
     suite_name: suiteName ?? suite?.name ?? "Unknown Suite",
-    session_id: e.session_id ?? null,
-    test_case_id: e.test_case_id || e.platform_test_case_id,
+    session_id: (e.session_id as string) ?? null,
+    test_case_id: (e.test_case_id || e.platform_test_case_id) as string,
     test_title: testCase?.title ?? "Unknown Test",
     test_description: testCase?.description ?? null,
     execution_status: (e.execution_status as AllowedStatus) ?? "passed",
-    execution_notes: e.execution_notes ?? null,
-    failure_reason: e.failure_reason ?? null,
-    created_at: e.created_at,
-    started_at: e.started_at ?? null,
-    completed_at: e.completed_at ?? null,
+    execution_notes: (e.execution_notes as string) ?? null,
+    failure_reason: (e.failure_reason as string) ?? null,
+    created_at: e.created_at as string,
+    started_at: (e.started_at as string) ?? null,
+    completed_at: (e.completed_at as string) ?? null,
     duration_ms: duration,
-    evidence_count: evidenceCounts.get(e.id) ?? 0,
+    evidence_count: evidenceCounts.get(e.id as string) ?? 0,
     review_needs_update: Boolean(e.review_needs_update ?? false),
     review_create_issue: Boolean(e.review_create_issue ?? false),
-    review_note: e.review_note ?? null,
-    reviewed_at: e.reviewed_at ?? null,
-    jira_issue_key: e.jira_issue_key ?? null,
-    testrail_defect_id: e.testrail_defect_id ?? null,
-    automation_run_id: e.automation_run_id ?? null,
+    review_note: (e.review_note as string) ?? null,
+    reviewed_at: (e.reviewed_at as string) ?? null,
+    jira_issue_key: (e.jira_issue_key as string) ?? null,
+    testrail_defect_id: (e.testrail_defect_id as string) ?? null,
+    automation_run_id: (e.automation_run_id as string) ?? null,
   };
 }
 
 async function resolveTestCaseMaps(
   supabase: ReturnType<typeof createClient>,
-  execs: any[],
+  execs: Record<string, unknown>[],
 ) {
   const regularIds = [
     ...new Set(execs.map((e) => e.test_case_id).filter(Boolean)),
-  ];
+  ] as string[];
   const platformIds = [
     ...new Set(execs.map((e) => e.platform_test_case_id).filter(Boolean)),
-  ];
+  ] as string[];
 
   const regularMap = new Map<
     string,
@@ -259,14 +254,14 @@ async function resolveTestCaseMaps(
       .from("test_cases")
       .select("id, title, description")
       .in("id", regularIds);
-    (data ?? []).forEach((c: any) => regularMap.set(c.id, c));
+    (data ?? []).forEach((c) => regularMap.set(c.id, c));
   }
   if (platformIds.length > 0) {
     const { data } = await supabase
       .from("platform_test_cases")
       .select("id, title, description")
       .in("id", platformIds);
-    (data ?? []).forEach((c: any) => platformMap.set(c.id, c));
+    (data ?? []).forEach((c) => platformMap.set(c.id, c));
   }
 
   return { regularMap, platformMap };
@@ -287,6 +282,8 @@ async function resolveEvidenceCounts(
   }
   return counts;
 }
+
+// ─── Badge helpers ────────────────────────────────────────────────────────────
 
 function statusBadge(s: AllowedStatus) {
   switch (s) {
@@ -407,6 +404,7 @@ export function ExecutionHistory({
   const [runsSearch, setRunsSearch] = useState("");
   const debouncedRunsSearch = useDebouncedValue(runsSearch, 300);
   const [showAborted, setShowAborted] = useState(false);
+  const [integrationLoading, setIntegrationLoading] = useState(false);
 
   // executions tab
   const [rows, setRows] = useState<ExecutionHistoryRow[]>([]);
@@ -430,18 +428,9 @@ export function ExecutionHistory({
   const [evidence, setEvidence] = useState<AttachmentRow[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  // run review dialog
-  const [isRunReviewOpen, setIsRunReviewOpen] = useState(false);
-  const [activeRun, setActiveRun] = useState<RunWithStats | null>(null);
-  const [runRows, setRunRows] = useState<ExecutionHistoryRow[]>([]);
-  const [runRowsLoading, setRunRowsLoading] = useState(false);
-  const [runSaveBusy, setRunSaveBusy] = useState(false);
-
   // integrations
   const [integrations, setIntegrations] = useState<IntegrationRow[]>([]);
-  const [integrationLoading, setIntegrationLoading] = useState(false);
   const [selectedIntegrationId, setSelectedIntegrationId] = useState("none");
-  const [creatingIssues, setCreatingIssues] = useState(false);
   const [jiraBaseUrl, setJiraBaseUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -496,7 +485,7 @@ export function ExecutionHistory({
 
       const startDate = computeStartDate(dateFilter);
 
-      // ── Manual runs (test_run_sessions) ──
+      // ── Manual runs ──
       let q = supabase
         .from("test_run_sessions")
         .select(
@@ -528,13 +517,17 @@ export function ExecutionHistory({
 
       const { data: automationRaw } = await aq;
 
-      // Resolve suite names for all IDs
+      // Resolve suite names
       const allSuiteIds = [
         ...new Set(
           [
-            ...(sessionsRaw ?? []).map((s: any) => s.suite_id),
-            ...(automationRaw ?? []).map((a: any) => a.suite_id),
-          ].filter(Boolean),
+            ...(sessionsRaw ?? []).map(
+              (s: Record<string, unknown>) => s.suite_id,
+            ),
+            ...(automationRaw ?? []).map(
+              (a: Record<string, unknown>) => a.suite_id,
+            ),
+          ].filter(Boolean) as string[],
         ),
       ];
       const suiteMap = new Map<
@@ -546,53 +539,57 @@ export function ExecutionHistory({
           .from("suites")
           .select("id, name, project_id")
           .in("id", allSuiteIds);
-        (suites ?? []).forEach((s: any) => suiteMap.set(s.id, s));
+        (suites ?? []).forEach((s) => suiteMap.set(s.id, s));
       }
 
-      // Map manual sessions to RunWithStats
-      const manualRuns: RunWithStats[] = (sessionsRaw ?? []).map((r: any) => ({
-        id: r.id,
-        user_id: r.user_id,
-        suite_id: r.suite_id ?? null,
-        suite_name: suiteMap.get(r.suite_id)?.name ?? "Unknown Suite",
-        name: r.name,
-        description: r.description ?? null,
-        status: (r.status ?? "planned") as RunStatus,
-        planned_start: r.planned_start ?? null,
-        actual_start: r.actual_start ?? null,
-        actual_end: r.actual_end ?? null,
-        environment: r.environment ?? null,
-        test_cases_total: Number(r.test_cases_total ?? 0),
-        test_cases_completed: Number(r.test_cases_completed ?? 0),
-        progress_percentage: Number(r.progress_percentage ?? 0),
-        passed_cases: Number(r.passed_cases ?? 0),
-        failed_cases: Number(r.failed_cases ?? 0),
-        skipped_cases: Number(r.skipped_cases ?? 0),
-        blocked_cases: Number(r.blocked_cases ?? 0),
-        created_at: r.created_at,
-        updated_at: r.updated_at,
-        paused_at: r.paused_at ?? null,
-        auto_advance: Boolean(r.auto_advance ?? true),
-        evidence_total: 0,
-        review_done: false,
-        linked_issue_count: 0,
-        is_automation: false,
-      }));
+      // Map manual sessions
+      const manualRuns: RunWithStats[] = (sessionsRaw ?? []).map(
+        (r: Record<string, unknown>) => ({
+          id: r.id as string,
+          user_id: r.user_id as string,
+          suite_id: (r.suite_id as string) ?? null,
+          suite_name:
+            suiteMap.get(r.suite_id as string)?.name ?? "Unknown Suite",
+          name: r.name as string,
+          description: (r.description as string) ?? null,
+          status: (r.status ?? "planned") as RunStatus,
+          planned_start: (r.planned_start as string) ?? null,
+          actual_start: (r.actual_start as string) ?? null,
+          actual_end: (r.actual_end as string) ?? null,
+          environment: (r.environment as string) ?? null,
+          test_cases_total: Number(r.test_cases_total ?? 0),
+          test_cases_completed: Number(r.test_cases_completed ?? 0),
+          progress_percentage: Number(r.progress_percentage ?? 0),
+          passed_cases: Number(r.passed_cases ?? 0),
+          failed_cases: Number(r.failed_cases ?? 0),
+          skipped_cases: Number(r.skipped_cases ?? 0),
+          blocked_cases: Number(r.blocked_cases ?? 0),
+          created_at: r.created_at as string,
+          updated_at: r.updated_at as string,
+          paused_at: (r.paused_at as string) ?? null,
+          auto_advance: Boolean(r.auto_advance ?? true),
+          evidence_total: 0,
+          review_done: false,
+          linked_issue_count: 0,
+          is_automation: false,
+        }),
+      );
 
-      // Map automation_runs to RunWithStats
+      // Map automation runs
       const automationRuns: RunWithStats[] = (automationRaw ?? []).map(
-        (r: any) => ({
-          id: r.id,
-          user_id: r.user_id,
-          suite_id: r.suite_id ?? null,
-          suite_name: suiteMap.get(r.suite_id)?.name ?? "Unknown Suite",
+        (r: Record<string, unknown>) => ({
+          id: r.id as string,
+          user_id: r.user_id as string,
+          suite_id: (r.suite_id as string) ?? null,
+          suite_name:
+            suiteMap.get(r.suite_id as string)?.name ?? "Unknown Suite",
           name: `Run #${r.run_number} — ${r.framework ?? "playwright"}`,
           description: `${r.browser ?? "chromium"} · ${r.environment ?? "local"}`,
           status: "completed" as RunStatus,
           planned_start: null,
-          actual_start: r.started_at ?? null,
-          actual_end: r.completed_at ?? null,
-          environment: r.environment ?? null,
+          actual_start: (r.started_at as string) ?? null,
+          actual_end: (r.completed_at as string) ?? null,
+          environment: (r.environment as string) ?? null,
           test_cases_total: Number(r.total_tests ?? 0),
           test_cases_completed: Number(r.total_tests ?? 0),
           progress_percentage: 100,
@@ -600,8 +597,8 @@ export function ExecutionHistory({
           failed_cases: Number(r.failed_tests ?? 0),
           skipped_cases: Number(r.skipped_tests ?? 0),
           blocked_cases: 0,
-          created_at: r.created_at,
-          updated_at: r.created_at,
+          created_at: r.created_at as string,
+          updated_at: r.created_at as string,
           paused_at: null,
           auto_advance: false,
           evidence_total: 0,
@@ -611,7 +608,6 @@ export function ExecutionHistory({
         }),
       );
 
-      // Merge and sort by created_at descending
       let allRuns = [...manualRuns, ...automationRuns].sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -629,54 +625,80 @@ export function ExecutionHistory({
         );
       }
 
-      // Resolve evidence + review counts for manual runs only (session-based)
+      // ── Resolve evidence + review + issue counts for ALL runs (manual + automation) ──
+      //
+      // Manual runs: group executions by session_id
       const sessionIds = manualRuns.map((r) => r.id);
+      // Automation runs: group executions by automation_run_id
+      const automationRunIds = automationRuns.map((r) => r.id);
+
+      const evidenceByRunId = new Map<string, number>();
+      const reviewedByRunId = new Map<string, boolean>();
+      const issuesByRunId = new Map<string, number>();
+
+      // Fetch manual-linked executions
       if (sessionIds.length > 0) {
-        const { data: execRaw } = await supabase
+        const { data: manualExecStats } = await supabase
           .from("test_executions")
           .select(
             "id, session_id, reviewed_at, jira_issue_key, testrail_defect_id",
           )
           .in("session_id", sessionIds);
 
-        const execs = execRaw ?? [];
-        const execIds = execs.map((e: any) => e.id);
-        const evidenceCountByExec = await resolveEvidenceCounts(
+        const manualExecIds = (manualExecStats ?? []).map((e) => e.id);
+        const manualEvidence = await resolveEvidenceCounts(
           supabase,
-          execIds,
+          manualExecIds,
         );
 
-        const evidenceBySession = new Map<string, number>();
-        const reviewedBySession = new Map<string, boolean>();
-        const issuesBySession = new Map<string, number>();
-
-        for (const e of execs as any[]) {
-          if (!e.session_id) continue;
-          if (e.reviewed_at) reviewedBySession.set(e.session_id, true);
-          const ev = evidenceCountByExec.get(e.id) ?? 0;
-          evidenceBySession.set(
-            e.session_id,
-            (evidenceBySession.get(e.session_id) ?? 0) + ev,
+        for (const e of manualExecStats ?? []) {
+          const key = e.session_id;
+          if (!key) continue;
+          if (e.reviewed_at) reviewedByRunId.set(key, true);
+          evidenceByRunId.set(
+            key,
+            (evidenceByRunId.get(key) ?? 0) + (manualEvidence.get(e.id) ?? 0),
           );
           if (e.jira_issue_key || e.testrail_defect_id) {
-            issuesBySession.set(
-              e.session_id,
-              (issuesBySession.get(e.session_id) ?? 0) + 1,
-            );
+            issuesByRunId.set(key, (issuesByRunId.get(key) ?? 0) + 1);
           }
         }
-
-        // Patch evidence/review back onto manual runs
-        allRuns = allRuns.map((r) => {
-          if (r.is_automation) return r;
-          return {
-            ...r,
-            evidence_total: evidenceBySession.get(r.id) ?? 0,
-            review_done: Boolean(reviewedBySession.get(r.id) ?? false),
-            linked_issue_count: issuesBySession.get(r.id) ?? 0,
-          };
-        });
       }
+
+      // Fetch automation-linked executions
+      if (automationRunIds.length > 0) {
+        const { data: autoExecStats } = await supabase
+          .from("test_executions")
+          .select(
+            "id, automation_run_id, reviewed_at, jira_issue_key, testrail_defect_id",
+          )
+          .in("automation_run_id", automationRunIds);
+
+        const autoExecIds = (autoExecStats ?? []).map((e) => e.id);
+        const autoEvidence = await resolveEvidenceCounts(supabase, autoExecIds);
+
+        for (const e of autoExecStats ?? []) {
+          const key = e.automation_run_id;
+          if (!key) continue;
+          if (e.reviewed_at) reviewedByRunId.set(key, true);
+          autoEvidence &&
+            evidenceByRunId.set(
+              key,
+              (evidenceByRunId.get(key) ?? 0) + (autoEvidence.get(e.id) ?? 0),
+            );
+          if (e.jira_issue_key || e.testrail_defect_id) {
+            issuesByRunId.set(key, (issuesByRunId.get(key) ?? 0) + 1);
+          }
+        }
+      }
+
+      // Patch stats back onto every run
+      allRuns = allRuns.map((r) => ({
+        ...r,
+        evidence_total: evidenceByRunId.get(r.id) ?? 0,
+        review_done: Boolean(reviewedByRunId.get(r.id) ?? false),
+        linked_issue_count: issuesByRunId.get(r.id) ?? 0,
+      }));
 
       setRuns(allRuns);
     } catch (err) {
@@ -699,14 +721,12 @@ export function ExecutionHistory({
 
       const startDate = computeStartDate(dateFilter);
 
-      // ── Count query ──
       let countQuery = supabase
         .from("test_executions")
         .select("id", { count: "exact", head: true })
         .eq("executed_by", auth.user.id)
         .in("execution_status", INCLUDED_STATUSES);
 
-      // ── Data query ──
       let dataQuery = supabase
         .from("test_executions")
         .select(EXECUTION_SELECT)
@@ -736,12 +756,11 @@ export function ExecutionHistory({
       const { data: execsRaw, error } = await dataQuery;
       if (error) throw error;
 
-      const execs = execsRaw ?? [];
+      const execs = (execsRaw ?? []) as Record<string, unknown>[];
 
-      // Resolve suite names
       const suiteIds = [
-        ...new Set(execs.map((e: any) => e.suite_id).filter(Boolean)),
-      ];
+        ...new Set(execs.map((e) => e.suite_id).filter(Boolean)),
+      ] as string[];
       const suiteMap = new Map<
         string,
         { id: string; name: string; project_id: string | null }
@@ -751,26 +770,23 @@ export function ExecutionHistory({
           .from("suites")
           .select("id, name, project_id")
           .in("id", suiteIds);
-        (suites ?? []).forEach((s: any) => suiteMap.set(s.id, s));
+        (suites ?? []).forEach((s) => suiteMap.set(s.id, s));
       }
 
       const { regularMap, platformMap } = await resolveTestCaseMaps(
         supabase,
         execs,
       );
-
-      // Load integrations from first suite's project
       const projectId = suiteMap.values().next().value?.project_id ?? null;
       await loadIntegrationsForProject(projectId);
 
-      // Client-side search
       const sq = debouncedSearch.trim().toLowerCase();
       const searched = sq
-        ? execs.filter((e: any) => {
-            const suite = suiteMap.get(e.suite_id);
+        ? execs.filter((e) => {
+            const suite = suiteMap.get(e.suite_id as string);
             const testCase = e.test_case_id
-              ? regularMap.get(e.test_case_id)
-              : platformMap.get(e.platform_test_case_id);
+              ? regularMap.get(e.test_case_id as string)
+              : platformMap.get(e.platform_test_case_id as string);
             return (
               String(testCase?.title ?? "")
                 .toLowerCase()
@@ -788,18 +804,16 @@ export function ExecutionHistory({
           })
         : execs;
 
-      const execIds = searched.map((e: any) => e.id);
+      const execIds = searched.map((e) => e.id as string);
       if (execIds.length === 0) {
         setRows([]);
         return;
       }
 
       const evidenceCounts = await resolveEvidenceCounts(supabase, execIds);
-
-      let mapped = searched.map((e: any) =>
+      let mapped = searched.map((e) =>
         mapExecToRow(e, suiteMap, regularMap, platformMap, evidenceCounts),
       );
-
       if (hasEvidence) mapped = mapped.filter((r) => r.evidence_count > 0);
       setRows(mapped);
     } catch (err) {
@@ -821,13 +835,12 @@ export function ExecutionHistory({
       const json = await res.json();
       if (!res.ok)
         throw new Error(json?.error ?? "Failed to load integrations");
-
       const list = (json.integrations ?? []).filter(
-        (i: any) => i.integration_type === "jira",
+        (i: IntegrationRow) => i.integration_type === "jira",
       );
       setIntegrations(list);
-
-      const firstEnabled = list.find((i: any) => i.sync_enabled) ?? list[0];
+      const firstEnabled =
+        list.find((i: IntegrationRow) => i.sync_enabled) ?? list[0];
       setSelectedIntegrationId(firstEnabled?.id ?? "none");
       setJiraBaseUrl(firstEnabled?.config?.url ?? null);
     } finally {
@@ -835,233 +848,11 @@ export function ExecutionHistory({
     }
   }
 
-  // ─── Run review ─────────────────────────────────────────────────────────────
+  // ─── Run review — navigate to the dedicated page for both run types ───────────
 
-  async function openRunReview(run: RunWithStats) {
-    setActiveRun(run);
-    setIsRunReviewOpen(true);
-    setRunRows([]);
-    setRunRowsLoading(true);
-
-    try {
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) {
-        toastError("You must be signed in");
-        return;
-      }
-
-      // ── Manual executions (session-based) ──
-      const { data: manualExecs, error } = await supabase
-        .from("test_executions")
-        .select(EXECUTION_SELECT)
-        .eq("session_id", run.id)
-        .in("execution_status", INCLUDED_STATUSES)
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-
-      // ── Automation executions (automation_run_id-based) ──
-      let automationExecs: any[] = [];
-      if (run.suite_id) {
-        const { data: automationRuns } = await supabase
-          .from("automation_runs")
-          .select("id")
-          .eq("suite_id", run.suite_id)
-          .gte("created_at", run.created_at)
-          .order("created_at", { ascending: true });
-
-        const automationRunIds = (automationRuns ?? []).map((r) => r.id);
-        if (automationRunIds.length > 0) {
-          const { data: autoData } = await supabase
-            .from("test_executions")
-            .select(EXECUTION_SELECT)
-            .in("automation_run_id", automationRunIds)
-            .in("execution_status", INCLUDED_STATUSES)
-            .order("created_at", { ascending: true });
-          automationExecs = autoData ?? [];
-        }
-      }
-
-      // Merge and deduplicate
-      const allExecsMap = new Map<string, any>();
-      for (const e of [...(manualExecs ?? []), ...automationExecs]) {
-        allExecsMap.set(e.id, e);
-      }
-      const execs = Array.from(allExecsMap.values());
-
-      // Resolve suite names
-      const suiteIds = [
-        ...new Set(execs.map((e) => e.suite_id).filter(Boolean)),
-      ];
-      const suiteMap = new Map<
-        string,
-        { id: string; name: string; project_id: string | null }
-      >();
-      if (suiteIds.length > 0) {
-        const { data: suites } = await supabase
-          .from("suites")
-          .select("id, name, project_id")
-          .in("id", suiteIds);
-        (suites ?? []).forEach((s: any) => suiteMap.set(s.id, s));
-      }
-
-      const { regularMap, platformMap } = await resolveTestCaseMaps(
-        supabase,
-        execs,
-      );
-      const evidenceCounts = await resolveEvidenceCounts(
-        supabase,
-        execs.map((e) => e.id),
-      );
-
-      const projectId = suiteMap.values().next().value?.project_id ?? null;
-      if (projectId) await loadIntegrationsForProject(projectId);
-
-      setRunRows(
-        execs.map((e) =>
-          mapExecToRow(
-            e,
-            suiteMap,
-            regularMap,
-            platformMap,
-            evidenceCounts,
-            run.suite_name,
-          ),
-        ),
-      );
-    } catch (err) {
-      console.error(err);
-      toastError("Failed to load run details");
-      setRunRows([]);
-    } finally {
-      setRunRowsLoading(false);
-    }
-  }
-
-  function patchRunRow(
-    executionId: string,
-    patch: Partial<ExecutionHistoryRow>,
-  ) {
-    setRunRows((prev) =>
-      prev.map((r) =>
-        r.execution_id === executionId ? { ...r, ...patch } : r,
-      ),
-    );
-  }
-
-  function bulkMarkFailuresNeedsUpdate(value: boolean) {
-    setRunRows((prev) =>
-      prev.map((r) =>
-        r.execution_status === "failed"
-          ? { ...r, review_needs_update: value }
-          : r,
-      ),
-    );
-  }
-
-  function bulkMarkAllCreateIssue(value: boolean) {
-    setRunRows((prev) =>
-      prev.map((r) => ({ ...r, review_create_issue: value })),
-    );
-  }
-
-  async function saveRunReview() {
-    if (!activeRun || runRows.length === 0) {
-      toastError("Nothing to save");
-      return;
-    }
-    setRunSaveBusy(true);
-    try {
-      for (const r of runRows) {
-        await supabase
-          .from("test_executions")
-          .update({
-            review_needs_update: r.review_needs_update,
-            review_create_issue: r.review_create_issue,
-            review_note: r.review_note?.trim() || null,
-            reviewed_at: new Date().toISOString(),
-          })
-          .eq("id", r.execution_id);
-      }
-      toastSuccess("Run review saved");
-      void fetchRuns();
-      void fetchHistory();
-      setIsRunReviewOpen(false);
-    } catch (err) {
-      console.error(err);
-      toastError("Failed to save review");
-    } finally {
-      setRunSaveBusy(false);
-    }
-  }
-
-  async function createIssuesFromReview() {
-    if (!activeRun) {
-      toastError("No active run");
-      return;
-    }
-    if (selectedIntegrationId === "none") {
-      toastError("Select an integration first");
-      return;
-    }
-
-    const targets = runRows.filter(
-      (r) =>
-        r.review_create_issue && !r.jira_issue_key && !r.testrail_defect_id,
-    );
-    if (targets.length === 0) {
-      toastInfo("No rows selected (or already linked).");
-      return;
-    }
-
-    setCreatingIssues(true);
-    try {
-      const res = await fetch("/api/integrations/create-issues", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          integration_id: selectedIntegrationId,
-          executions: targets.map((r) => ({
-            execution_id: r.execution_id,
-            test_case_id: r.test_case_id,
-            test_title: r.test_title,
-            suite_name: r.suite_name,
-            failure_reason: r.failure_reason,
-          })),
-        }),
-      });
-
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error ?? "Failed to create issues");
-
-      const results = (json.results ?? []) as Array<{
-        success: boolean;
-        execution_id: string;
-        issue_key?: string;
-        run_id?: number;
-      }>;
-      setRunRows((prev) =>
-        prev.map((r) => {
-          const match = results.find(
-            (x) => x.execution_id === r.execution_id && x.success,
-          );
-          if (!match) return r;
-          if (match.issue_key) return { ...r, jira_issue_key: match.issue_key };
-          if (match.run_id != null)
-            return { ...r, testrail_defect_id: `R${match.run_id}` };
-          return r;
-        }),
-      );
-
-      toastSuccess(
-        `Created ${json.created ?? 0} of ${json.total ?? targets.length} issues`,
-      );
-      void fetchHistory();
-      void fetchRuns();
-    } catch (e) {
-      toastError(e instanceof Error ? e.message : "Failed to create issues");
-    } finally {
-      setCreatingIssues(false);
-    }
+  function openRunReview(run: RunWithStats) {
+    const params = run.is_automation ? "?type=automation" : "";
+    router.push(`/test-runs/${run.id}/review${params}`);
   }
 
   // ─── Evidence ───────────────────────────────────────────────────────────────
@@ -1093,7 +884,7 @@ export function ExecutionHistory({
         .order("created_at", { ascending: true });
       if (error) throw error;
       setEvidence((data ?? []) as AttachmentRow[]);
-    } catch (err) {
+    } catch {
       toastError("Failed to load evidence");
       setEvidence([]);
     } finally {
@@ -1103,7 +894,7 @@ export function ExecutionHistory({
 
   async function downloadEvidence() {
     if (evidence.length === 0) return;
-    toastInfo("Downloading evidence files...");
+    toastInfo("Downloading evidence files…");
     for (const att of evidence) {
       try {
         const url = await createSignedUrl(att.file_path, 60 * 60);
@@ -1228,7 +1019,7 @@ export function ExecutionHistory({
     toastSuccess("Exported trend report");
   }
 
-  // ─── Derived state ───────────────────────────────────────────────────────────
+  // ─── Derived state ────────────────────────────────────────────────────────
 
   function toggleRowExpansion(executionId: string) {
     setExpandedRows((prev) => {
@@ -1420,13 +1211,23 @@ export function ExecutionHistory({
                                   {r.suite_name}
                                 </span>
                                 {runStatusBadge(r.status)}
+                                {/* Automation badge — same styling, clear label */}
+                                {r.is_automation && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] gap-1 border-blue-200 text-blue-600 dark:border-blue-800 dark:text-blue-400"
+                                  >
+                                    <Zap className="h-2.5 w-2.5" />
+                                    automated
+                                  </Badge>
+                                )}
                               </div>
                               <div className="font-semibold mb-2">
                                 {r.name || `Run ${r.id.slice(0, 8)}…`}
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 {r.test_cases_completed}/{r.test_cases_total}{" "}
-                                complete • {r.progress_percentage ?? passRate}%
+                                complete · {r.progress_percentage ?? passRate}%
                               </div>
                             </div>
                             <div className="flex items-center gap-6">
@@ -1494,19 +1295,12 @@ export function ExecutionHistory({
                                   </div>
                                 )}
                               </div>
+                              {/* Unified Review button — same action for both run types */}
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="gap-2"
-                                onClick={() => {
-                                  if (r.is_automation) {
-                                    // Open inline dialog for automation runs
-                                    void openRunReview(r);
-                                  } else {
-                                    // Navigate to review page for manual runs
-                                    router.push(`/test-runs/${r.id}/review`);
-                                  }
-                                }}
+                                onClick={() => openRunReview(r)}
                               >
                                 <Eye className="h-4 w-4" />
                                 Review
@@ -1698,7 +1492,7 @@ export function ExecutionHistory({
                                   <span className="text-sm font-medium text-muted-foreground">
                                     {r.suite_name}
                                   </span>
-                                </div>{" "}
+                                </div>
                               </TableCell>
                               <TableCell>
                                 <div className="font-medium">
@@ -1751,7 +1545,6 @@ export function ExecutionHistory({
                                 </Button>
                               </TableCell>
                             </TableRow>
-
                             {isExpanded && (
                               <TableRow>
                                 <TableCell colSpan={8} className="bg-muted/30">
@@ -1906,7 +1699,7 @@ export function ExecutionHistory({
               {activeExecution && statusBadge(activeExecution.execution_status)}
             </DialogTitle>
             <DialogDescription>
-              {activeExecution?.test_title} • {activeExecution?.suite_name}
+              {activeExecution?.test_title} · {activeExecution?.suite_name}
             </DialogDescription>
           </DialogHeader>
           <Tabs
@@ -2092,7 +1885,7 @@ function AttachmentCardWithSignedUrl({
         setLoading(true);
         const url = await getSignedUrl(attachment.file_path, 60 * 60);
         if (!cancelled) setImageUrl(url);
-      } catch (err) {
+      } catch {
         if (!cancelled) setImageUrl("");
       } finally {
         if (!cancelled) setLoading(false);

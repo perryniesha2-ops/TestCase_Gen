@@ -18,28 +18,35 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { useAuth } from "@/lib/auth/auth-context";
+import { MobileMenuButton } from "@/components/pagecomponents/mobilemenubutton";
 
 type SiteHeaderProps = {
   className?: string;
   title?: string;
   subtitle?: string;
+  userTier?: "free" | "pro";
 };
 
 function initials(name?: string, email?: string) {
   const n = (name ?? "").trim();
   if (n) {
-    const chars =
+    return (
       n
         .split(/\s+/)
         .slice(0, 2)
         .map((p) => p[0]?.toUpperCase() ?? "")
-        .join("") || "U";
-    return chars;
+        .join("") || "U"
+    );
   }
   return (email?.[0] ?? "U").toUpperCase();
 }
 
-export function SiteHeader({ className, title, subtitle }: SiteHeaderProps) {
+export function SiteHeader({
+  className,
+  title,
+  subtitle,
+  userTier = "free",
+}: SiteHeaderProps) {
   const { theme, setTheme } = useTheme();
   const { user, loading } = useAuth();
 
@@ -48,9 +55,8 @@ export function SiteHeader({ className, title, subtitle }: SiteHeaderProps) {
   const email = user?.email || "";
 
   const avatarText = initials(fullName, email);
-
   const displayName = fullName || email || "User";
-  const showAuthUI = Boolean(user); // if you want header always, but auth menu only when logged in
+  const showAuthUI = Boolean(user);
 
   return (
     <header
@@ -59,23 +65,29 @@ export function SiteHeader({ className, title, subtitle }: SiteHeaderProps) {
         className,
       )}
     >
-      <div className="mx-auto flex h-20 max-w-screen-2xl items-center gap-2 px-3">
+      <div className="mx-auto flex h-16 max-w-screen-2xl items-center gap-3 px-3">
+        {/* Mobile menu trigger — hidden on md+ where the sidebar is visible */}
+        <MobileMenuButton userTier={userTier} />
+
+        {/* Title / logo */}
         {title ? (
-          <div className="flex flex-col">
-            <h1 className="text-lg font-semibold leading-tight">{title}</h1>
-            {subtitle ? (
-              <p className="text-sm text-muted-foreground leading-tight">
+          <div className="flex flex-col min-w-0">
+            <h1 className="text-lg font-semibold leading-tight truncate">
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="text-sm text-muted-foreground leading-tight truncate">
                 {subtitle}
               </p>
-            ) : null}
+            )}
           </div>
         ) : (
-          // Optional: if you always want *something* on the left
-          <Link href="/dashboard" className="text-lg font-semibold">
+          <Link href="/dashboard" className="text-lg font-semibold shrink-0">
             SynthQA
           </Link>
         )}
 
+        {/* Right side actions */}
         <div className="ml-auto flex items-center gap-2">
           <Button
             size="icon"
@@ -96,7 +108,7 @@ export function SiteHeader({ className, title, subtitle }: SiteHeaderProps) {
                   aria-label="Account menu"
                 >
                   <Avatar className="h-8 w-8">
-                    {avatarUrl ? (
+                    {avatarUrl && (
                       <AvatarImage
                         src={avatarUrl}
                         alt={displayName}
@@ -105,7 +117,7 @@ export function SiteHeader({ className, title, subtitle }: SiteHeaderProps) {
                             "none";
                         }}
                       />
-                    ) : null}
+                    )}
                     <AvatarFallback>{avatarText}</AvatarFallback>
                   </Avatar>
                 </Button>
@@ -129,7 +141,6 @@ export function SiteHeader({ className, title, subtitle }: SiteHeaderProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            // Optional: if not logged in, show a login button instead of avatar
             <Button asChild variant="outline" size="sm">
               <Link href="/login">Log in</Link>
             </Button>
