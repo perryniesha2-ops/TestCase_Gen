@@ -1,7 +1,8 @@
 // app/api/integrations/jira/issues/route.ts
 //
 // Returns all integration_issues for a given Jira integration,
-// joined with the linked test execution and test case title.
+// with the linked test case title resolved manually to avoid
+// depending on Supabase FK relationships being defined.
 //
 // GET /api/integrations/jira/issues?integration_id=<id>
 
@@ -44,30 +45,88 @@ export async function GET(request: Request) {
     );
   }
 
-  const { data: issues, error } = await supabase
+  // Fetch integration_issues — no nested join, resolve titles separately
+  const { data: issues, error: issuesError } = await supabase
     .from("integration_issues")
     .select(
-      `
-      id,
-      external_issue_id,
-      external_issue_url,
-      status,
-      issue_type,
-      updated_at,
-      metadata,
-      test_executions (
-        id,
-        status,
-        test_cases ( title )
-      )
-    `,
+      "id, execution_id, external_issue_id, external_issue_url, status, issue_type, updated_at, metadata",
     )
     .eq("integration_id", integration_id)
     .order("updated_at", { ascending: false })
     .limit(100);
 
-  if (error)
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (issuesError) {
+    console.error("[jira/issues] DB error:", issuesError);
+    return NextResponse.json({ error: issuesError.message }, { status: 500 });
+  }
 
-  return NextResponse.json({ issues: issues ?? [] });
+  if (!issues || issues.length === 0) {
+    return NextResponse.json({ issues: [] });
+  }
+
+  // Resolve test case titles from executions
+  const executionIds = issues
+    .map((i) => i.execution_id)
+    .filter(Boolean) as string[];
+  const titleByExecutionId = new Map<string, string>();
+
+  if (executionIds.length > 0) {
+    const { data: executions } = await supabase
+      .from("test_executions")
+      .select("id, test_case_id, platform_test_case_id")
+      .in("id", executionIds);
+
+    if (executions && executions.length > 0) {
+      const regularIds = [
+        ...new Set(executions.map((e) => e.test_case_id).filter(Boolean)),
+      ] as string[];
+      const platformIds = [
+        ...new Set(
+          executions.map((e) => e.platform_test_case_id).filter(Boolean),
+        ),
+      ] as string[];
+
+      const regularTitleMap = new Map<string, string>();
+      const platformTitleMap = new Map<string, string>();
+
+      if (regularIds.length > 0) {
+        const { data: cases } = await supabase
+          .from("test_cases")
+          .select("id, title")
+          .in("id", regularIds);
+        (cases ?? []).forEach((c) => regularTitleMap.set(c.id, c.title));
+      }
+
+      if (platformIds.length > 0) {
+        const { data: cases } = await supabase
+          .from("platform_test_cases")
+          .select("id, title")
+          .in("id", platformIds);
+        (cases ?? []).forEach((c) => platformTitleMap.set(c.id, c.title));
+      }
+
+      for (const exec of executions) {
+        const title = exec.test_case_id
+          ? regularTitleMap.get(exec.test_case_id)
+          : platformTitleMap.get(exec.platform_test_case_id);
+        if (title) titleByExecutionId.set(exec.id, title);
+      }
+    }
+  }
+
+  // Shape the response
+  const shaped = issues.map((issue) => ({
+    id: issue.id,
+    external_issue_id: issue.external_issue_id,
+    external_issue_url: issue.external_issue_url,
+    status: issue.status,
+    issue_type: issue.issue_type,
+    updated_at: issue.updated_at,
+    metadata: issue.metadata,
+    test_case_title: issue.execution_id
+      ? (titleByExecutionId.get(issue.execution_id) ?? null)
+      : null,
+  }));
+
+  return NextResponse.json({ issues: shaped });
 }
