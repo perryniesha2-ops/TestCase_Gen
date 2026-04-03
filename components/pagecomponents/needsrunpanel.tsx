@@ -58,7 +58,6 @@ interface RerunCase {
   test_type: string;
   priority: Priority;
   status: string;
-  updated_at: string;
   jira_issue_key: string | null;
   jira_issue_url: string | null;
   project_id: string | null;

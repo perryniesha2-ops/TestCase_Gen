@@ -531,7 +531,7 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                   )}
                 </CardContent>
               </Card>
-              <NeedsRerunPanel projectId={null} />
+              <NeedsRerunPanel projectId={encodeURIComponent(projectId)} />
 
               {/* Top Problem Tests */}
               <Card>
