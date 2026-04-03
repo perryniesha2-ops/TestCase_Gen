@@ -10,6 +10,7 @@
 //   <NeedsRerunPanel projectId={currentProject.id} suiteId={defaultSuite.id} />
 
 import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "@/lib/auth/auth-context";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ interface RerunCase {
   test_type: string;
   priority: Priority;
   status: string;
+  updated_at: string;
   jira_issue_key: string | null;
   jira_issue_url: string | null;
   project_id: string | null;
@@ -93,7 +95,7 @@ export function NeedsRerunPanel({
   suiteId: defaultSuiteId,
 }: NeedsRerunPanelProps) {
   const router = useRouter();
-  const supabase = createClient();
+  const { user, loading: authLoading } = useAuth();
 
   const [cases, setCases] = useState<RerunCase[]>([]);
   const [suites, setSuites] = useState<Suite[]>([]);
@@ -132,36 +134,33 @@ export function NeedsRerunPanel({
 
   // ── Fetch suites (for the selector) ────────────────────────────────────────
 
-  const fetchSuites = useCallback(async () => {
+  async function fetchSuites() {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
+      const supabase = createClient();
       let q = supabase
         .from("suites")
-        .select("id, name")
-        .eq("user_id", user.id)
+        .select("id, name, project_id")
+        .eq("user_id", user!.id)
         .order("name");
       if (projectId) q = q.eq("project_id", projectId);
 
-      const { data } = await q;
-      setSuites(data ?? []);
+      const { data, error } = await q;
+      if (error) throw error;
 
-      // If no default suite set, pick the first
+      setSuites(data ?? []);
       if (!defaultSuiteId && data && data.length > 0) {
         setSelectedSuiteId(data[0].id);
       }
     } catch (err) {
       console.error("[NeedsRerunPanel] suites fetch error:", err);
     }
-  }, [projectId, defaultSuiteId, supabase]);
+  }
 
   useEffect(() => {
+    if (authLoading || !user) return;
     void fetchCases();
     void fetchSuites();
-  }, [fetchCases, fetchSuites]);
+  }, [authLoading, user, fetchCases]);
 
   // ── Selection ───────────────────────────────────────────────────────────────
 
@@ -212,8 +211,10 @@ export function NeedsRerunPanel({
         `Re-run session created — ${json.case_count} case${json.case_count !== 1 ? "s" : ""} queued`,
       );
 
-      // Navigate to the new run session
-      router.push(`/test-library/${json.session_id}`);
+      // Navigate to the suite page with the session pre-selected
+      router.push(
+        `/test-library/${selectedSuiteId}?session=${json.session_id}`,
+      );
     } catch (err) {
       console.error("[NeedsRerunPanel] create error:", err);
       toastError(
