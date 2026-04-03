@@ -34,6 +34,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+import { NeedsRerunPanel } from "@/components/pagecomponents/needsrunpanel";
+
 type ProjectRow = {
   id: string;
   user_id: string;
@@ -529,6 +531,7 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                   )}
                 </CardContent>
               </Card>
+              <NeedsRerunPanel projectId={null} />
 
               {/* Top Problem Tests */}
               <Card>
