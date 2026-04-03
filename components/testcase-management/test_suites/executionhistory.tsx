@@ -852,7 +852,7 @@ export function ExecutionHistory({
 
   function openRunReview(run: RunWithStats) {
     const params = run.is_automation ? "?type=automation" : "";
-    router.push(`/test-runs/${run.id}/review${params}`);
+    router.push(`/test-library/${run.id}/review${params}`);
   }
 
   // ─── Evidence ───────────────────────────────────────────────────────────────

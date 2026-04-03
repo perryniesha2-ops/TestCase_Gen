@@ -8,17 +8,14 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
+import { requireAuth } from "@/lib/auth/api-auth";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const supabase = await createClient();
+  const { user, response } = await requireAuth();
+  if (response) return response;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await createClient();
 
   const url = new URL(request.url);
   const integration_id = url.searchParams.get("integration_id");
@@ -49,10 +46,10 @@ export async function GET(request: Request) {
   const { data: issues, error: issuesError } = await supabase
     .from("integration_issues")
     .select(
-      "id, execution_id, external_issue_id, external_issue_url, status, issue_type, updated_at, metadata",
+      "id, execution_id, external_issue_id, external_issue_url, status, created_at, issue_type, metadata",
     )
     .eq("integration_id", integration_id)
-    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(100);
 
   if (issuesError) {
@@ -121,7 +118,6 @@ export async function GET(request: Request) {
     external_issue_url: issue.external_issue_url,
     status: issue.status,
     issue_type: issue.issue_type,
-    updated_at: issue.updated_at,
     metadata: issue.metadata,
     test_case_title: issue.execution_id
       ? (titleByExecutionId.get(issue.execution_id) ?? null)

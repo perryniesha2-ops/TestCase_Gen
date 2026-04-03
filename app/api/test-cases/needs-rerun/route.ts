@@ -2,8 +2,19 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+
+function serviceClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+}
+
+// ─── GET /api/test-cases/needs-rerun?project_id=<id> ─────────────────────────
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -17,8 +28,10 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const project_id = url.searchParams.get("project_id");
 
-  // Fetch needs_rerun cases — no jira_issue_key on this table
-  let q = supabase
+  const db = serviceClient();
+
+  // Fetch needs_rerun cases
+  let q = db
     .from("test_cases")
     .select(
       "id, title, description, test_type, priority, status, updated_at, project_id, requirement_id",
@@ -32,7 +45,7 @@ export async function GET(request: Request) {
   const { data: cases, error } = await q;
 
   if (error) {
-    console.error("[needs-rerun] DB error:", error);
+    console.error("[needs-rerun] GET cases error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
@@ -40,10 +53,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ cases: [], total: 0 });
   }
 
-  // Look up the most recent failed execution per case to get the jira_issue_key
+  // Resolve jira_issue_key from most recent failed execution per case
   const caseIds = cases.map((c) => c.id);
 
-  const { data: executions } = await supabase
+  const { data: executions } = await db
     .from("test_executions")
     .select("test_case_id, jira_issue_key")
     .in("test_case_id", caseIds)
@@ -51,7 +64,6 @@ export async function GET(request: Request) {
     .not("jira_issue_key", "is", null)
     .order("created_at", { ascending: false });
 
-  // Keep only the most recent jira key per case
   const jiraKeyByCaseId = new Map<string, string>();
   for (const exec of executions ?? []) {
     if (!jiraKeyByCaseId.has(exec.test_case_id) && exec.jira_issue_key) {
@@ -59,12 +71,12 @@ export async function GET(request: Request) {
     }
   }
 
-  // Resolve Jira issue URLs from integration_issues
+  // Resolve Jira URLs from integration_issues
   const jiraKeys = [...new Set(jiraKeyByCaseId.values())];
   const issueUrlMap = new Map<string, string>();
 
   if (jiraKeys.length > 0) {
-    const { data: integrationIssues } = await supabase
+    const { data: integrationIssues } = await db
       .from("integration_issues")
       .select("external_issue_id, external_issue_url")
       .in("external_issue_id", jiraKeys);
@@ -86,6 +98,8 @@ export async function GET(request: Request) {
   return NextResponse.json({ cases: shaped, total: shaped.length });
 }
 
+// ─── POST /api/test-cases/needs-rerun ────────────────────────────────────────
+
 export async function POST(request: Request) {
   const supabase = await createClient();
 
@@ -96,10 +110,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json().catch(() => ({}));
-  const { suite_id, case_ids, project_id } = body as {
+  const { suite_id, case_ids } = body as {
     suite_id: string;
     case_ids: string[];
-    project_id?: string;
   };
 
   if (!suite_id)
@@ -113,16 +126,20 @@ export async function POST(request: Request) {
       { status: 400 },
     );
 
+  const db = serviceClient();
+
   // Verify cases belong to this user and are needs_rerun
-  const { data: cases, error: casesError } = await supabase
+  const { data: cases, error: casesError } = await db
     .from("test_cases")
     .select("id, title")
     .eq("user_id", user.id)
     .eq("status", "needs_rerun")
     .in("id", case_ids);
 
-  if (casesError)
+  if (casesError) {
+    console.error("[needs-rerun] POST cases verify error:", casesError);
     return NextResponse.json({ error: casesError.message }, { status: 500 });
+  }
   if (!cases || cases.length === 0)
     return NextResponse.json(
       { error: "No eligible cases found" },
@@ -133,12 +150,11 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
 
   // Create the run session
-  const { data: session, error: sessionError } = await supabase
+  const { data: session, error: sessionError } = await db
     .from("test_run_sessions")
     .insert({
       user_id: user.id,
       suite_id,
-      project_id: project_id ?? null,
       name: `Re-run: ${verifiedIds.length} fix verification${verifiedIds.length !== 1 ? "s" : ""} — ${new Date().toLocaleDateString()}`,
       status: "planned",
       test_cases_total: verifiedIds.length,
@@ -155,17 +171,18 @@ export async function POST(request: Request) {
     .single();
 
   if (sessionError || !session) {
-    console.error("[rerun] Session creation error:", sessionError);
+    console.error("[needs-rerun] Session creation error:", sessionError);
     return NextResponse.json(
       { error: sessionError?.message ?? "Failed to create session" },
       { status: 500 },
     );
   }
 
-  // Create draft executions
-  const { error: execError } = await supabase.from("test_executions").insert(
+  // Create executions for each case
+  const { error: execError } = await db.from("test_executions").insert(
     verifiedIds.map((caseId) => ({
       user_id: user.id,
+      executed_by: user.id,
       suite_id,
       session_id: session.id,
       test_case_id: caseId,
@@ -175,17 +192,26 @@ export async function POST(request: Request) {
   );
 
   if (execError) {
-    console.error("[rerun] Execution insert error:", execError);
-    await supabase.from("test_run_sessions").delete().eq("id", session.id);
+    console.error("[needs-rerun] Execution insert error:", execError);
+    // Roll back the session
+    await db.from("test_run_sessions").delete().eq("id", session.id);
     return NextResponse.json({ error: execError.message }, { status: 500 });
   }
 
-  // Clear needs_rerun flag
-  await supabase
+  // Clear needs_rerun flag back to draft
+  const { error: clearError } = await db
     .from("test_cases")
     .update({ status: "draft" })
     .eq("user_id", user.id)
     .in("id", verifiedIds);
+
+  if (clearError) {
+    // Non-fatal — session is created, log and continue
+    console.error(
+      "[needs-rerun] Failed to clear needs_rerun flag:",
+      clearError,
+    );
+  }
 
   return NextResponse.json({
     session_id: session.id,

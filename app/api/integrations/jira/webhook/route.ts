@@ -1,23 +1,12 @@
 // app/api/integrations/jira/webhook/route.ts
 
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-[
-  {
-    column_name: "execution_notes",
-  },
-  {
-    column_name: "review_note",
-  },
-  {
-    column_name: "notes",
-  },
-];
+
 export const runtime = "nodejs";
 
 type IssueStatus = "open" | "in_progress" | "resolved" | "closed" | "wont_fix";
-type ExecutionStatus = "pending_rerun" | "blocked";
 
 interface JiraWebhookPayload {
   webhookEvent: string;
@@ -140,7 +129,10 @@ export async function POST(request: Request) {
     JSON.stringify(payload.changelog?.items ?? []),
   );
 
-  const supabase = createClient(
+  // Service role client — bypasses RLS for all operations.
+  // Webhook requests from Jira have no user session so the regular client
+  // would be blocked by RLS on every table.
+  const serviceSupabase = createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
@@ -151,7 +143,7 @@ export async function POST(request: Request) {
     },
   );
 
-  const { data: integration, error: intError } = await supabase
+  const { data: integration, error: intError } = await serviceSupabase
     .from("integrations")
     .select("id, user_id, config, status")
     .eq("id", integration_id)
@@ -220,7 +212,7 @@ export async function POST(request: Request) {
 
   // Check if this issue is tracked — look it up regardless of changelog
   // (Jira doesn't always send a changelog for every transition type)
-  const { data: integrationIssue, error: issueError } = await supabase
+  const { data: integrationIssue, error: issueError } = await serviceSupabase
     .from("integration_issues")
     .select("id, execution_id, status")
     .eq("integration_id", integration_id)
@@ -253,58 +245,55 @@ export async function POST(request: Request) {
     `[jira-webhook] Found integration_issue id=${integrationIssue.id} current_status="${integrationIssue.status}"`,
   );
 
-  // Skip if already at this status
-  if (integrationIssue.status === internalStatus) {
-    console.log("[jira-webhook] Status unchanged, skipping");
-    return NextResponse.json({
-      ok: true,
-      skipped: true,
-      reason: "status unchanged",
-    });
+  // Update integration_issues status if it changed
+  if (integrationIssue.status !== internalStatus) {
+    const { error: updateIssueError } = await serviceSupabase
+      .from("integration_issues")
+      .update({
+        status: internalStatus,
+        metadata: {
+          jira_status: jiraStatus,
+          jira_resolution: resolutionName,
+          last_updated_by: payload.user?.displayName ?? "Jira",
+          last_updated_at: new Date(payload.timestamp).toISOString(),
+        },
+      })
+      .eq("id", integrationIssue.id);
+
+    if (updateIssueError) {
+      console.error(
+        "[jira-webhook] Failed to update integration_issue:",
+        updateIssueError,
+      );
+      return NextResponse.json(
+        { error: updateIssueError.message },
+        { status: 500 },
+      );
+    }
+
+    console.log(
+      `[jira-webhook] Updated integration_issue ${issue.key}: "${integrationIssue.status}" → "${internalStatus}"`,
+    );
+  } else {
+    console.log(
+      `[jira-webhook] integration_issue status already "${internalStatus}", skipping update`,
+    );
   }
 
-  // Update integration_issues
-  const { error: updateIssueError } = await supabase
-    .from("integration_issues")
-    .update({
-      status: internalStatus,
-      metadata: {
-        jira_status: jiraStatus,
-        jira_resolution: resolutionName,
-        last_updated_by: payload.user?.displayName ?? "Jira",
-        last_updated_at: new Date(payload.timestamp).toISOString(),
-      },
-    })
-    .eq("id", integrationIssue.id);
-
-  if (updateIssueError) {
-    console.error(
-      "[jira-webhook] Failed to update integration_issue:",
-      updateIssueError,
-    );
-    return NextResponse.json(
-      { error: updateIssueError.message },
-      { status: 500 },
-    );
-  }
-
-  console.log(
-    `[jira-webhook] Updated integration_issue ${issue.key}: "${integrationIssue.status}" → "${internalStatus}"`,
-  );
-
-  // Propagate to test_executions and test_cases when resolved/closed
+  // Always propagate to test_executions and test_cases when resolved/closed
+  // (runs even if integration_issues status didn't change, to handle cases
+  // where a previous webhook updated integration_issues but the cascade failed)
   let executionUpdated = false;
 
   if (
     (internalStatus === "resolved" || internalStatus === "closed") &&
     integrationIssue.execution_id
   ) {
-    const { error: execError } = await supabase
+    const { error: execError } = await serviceSupabase
       .from("test_executions")
       .update({
-        status: "pending_rerun" as ExecutionStatus,
-        updated_at: new Date().toISOString(),
-        notes: `Jira issue ${issue.key} resolved — awaiting re-run`,
+        execution_status: "pending_rerun",
+        review_note: `Jira issue ${issue.key} resolved — awaiting re-run`,
       })
       .eq("id", integrationIssue.execution_id);
 
@@ -317,14 +306,14 @@ export async function POST(request: Request) {
       executionUpdated = true;
 
       // Mark the test case needs_rerun
-      const { data: exec } = await supabase
+      const { data: exec } = await serviceSupabase
         .from("test_executions")
         .select("test_case_id")
         .eq("id", integrationIssue.execution_id)
         .maybeSingle();
 
       if (exec?.test_case_id) {
-        const { error: caseError } = await supabase
+        const { error: caseError } = await serviceSupabase
           .from("test_cases")
           .update({ status: "needs_rerun" })
           .eq("id", exec.test_case_id);
@@ -344,17 +333,14 @@ export async function POST(request: Request) {
   }
 
   if (internalStatus === "wont_fix" && integrationIssue.execution_id) {
-    await supabase
+    await serviceSupabase
       .from("test_executions")
-      .update({
-        status: "blocked" as ExecutionStatus,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ execution_status: "blocked" })
       .eq("id", integrationIssue.execution_id);
   }
 
   // Audit log — non-fatal if this table doesn't exist yet
-  await supabase
+  await serviceSupabase
     .from("integration_webhook_events")
     .insert({
       integration_id,

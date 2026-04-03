@@ -1,5 +1,6 @@
 // app/api/integrations/create-issues/route.ts
 import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/api-auth";
 import { JiraIntegration } from "@/lib/integration/jira-client";
 import { NextResponse } from "next/server";
 
@@ -14,14 +15,10 @@ type ExecPayload = {
 };
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
+  const { user, response } = await requireAuth();
+  if (response) return response;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const supabase = await createClient();
 
   let body: { integration_id?: string; executions?: ExecPayload[] };
   try {

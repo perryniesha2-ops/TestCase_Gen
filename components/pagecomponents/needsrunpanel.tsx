@@ -213,7 +213,7 @@ export function NeedsRerunPanel({
       );
 
       // Navigate to the new run session
-      router.push(`/test-runs/${json.session_id}`);
+      router.push(`/test-library/${json.session_id}`);
     } catch (err) {
       console.error("[NeedsRerunPanel] create error:", err);
       toastError(
