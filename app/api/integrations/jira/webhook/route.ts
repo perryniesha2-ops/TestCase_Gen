@@ -1,13 +1,4 @@
 // app/api/integrations/jira/webhook/route.ts
-//
-// Receives Jira issue events and syncs status back to test executions.
-//
-// Setup in Jira:
-//   Project Settings → Automation → Webhooks → Add webhook
-//   URL: https://your-app.com/api/integrations/jira/webhook?integration_id=<id>
-//   Events: Issue updated, Issue transitioned
-//
-// Or via Jira Admin → System → WebHooks (Cloud admin required for global hooks).
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -15,159 +6,90 @@ import crypto from "crypto";
 
 export const runtime = "nodejs";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+type IssueStatus = "open" | "in_progress" | "resolved" | "closed" | "wont_fix";
+type ExecutionStatus = "pending_rerun" | "blocked";
 
-// Jira webhook payload shape (simplified — Jira sends a lot more)
 interface JiraWebhookPayload {
-  webhookEvent: string; // "jira:issue_updated", "jira:issue_deleted", etc.
+  webhookEvent: string;
   issue?: {
     id: string;
-    key: string; // e.g. "PROJ-123"
+    key: string;
     fields?: {
       status?: {
-        name: string; // "To Do", "In Progress", "Done", "Closed", etc.
-        statusCategory?: {
-          key: string; // "new", "indeterminate", "done"
-        };
+        name: string;
+        statusCategory?: { key: string };
       };
-      resolution?: {
-        name: string; // "Fixed", "Won't Fix", "Duplicate", etc.
-      } | null;
-      assignee?: {
-        displayName: string;
-        emailAddress: string;
-      } | null;
-      comment?: {
-        comments?: Array<{
-          body: string;
-          author: { displayName: string };
-          created: string;
-        }>;
-      };
+      resolution?: { name: string } | null;
     };
   };
   changelog?: {
     items: Array<{
       field: string;
-      fromString: string | null;
-      toString: string | null;
+      fieldtype?: string;
+      from?: string | null;
+      fromString?: string | null;
+      to?: string | null;
+      toString?: string | null;
     }>;
   };
-  user?: {
-    displayName: string;
-    emailAddress: string;
-  };
+  user?: { displayName: string };
   timestamp: number;
 }
 
-// What we store in integration_issues.status
-type IssueStatus = "open" | "in_progress" | "resolved" | "closed" | "wont_fix";
-
-// What we update test_executions.status to when an issue is resolved
-type ExecutionStatus = "passed" | "failed" | "blocked" | "pending_rerun";
-
-// ─── Status mapping ───────────────────────────────────────────────────────────
-
-/**
- * Maps Jira status category keys and common status names to our internal status.
- * Jira's statusCategory.key is more reliable than status.name (which is user-customisable).
- */
 function mapJiraStatusToInternal(
   statusName: string,
   statusCategoryKey?: string,
   resolutionName?: string | null,
 ): IssueStatus {
-  // Resolution takes priority — if set, the issue is done in some form
+  // Resolution set → done in some form
   if (resolutionName) {
-    const res = resolutionName.toLowerCase();
+    const r = resolutionName.toLowerCase();
     if (
-      res.includes("won't fix") ||
-      res.includes("wont fix") ||
-      res.includes("duplicate") ||
-      res.includes("invalid")
-    ) {
+      r.includes("won't fix") ||
+      r.includes("wont fix") ||
+      r.includes("duplicate") ||
+      r.includes("invalid")
+    )
       return "wont_fix";
-    }
     return "resolved";
   }
-
   // Status category is the most reliable signal
   if (statusCategoryKey === "done") return "closed";
   if (statusCategoryKey === "indeterminate") return "in_progress";
-
-  // Fall back to name matching for common Jira defaults
-  const name = statusName.toLowerCase();
+  // Name-based fallback
+  const n = statusName.toLowerCase();
   if (
-    name.includes("done") ||
-    name.includes("closed") ||
-    name.includes("resolved") ||
-    name.includes("complete")
-  ) {
+    n.includes("done") ||
+    n.includes("closed") ||
+    n.includes("resolved") ||
+    n.includes("complete")
+  )
     return "closed";
-  }
-  if (
-    name.includes("progress") ||
-    name.includes("review") ||
-    name.includes("testing")
-  ) {
+  if (n.includes("progress") || n.includes("review") || n.includes("testing"))
     return "in_progress";
-  }
   if (
-    name.includes("won't") ||
-    name.includes("wont") ||
-    name.includes("duplicate") ||
-    name.includes("invalid")
-  ) {
+    n.includes("won't") ||
+    n.includes("wont") ||
+    n.includes("duplicate") ||
+    n.includes("invalid")
+  )
     return "wont_fix";
-  }
-
   return "open";
 }
 
-/**
- * When a Jira issue is resolved/closed, decide what to do with the linked test execution.
- * "resolved" → mark test as pending re-run so QA can verify the fix
- * "wont_fix"  → mark test as blocked (the bug is accepted, test expectation may change)
- * "closed"    → same as resolved
- */
-function mapIssueStatusToExecutionAction(
-  issueStatus: IssueStatus,
-): { executionStatus: ExecutionStatus; shouldRequeue: boolean } | null {
-  switch (issueStatus) {
-    case "resolved":
-    case "closed":
-      return { executionStatus: "pending_rerun", shouldRequeue: true };
-    case "wont_fix":
-      return { executionStatus: "blocked", shouldRequeue: false };
-    default:
-      return null; // no change to execution for open/in_progress
-  }
-}
-
-// ─── Signature verification ───────────────────────────────────────────────────
-
-/**
- * Jira can send a secret in a header for webhook verification.
- * This is optional but recommended — store the secret in the integration config.
- */
-function verifyWebhookSignature(
+function verifySignature(
   rawBody: string,
-  signatureHeader: string | null,
+  header: string | null,
   secret: string,
 ): boolean {
-  if (!signatureHeader || !secret) return true; // skip if not configured
+  if (!header || !secret) return true;
   const expected = `sha256=${crypto.createHmac("sha256", secret).update(rawBody).digest("hex")}`;
   try {
-    return crypto.timingSafeEqual(
-      Buffer.from(signatureHeader),
-      Buffer.from(expected),
-    );
+    return crypto.timingSafeEqual(Buffer.from(header), Buffer.from(expected));
   } catch {
     return false;
   }
 }
-
-// ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
   const url = new URL(request.url);
@@ -180,7 +102,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Read raw body for signature verification before parsing
   const rawBody = await request.text();
   let payload: JiraWebhookPayload;
   try {
@@ -192,9 +113,25 @@ export async function POST(request: Request) {
     );
   }
 
+  // Log the full payload shape for debugging
+  console.log("[jira-webhook] Received event:", payload.webhookEvent);
+  console.log("[jira-webhook] Issue key:", payload.issue?.key);
+  console.log("[jira-webhook] Status:", payload.issue?.fields?.status?.name);
+  console.log(
+    "[jira-webhook] Status category:",
+    payload.issue?.fields?.status?.statusCategory?.key,
+  );
+  console.log(
+    "[jira-webhook] Resolution:",
+    payload.issue?.fields?.resolution?.name ?? null,
+  );
+  console.log(
+    "[jira-webhook] Changelog items:",
+    JSON.stringify(payload.changelog?.items ?? []),
+  );
+
   const supabase = await createClient();
 
-  // Fetch the integration to verify it exists and get the webhook secret
   const { data: integration, error: intError } = await supabase
     .from("integrations")
     .select("id, user_id, config, status")
@@ -203,6 +140,7 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (intError || !integration) {
+    console.error("[jira-webhook] Integration not found:", integration_id);
     return NextResponse.json(
       { error: "Integration not found" },
       { status: 404 },
@@ -215,20 +153,20 @@ export async function POST(request: Request) {
     );
   }
 
-  // Verify signature if a webhook secret is configured
+  // Signature verification
   const webhookSecret = integration.config?.webhookSecret as string | undefined;
   const signatureHeader = request.headers.get("x-hub-signature-256");
   if (
     webhookSecret &&
-    !verifyWebhookSignature(rawBody, signatureHeader, webhookSecret)
+    !verifySignature(rawBody, signatureHeader, webhookSecret)
   ) {
     console.warn(
-      `[jira-webhook] Signature mismatch for integration ${integration_id}`,
+      "[jira-webhook] Signature mismatch — check that the secret in your app matches Jira exactly",
     );
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  // We only care about issue events
+  // Only handle issue events
   if (!payload.webhookEvent?.startsWith("jira:issue")) {
     return NextResponse.json({
       ok: true,
@@ -246,34 +184,23 @@ export async function POST(request: Request) {
     });
   }
 
-  // Check if a status transition happened
-  const statusChanged = payload.changelog?.items.some(
-    (item) => item.field === "status",
-  );
-  const resolutionChanged = payload.changelog?.items.some(
-    (item) => item.field === "resolution",
-  );
-
-  if (!statusChanged && !resolutionChanged) {
-    return NextResponse.json({
-      ok: true,
-      skipped: true,
-      reason: "no status/resolution change",
-    });
-  }
-
   const jiraStatus = issue.fields?.status?.name ?? "";
   const categoryKey = issue.fields?.status?.statusCategory?.key;
   const resolutionName = issue.fields?.resolution?.name ?? null;
+
+  console.log(
+    `[jira-webhook] Mapping: status="${jiraStatus}" category="${categoryKey}" resolution="${resolutionName}"`,
+  );
 
   const internalStatus = mapJiraStatusToInternal(
     jiraStatus,
     categoryKey,
     resolutionName,
   );
-  const executionAction = mapIssueStatusToExecutionAction(internalStatus);
+  console.log(`[jira-webhook] Mapped to internal status: "${internalStatus}"`);
 
-  // Find the linked integration_issue row
+  // Check if this issue is tracked — look it up regardless of changelog
+  // (Jira doesn't always send a changelog for every transition type)
   const { data: integrationIssue, error: issueError } = await supabase
     .from("integration_issues")
     .select("id, execution_id, status")
@@ -281,18 +208,35 @@ export async function POST(request: Request) {
     .eq("external_issue_id", issue.key)
     .maybeSingle();
 
-  if (issueError || !integrationIssue) {
-    // Issue exists in Jira but not in our DB — log and move on
-    console.warn(`[jira-webhook] No integration_issue found for ${issue.key}`);
+  if (issueError) {
+    console.error(
+      "[jira-webhook] DB error looking up integration_issue:",
+      issueError,
+    );
+    return NextResponse.json({ error: issueError.message }, { status: 500 });
+  }
+
+  if (!integrationIssue) {
+    console.warn(
+      `[jira-webhook] No integration_issue row found for key="${issue.key}" integration="${integration_id}"`,
+    );
+    console.warn(
+      "[jira-webhook] Tip: the issue may have been created before the integration_issues table existed, or the create-issues call failed to insert a row",
+    );
     return NextResponse.json({
       ok: true,
       skipped: true,
-      reason: "issue not tracked",
+      reason: "issue not tracked in integration_issues",
     });
   }
 
-  // Skip if status hasn't actually changed
+  console.log(
+    `[jira-webhook] Found integration_issue id=${integrationIssue.id} current_status="${integrationIssue.status}"`,
+  );
+
+  // Skip if already at this status
   if (integrationIssue.status === internalStatus) {
+    console.log("[jira-webhook] Status unchanged, skipping");
     return NextResponse.json({
       ok: true,
       skipped: true,
@@ -300,17 +244,16 @@ export async function POST(request: Request) {
     });
   }
 
-  // Update integration_issues status
+  // Update integration_issues
   const { error: updateIssueError } = await supabase
     .from("integration_issues")
     .update({
       status: internalStatus,
       updated_at: new Date().toISOString(),
-      // Store the full Jira status name for display
       metadata: {
         jira_status: jiraStatus,
         jira_resolution: resolutionName,
-        last_updated_by: payload.user?.displayName ?? "Jira automation",
+        last_updated_by: payload.user?.displayName ?? "Jira",
         last_updated_at: new Date(payload.timestamp).toISOString(),
       },
     })
@@ -327,43 +270,72 @@ export async function POST(request: Request) {
     );
   }
 
-  // If there's an execution action, update the test execution too
-  if (executionAction && integrationIssue.execution_id) {
-    const { error: updateExecError } = await supabase
+  console.log(
+    `[jira-webhook] Updated integration_issue ${issue.key}: "${integrationIssue.status}" → "${internalStatus}"`,
+  );
+
+  // Propagate to test_executions and test_cases when resolved/closed
+  let executionUpdated = false;
+
+  if (
+    (internalStatus === "resolved" || internalStatus === "closed") &&
+    integrationIssue.execution_id
+  ) {
+    const { error: execError } = await supabase
       .from("test_executions")
       .update({
-        status: executionAction.executionStatus,
+        status: "pending_rerun" as ExecutionStatus,
         updated_at: new Date().toISOString(),
-        notes: `Status updated via Jira webhook: ${jiraStatus}${resolutionName ? ` (${resolutionName})` : ""}`,
+        notes: `Jira issue ${issue.key} resolved — awaiting re-run`,
       })
       .eq("id", integrationIssue.execution_id);
 
-    if (updateExecError) {
+    if (execError) {
       console.error(
         "[jira-webhook] Failed to update test_execution:",
-        updateExecError,
+        execError,
       );
-    }
+    } else {
+      executionUpdated = true;
 
-    // If the fix is verified, mark the related test case for re-run
-    if (executionAction.shouldRequeue) {
-      // Fetch the test_case_id from the execution
-      const { data: execution } = await supabase
+      // Mark the test case needs_rerun
+      const { data: exec } = await supabase
         .from("test_executions")
         .select("test_case_id")
         .eq("id", integrationIssue.execution_id)
         .maybeSingle();
 
-      if (execution?.test_case_id) {
-        await supabase
+      if (exec?.test_case_id) {
+        const { error: caseError } = await supabase
           .from("test_cases")
           .update({ status: "needs_rerun" })
-          .eq("id", execution.test_case_id);
+          .eq("id", exec.test_case_id);
+
+        if (caseError) {
+          console.error(
+            "[jira-webhook] Failed to update test_case:",
+            caseError,
+          );
+        } else {
+          console.log(
+            `[jira-webhook] Marked test_case ${exec.test_case_id} as needs_rerun`,
+          );
+        }
       }
     }
   }
 
-  // Log the webhook event for audit trail
+  if (internalStatus === "wont_fix" && integrationIssue.execution_id) {
+    await supabase
+      .from("test_executions")
+      .update({
+        status: "blocked" as ExecutionStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", integrationIssue.execution_id);
+  }
+
+  // Audit log — non-fatal if this table doesn't exist yet
   await supabase
     .from("integration_webhook_events")
     .insert({
@@ -376,20 +348,18 @@ export async function POST(request: Request) {
       processed_at: new Date().toISOString(),
     })
     .then(({ error }) => {
-      if (error) console.warn("[jira-webhook] Failed to log event:", error);
+      if (error)
+        console.warn(
+          "[jira-webhook] Audit log insert failed (non-fatal):",
+          error.message,
+        );
     });
-
-  console.log(
-    `[jira-webhook] ${issue.key}: ${integrationIssue.status} → ${internalStatus}`,
-  );
 
   return NextResponse.json({
     ok: true,
     issue_key: issue.key,
     old_status: integrationIssue.status,
     new_status: internalStatus,
-    execution_updated: Boolean(
-      executionAction && integrationIssue.execution_id,
-    ),
+    execution_updated: executionUpdated,
   });
 }
