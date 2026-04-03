@@ -1,9 +1,19 @@
 // app/api/integrations/jira/webhook/route.ts
 
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-
+[
+  {
+    column_name: "execution_notes",
+  },
+  {
+    column_name: "review_note",
+  },
+  {
+    column_name: "notes",
+  },
+];
 export const runtime = "nodejs";
 
 type IssueStatus = "open" | "in_progress" | "resolved" | "closed" | "wont_fix";
@@ -130,7 +140,16 @@ export async function POST(request: Request) {
     JSON.stringify(payload.changelog?.items ?? []),
   );
 
-  const supabase = await createClient();
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    },
+  );
 
   const { data: integration, error: intError } = await supabase
     .from("integrations")
