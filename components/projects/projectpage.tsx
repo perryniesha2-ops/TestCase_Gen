@@ -531,8 +531,7 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                   )}
                 </CardContent>
               </Card>
-              <NeedsRerunPanel projectId={encodeURIComponent(projectId)} />
-
+              <NeedsRerunPanel projectId={projectId} />
               {/* Top Problem Tests */}
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
