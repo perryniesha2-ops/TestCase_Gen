@@ -249,7 +249,6 @@ export async function POST(request: Request) {
     .from("integration_issues")
     .update({
       status: internalStatus,
-      updated_at: new Date().toISOString(),
       metadata: {
         jira_status: jiraStatus,
         jira_resolution: resolutionName,
