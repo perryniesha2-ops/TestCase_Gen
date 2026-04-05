@@ -67,7 +67,7 @@ export function SiteHeader({
     >
       <div className="mx-auto flex h-16 max-w-screen-2xl items-center gap-3 px-3">
         {/* Mobile menu trigger — hidden on md+ where the sidebar is visible */}
-        <MobileMenuButton userTier={userTier} />
+        <MobileMenuButton />
 
         {/* Title / logo */}
         {title ? (
