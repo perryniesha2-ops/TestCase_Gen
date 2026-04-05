@@ -65,6 +65,8 @@ import {
   toastWarning,
 } from "@/lib/utils/toast-utils";
 
+import { resolveNeedsRerun } from "@/lib/utils/resolve-needs-rerun";
+
 interface TestCase {
   id: string;
   title: string;
@@ -638,7 +640,13 @@ export function TestSessionExecution({
 
       if (error) throw error;
 
-      // ✅ Update the execution status locally
+      if (currentTest.test_case_id) {
+        await resolveNeedsRerun(
+          createClient(),
+          currentTest.test_case_id,
+          status,
+        );
+      }
       setCurrentExecutionStatus(status);
 
       const newCompleted = completedCount + 1;
