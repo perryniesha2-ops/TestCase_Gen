@@ -206,7 +206,7 @@ export default function AIGeneratorGuidePage() {
                   key={item.id}
                   href={`#${item.id}`}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   {item.icon}
@@ -1017,7 +1017,7 @@ across web and mobile platforms, including:
                   <div className="p-3 rounded-lg border">
                     <div className="flex items-center justify-between mb-2">
                       <div className="font-semibold text-sm">
-                        Claude Sonnet 4.5
+                        claude sonnet 4.6
                       </div>
                       <Badge variant="secondary">Recommended</Badge>
                     </div>
@@ -1104,7 +1104,7 @@ across web and mobile platforms, including:
               <Info className="h-4 w-4" />
               <AlertTitle>Model recommendations</AlertTitle>
               <AlertDescription>
-                Start with <strong>Claude Sonnet 4.5</strong> for most use
+                Start with <strong>claude sonnet 4.6</strong> for most use
                 cases. Use <strong>Haiku</strong> for rapid iterations. Reserve{" "}
                 <strong>Opus</strong> for your most critical or complex
                 requirements.
@@ -1624,13 +1624,12 @@ across web and mobile platforms, including:
                 </div>
 
                 <div className="text-xs text-muted-foreground pt-4 border-t">
-                  Last updated: January 2026 · Guide version: 1.0
+                  Last updated: March 2026 · Guide version: 1.1
                 </div>
               </CardContent>
             </Card>
           </Section>
         </main>
-        <div className="h-2" />
       </div>
       <SiteFooter />
     </div>

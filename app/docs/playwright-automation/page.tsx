@@ -1502,13 +1502,15 @@ await page.fill('#email',
                   </div>
                 </div>
                 <div className="text-xs text-muted-foreground pt-4 border-t">
-                  Last updated: March 2026 · Guide version: 2.0
+                  Last updated: March 2026 · Guide version: 1.1
                 </div>
               </CardContent>
             </Card>
           </Section>
         </main>
       </div>
+      <div className="h-2" />
+
       <SiteFooter />
     </div>
   );
