@@ -86,12 +86,38 @@ export async function GET(request: Request) {
     }
   }
 
+  // Check for existing open re-run sessions per case
+  const { data: openSessions } = await db
+    .from("test_executions")
+    .select(
+      "test_case_id, session_id, test_run_sessions!inner(id, name, status)",
+    )
+    .in("test_case_id", caseIds)
+    .in("test_run_sessions.status", ["planned", "in_progress"]);
+
+  const openSessionByCaseId = new Map<
+    string,
+    { id: string; name: string; status: string }
+  >();
+  for (const row of openSessions ?? []) {
+    if (!openSessionByCaseId.has(row.test_case_id)) {
+      const session = Array.isArray(row.test_run_sessions)
+        ? row.test_run_sessions[0]
+        : row.test_run_sessions;
+      if (session) openSessionByCaseId.set(row.test_case_id, session);
+    }
+  }
+
   const shaped = cases.map((c) => {
     const jiraKey = jiraKeyByCaseId.get(c.id) ?? null;
+    const openSession = openSessionByCaseId.get(c.id) ?? null;
     return {
       ...c,
       jira_issue_key: jiraKey,
       jira_issue_url: jiraKey ? (issueUrlMap.get(jiraKey) ?? null) : null,
+      open_session_id: openSession?.id ?? null,
+      open_session_name: openSession?.name ?? null,
+      open_session_status: openSession?.status ?? null,
     };
   });
 
@@ -149,6 +175,31 @@ export async function POST(request: Request) {
   const verifiedIds = cases.map((c) => c.id);
   const now = new Date().toISOString();
 
+  // Check if there is already an open session for any of these cases
+  // Return it instead of creating a duplicate
+  const { data: existingSession } = await db
+    .from("test_executions")
+    .select("session_id, test_run_sessions!inner(id, name, status)")
+    .in("test_case_id", verifiedIds)
+    .in("test_run_sessions.status", ["planned", "in_progress"])
+    .limit(1)
+    .maybeSingle();
+
+  if (existingSession) {
+    const session = Array.isArray(existingSession.test_run_sessions)
+      ? existingSession.test_run_sessions[0]
+      : existingSession.test_run_sessions;
+    if (session) {
+      console.log("[needs-rerun] Returning existing open session:", session.id);
+      return NextResponse.json({
+        session_id: session.id,
+        session_name: session.name,
+        case_count: verifiedIds.length,
+        existing: true,
+      });
+    }
+  }
+
   // Create the run session
   const { data: session, error: sessionError } = await db
     .from("test_run_sessions")
@@ -187,6 +238,7 @@ export async function POST(request: Request) {
       session_id: session.id,
       test_case_id: caseId,
       execution_status: "not_run",
+      execution_type: "manual",
       created_at: now,
     })),
   );
@@ -198,20 +250,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: execError.message }, { status: 500 });
   }
 
-  // Clear needs_rerun flag back to draft
-  const { error: clearError } = await db
-    .from("test_cases")
-    .update({ status: "draft" })
-    .eq("user_id", user.id)
-    .in("id", verifiedIds);
-
-  if (clearError) {
-    // Non-fatal — session is created, log and continue
-    console.error(
-      "[needs-rerun] Failed to clear needs_rerun flag:",
-      clearError,
-    );
-  }
+  // NOTE: needs_rerun flag is NOT cleared here.
+  // It gets cleared when the re-run session completes:
+  //   - passed  → status = 'active'   (fix verified)
+  //   - failed  → status = 'needs_rerun' (fix didn't work, stays in panel)
+  //   - blocked/skipped → status = 'needs_rerun' (still needs attention)
+  // This prevents cases from disappearing if the user never executes the session.
 
   return NextResponse.json({
     session_id: session.id,

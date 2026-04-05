@@ -9,7 +9,7 @@
 //   import { MobileMenuButton } from "@/components/MobileMenuButton";
 //   <MobileMenuButton />
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -73,18 +73,38 @@ const secondaryNavigation = [
 ];
 
 interface MobileMenuButtonProps {
-  userTier?: "free" | "pro";
   className?: string;
 }
 
-export function MobileMenuButton({
-  userTier = "free",
-  className,
-}: MobileMenuButtonProps) {
+export function MobileMenuButton({ className }: MobileMenuButtonProps) {
   const [open, setOpen] = useState(false);
+  const [userTier, setUserTier] = useState<"free" | "pro">("free");
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
   const supabase = createClient();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("subscription_tier, subscription_status")
+          .eq("id", user.id)
+          .single();
+        const status = profile?.subscription_status ?? "inactive";
+        const tier = profile?.subscription_tier ?? "free";
+        const isActive = status === "active" || status === "trial";
+        setUserTier(isActive && tier !== "free" ? "pro" : "free");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   const isActive = (href: string) =>
     href === "/dashboard"
@@ -185,7 +205,7 @@ export function MobileMenuButton({
               })}
             </nav>
 
-            {userTier === "free" && (
+            {userTier === "free" && !loading && (
               <div className="mt-4 rounded-lg bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-500/20 p-3 space-y-2">
                 <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
                   <Zap className="h-3 w-3" />
