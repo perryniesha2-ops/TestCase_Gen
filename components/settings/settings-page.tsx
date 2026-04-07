@@ -1003,7 +1003,7 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>API Integration</CardTitle>
               <CardDescription>
-                Use these credentials to sync Playwright test results back to
+                Use these credentials to sync automation test results back to
                 SynthQA
               </CardDescription>
             </CardHeader>
@@ -1100,7 +1100,7 @@ export default function SettingsPage() {
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Webhook URL</p>
                   <p className="text-xs text-muted-foreground">
-                    Use this URL in your Playwright exports to sync test results
+                    Use this URL in your automation exports to sync test results
                   </p>
                 </div>
 
@@ -1177,7 +1177,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* Save Bar */}
-        <div className="flex items-center gap-2 pt-4 border-t">
+        <div className="flex items-center gap-2 pt-4 ">
           <Button onClick={handleSaveProfile} disabled={saving}>
             {saving ? (
               <>
