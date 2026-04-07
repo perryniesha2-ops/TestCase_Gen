@@ -1734,19 +1734,21 @@ export default function ProjectsGuidePage() {
                       className="flex items-center gap-2 text-primary hover:underline"
                     >
                       <Sparkles className="h-4 w-4" />
-                      AI Test Generator Guide
+                      AI Test Case Generator Guide
                     </Link>
                   </div>
                 </div>
 
                 <div className="text-xs text-muted-foreground pt-4 border-t">
-                  Last updated: January 2026 · Guide version: 1.0
+                  Last updated: March 2026 · Guide version: 1.1
                 </div>
               </CardContent>
             </Card>
           </Section>
         </main>
       </div>
+      <div className="h-2" />
+
       <SiteFooter />
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,16 +27,20 @@ import {
   Eye,
   ChevronDown,
   ChevronUp,
+  Zap,
 } from "lucide-react";
 import { toastError, toastInfo, toastSuccess } from "@/lib/utils/toast-utils";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 type AllowedStatus = "passed" | "failed" | "skipped" | "blocked";
 
-type ExecutionHistoryRow = {
+type ExecutionRow = {
   execution_id: string;
   suite_id: string;
   suite_name: string;
   session_id: string | null;
+  automation_run_id: string | null;
   test_case_id: string;
   test_title: string;
   test_description: string | null;
@@ -56,10 +60,10 @@ type ExecutionHistoryRow = {
   testrail_defect_id: string | null;
 };
 
-type RunWithStats = {
+type RunMeta = {
   id: string;
-  suite_name: string;
   suite_id: string | null;
+  suite_name: string;
   name: string;
   status: string;
   test_cases_total: number;
@@ -69,29 +73,50 @@ type RunWithStats = {
   skipped_cases: number;
   blocked_cases: number;
   created_at: string;
+  is_automation: boolean;
 };
 
 type IntegrationRow = {
   id: string;
   integration_type: "jira" | "testrail";
   sync_enabled: boolean;
-  config?: any;
+  config?: Record<string, string>;
 };
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const INCLUDED_STATUSES = ["passed", "failed", "blocked", "skipped"];
+
+const EXECUTION_SELECT = `
+  id, suite_id, session_id, automation_run_id,
+  test_case_id, platform_test_case_id,
+  execution_status, execution_notes, failure_reason,
+  created_at, started_at, completed_at,
+  review_needs_update, review_create_issue, review_note, reviewed_at,
+  jira_issue_key, testrail_defect_id
+`;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDuration(ms: number | null) {
   if (!ms) return "—";
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-  return `${seconds}s`;
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
 }
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function RunReviewPage({ runId }: { runId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // ?type=automation is set by ExecutionHistory when navigating
+  const isAutomation = searchParams.get("type") === "automation";
+
   const supabase = useMemo(() => createClient(), []);
 
-  const [run, setRun] = useState<RunWithStats | null>(null);
-  const [rows, setRows] = useState<ExecutionHistoryRow[]>([]);
+  const [run, setRun] = useState<RunMeta | null>(null);
+  const [rows, setRows] = useState<ExecutionRow[]>([]);
   const [integrations, setIntegrations] = useState<IntegrationRow[]>([]);
   const [selectedIntegrationId, setSelectedIntegrationId] = useState("none");
   const [jiraBaseUrl, setJiraBaseUrl] = useState<string | null>(null);
@@ -99,24 +124,27 @@ export function RunReviewPage({ runId }: { runId: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [creatingIssues, setCreatingIssues] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | AllowedStatus>(
     "all",
   );
   const [showOnlyNeedsReview, setShowOnlyNeedsReview] = useState(false);
 
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  // Auto-save every 30s when there are pending changes
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const t = setTimeout(() => void saveReview(), 30_000);
+    return () => clearTimeout(t);
+  }, [hasUnsavedChanges, rows]);
 
   useEffect(() => {
     void loadRunData();
   }, [runId]);
 
-  useEffect(() => {
-    if (!hasUnsavedChanges) return;
-    const timer = setTimeout(() => void saveReview(), 30000);
-    return () => clearTimeout(timer);
-  }, [hasUnsavedChanges, rows]);
+  // ─── Load ──────────────────────────────────────────────────────────────────
 
   async function loadRunData() {
     setLoading(true);
@@ -128,165 +156,199 @@ export function RunReviewPage({ runId }: { runId: string }) {
         return;
       }
 
-      const { data: runData, error: runError } = await supabase
-        .from("test_run_sessions")
-        .select("*")
-        .eq("id", runId)
-        .single();
-
-      if (runError) throw runError;
-
-      let suiteName = "Unknown Suite";
+      let resolvedRun: RunMeta | null = null;
       let projectId: string | null = null;
-      if (runData.suite_id) {
-        const { data: suite } = await supabase
-          .from("suites")
-          .select("id, name, project_id")
-          .eq("id", runData.suite_id)
-          .single();
-        suiteName = suite?.name ?? "Unknown Suite";
-        projectId = suite?.project_id ?? null;
+
+      // ── Resolve run metadata ────────────────────────────────────────────────
+      if (!isAutomation) {
+        const { data } = await supabase
+          .from("test_run_sessions")
+          .select("*")
+          .eq("id", runId)
+          .maybeSingle();
+
+        if (data) {
+          let suiteName = "Unknown Suite";
+          if (data.suite_id) {
+            const { data: suite } = await supabase
+              .from("suites")
+              .select("id, name, project_id")
+              .eq("id", data.suite_id)
+              .single();
+            suiteName = suite?.name ?? "Unknown Suite";
+            projectId = suite?.project_id ?? null;
+          }
+          resolvedRun = {
+            id: data.id,
+            suite_id: data.suite_id ?? null,
+            suite_name: suiteName,
+            name: data.name,
+            status: data.status,
+            test_cases_total: data.test_cases_total ?? 0,
+            test_cases_completed: data.test_cases_completed ?? 0,
+            passed_cases: data.passed_cases ?? 0,
+            failed_cases: data.failed_cases ?? 0,
+            skipped_cases: data.skipped_cases ?? 0,
+            blocked_cases: data.blocked_cases ?? 0,
+            created_at: data.created_at,
+            is_automation: false,
+          };
+        }
+      } else {
+        const { data } = await supabase
+          .from("automation_runs")
+          .select("*")
+          .eq("id", runId)
+          .maybeSingle();
+
+        if (data) {
+          let suiteName = "Unknown Suite";
+          if (data.suite_id) {
+            const { data: suite } = await supabase
+              .from("suites")
+              .select("id, name, project_id")
+              .eq("id", data.suite_id)
+              .single();
+            suiteName = suite?.name ?? "Unknown Suite";
+            projectId = suite?.project_id ?? null;
+          }
+          resolvedRun = {
+            id: data.id,
+            suite_id: data.suite_id ?? null,
+            suite_name: suiteName,
+            name: `Run #${data.run_number} — ${data.framework ?? "playwright"}`,
+            status: "completed",
+            test_cases_total: Number(data.total_tests ?? 0),
+            test_cases_completed: Number(data.total_tests ?? 0),
+            passed_cases: Number(data.passed_tests ?? 0),
+            failed_cases: Number(data.failed_tests ?? 0),
+            skipped_cases: Number(data.skipped_tests ?? 0),
+            blocked_cases: 0,
+            created_at: data.created_at,
+            is_automation: true,
+          };
+        }
       }
 
-      const runWithStats: RunWithStats = {
-        id: runData.id,
-        suite_id: runData.suite_id ?? null,
-        suite_name: suiteName,
-        name: runData.name,
-        status: runData.status,
-        test_cases_total: runData.test_cases_total ?? 0,
-        test_cases_completed: runData.test_cases_completed ?? 0,
-        passed_cases: runData.passed_cases ?? 0,
-        failed_cases: runData.failed_cases ?? 0,
-        skipped_cases: runData.skipped_cases ?? 0,
-        blocked_cases: runData.blocked_cases ?? 0,
-        created_at: runData.created_at,
-      };
+      if (!resolvedRun) {
+        toastError("Run not found");
+        router.push("/test-library");
+        return;
+      }
 
-      setRun(runWithStats);
+      setRun(resolvedRun);
 
-      const { data: execsRaw, error: execError } = await supabase
-        .from("test_executions")
-        .select(
-          `
-          id,
-          suite_id,
-          session_id,
-          test_case_id,
-          platform_test_case_id,
-          execution_status,
-          execution_notes,
-          failure_reason,
-          created_at,
-          started_at,
-          completed_at,
-          review_needs_update,
-          review_create_issue,
-          review_note,
-          reviewed_at,
-          jira_issue_key,
-          testrail_defect_id
-        `,
-        )
-        .eq("session_id", runId)
-        .in("execution_status", ["passed", "failed", "blocked", "skipped"])
-        .order("created_at", { ascending: true });
+      // ── Fetch executions ────────────────────────────────────────────────────
+      const { data: execsRaw, error: execError } = resolvedRun.is_automation
+        ? await supabase
+            .from("test_executions")
+            .select(EXECUTION_SELECT)
+            .eq("automation_run_id", runId)
+            .in("execution_status", INCLUDED_STATUSES)
+            .order("created_at", { ascending: true })
+        : await supabase
+            .from("test_executions")
+            .select(EXECUTION_SELECT)
+            .eq("session_id", runId)
+            .in("execution_status", INCLUDED_STATUSES)
+            .order("created_at", { ascending: true });
 
       if (execError) throw execError;
 
-      const execs = execsRaw ?? [];
+      const execs = (execsRaw ?? []) as Record<string, unknown>[];
 
+      // ── Resolve test case titles ────────────────────────────────────────────
       const regularIds = [
-        ...new Set(execs.map((e: any) => e.test_case_id).filter(Boolean)),
-      ];
+        ...new Set(execs.map((e) => e.test_case_id).filter(Boolean)),
+      ] as string[];
+      const platformIds = [
+        ...new Set(execs.map((e) => e.platform_test_case_id).filter(Boolean)),
+      ] as string[];
+
       const regularMap = new Map<
         string,
         { title: string; description: string | null }
       >();
-      if (regularIds.length > 0) {
-        const { data: cases } = await supabase
-          .from("test_cases")
-          .select("id, title, description")
-          .in("id", regularIds);
-        (cases ?? []).forEach((c: any) =>
-          regularMap.set(c.id, { title: c.title, description: c.description }),
-        );
-      }
-
-      const platformIds = [
-        ...new Set(
-          execs.map((e: any) => e.platform_test_case_id).filter(Boolean),
-        ),
-      ];
       const platformMap = new Map<
         string,
         { title: string; description: string | null }
       >();
+
+      if (regularIds.length > 0) {
+        const { data } = await supabase
+          .from("test_cases")
+          .select("id, title, description")
+          .in("id", regularIds);
+        (data ?? []).forEach((c) =>
+          regularMap.set(c.id, { title: c.title, description: c.description }),
+        );
+      }
       if (platformIds.length > 0) {
-        const { data: cases } = await supabase
+        const { data } = await supabase
           .from("platform_test_cases")
           .select("id, title, description")
           .in("id", platformIds);
-        (cases ?? []).forEach((c: any) =>
+        (data ?? []).forEach((c) =>
           platformMap.set(c.id, { title: c.title, description: c.description }),
         );
       }
 
-      // Evidence counts
-      const execIds = execs.map((e: any) => e.id);
+      // ── Evidence counts ─────────────────────────────────────────────────────
+      const execIds = execs.map((e) => e.id as string);
       const evidenceCounts = new Map<string, number>();
       if (execIds.length > 0) {
-        const { data: attachments } = await supabase
+        const { data: atts } = await supabase
           .from("test_attachments")
           .select("execution_id")
           .in("execution_id", execIds);
-        for (const att of attachments ?? []) {
+        for (const a of atts ?? [])
           evidenceCounts.set(
-            att.execution_id,
-            (evidenceCounts.get(att.execution_id) ?? 0) + 1,
+            a.execution_id,
+            (evidenceCounts.get(a.execution_id) ?? 0) + 1,
           );
-        }
       }
 
-      const mapped: ExecutionHistoryRow[] = execs.map((e: any) => {
+      // ── Map to rows ─────────────────────────────────────────────────────────
+      const mapped: ExecutionRow[] = execs.map((e) => {
         const testCase = e.test_case_id
-          ? regularMap.get(e.test_case_id)
-          : platformMap.get(e.platform_test_case_id);
+          ? regularMap.get(e.test_case_id as string)
+          : platformMap.get(e.platform_test_case_id as string);
 
-        let duration: number | null = null;
-        if (e.started_at && e.completed_at) {
-          duration =
-            new Date(e.completed_at).getTime() -
-            new Date(e.started_at).getTime();
-        }
+        const duration =
+          e.started_at && e.completed_at
+            ? new Date(e.completed_at as string).getTime() -
+              new Date(e.started_at as string).getTime()
+            : null;
 
         return {
-          execution_id: e.id,
-          suite_id: e.suite_id,
-          suite_name: suiteName,
-          session_id: e.session_id,
-          test_case_id: e.test_case_id || e.platform_test_case_id,
+          execution_id: e.id as string,
+          suite_id: e.suite_id as string,
+          suite_name: resolvedRun!.suite_name,
+          session_id: (e.session_id as string) ?? null,
+          automation_run_id: (e.automation_run_id as string) ?? null,
+          test_case_id: (e.test_case_id || e.platform_test_case_id) as string,
           test_title: testCase?.title ?? "Unknown Test",
           test_description: testCase?.description ?? null,
-          execution_status: e.execution_status ?? "passed",
-          execution_notes: e.execution_notes ?? null,
-          failure_reason: e.failure_reason ?? null,
-          created_at: e.created_at,
-          started_at: e.started_at ?? null,
-          completed_at: e.completed_at ?? null,
+          execution_status: (e.execution_status as AllowedStatus) ?? "passed",
+          execution_notes: (e.execution_notes as string) ?? null,
+          failure_reason: (e.failure_reason as string) ?? null,
+          created_at: e.created_at as string,
+          started_at: (e.started_at as string) ?? null,
+          completed_at: (e.completed_at as string) ?? null,
           duration_ms: duration,
-          evidence_count: evidenceCounts.get(e.id) ?? 0,
+          evidence_count: evidenceCounts.get(e.id as string) ?? 0,
           review_needs_update: Boolean(e.review_needs_update ?? false),
           review_create_issue: Boolean(e.review_create_issue ?? false),
-          review_note: e.review_note ?? null,
-          reviewed_at: e.reviewed_at ?? null,
-          jira_issue_key: e.jira_issue_key ?? null,
-          testrail_defect_id: e.testrail_defect_id ?? null,
+          review_note: (e.review_note as string) ?? null,
+          reviewed_at: (e.reviewed_at as string) ?? null,
+          jira_issue_key: (e.jira_issue_key as string) ?? null,
+          testrail_defect_id: (e.testrail_defect_id as string) ?? null,
         };
       });
 
       setRows(mapped);
 
+      // ── Load integrations ───────────────────────────────────────────────────
       if (projectId) {
         const { data: intData } = await supabase
           .from("integrations")
@@ -295,16 +357,13 @@ export function RunReviewPage({ runId }: { runId: string }) {
           .eq("integration_type", "jira");
 
         setIntegrations(intData ?? []);
-        const firstEnabled =
+        const first =
           (intData ?? []).find((i) => i.sync_enabled) ?? intData?.[0];
-        setSelectedIntegrationId(firstEnabled?.id ?? "none");
-
-        if (firstEnabled?.config?.url) {
-          setJiraBaseUrl(firstEnabled.config.url);
-        }
+        setSelectedIntegrationId(first?.id ?? "none");
+        if (first?.config?.url) setJiraBaseUrl(first.config.url);
       }
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       toastError("Failed to load run data");
       router.push("/test-library");
     } finally {
@@ -312,14 +371,19 @@ export function RunReviewPage({ runId }: { runId: string }) {
     }
   }
 
-  function patchRow(executionId: string, patch: Partial<ExecutionHistoryRow>) {
-    setRows((prev) =>
-      prev.map((r) =>
-        r.execution_id === executionId ? { ...r, ...patch } : r,
-      ),
-    );
-    setHasUnsavedChanges(true);
-  }
+  // ─── Mutations ─────────────────────────────────────────────────────────────
+
+  const patchRow = useCallback(
+    (executionId: string, patch: Partial<ExecutionRow>) => {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.execution_id === executionId ? { ...r, ...patch } : r,
+        ),
+      );
+      setHasUnsavedChanges(true);
+    },
+    [],
+  );
 
   function bulkMarkFailuresNeedsUpdate(value: boolean) {
     setRows((prev) =>
@@ -337,16 +401,14 @@ export function RunReviewPage({ runId }: { runId: string }) {
     setHasUnsavedChanges(true);
   }
 
+  // ─── Save ──────────────────────────────────────────────────────────────────
+
   async function saveReview() {
     if (rows.length === 0) return;
-
     setSaving(true);
     try {
-      const batchSize = 50;
-      for (let i = 0; i < rows.length; i += batchSize) {
-        const slice = rows.slice(i, i + batchSize);
-
-        for (const r of slice) {
+      for (let i = 0; i < rows.length; i += 50) {
+        for (const r of rows.slice(i, i + 50)) {
           await supabase
             .from("test_executions")
             .update({
@@ -358,17 +420,18 @@ export function RunReviewPage({ runId }: { runId: string }) {
             .eq("id", r.execution_id);
         }
       }
-
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
       toastSuccess("Review saved");
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       toastError("Failed to save review");
     } finally {
       setSaving(false);
     }
   }
+
+  // ─── Create issues ─────────────────────────────────────────────────────────
 
   async function createIssues() {
     if (selectedIntegrationId === "none") {
@@ -380,7 +443,6 @@ export function RunReviewPage({ runId }: { runId: string }) {
       (r) =>
         r.review_create_issue && !r.jira_issue_key && !r.testrail_defect_id,
     );
-
     if (targets.length === 0) {
       toastInfo("No rows selected for issue creation");
       return;
@@ -404,86 +466,69 @@ export function RunReviewPage({ runId }: { runId: string }) {
       });
 
       const json = await res.json();
-
       if (!res.ok) throw new Error(json?.error ?? "Failed to create issues");
 
-      const results = json.results ?? [];
+      const results: Array<{
+        success: boolean;
+        execution_id: string;
+        issue_key?: string;
+      }> = json.results ?? [];
 
-      // ← ADD THIS: Log failed results
-      const failures = results.filter((r: any) => !r.success);
-      if (failures.length > 0) {
-        failures.forEach((f: any) => {});
-      }
-
-      // Update local state
       setRows((prev) =>
         prev.map((r) => {
           const match = results.find(
-            (x: any) => x.execution_id === r.execution_id && x.success,
+            (x) => x.execution_id === r.execution_id && x.success,
           );
-          if (!match) return r;
-          if (match.issue_key) {
-            return { ...r, jira_issue_key: match.issue_key };
-          }
-          return r;
+          if (!match?.issue_key) return r;
+          return { ...r, jira_issue_key: match.issue_key };
         }),
       );
 
-      // ← IMPROVED: Show detailed feedback
-      if (json.created > 0) {
+      if (json.created > 0)
         toastSuccess(`Created ${json.created} of ${json.total} issues`);
-      }
-
-      if (json.failed > 0) {
-        // Show first error as an example
-        const firstError = failures[0]?.error ?? "Unknown error";
-        toastError(
-          `Failed to create ${json.failed} issues. First error: ${firstError}`,
-        );
-      }
-    } catch (error) {
-      console.error("Create issues error:", error);
+      const failures = results.filter((r) => !r.success);
+      if (failures.length > 0)
+        toastError(`${failures.length} issue(s) failed to create`);
+    } catch (err) {
       toastError(
-        error instanceof Error ? error.message : "Failed to create issues",
+        err instanceof Error ? err.message : "Failed to create issues",
       );
     } finally {
       setCreatingIssues(false);
     }
   }
-  const filteredRows = useMemo(() => {
-    let filtered = rows;
 
+  // ─── Derived state ─────────────────────────────────────────────────────────
+
+  const filteredRows = useMemo(() => {
+    let f = rows;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
+      f = f.filter(
         (r) =>
           r.test_title.toLowerCase().includes(q) ||
           r.failure_reason?.toLowerCase().includes(q) ||
           r.review_note?.toLowerCase().includes(q),
       );
     }
-
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((r) => r.execution_status === statusFilter);
-    }
-
-    if (showOnlyNeedsReview) {
-      filtered = filtered.filter((r) => !r.reviewed_at);
-    }
-
-    return filtered;
+    if (statusFilter !== "all")
+      f = f.filter((r) => r.execution_status === statusFilter);
+    if (showOnlyNeedsReview) f = f.filter((r) => !r.reviewed_at);
+    return f;
   }, [rows, searchQuery, statusFilter, showOnlyNeedsReview]);
 
-  const stats = useMemo(() => {
-    const needsUpdate = rows.filter((r) => r.review_needs_update).length;
-    const createIssue = rows.filter((r) => r.review_create_issue).length;
-    const reviewed = rows.filter((r) => r.reviewed_at).length;
-    const hasIssues = rows.filter(
-      (r) => r.jira_issue_key || r.testrail_defect_id,
-    ).length;
+  const stats = useMemo(
+    () => ({
+      needsUpdate: rows.filter((r) => r.review_needs_update).length,
+      createIssue: rows.filter((r) => r.review_create_issue).length,
+      reviewed: rows.filter((r) => r.reviewed_at).length,
+      hasIssues: rows.filter((r) => r.jira_issue_key || r.testrail_defect_id)
+        .length,
+    }),
+    [rows],
+  );
 
-    return { needsUpdate, createIssue, reviewed, hasIssues };
-  }, [rows]);
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -494,37 +539,42 @@ export function RunReviewPage({ runId }: { runId: string }) {
     );
   }
 
-  if (!run) {
-    return null;
-  }
+  if (!run) return null;
 
   return (
     <div className="space-y-6">
-      {/* Header Section */}
+      {/* Header */}
       <div className="space-y-4">
-        {/* Breadcrumb */}
         <Button
           variant="outline"
           size="sm"
-          onClick={() => {
-            if (run?.suite_id) {
-              router.push(`/test-library/${run.suite_id}`);
-            } else {
-              router.push("/test-library");
-            }
-          }}
+          onClick={() =>
+            router.push(
+              run.suite_id ? `/test-library/${run.suite_id}` : "/test-library",
+            )
+          }
           className="gap-2"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
 
-        {/* Title & Save */}
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <h2 className="text-xl font-bold">{run.name}</h2>
+            <div className="flex items-center gap-2 mb-1">
+              <h2 className="text-xl font-bold">{run.name}</h2>
+              {run.is_automation && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] gap-1 border-blue-200 text-blue-600 dark:border-blue-800 dark:text-blue-400"
+                >
+                  <Zap className="h-2.5 w-2.5" />
+                  automated
+                </Badge>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground">
-              {run.suite_name} • {new Date(run.created_at).toLocaleString()}
+              {run.suite_name} · {new Date(run.created_at).toLocaleString()}
             </p>
           </div>
 
@@ -554,51 +604,30 @@ export function RunReviewPage({ runId }: { runId: string }) {
           </div>
         </div>
 
-        {/* Quick Stats */}
+        {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-          <Card>
-            <CardContent className="p-3">
-              <div className="text-xl font-bold">{run.test_cases_total}</div>
-              <div className="text-xs text-muted-foreground">Total</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3">
-              <div className="text-xl font-bold text-green-600">
-                {run.passed_cases}
-              </div>
-              <div className="text-xs text-muted-foreground">Passed</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3">
-              <div className="text-xl font-bold text-red-600">
-                {run.failed_cases}
-              </div>
-              <div className="text-xs text-muted-foreground">Failed</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3">
-              <div className="text-xl font-bold">{stats.reviewed}</div>
-              <div className="text-xs text-muted-foreground">Reviewed</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3">
-              <div className="text-xl font-bold">{stats.needsUpdate}</div>
-              <div className="text-xs text-muted-foreground">Needs Update</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3">
-              <div className="text-xl font-bold">{stats.hasIssues}</div>
-              <div className="text-xs text-muted-foreground">Issues</div>
-            </CardContent>
-          </Card>
+          {[
+            { value: run.test_cases_total, label: "Total", color: "" },
+            {
+              value: run.passed_cases,
+              label: "Passed",
+              color: "text-green-600",
+            },
+            { value: run.failed_cases, label: "Failed", color: "text-red-600" },
+            { value: stats.reviewed, label: "Reviewed", color: "" },
+            { value: stats.needsUpdate, label: "Needs Update", color: "" },
+            { value: stats.hasIssues, label: "Issues", color: "" },
+          ].map(({ value, label, color }) => (
+            <Card key={label}>
+              <CardContent className="p-3">
+                <div className={`text-xl font-bold ${color}`}>{value}</div>
+                <div className="text-xs text-muted-foreground">{label}</div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
-        {/* Bulk Actions */}
+        {/* Bulk actions */}
         <div className="flex flex-wrap items-center gap-2 p-3 bg-muted/50 rounded-lg">
           <span className="text-xs text-muted-foreground">Bulk:</span>
           <Button
@@ -631,7 +660,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
           </Button>
         </div>
 
-        {/* Filters & Actions */}
+        {/* Filters */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -671,12 +700,8 @@ export function RunReviewPage({ runId }: { runId: string }) {
             value={selectedIntegrationId}
             onValueChange={(id) => {
               setSelectedIntegrationId(id);
-              const selected = integrations.find((i) => i.id === id);
-              if (selected?.config?.url) {
-                setJiraBaseUrl(selected.config.url);
-              } else {
-                setJiraBaseUrl(null);
-              }
+              const sel = integrations.find((i) => i.id === id);
+              setJiraBaseUrl(sel?.config?.url ?? null);
             }}
           >
             <SelectTrigger className="w-[180px]">
@@ -709,7 +734,7 @@ export function RunReviewPage({ runId }: { runId: string }) {
         </div>
       </div>
 
-      {/* Test Cases List */}
+      {/* Test case cards */}
       {filteredRows.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
@@ -733,16 +758,18 @@ export function RunReviewPage({ runId }: { runId: string }) {
   );
 }
 
+// ─── ReviewTestCard ───────────────────────────────────────────────────────────
+
 function ReviewTestCard({
   row,
   index,
   jiraBaseUrl,
   onPatch,
 }: {
-  row: ExecutionHistoryRow;
+  row: ExecutionRow;
   index: number;
   jiraBaseUrl: string | null;
-  onPatch: (id: string, patch: Partial<ExecutionHistoryRow>) => void;
+  onPatch: (id: string, patch: Partial<ExecutionRow>) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -750,14 +777,13 @@ function ReviewTestCard({
     <Card className="hover:bg-muted/30 transition-colors">
       <CardContent className="p-4">
         <div className="flex items-start gap-4">
-          <div className="flex gap-3 pt-1">
+          {/* Checkboxes */}
+          <div className="flex gap-3 pt-1 shrink-0">
             <div className="flex flex-col items-center gap-1">
               <Checkbox
                 checked={row.review_needs_update}
                 onCheckedChange={(v) =>
-                  onPatch(row.execution_id, {
-                    review_needs_update: Boolean(v),
-                  })
+                  onPatch(row.execution_id, { review_needs_update: Boolean(v) })
                 }
               />
               <span className="text-[10px] text-muted-foreground">Update</span>
@@ -765,16 +791,16 @@ function ReviewTestCard({
             <div className="flex flex-col items-center gap-1">
               <Checkbox
                 checked={row.review_create_issue}
+                disabled={Boolean(row.jira_issue_key || row.testrail_defect_id)}
                 onCheckedChange={(v) =>
-                  onPatch(row.execution_id, {
-                    review_create_issue: Boolean(v),
-                  })
+                  onPatch(row.execution_id, { review_create_issue: Boolean(v) })
                 }
               />
               <span className="text-[10px] text-muted-foreground">Issue</span>
             </div>
           </div>
 
+          {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Badge variant="secondary" className="text-xs font-mono">
@@ -804,6 +830,15 @@ function ReviewTestCard({
                 )}
                 {row.execution_status}
               </Badge>
+              {row.automation_run_id && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] gap-1 border-blue-200 text-blue-600 dark:border-blue-800 dark:text-blue-400"
+                >
+                  <Zap className="h-2.5 w-2.5" />
+                  automated
+                </Badge>
+              )}
               {row.evidence_count > 0 && (
                 <Badge variant="outline" className="text-xs gap-1">
                   <Eye className="h-3 w-3" />
@@ -825,7 +860,7 @@ function ReviewTestCard({
             <h4 className="font-semibold mb-1">{row.test_title}</h4>
 
             <div className="text-xs text-muted-foreground mb-2">
-              {new Date(row.created_at).toLocaleString()} •{" "}
+              {new Date(row.created_at).toLocaleString()} ·{" "}
               {formatDuration(row.duration_ms)}
             </div>
 
@@ -857,8 +892,8 @@ function ReviewTestCard({
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="gap-1"
+            onClick={() => setIsExpanded((v) => !v)}
+            className="gap-1 shrink-0"
           >
             {isExpanded ? (
               <>
@@ -884,7 +919,6 @@ function ReviewTestCard({
                 </div>
               </div>
             )}
-
             {row.execution_notes && (
               <div>
                 <div className="text-xs font-semibold mb-1">
@@ -895,7 +929,6 @@ function ReviewTestCard({
                 </div>
               </div>
             )}
-
             {row.failure_reason && (
               <div>
                 <div className="text-xs font-semibold mb-1 text-destructive">
@@ -906,7 +939,6 @@ function ReviewTestCard({
                 </div>
               </div>
             )}
-
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <div className="font-semibold mb-1">Started</div>

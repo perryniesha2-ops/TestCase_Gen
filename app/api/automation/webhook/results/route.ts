@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendNotification } from "@/lib/notifications/send";
+import { resolveNeedsRerun } from "@/lib/utils/resolve-needs-rerun";
 
 export const runtime = "nodejs";
 
@@ -251,6 +252,19 @@ export async function POST(req: Request) {
         executions_error: executionsError.message,
         message: `Automation run #${runNumber} saved but test executions failed: ${executionsError.message}`,
       });
+    }
+
+    const passedOrFailedResults = validResults.filter(
+      (r) =>
+        r.test_case_id &&
+        (r.execution_status === "passed" || r.execution_status === "failed"),
+    );
+    if (passedOrFailedResults.length > 0) {
+      await Promise.allSettled(
+        passedOrFailedResults.map((r) =>
+          resolveNeedsRerun(supabase, r.test_case_id!, r.execution_status),
+        ),
+      );
     }
 
     // ── Fire notifications after successful insert ──

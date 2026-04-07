@@ -2,13 +2,13 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveNeedsRerun } from "@/lib/utils/resolve-needs-rerun";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { testCaseId, testTable, status, notes, executionTime } = body;
 
-    // Validate inputs
     if (!testCaseId || !testTable || !status) {
       return NextResponse.json(
         { error: "Missing required fields: testCaseId, testTable, status" },
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Use the database function to update execution status
+    // Update execution status via RPC
     const { data, error } = await supabase.rpc("update_test_execution", {
       test_table: testTable,
       test_id: testCaseId,
@@ -60,6 +60,12 @@ export async function POST(request: NextRequest) {
         { error: "Failed to update test execution status" },
         { status: 500 },
       );
+    }
+
+    // If this is a regular test_case (not platform), resolve needs_rerun flag.
+    // Only fires if the case was previously flagged needs_rerun — safe no-op otherwise.
+    if (testTable === "test_cases" && status !== "not_run") {
+      await resolveNeedsRerun(supabase, testCaseId, status);
     }
 
     return NextResponse.json({
@@ -84,11 +90,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET route to fetch test execution history
+// GET route to fetch test execution history — unchanged
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
     const testTable = searchParams.get("testTable");
     const testCaseId = searchParams.get("testCaseId");
 
@@ -102,7 +107,6 @@ export async function GET(request: NextRequest) {
     }
 
     if (testCaseId && testTable) {
-      // Get specific test case execution details
       if (testTable === "test_cases") {
         const { data, error } = await supabase
           .from("test_cases")
@@ -119,10 +123,8 @@ export async function GET(request: NextRequest) {
             { status: 404 },
           );
         }
-
         return NextResponse.json({ success: true, data });
       } else if (testTable === "platform_test_cases") {
-        // For platform test cases, check if user owns it directly
         const { data, error } = await supabase
           .from("platform_test_cases")
           .select(
@@ -138,7 +140,6 @@ export async function GET(request: NextRequest) {
             { status: 404 },
           );
         }
-
         return NextResponse.json({ success: true, data });
       } else {
         return NextResponse.json(
@@ -146,34 +147,33 @@ export async function GET(request: NextRequest) {
           { status: 400 },
         );
       }
-    } else {
-      // Get execution statistics using the view
-      const { data: stats, error } = await supabase
-        .from("comprehensive_execution_stats")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
-
-      if (error && error.code !== "PGRST116") {
-        console.error("Error fetching execution stats:", error);
-        return NextResponse.json(
-          { error: "Failed to fetch execution statistics" },
-          { status: 500 },
-        );
-      }
-
-      // Return empty stats if no data
-      const userStats = stats || {
-        total_test_cases: 0,
-        total_passed: 0,
-        total_failed: 0,
-        total_skipped: 0,
-        total_not_run: 0,
-        success_rate: 0,
-      };
-
-      return NextResponse.json({ success: true, data: userStats });
     }
+
+    // Get execution statistics
+    const { data: stats, error } = await supabase
+      .from("comprehensive_execution_stats")
+      .select("*")
+      .eq("user_id", user.id)
+      .single();
+
+    if (error && error.code !== "PGRST116") {
+      console.error("Error fetching execution stats:", error);
+      return NextResponse.json(
+        { error: "Failed to fetch execution statistics" },
+        { status: 500 },
+      );
+    }
+
+    const userStats = stats || {
+      total_test_cases: 0,
+      total_passed: 0,
+      total_failed: 0,
+      total_skipped: 0,
+      total_not_run: 0,
+      success_rate: 0,
+    };
+
+    return NextResponse.json({ success: true, data: userStats });
   } catch (error) {
     console.error("Error fetching test execution data:", error);
     return NextResponse.json(

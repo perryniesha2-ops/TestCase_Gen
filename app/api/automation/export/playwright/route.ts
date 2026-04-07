@@ -4,13 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-//============================================================================
+// ============================================================================
+// TYPES
+// ============================================================================
 
 type TestStep = {
   step_number?: number;
   action: string;
   expected: string;
-  // Automation fields
   selector?: string;
   action_type?:
     | "click"
@@ -82,7 +83,7 @@ type PlatformTestCaseRow = {
 };
 
 // ============================================================================
-// HELPER FUNCTIONS
+// HELPERS
 // ============================================================================
 
 function safeSlug(input: string) {
@@ -96,7 +97,6 @@ function safeSlug(input: string) {
 
 function parseSteps(raw: unknown): TestStep[] {
   if (!raw) return [];
-
   if (Array.isArray(raw)) {
     return raw
       .map((s: any) => ({
@@ -116,7 +116,6 @@ function parseSteps(raw: unknown): TestStep[] {
       }))
       .filter((s) => s.action.length > 0 || s.expected.length > 0);
   }
-
   if (typeof raw === "string") {
     try {
       return parseSteps(JSON.parse(raw));
@@ -124,16 +123,13 @@ function parseSteps(raw: unknown): TestStep[] {
       return [];
     }
   }
-
   if (typeof raw === "object") {
     try {
-      const arr = Object.values(raw as Record<string, any>);
-      return parseSteps(arr);
+      return parseSteps(Object.values(raw as Record<string, any>));
     } catch {
       return [];
     }
   }
-
   return [];
 }
 
@@ -145,97 +141,81 @@ function escapeString(s: string) {
   return s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n");
 }
 
-// ============================================================================
-// NEW: Generate executable Playwright code for a step
-// ============================================================================
-
 function resolveEnvVar(selector: string | undefined, value: string): string {
   const sel = (selector || "").toLowerCase();
-
-  if (sel.includes("email") || sel.includes("username")) {
+  if (sel.includes("email") || sel.includes("username"))
     return `process.env.TEST_USER_EMAIL || '${escapeString(value)}'`;
-  }
-  if (sel.includes("password")) {
+  if (sel.includes("password"))
     return `process.env.TEST_USER_PASSWORD || '${escapeString(value)}'`;
-  }
-
   return `'${escapeString(value)}'`;
 }
 
+// ============================================================================
+// STEP CODE GENERATOR
+// ============================================================================
+
 function generateExecutableStep(step: TestStep): string {
   const lines: string[] = [];
-
   const hasExecutableData = step.selector && step.action_type;
 
   if (hasExecutableData) {
     const sel = escapeString(step.selector!);
 
-    // Generate action code
     switch (step.action_type) {
       case "click":
         lines.push(`await page.locator('${sel}').click();`);
         break;
-
       case "fill":
         if (step.input_value !== undefined) {
           const val = resolveEnvVar(step.selector, step.input_value);
           lines.push(`await page.locator('${sel}').fill(${val});`);
         }
         break;
-
       case "type":
         if (step.input_value !== undefined) {
           const val = resolveEnvVar(step.selector, step.input_value);
           lines.push(`await page.locator('${sel}').pressSequentially(${val});`);
         }
         break;
-
       case "select":
         if (step.input_value !== undefined) {
-          const val = escapeString(step.input_value);
-          lines.push(`await page.locator('${sel}').selectOption('${val}');`);
+          lines.push(
+            `await page.locator('${sel}').selectOption('${escapeString(step.input_value)}');`,
+          );
         }
         break;
-
       case "check":
         lines.push(`await page.locator('${sel}').check();`);
         break;
-
       case "uncheck":
         lines.push(`await page.locator('${sel}').uncheck();`);
         break;
-
       case "hover":
         lines.push(`await page.locator('${sel}').hover();`);
         break;
-
       case "wait":
         lines.push(
           `await page.locator('${sel}').waitFor({ state: 'visible' });`,
         );
         break;
-
       case "navigate":
         if (step.input_value !== undefined) {
-          const url = step.input_value;
-
-          let path = url;
+          let path = step.input_value;
           try {
-            const parsed = new URL(url);
+            const parsed = new URL(step.input_value);
             path = parsed.pathname + parsed.search + parsed.hash;
           } catch {}
-
           const cleanPath = path.startsWith("/") ? path : `/${path}`;
           lines.push(
             `await page.goto(baseUrl + '${escapeString(cleanPath)}');`,
           );
         }
         break;
-
       case "press":
         if (step.input_value !== undefined) {
-          const val = escapeString(step.input_value);
-          lines.push(`await page.locator('${sel}').press('${val}');`);
+          lines.push(
+            `await page.locator('${sel}').press('${escapeString(step.input_value)}');`,
+          );
         }
         break;
     }
@@ -254,76 +234,60 @@ function generateExecutableStep(step: TestStep): string {
             `await expect(page.locator('${escapedTarget}')).toBeVisible();`,
           );
           break;
-
         case "hidden":
           lines.push(
             `await expect(page.locator('${escapedTarget}')).toBeHidden();`,
           );
           break;
-
         case "text":
           if (step.assertion.value !== undefined) {
-            const val = escapeString(String(step.assertion.value));
             lines.push(
-              `await expect(page.locator('${escapedTarget}')).toContainText('${val}');`,
+              `await expect(page.locator('${escapedTarget}')).toContainText('${escapeString(String(step.assertion.value))}');`,
             );
           }
           break;
-
         case "exact-text":
           if (step.assertion.value !== undefined) {
-            const val = escapeString(String(step.assertion.value));
             lines.push(
-              `await expect(page.locator('${escapedTarget}')).toHaveText('${val}');`,
+              `await expect(page.locator('${escapedTarget}')).toHaveText('${escapeString(String(step.assertion.value))}');`,
             );
           }
           break;
-
         case "value":
           if (step.assertion.value !== undefined) {
-            const val = escapeString(String(step.assertion.value));
             lines.push(
-              `await expect(page.locator('${escapedTarget}')).toHaveValue('${val}');`,
+              `await expect(page.locator('${escapedTarget}')).toHaveValue('${escapeString(String(step.assertion.value))}');`,
             );
           }
           break;
-
         case "url":
           if (step.assertion.value !== undefined) {
-            const val = String(step.assertion.value);
-
-            // Extract just the path from full URLs
-            let assertPath = val;
+            let assertPath = String(step.assertion.value);
             try {
-              const parsed = new URL(val);
+              const parsed = new URL(assertPath);
               assertPath = parsed.pathname;
-            } catch {
-              // Already a path or pattern
+            } catch {}
+            if (assertPath && assertPath !== "/") {
+              lines.push(
+                `await expect(page).toHaveURL(baseUrl + '${escapeString(assertPath)}');`,
+              );
+            } else {
+              lines.push(`await expect(page).toHaveURL(baseUrl);`);
             }
-
-            const escapedPath = escapeString(assertPath);
+          }
+          break;
+        case "title":
+          if (step.assertion.value !== undefined) {
             lines.push(
-              `await expect(page).toHaveURL(new RegExp(escapeRegex(baseUrl) + '${escapedPath}'));`,
+              `await expect(page).toHaveTitle('${escapeString(String(step.assertion.value))}');`,
             );
           }
           break;
-
-        case "title":
-          if (step.assertion.value !== undefined) {
-            const val = escapeString(String(step.assertion.value));
-            lines.push(`await expect(page).toHaveTitle('${val}');`);
-          }
-          break;
-
         case "count":
           if (step.assertion.value !== undefined) {
             const countValue = step.assertion.value;
-
-            // Handle comparison operators (check longer operators first!)
             if (typeof countValue === "string") {
               const trimmed = countValue.trim();
-
-              // Check for >= operator FIRST (before >)
               if (trimmed.startsWith(">=")) {
                 const num = trimmed.replace(/[>=\s]/g, "") || "0";
                 lines.push(
@@ -334,8 +298,6 @@ function generateExecutableStep(step: TestStep): string {
                 );
                 break;
               }
-
-              // Check for > operator
               if (trimmed.startsWith(">")) {
                 const num = trimmed.replace(/[>\s]/g, "") || "0";
                 lines.push(
@@ -344,8 +306,6 @@ function generateExecutableStep(step: TestStep): string {
                 lines.push(`expect(elementCount).toBeGreaterThan(${num});`);
                 break;
               }
-
-              // Check for <= operator FIRST (before <)
               if (trimmed.startsWith("<=")) {
                 const num = trimmed.replace(/[<=\s]/g, "") || "999";
                 lines.push(
@@ -354,8 +314,6 @@ function generateExecutableStep(step: TestStep): string {
                 lines.push(`expect(elementCount).toBeLessThanOrEqual(${num});`);
                 break;
               }
-
-              // Check for < operator
               if (trimmed.startsWith("<")) {
                 const num = trimmed.replace(/[<\s]/g, "") || "999";
                 lines.push(
@@ -365,45 +323,36 @@ function generateExecutableStep(step: TestStep): string {
                 break;
               }
             }
-
-            // Normal exact count
             lines.push(
               `await expect(page.locator('${escapedTarget}')).toHaveCount(${countValue});`,
             );
           }
           break;
-
         case "enabled":
           lines.push(
             `await expect(page.locator('${escapedTarget}')).toBeEnabled();`,
           );
           break;
-
         case "disabled":
           lines.push(
             `await expect(page.locator('${escapedTarget}')).toBeDisabled();`,
           );
           break;
-
         case "checked":
           lines.push(
             `await expect(page.locator('${escapedTarget}')).toBeChecked();`,
           );
           break;
-
         case "attribute":
           if (step.assertion.attribute && step.assertion.value !== undefined) {
-            const attr = escapeString(step.assertion.attribute);
-            const val = escapeString(String(step.assertion.value));
             lines.push(
-              `await expect(page.locator('${escapedTarget}')).toHaveAttribute('${attr}', '${val}');`,
+              `await expect(page.locator('${escapedTarget}')).toHaveAttribute('${escapeString(step.assertion.attribute)}', '${escapeString(String(step.assertion.value))}');`,
             );
           }
           break;
       }
     }
   } else {
-    // Fallback: Generate TODO comments for backwards compatibility
     lines.push(`// TODO: Implement action - ${escapeString(step.action)}`);
     lines.push(`// Expected: ${escapeString(step.expected)}`);
   }
@@ -415,283 +364,122 @@ function generateExecutableStep(step: TestStep): string {
 // RENDER FUNCTIONS
 // ============================================================================
 
-function renderReadme(opts: {
-  suiteName: string;
+function renderCaseSpec(opts: {
   suiteId: string;
-  caseCount: number;
+  caseKey: string;
+  caseId: string;
+  title: string;
+  steps: TestStep[];
+  requiresAuth: boolean;
 }) {
-  return `# SynthQA Playwright Project
+  // Import is determined at runtime by synthqa.config.ts so the user
+  // can change auth requirements locally without editing spec files.
+  // The spec reads the config and picks the right test object.
+  const firstStepIsNavigate = opts.steps[0]?.action_type === "navigate";
 
-Generated by SynthQA - AI-powered test automation
+  const initialNav = firstStepIsNavigate
+    ? ""
+    : `
+    await test.step("Navigate to application", async () => {
+      await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    });
+`;
 
-## Suite Information
-- **Name**: ${opts.suiteName}
-- **Test Cases**: ${opts.caseCount}
-- **Generated**: ${new Date().toLocaleDateString()}
+  const stepsCode = opts.steps
+    .map((step, idx) => {
+      const stepNum = step.step_number ?? idx + 1;
+      const executableCode = generateExecutableStep(step);
+      return `
+    await test.step(\`Step ${stepNum}: ${escapeTemplateLiteral(step.action)}\`, async () => {
+        ${executableCode}
 
----
+        await page.screenshot({
+          path: testInfo.outputPath(\`step-${stepNum}.png\`),
+          fullPage: true,
+        });
+    });`;
+    })
+    .join("\n");
 
-## Quick Start
+  return `import { test as _authTest, expect } from "../fixtures";
+import { test as _baseTest } from "@playwright/test";
+import { testConfig } from "../../synthqa.config";
 
-### 1. Install Dependencies
-\`\`\`bash
-pnpm install
-npx playwright install
-\`\`\`
+// Auth is controlled by synthqa.config.ts — edit that file to change
+// whether this test runs authenticated or not.
+const _requiresAuth = testConfig["${opts.caseId}"]?.requires_auth ?? ${opts.requiresAuth};
+const test = _requiresAuth ? _authTest : _baseTest;
 
-### 2. Configure Environment
-\`\`\`bash
-cp .env.example .env
-\`\`\`
+test.describe(\`${escapeTemplateLiteral(opts.title)}\`, () => {
+  test(\`${opts.caseId}\`, async ({ page }, testInfo) => {
+    const baseUrl = process.env.BASE_URL;
+    if (!baseUrl) throw new Error("Missing BASE_URL");
+${initialNav}
+${stepsCode}
 
-Edit \`.env\` and set:
-\`\`\`bash
-BASE_URL="https://your-app.com"
-
-# If tests require authentication:
-USER_EMAIL="test@example.com"
-USER_PASSWORD="yourpassword"
-\`\`\`
-
-### 3. Verify Selectors (5-10 minutes)
-
-⚠️ **Important**: Tests contain AI-generated selectors that may need adjustment.
-
-Open test files in \`tests/cases/\` and verify selectors match your application.
-
-**How to find correct selectors:**
-1. Open your app in Chrome
-2. Right-click element → Inspect
-3. In DevTools, right-click element → Copy → Copy selector
-4. Paste in test file
-
-Or use Playwright's codegen:
-\`\`\`bash
-npx playwright codegen https://your-app.com
-\`\`\`
-
-### 4. Setup Authentication (if needed)
-
-If tests require login, update \`tests/auth.setup.ts\`:
-
-\`\`\`typescript
-// Update these selectors to match your login form:
-await page.fill('[name="email"]', email);           // ← your email input
-await page.fill('[name="password"]', password);     // ← your password input
-await page.click('button[type="submit"]');          // ← your submit button
-await page.waitForURL('**/dashboard');              // ← your post-login URL
-\`\`\`
-
-Test auth setup:
-\`\`\`bash
-npx playwright test auth.setup.ts --headed
-# Should create auth.json file
-\`\`\`
-
-### 5. Run Tests
-\`\`\`bash
-# Run all tests
-pnpm test
-
-# Run in UI mode (recommended for debugging)
-pnpm test:ui
-
-# Run in headed mode (see browser)
-pnpm test:headed
-
-# View HTML report
-pnpm report
-\`\`\`
-
----
-
-## Project Structure
-
-\`\`\`
-.
-├── tests/
-│   ├── auth.setup.ts         # Authentication setup (runs once)
-│   └── cases/                # Test specifications
-│       └── *.spec.ts
-├── synthqa/
-│   ├── suite.json            # Suite metadata
-│   └── cases/                # Test case JSON snapshots
-├── playwright.config.ts      # Playwright configuration
-├── .env.example              # Environment template
-├── .env                      # Your configuration (git-ignored)
-└── README.md
-\`\`\`
-
----
-
-## Understanding the Tests
-
-Each test includes:
-- ✅ **Executable commands**: Real Playwright actions (click, fill, type)
-- ✅ **Smart selectors**: CSS selectors and data-testid attributes
-- ✅ **Assertions**: Automated verification of expected outcomes
-- ✅ **Screenshots**: Visual evidence captured at each step
-- ✅ **Videos**: Recorded on failure for debugging
-
----
-
-## Common Issues & Solutions
-
-### Tests fail with "locator.click: Target closed"
-**Cause**: Selector doesn't match your application  
-**Fix**: Update selector using browser DevTools or \`npx playwright codegen\`
-
-### Tests fail with "Timeout exceeded"
-**Cause**: Element loads slowly or selector is wrong  
-**Fix**: Add explicit wait or verify selector exists
-
-### Tests fail with "Element is not visible"
-**Cause**: Element is hidden, in different tab, or wrong selector  
-**Fix**: Check element state in your application
-
-### Authentication fails
-**Cause**: Login selectors don't match your form  
-**Fix**: Update selectors in \`tests/auth.setup.ts\` and verify credentials in \`.env\`
-
-### First run: Some tests fail
-**This is normal!** AI-generated selectors are best-effort guesses.  
-**Expected workflow**:
-1. ✅ Run tests once → note failures
-2. ✅ Update selectors for failed tests
-3. ✅ Re-run → fewer failures
-4. ✅ Repeat until all pass
-
----
-
-## Authentication
-
-These tests use Playwright's \`storageState\` for fast authentication.
-
-### How it Works
-
-1. **First run**: \`auth.setup.ts\` runs once, logs in, saves cookies to \`auth.json\`
-2. **All tests**: Load \`auth.json\` before starting, already logged in
-3. **Result**: Fast tests (no repeated logins)
-
-### If Tests Don't Need Login
-
-Leave \`USER_EMAIL\` and \`USER_PASSWORD\` empty in \`.env\`. Auth setup will be skipped.
-
-### Troubleshooting Auth
-
-**"auth.json not found"**  
-→ Auth setup failed. Run: \`npx playwright test auth.setup.ts --headed\` to debug
-
-**"Redirect to /login in tests"**  
-→ Auth expired or selectors wrong. Delete \`auth.json\` and re-run setup
-
-**"Tests work individually but fail in suite"**  
-→ Auth state might be modified. Use \`test.use({ storageState: { cookies: [], origins: [] } })\` for tests that need fresh state
-
----
-
-## Tips for Success
-
-### Start Small
-Get 1-2 tests working perfectly before scaling to all tests.
-
-### Use UI Mode
-\`pnpm test:ui\` lets you visually debug selectors and see exactly where tests fail.
-
-### Prefer data-testid
-If you control the application code, add \`data-testid\` attributes:
-\`\`\`html
-<button data-testid="submit-button">Submit</button>
-\`\`\`
-
-Then use in tests:
-\`\`\`typescript
-await page.locator('[data-testid="submit-button"]').click();
-\`\`\`
-
-### Different Environments
-\`\`\`bash
-# Development
-BASE_URL="http://localhost:3000" pnpm test
-
-# Staging
-BASE_URL="https://staging.app.com" pnpm test
-
-# Production
-BASE_URL="https://app.com" pnpm test
-\`\`\`
-
----
-
-## CI/CD Integration
-
-### GitHub Actions
-
-\`\`\`yaml
-name: Playwright Tests
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-      - run: pnpm install
-      - run: npx playwright install --with-deps
-      - run: pnpm test
-        env:
-          BASE_URL: \${{ secrets.BASE_URL }}
-          USER_EMAIL: \${{ secrets.USER_EMAIL }}
-          USER_PASSWORD: \${{ secrets.USER_PASSWORD }}
-      - uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: playwright-report
-          path: playwright-report/
-\`\`\`
-
----
-
-## Support
-
-- **Playwright Documentation**: https://playwright.dev
-- **Report Issues**: Contact SynthQA support
-
----
-
-Generated with ❤️ by SynthQA
+    await test.step("Final state", async () => {
+      await page.screenshot({
+        path: testInfo.outputPath("final.png"),
+        fullPage: true,
+      });
+    });
+  });
+});
 `;
 }
 
-function renderEnvExample(opts: {
-  baseUrl?: string;
-  suiteId?: string;
-  webhookUrl?: string;
-  apiKey?: string;
-}) {
-  return `# Required
-BASE_URL="${opts.baseUrl || "https://app.example.com"}"
+function renderPlaywrightConfig(suiteId: string, baseUrl?: string) {
+  const baseUrlFallback = baseUrl ? ` || "${baseUrl}"` : "";
+  return `import { defineConfig } from "@playwright/test";
+import "dotenv/config";
 
-# Authentication
-USER_EMAIL="test@example.com"
-USER_PASSWORD="yourpassword123"
-
-# SynthQA Integration
-SYNTHQA_WEBHOOK_URL="${opts.webhookUrl || ""}"
-SYNTHQA_API_KEY="${opts.apiKey || ""}"
-SYNTHQA_SUITE_ID="${opts.suiteId || ""}"
-TEST_USER_EMAIL=""
-TEST_USER_PASSWORD=""
-TEST_USER_USERNAME=""
+export default defineConfig({
+  testDir: "./tests",
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
+  retries: 1,
+  reporter: [
+    ["html", { open: "never" }],
+    ["list"],
+    ["./synthqa-reporter.ts", { suiteId: "${suiteId}" }],
+  ],
+  projects: [
+    {
+      name: "chromium",
+      testMatch: /.*\.spec\.ts/,
+      use: {
+        baseURL: process.env.BASE_URL${baseUrlFallback},
+        headless: true,
+        trace: "on-first-retry",
+        screenshot: "on",
+        video: "retain-on-failure",
+      },
+    },
+  ],
+});
 `;
 }
 
-function renderGitignore() {
-  return `node_modules
-playwright-report
-test-results
-.env
-auth.json
+function renderFixtures() {
+  return `import { test as base } from '@playwright/test';
+
+export const test = base.extend({
+  page: async ({ page }, use) => {
+    const email = process.env.USER_EMAIL;
+    const password = process.env.USER_PASSWORD;
+    const baseUrl = process.env.BASE_URL;
+    if (email && password && baseUrl) {
+      await page.goto(baseUrl + '/login');
+      await page.fill('[name="email"]', email);
+      await page.fill('[name="password"]', password);
+      await page.click('button[type="submit"]');
+      await page.waitForURL('**/dashboard', { timeout: 10000 }).catch(() => {});
+    }
+    await use(page);
+  },
+});
+
+export { expect } from '@playwright/test';
 `;
 }
 
@@ -729,153 +517,53 @@ function renderTsconfig() {
         skipLibCheck: true,
         types: ["node"],
       },
-      include: ["tests", "playwright.config.ts", "synthqa"],
+      include: [
+        "tests",
+        "playwright.config.ts",
+        "synthqa",
+        "synthqa-reporter.ts",
+      ],
     },
     null,
     2,
   );
 }
 
-// In your export route, add this function:
-
-function renderAuthSetup() {
-  return `import { test as setup } from '@playwright/test';
-
-// This setup runs ONCE before all tests to authenticate
-setup('authenticate', async ({ page }) => {
-  const baseUrl = process.env.BASE_URL;
-  const email = process.env.USER_EMAIL;
-  const password = process.env.USER_PASSWORD;
-  
-  if (!email || !password) {
-    console.log('⚠️  USER_EMAIL and USER_PASSWORD not set');
-    return;
-  }
-  
-  
-  await page.goto(baseUrl + '/login');
-  
-  // TODO: Update these selectors to match your login form
-  await page.fill('[name="email"]', email);
-  await page.fill('[name="password"]', password);
-  await page.click('button[type="submit"]');
-  
-  // TODO: Update this URL to match your post-login page
-  await page.waitForURL('**/dashboard', { timeout: 10000 });
-  
-  // Save authentication state
-  await page.context().storageState({ path: 'auth.json' });
-  
-});
+function renderGitignore() {
+  return `node_modules
+playwright-report
+test-results
+.env
+auth.json
 `;
 }
 
-function renderPlaywrightConfig(suiteId: string, baseUrl?: string) {
-  return `import { defineConfig } from "@playwright/test";
-import "dotenv/config";
-
-export default defineConfig({
-  testDir: "./tests",
-  timeout: 60_000,
-  expect: { timeout: 10_000 },
-  retries: 1,
-  reporter: [
-    ["html", { open: "never" }],
-    ["list"],
-    ["./synthqa-reporter.ts", { suiteId: "${suiteId}" }],
-  ],  
-  projects: [
-    {
-      name: 'chromium',
-      testMatch: /.*\\.spec\\.ts/,
-      use: {
-        baseURL: process.env.BASE_URL${baseUrl ? ` || "${baseUrl}"` : ""},
-        headless: true,
-        trace: "on-first-retry",
-        screenshot: "on",
-        video: "retain-on-failure",
-      },
-    },
-  ],
-});
-`;
-}
-
-function renderCaseSpec(opts: {
-  suiteId: string;
-  caseKey: string;
-  caseId: string;
-  title: string;
-  steps: TestStep[];
+function renderEnvExample(opts: {
+  baseUrl?: string;
+  suiteId?: string;
+  webhookUrl?: string;
+  apiKey?: string;
 }) {
-  const stepsCode = opts.steps
-    .map((step, idx) => {
-      const stepNum = step.step_number ?? idx + 1;
-      const executableCode = generateExecutableStep(step);
+  return `# Required
+BASE_URL="${opts.baseUrl || "https://app.example.com"}"
 
-      return `
-    await test.step(\`Step ${stepNum}: ${escapeTemplateLiteral(step.action)}\`, async () => {
-        ${executableCode}
-        
-        await page.screenshot({
-          path: testInfo.outputPath(\`step-${stepNum}.png\`),
-          fullPage: true,
-        });
-    });`;
-    })
-    .join("\n");
+# Authentication (leave blank if tests don't require login)
+USER_EMAIL="test@example.com"
+USER_PASSWORD="yourpassword123"
 
-  return `import { test, expect } from "../fixtures";
+# SynthQA Integration
+SYNTHQA_WEBHOOK_URL="${opts.webhookUrl || ""}"
+SYNTHQA_API_KEY="${opts.apiKey || ""}"
+SYNTHQA_SUITE_ID="${opts.suiteId || ""}"
 
-test.describe(\`${escapeTemplateLiteral(opts.title)}\`, () => {
-  test(\`${opts.caseId}\`, async ({ page }, testInfo) => {
-    const baseUrl = process.env.BASE_URL;
-    if (!baseUrl) throw new Error("Missing BASE_URL");
-
-    await test.step("Navigate to application", async () => {
-      await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-      await page.waitForTimeout(500);
-    });
-${stepsCode}
-
-    await test.step("Expected Result", async () => {
-      await page.screenshot({
-        path: testInfo.outputPath("final.png"),
-        fullPage: true,
-      });
-    });
-  });
-});
-`;
-}
-
-function renderFixtures() {
-  return `import { test as base } from '@playwright/test';
-
-export const test = base.extend({
-  page: async ({ page }, use) => {
-    const email = process.env.USER_EMAIL;
-    const password = process.env.USER_PASSWORD;
-    const baseUrl = process.env.BASE_URL;
-
-    if (email && password && baseUrl) {
-      await page.goto(baseUrl + '/login');
-      await page.fill('[name="email"]', email);
-      await page.fill('[name="password"]', password);
-      await page.click('button[type="submit"]');
-      await page.waitForURL('**/dashboard', { timeout: 10000 }).catch(() => {});
-    }
-
-    await use(page);
-  },
-});
-
-export { expect } from '@playwright/test';
+# Override email/password used in test fill actions (defaults to USER_EMAIL/USER_PASSWORD)
+TEST_USER_EMAIL=""
+TEST_USER_PASSWORD=""
 `;
 }
 
 function renderSynthQAReporter() {
-  return `import {
+  return `import type {
   Reporter,
   TestCase,
   TestResult,
@@ -888,20 +576,19 @@ class SynthQAReporter implements Reporter {
   private testResults: any[] = [];
 
   constructor(options: { suiteId: string }) {
-    this.suiteId = options.suiteId || process.env.SYNTHQA_SUITE_ID || 'unknown';
+    this.suiteId = options.suiteId || process.env.SYNTHQA_SUITE_ID || "unknown";
     this.sessionId = \`playwright-\${Date.now()}\`;
   }
 
   private getOS(): string {
     const p = process.platform;
-    if (p === 'darwin') return 'macOS';
-    if (p === 'win32') return 'Windows';
-    return 'Linux';
+    if (p === "darwin") return "macOS";
+    if (p === "win32") return "Windows";
+    return "Linux";
   }
 
   onTestEnd(test: TestCase, result: TestResult) {
     const duration = result.duration / 1000 / 60;
-
     this.testResults.push({
       test_case_id: this.extractTestCaseId(test),
       execution_status: this.mapStatus(result.status),
@@ -911,30 +598,30 @@ class SynthQAReporter implements Reporter {
       execution_notes: this.getExecutionNotes(result),
       failure_reason: result.error?.message || null,
       stack_trace: result.error?.stack || null,
-      browser: process.env.BROWSER || 'chromium',
+      browser: process.env.BROWSER || "chromium",
       os_version: this.getOS(),
-      test_environment: process.env.TEST_ENV || 'local',
-      framework: 'playwright',
+      test_environment: process.env.TEST_ENV || "local",
+      framework: "playwright",
       framework_version: this.getPlaywrightVersion(),
     });
   }
 
-  async onEnd(result: FullResult) {
-    const passed = this.testResults.filter((t) => t.execution_status === 'passed').length;
-    const failed = this.testResults.filter((t) => t.execution_status === 'failed').length;
-    const skipped = this.testResults.filter((t) => t.execution_status === 'skipped').length;
+  async onEnd(_result: FullResult) {
+    const passed  = this.testResults.filter((t) => t.execution_status === "passed").length;
+    const failed  = this.testResults.filter((t) => t.execution_status === "failed").length;
+    const skipped = this.testResults.filter((t) => t.execution_status === "skipped").length;
 
     const payload = {
       suite_id: this.suiteId,
       session_id: this.sessionId,
-      framework: 'playwright',
+      framework: "playwright",
       test_results: this.testResults,
       metadata: {
         total_tests: this.testResults.length,
         passed_tests: passed,
         failed_tests: failed,
         skipped_tests: skipped,
-        overall_status: failed > 0 ? 'failed' : 'passed',
+        overall_status: failed > 0 ? "failed" : "passed",
         ci_provider: process.env.CI_PROVIDER || null,
         branch: process.env.GIT_BRANCH || null,
         commit_sha: process.env.GIT_COMMIT || null,
@@ -946,10 +633,9 @@ class SynthQAReporter implements Reporter {
   }
 
   private mapStatus(status: string): string {
-    if (status === 'passed') return 'passed';
-    if (status === 'failed') return 'failed';
-    if (status === 'skipped') return 'skipped';
-    return 'failed';
+    if (status === "passed") return "passed";
+    if (status === "skipped") return "skipped";
+    return "failed";
   }
 
   private extractTestCaseId(test: TestCase): string | null {
@@ -959,60 +645,47 @@ class SynthQAReporter implements Reporter {
   }
 
   private getExecutionNotes(result: TestResult): string | null {
-    if (result.retry > 0) {
-      return \`Test retried \${result.retry} time(s)\`;
-    }
-    return result.status === 'passed' ? 'Test passed successfully' : null;
+    if (result.retry > 0) return \`Test retried \${result.retry} time(s)\`;
+    return result.status === "passed" ? "Test passed successfully" : null;
   }
 
   private getPlaywrightVersion(): string {
-    try {
-      return require('@playwright/test/package.json').version;
-    } catch {
-      return 'unknown';
-    }
+    try { return require("@playwright/test/package.json").version; }
+    catch { return "unknown"; }
   }
 
   private async sendToSynthQA(data: any) {
     const webhookUrl = process.env.SYNTHQA_WEBHOOK_URL;
-    const apiKey = process.env.SYNTHQA_API_KEY;
+    const apiKey     = process.env.SYNTHQA_API_KEY;
 
     if (!webhookUrl) {
-      console.log('⚠️  SYNTHQA_WEBHOOK_URL not set - skipping result upload');
-      console.log('   To sync results back to SynthQA, add SYNTHQA_WEBHOOK_URL to .env');
+      console.log("⚠️  SYNTHQA_WEBHOOK_URL not set — skipping result upload");
       return;
     }
-
     if (!apiKey) {
-      console.log('⚠️  SYNTHQA_API_KEY not set - skipping result upload');
+      console.log("⚠️  SYNTHQA_API_KEY not set — skipping result upload");
       return;
     }
 
     try {
-      console.log('📤 Sending test results to SynthQA...');
-      console.log('   Suite ID:', data.suite_id);
-      console.log('   Total results:', data.test_results.length);
-      console.log('   Test case IDs:', data.test_results.map((r: any) => r.test_case_id));
-      console.log('   Statuses:', data.test_results.map((r: any) => r.execution_status));
-
+      console.log("📤 Sending results to SynthQA...");
       const response = await fetch(webhookUrl, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': \`Bearer \${apiKey}\`,
+          "Content-Type": "application/json",
+          Authorization: \`Bearer \${apiKey}\`,
         },
         body: JSON.stringify(data),
       });
 
-      const responseText = await response.text();
-      console.log('   Response status:', response.status);
-      console.log('   Response body:', responseText);
-
       if (!response.ok) {
-        console.error(\`❌ Failed to send results: \${response.statusText}\`);
-      } 
+        console.error(\`❌ Failed to send results: \${response.status} \${response.statusText}\`);
+        console.error(await response.text());
+      } else {
+        console.log("✅ Results sent to SynthQA");
+      }
     } catch (error) {
-      console.error('❌ Error sending results to SynthQA:', error);
+      console.error("❌ Error sending results to SynthQA:", error);
     }
   }
 }
@@ -1021,8 +694,150 @@ export default SynthQAReporter;
 `;
 }
 
+function renderReadme(opts: {
+  suiteName: string;
+  suiteId: string;
+  caseCount: number;
+}) {
+  return `# SynthQA Playwright Project
+
+Generated by SynthQA — AI-powered test automation
+
+## Suite
+- **Name**: ${opts.suiteName}
+- **Test Cases**: ${opts.caseCount}
+- **Generated**: ${new Date().toLocaleDateString()}
+
+---
+
+## Quick Start
+
+\`\`\`bash
+# 1. Install
+pnpm install
+npx playwright install
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env and set BASE_URL, USER_EMAIL, USER_PASSWORD
+
+# 3. Run tests
+pnpm test
+
+# 4. Debug in UI mode
+pnpm test:ui
+\`\`\`
+
+---
+
+## Project Structure
+
+\`\`\`
+├── tests/
+│   ├── fixtures.ts           # Extends page with auto-login
+│   └── cases/                # Generated test specs
+├── synthqa/
+│   ├── suite.json
+│   └── cases/
+├── synthqa-reporter.ts       # Sends results back to SynthQA
+├── playwright.config.ts
+├── .env.example
+└── README.md
+\`\`\`
+
+---
+
+## Authentication
+
+- Tests that require login use \`../fixtures\` which reads \`USER_EMAIL\` and \`USER_PASSWORD\` from \`.env\` and logs in before each test
+- Tests for login/auth flows use \`@playwright/test\` directly so they start unauthenticated
+- If \`USER_EMAIL\` and \`USER_PASSWORD\` are not set, fixtures skips login and tests run as a guest
+
+---
+
+## Updating Selectors
+
+AI-generated selectors are best-effort. Run tests once, note failures, then update selectors:
+
+\`\`\`bash
+# Generate selectors interactively
+npx playwright codegen https://your-app.com
+\`\`\`
+
+---
+
+## CI/CD
+
+\`\`\`yaml
+- run: pnpm test
+  env:
+    BASE_URL: \${{ secrets.BASE_URL }}
+    USER_EMAIL: \${{ secrets.USER_EMAIL }}
+    USER_PASSWORD: \${{ secrets.USER_PASSWORD }}
+    SYNTHQA_WEBHOOK_URL: \${{ secrets.SYNTHQA_WEBHOOK_URL }}
+    SYNTHQA_API_KEY: \${{ secrets.SYNTHQA_API_KEY }}
+\`\`\`
+`;
+}
+
 // ============================================================================
-// MAIN EXPORT HANDLER
+// SYNTHQA CONFIG — user-editable auth settings
+// ============================================================================
+
+function renderSynthQAConfig(
+  cases: Array<{ id: string; title: string; requiresAuth: boolean }>,
+) {
+  const entries = cases
+    .map(
+      (c) => `  // ${c.title}
+  "${c.id}": { requires_auth: ${c.requiresAuth} },`,
+    )
+    .join("\n");
+
+  return `// synthqa.config.ts
+//
+// Controls whether each test runs authenticated (logged in) or
+// unauthenticated (fresh browser with no session).
+//
+//   requires_auth: true  → uses ../fixtures (auto-login before test)
+//   requires_auth: false → uses @playwright/test (starts logged out)
+//
+// Edit this file locally to override the defaults generated by SynthQA.
+// You do NOT need to edit the spec files themselves.
+
+export const testConfig: Record<string, { requires_auth: boolean }> = {
+${entries}
+};
+`;
+}
+
+// ============================================================================
+// AUTH-TEST DETECTION
+// ============================================================================
+
+const AUTH_KEYWORDS = [
+  "login",
+  "log in",
+  "sign in",
+  "sign-in",
+  "register",
+  "signup",
+  "sign up",
+  "sign-up",
+  "forgot password",
+  "reset password",
+  "logout",
+  "log out",
+  "sign out",
+];
+
+function isAuthTest(title: string): boolean {
+  const lower = title.toLowerCase();
+  return AUTH_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+// ============================================================================
+// MAIN HANDLER
 // ============================================================================
 
 export async function POST(req: Request) {
@@ -1030,7 +845,6 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => null)) as {
       suiteId?: string;
     } | null;
-
     const suiteId = body?.suiteId?.trim();
     if (!suiteId) {
       return NextResponse.json(
@@ -1040,35 +854,26 @@ export async function POST(req: Request) {
     }
 
     const supabase = await createClient();
-
     const {
       data: { user },
       error: userErr,
     } = await supabase.auth.getUser();
-    if (userErr) {
+    if (userErr || !user) {
       return NextResponse.json(
-        { ok: false, error: userErr.message },
-        { status: 401 },
-      );
-    }
-    if (!user) {
-      return NextResponse.json(
-        { ok: false, error: "Not authenticated" },
+        { ok: false, error: userErr?.message || "Not authenticated" },
         { status: 401 },
       );
     }
 
-    //Get Webhook
     const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://www.synthqa.app"}/api/automation/webhook/results`;
 
-    // Get api key if it exists
     const { data: profile } = await supabase
       .from("user_profiles")
       .select("api_key")
       .eq("id", user.id)
       .single();
 
-    // Fetch suite
+    // ── Suite ──────────────────────────────────────────────────────────────────
     const { data: suite, error: suiteErr } = await supabase
       .from("suites")
       .select("id, name, description, base_url")
@@ -1082,7 +887,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Fetch suite links
+    // ── Suite links ────────────────────────────────────────────────────────────
     const { data: suiteLinks, error: linksErr } = await supabase
       .from("suite_items")
       .select(
@@ -1098,7 +903,6 @@ export async function POST(req: Request) {
         { status: 500 },
       );
     }
-
     if (!suiteLinks || suiteLinks.length === 0) {
       return NextResponse.json(
         { ok: false, error: "No test cases linked to this suite" },
@@ -1106,15 +910,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const regularIds = (suiteLinks ?? [])
+    const regularIds = suiteLinks
       .map((l) => l.test_case_id)
       .filter((x): x is string => Boolean(x));
-
-    const platformIds = (suiteLinks ?? [])
+    const platformIds = suiteLinks
       .map((l) => l.platform_test_case_id)
       .filter((x): x is string => Boolean(x));
 
-    // Fetch test cases
+    // ── Test cases ─────────────────────────────────────────────────────────────
     const { data: testCases, error: casesErr } = await supabase
       .from("test_cases")
       .select("id, title, description, test_type, expected_result, test_steps")
@@ -1137,7 +940,7 @@ export async function POST(req: Request) {
           .in("id", platformIds)
           .eq("platform", "web")
           .returns<PlatformTestCaseRow[]>()
-      : { data: [], error: null as any };
+      : { data: [] as PlatformTestCaseRow[], error: null };
 
     if (platErr) {
       return NextResponse.json(
@@ -1151,14 +954,9 @@ export async function POST(req: Request) {
       const expected = Array.isArray(tc.expected_results)
         ? tc.expected_results
         : [];
-
-      // OPTIONAL: if you store automation hints per step in automation_metadata
-      // Example shape (recommended):
-      // automation_metadata = { steps: [{ selector, action_type, input_value, assertion, wait_time }, ...] }
       const metaSteps = Array.isArray(tc.automation_metadata?.steps)
         ? tc.automation_metadata.steps
         : [];
-
       return actions
         .map((action, i) => {
           const meta = metaSteps[i] ?? {};
@@ -1184,30 +982,23 @@ export async function POST(req: Request) {
     const tcMap = new Map((testCases ?? []).map((tc) => [tc.id, tc]));
     const ptcMap = new Map((platformCases ?? []).map((tc) => [tc.id, tc]));
 
-    const ordered = (suiteLinks ?? [])
+    const ordered = suiteLinks
       .map((link, idx) => {
         const orderNum = link.sequence_order ?? idx + 1;
 
-        // Regular test case
         if (link.test_case_id) {
           const tc = tcMap.get(link.test_case_id);
           if (!tc) return null;
-
           const steps = parseSteps(tc.test_steps);
           const caseKey = `${String(orderNum).padStart(3, "0")}-${safeSlug(tc.title)}-${tc.id.slice(0, 8)}`;
-
           return { link, tc, steps, caseKey, source: "regular" as const };
         }
 
-        // Cross-platform web case
         if (link.platform_test_case_id) {
           const ptc = ptcMap.get(link.platform_test_case_id);
-          if (!ptc) return null; // could be non-web platform filtered out
-
+          if (!ptc) return null;
           const steps = platformToSteps(ptc);
           const caseKey = `${String(orderNum).padStart(3, "0")}-${safeSlug(ptc.title)}-${ptc.id.slice(0, 8)}`;
-
-          // Normalize to same shape your rendering expects
           const normalized: TestCaseRow = {
             id: ptc.id,
             title: ptc.title,
@@ -1216,7 +1007,6 @@ export async function POST(req: Request) {
             expected_result: null,
             test_steps: steps,
           };
-
           return {
             link,
             tc: normalized,
@@ -1230,14 +1020,9 @@ export async function POST(req: Request) {
       })
       .filter((x): x is NonNullable<typeof x> => Boolean(x));
 
-    // --------------------------
-    // Zip project
-    // --------------------------
+    // ── Build zip ──────────────────────────────────────────────────────────────
     const zip = new JSZip();
-    const root = `synthqa-playwright-${
-      safeSlug(suite.name) || "suite"
-    }-${suite.id.slice(0, 8)}`;
-
+    const root = `synthqa-playwright-${safeSlug(suite.name) || "suite"}-${suite.id.slice(0, 8)}`;
     const add = (p: string, content: string) =>
       zip.file(`${root}/${p}`, content);
 
@@ -1256,9 +1041,18 @@ export async function POST(req: Request) {
         apiKey: profile?.api_key ?? undefined,
       }),
     );
-
     add(".gitignore", renderGitignore());
     add("tests/fixtures.ts", renderFixtures());
+    add(
+      "synthqa.config.ts",
+      renderSynthQAConfig(
+        ordered.map((o) => ({
+          id: o.tc.id,
+          title: o.tc.title,
+          requiresAuth: !isAuthTest(o.tc.title),
+        })),
+      ),
+    );
     add("synthqa-reporter.ts", renderSynthQAReporter());
     add(
       "README.md",
@@ -1269,48 +1063,59 @@ export async function POST(req: Request) {
       }),
     );
 
-    // Suite snapshot
-    const suiteSnapshot = {
-      generatedAt: new Date().toISOString(),
-      suite: {
-        id: suite.id,
-        name: suite.name,
-        description: suite.description ?? null,
-      },
-      cases: ordered.map((o) => ({
-        id: o.tc.id,
-        title: o.tc.title,
-        sequence_order: o.link.sequence_order ?? null,
-        priority: o.link.priority ?? null,
-        estimated_duration_minutes: o.link.estimated_duration_minutes ?? null,
-        caseKey: o.caseKey,
-      })),
-    };
-    add("synthqa/suite.json", JSON.stringify(suiteSnapshot, null, 2));
+    add(
+      "synthqa/suite.json",
+      JSON.stringify(
+        {
+          generatedAt: new Date().toISOString(),
+          suite: {
+            id: suite.id,
+            name: suite.name,
+            description: suite.description ?? null,
+          },
+          cases: ordered.map((o) => ({
+            id: o.tc.id,
+            title: o.tc.title,
+            sequence_order: o.link.sequence_order ?? null,
+            priority: o.link.priority ?? null,
+            estimated_duration_minutes:
+              o.link.estimated_duration_minutes ?? null,
+            caseKey: o.caseKey,
+          })),
+        },
+        null,
+        2,
+      ),
+    );
 
     for (const o of ordered) {
-      const caseJson = {
-        id: o.tc.id,
-        title: o.tc.title,
-        description: o.tc.description ?? null,
-        test_type: o.tc.test_type ?? null,
-        expected_result: o.tc.expected_result ?? null,
-        test_steps: o.steps.map((s, i) => ({
-          step_number: s.step_number ?? i + 1,
-          action: s.action,
-          expected: s.expected,
-          // Include automation fields in JSON snapshot
-          ...(s.selector && { selector: s.selector }),
-          ...(s.action_type && { action_type: s.action_type }),
-          ...(s.input_value !== undefined && { input_value: s.input_value }),
-          ...(s.wait_time && { wait_time: s.wait_time }),
-          ...(s.assertion && { assertion: s.assertion }),
-        })),
-      };
+      add(
+        `synthqa/cases/${o.caseKey}.json`,
+        JSON.stringify(
+          {
+            id: o.tc.id,
+            title: o.tc.title,
+            description: o.tc.description ?? null,
+            test_type: o.tc.test_type ?? null,
+            expected_result: o.tc.expected_result ?? null,
+            test_steps: o.steps.map((s, i) => ({
+              step_number: s.step_number ?? i + 1,
+              action: s.action,
+              expected: s.expected,
+              ...(s.selector && { selector: s.selector }),
+              ...(s.action_type && { action_type: s.action_type }),
+              ...(s.input_value !== undefined && {
+                input_value: s.input_value,
+              }),
+              ...(s.wait_time && { wait_time: s.wait_time }),
+              ...(s.assertion && { assertion: s.assertion }),
+            })),
+          },
+          null,
+          2,
+        ),
+      );
 
-      add(`synthqa/cases/${o.caseKey}.json`, JSON.stringify(caseJson, null, 2));
-
-      // IMPORTANT: Pass steps to renderCaseSpec
       add(
         `tests/cases/${o.caseKey}.spec.ts`,
         renderCaseSpec({
@@ -1318,7 +1123,8 @@ export async function POST(req: Request) {
           caseKey: o.caseKey,
           caseId: o.tc.id,
           title: o.tc.title,
-          steps: o.steps, // <-- Pass the parsed steps here
+          steps: o.steps,
+          requiresAuth: !isAuthTest(o.tc.title),
         }),
       );
     }

@@ -733,7 +733,7 @@ export default function BrowserExtensionGuidePage() {
                 </div>
                 <Separator />
                 <div className="text-xs text-muted-foreground">
-                  Last updated: January 2026 · Guide version: 1.1
+                  Last updated: March 2026 · Guide version: 1.1
                 </div>
               </CardContent>
             </Card>

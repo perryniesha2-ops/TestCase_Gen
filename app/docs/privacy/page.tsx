@@ -137,7 +137,7 @@ export default function PrivacyPolicyPage() {
           </p>
           <div className="flex gap-2">
             <Badge variant="secondary">Legal</Badge>
-            <Badge variant="outline">Last Updated: January 6, 2026</Badge>
+            <Badge variant="outline">Last updated: March 2026</Badge>
           </div>
         </div>
       </div>
@@ -804,6 +804,8 @@ export default function PrivacyPolicyPage() {
           </Section>
         </main>
       </div>
+      <div className="h-4" />
+
       <SiteFooter />
     </div>
   );

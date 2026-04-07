@@ -215,7 +215,7 @@ export default function BrowserExtensionTroubleshootingPage() {
                   key={item.id}
                   href={`#${item.id}`}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                    "flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   {item.icon}
@@ -1397,7 +1397,7 @@ Screenshots:
                 </Alert>
 
                 <div className="text-xs text-muted-foreground">
-                  Last updated: December 2025 · QA Test Recorder v1.0.0
+                  Last updated: March 2026 · Guide version: 1.1
                 </div>
               </CardContent>
             </Card>

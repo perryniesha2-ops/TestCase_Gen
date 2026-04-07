@@ -34,6 +34,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+import { NeedsRerunPanel } from "@/components/pagecomponents/needsrunpanel";
+
 type ProjectRow = {
   id: string;
   user_id: string;
@@ -529,7 +531,7 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                   )}
                 </CardContent>
               </Card>
-
+              <NeedsRerunPanel projectId={projectId} />
               {/* Top Problem Tests */}
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">

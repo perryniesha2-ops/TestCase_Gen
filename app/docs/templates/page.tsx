@@ -161,7 +161,7 @@ function TemplateSettingsTable() {
               Which AI generates tests
             </td>
             <td className="p-3 text-xs text-muted-foreground">
-              Claude Sonnet 4.5, Haiku 4.5, Opus 4.5, GPT-4o, GPT-5, etc.
+              claude sonnet 4.6, Haiku 4.5, Opus 4.5, GPT-4o, GPT-5, etc.
             </td>
           </tr>
           <tr>
@@ -590,7 +590,7 @@ export default function TemplatesGuidePage() {
                       </div>
                       <div className="space-y-1 text-xs">
                         <div>
-                          <strong>Model:</strong> Claude Sonnet 4.5 (balanced)
+                          <strong>Model:</strong> claude sonnet 4.6 (balanced)
                         </div>
                         <div>
                           <strong>Count:</strong> 15-20 test cases
@@ -1732,7 +1732,7 @@ export default function TemplatesGuidePage() {
                 </div>
 
                 <div className="text-xs text-muted-foreground pt-4 border-t">
-                  Last updated: January 2026 · Guide version: 1.1
+                  Last updated: March 2026 · Guide version: 1.1
                 </div>
               </CardContent>
             </Card>

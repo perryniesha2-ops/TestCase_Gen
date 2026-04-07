@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -49,23 +50,15 @@ import {
   GitBranch,
   Eye,
   Loader2,
+  Play,
 } from "lucide-react";
-import {
-  type ModelKey,
-  AI_MODELS,
-  MODEL_MIGRATIONS,
-  isModelAllowed,
-  migrateModelKey,
-  getDefaultModel,
-} from "@/lib/ai-models/config";
+import { getDefaultModel } from "@/lib/ai-models/config";
 
 import { TemplateEditorDialog } from "@/components/templates/template-editor-dialog";
 import type { TemplateFormData } from "@/types/templates";
 import type { CanonicalTestType } from "@/components/generator/testtype-multiselect";
 
-// ============================================================================
-// TYPES
-// ============================================================================
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type TemplateCategory =
   | "functional"
@@ -98,15 +91,13 @@ interface Template {
   last_used_at?: string | null;
   created_at: string;
   updated_at: string;
-  test_types: string[]; // Keep as string[] from database
+  test_types: string[];
 }
 
 type Scope = "my" | "public";
 type Tab = "my-templates" | "public";
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CATEGORY_ICONS: Record<
   TemplateCategory,
@@ -121,26 +112,41 @@ const CATEGORY_ICONS: Record<
   other: FileText,
 };
 
-const CATEGORY_COLORS: Record<TemplateCategory, string> = {
+const CATEGORY_ACCENT: Record<TemplateCategory, string> = {
   functional: "bg-blue-500",
   security: "bg-red-500",
-  performance: "bg-orange-500",
+  performance: "bg-amber-500",
   integration: "bg-purple-500",
   regression: "bg-green-500",
   accessibility: "bg-indigo-500",
-  other: "bg-gray-500",
+  other: "bg-slate-400",
 };
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
+const CATEGORY_BADGE: Record<TemplateCategory, string> = {
+  functional:
+    "bg-blue-50   text-blue-800   border-blue-200   dark:bg-blue-950/40   dark:text-blue-300   dark:border-blue-800",
+  security:
+    "bg-red-50    text-red-800    border-red-200    dark:bg-red-950/40    dark:text-red-300    dark:border-red-800",
+  performance:
+    "bg-amber-50  text-amber-800  border-amber-200  dark:bg-amber-950/40  dark:text-amber-300  dark:border-amber-800",
+  integration:
+    "bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800",
+  regression:
+    "bg-green-50  text-green-800  border-green-200  dark:bg-green-950/40  dark:text-green-300  dark:border-green-800",
+  accessibility:
+    "bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800",
+  other:
+    "bg-slate-50  text-slate-700  border-slate-200  dark:bg-slate-800/40  dark:text-slate-300  dark:border-slate-700",
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function tabToScope(tab: Tab): Scope {
   return tab === "public" ? "public" : "my";
 }
 
 function toCanonicalTestTypes(types: string[]): CanonicalTestType[] {
-  const validTypes: CanonicalTestType[] = [
+  const valid: CanonicalTestType[] = [
     "happy-path",
     "negative",
     "security",
@@ -151,20 +157,32 @@ function toCanonicalTestTypes(types: string[]): CanonicalTestType[] {
     "regression",
     "smoke",
   ];
-
   return types.filter((t): t is CanonicalTestType =>
-    validTypes.includes(t as CanonicalTestType),
+    valid.includes(t as CanonicalTestType),
   );
 }
 
-// ============================================================================
-// MAIN COMPONENT
-// ============================================================================
+function relativeTime(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  const days = Math.floor(diff / 86_400_000);
+  const weeks = Math.floor(days / 7);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  if (weeks < 5) return `${weeks}w ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export function TemplateManager() {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
 
-  // State
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
@@ -187,26 +205,23 @@ export function TemplateManager() {
     project_id: null,
   });
 
-  // Computed values
   const canQuery = !authLoading && (activeTab === "public" || !!user);
 
+  // ─── Filtered views ───────────────────────────────────────────────────────
+
   const filteredTemplates = useMemo(() => {
-    let filtered = templates;
-
-    if (categoryFilter !== "all") {
-      filtered = filtered.filter((t) => t.category === categoryFilter);
-    }
-
+    let f = templates;
+    if (categoryFilter !== "all")
+      f = f.filter((t) => t.category === categoryFilter);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
+      f = f.filter(
         (t) =>
           t.name.toLowerCase().includes(q) ||
           (t.description ?? "").toLowerCase().includes(q),
       );
     }
-
-    return filtered;
+    return f;
   }, [templates, searchQuery, categoryFilter]);
 
   const favoriteTemplates = useMemo(
@@ -215,7 +230,7 @@ export function TemplateManager() {
   );
 
   const mostUsedTemplate = useMemo(() => {
-    if (templates.length === 0) return null;
+    if (!templates.length) return null;
     return [...templates].sort((a, b) => b.usage_count - a.usage_count)[0];
   }, [templates]);
 
@@ -225,35 +240,29 @@ export function TemplateManager() {
     return templates.filter((t) => new Date(t.created_at) > weekAgo).length;
   }, [templates]);
 
-  // ============================================================================
-  // API FUNCTIONS
-  // ============================================================================
+  // ─── API ──────────────────────────────────────────────────────────────────
 
   const fetchTemplates = useCallback(async (tab: Tab) => {
     const scope = tabToScope(tab);
     setLoading(true);
-
     try {
       const res = await fetch(`/api/templates?scope=${scope}`, {
         cache: "no-store",
       });
-
       if (res.status === 401) {
         setTemplates([]);
         toast.error("Please sign in again.");
         window.location.href = "/login";
         return;
       }
-
       if (!res.ok) {
-        const payload = await res.json().catch(() => ({}));
-        throw new Error(payload?.error ?? `Failed (${res.status})`);
+        const p = await res.json().catch(() => ({}));
+        throw new Error(p?.error ?? `Failed (${res.status})`);
       }
-
-      const payload = await res.json();
-      setTemplates(payload?.templates ?? []);
-    } catch (e: any) {
-      console.error("[TemplateManager] fetchTemplates error:", e);
+      const p = await res.json();
+      setTemplates(p?.templates ?? []);
+    } catch (e) {
+      console.error("[TemplateManager] fetchTemplates:", e);
       toast.error("Failed to load templates");
       setTemplates([]);
     } finally {
@@ -270,9 +279,7 @@ export function TemplateManager() {
     fetchTemplates(activeTab);
   }, [canQuery, activeTab, fetchTemplates]);
 
-  // ============================================================================
-  // FORM HANDLERS
-  // ============================================================================
+  // ─── Form handlers ─────────────────────────────────────────────────────────
 
   const resetForm = useCallback(() => {
     setFormData({
@@ -333,7 +340,7 @@ export function TemplateManager() {
           includeEdgeCases: formData.includeEdgeCases,
           includeNegativeTests: formData.includeNegativeTests,
         } satisfies TemplateContent,
-        test_types: formData.test_types, // Already CanonicalTestType[]
+        test_types: formData.test_types,
         is_public: false,
         is_favorite: editingTemplate?.is_favorite ?? false,
         project_id: formData.project_id || null,
@@ -355,10 +362,9 @@ export function TemplateManager() {
         window.location.href = "/login";
         return;
       }
-
       if (!res.ok) {
-        const payload = await res.json().catch(() => ({}));
-        throw new Error(payload?.error ?? `Failed (${res.status})`);
+        const p = await res.json().catch(() => ({}));
+        throw new Error(p?.error ?? `Failed (${res.status})`);
       }
 
       toast.success(editingTemplate ? "Template updated" : "Template created");
@@ -367,7 +373,7 @@ export function TemplateManager() {
       resetForm();
       await fetchTemplates(activeTab);
     } catch (e) {
-      console.error("[TemplateManager] saveTemplate error:", e);
+      console.error("[TemplateManager] saveTemplate:", e);
       toast.error("Failed to save template");
     } finally {
       setLoading(false);
@@ -386,22 +392,19 @@ export function TemplateManager() {
       setLoading(true);
       try {
         const res = await fetch(`/api/templates/${id}`, { method: "DELETE" });
-
         if (res.status === 401) {
-          toast.error("Session expired. Please sign in again.");
+          toast.error("Session expired.");
           window.location.href = "/login";
           return;
         }
-
         if (!res.ok) {
-          const payload = await res.json().catch(() => ({}));
-          throw new Error(payload?.error ?? `Failed (${res.status})`);
+          const p = await res.json().catch(() => ({}));
+          throw new Error(p?.error ?? `Failed (${res.status})`);
         }
-
         toast.success("Template deleted");
         await fetchTemplates(activeTab);
       } catch (e) {
-        console.error("[TemplateManager] deleteTemplate error:", e);
+        console.error("[TemplateManager] deleteTemplate:", e);
         toast.error("Failed to delete template");
       } finally {
         setLoading(false);
@@ -427,28 +430,25 @@ export function TemplateManager() {
             description: template.description ?? null,
             category: template.category,
             template_content: template.template_content,
-            test_types: template.test_types ?? [], // Keep as string[]
+            test_types: template.test_types ?? [],
             is_public: false,
             is_favorite: false,
             project_id: template.project_id ?? null,
           }),
         });
-
         if (res.status === 401) {
-          toast.error("Session expired. Please sign in again.");
+          toast.error("Session expired.");
           window.location.href = "/login";
           return;
         }
-
         if (!res.ok) {
-          const payload = await res.json().catch(() => ({}));
-          throw new Error(payload?.error ?? `Failed (${res.status})`);
+          const p = await res.json().catch(() => ({}));
+          throw new Error(p?.error ?? `Failed (${res.status})`);
         }
-
         toast.success("Template duplicated");
         await fetchTemplates(activeTab);
       } catch (e) {
-        console.error("[TemplateManager] duplicateTemplate error:", e);
+        console.error("[TemplateManager] duplicateTemplate:", e);
         toast.error("Failed to duplicate template");
       } finally {
         setLoading(false);
@@ -477,19 +477,17 @@ export function TemplateManager() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ is_favorite: !template.is_favorite }),
         });
-
         if (res.status === 401) {
-          toast.error("Session expired. Please sign in again.");
+          toast.error("Session expired.");
           window.location.href = "/login";
           return;
         }
-
         if (!res.ok) {
-          const payload = await res.json().catch(() => ({}));
-          throw new Error(payload?.error ?? `Failed (${res.status})`);
+          const p = await res.json().catch(() => ({}));
+          throw new Error(p?.error ?? `Failed (${res.status})`);
         }
       } catch (e) {
-        // Revert on error
+        // Revert
         setTemplates((prev) =>
           prev.map((t) =>
             t.id === template.id
@@ -497,19 +495,223 @@ export function TemplateManager() {
               : t,
           ),
         );
-        console.error("[TemplateManager] toggleFavorite error:", e);
+        console.error("[TemplateManager] toggleFavorite:", e);
         toast.error("Failed to update favorite status");
       }
     },
     [user],
   );
 
-  // ============================================================================
-  // RENDER
-  // ============================================================================
+  // Navigate to the generator with this template pre-selected
+  const useTemplate = useCallback(
+    (template: Template) => {
+      router.push(`/generate?template=${template.id}`);
+    },
+    [router],
+  );
+
+  // Clone a public template into the user's own library
+
+  // ─── Template card ────────────────────────────────────────────────────────
+
+  function TemplateCard({ template }: { template: Template }) {
+    const CategoryIcon = CATEGORY_ICONS[template.category];
+    const accentClass = CATEGORY_ACCENT[template.category];
+    const badgeClass = CATEGORY_BADGE[template.category];
+    const lastUsedLabel = relativeTime(template.last_used_at);
+    // Show the actual model stored, not the current default
+    const modelLabel = template.template_content.model ?? getDefaultModel();
+
+    return (
+      <Card className="relative flex flex-col overflow-hidden hover:shadow-md transition-shadow">
+        {/* Category accent bar */}
+        <div className={`h-1 w-full ${accentClass} flex-shrink-0`} />
+
+        <CardHeader className="pt-4 pb-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <CategoryIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+              <CardTitle
+                className="text-base leading-snug line-clamp-2 break-words"
+                title={template.name}
+              >
+                {template.name}
+              </CardTitle>
+            </div>
+
+            <div className="flex items-center gap-0.5 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => toggleFavorite(template)}
+                title={
+                  template.is_favorite
+                    ? "Remove from favorites"
+                    : "Add to favorites"
+                }
+              >
+                <Star
+                  className={`h-4 w-4 ${template.is_favorite ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`}
+                />
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <>
+                    <DropdownMenuItem onClick={() => openEditDialog(template)}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => duplicateTemplate(template)}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Duplicate
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => deleteTemplate(template.id)}
+                      className="text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
+          {template.description && (
+            <CardDescription className="line-clamp-2 mt-1">
+              {template.description}
+            </CardDescription>
+          )}
+        </CardHeader>
+
+        <CardContent className="py-2 space-y-3 flex-1">
+          {/* Category + type tags */}
+          <div className="flex flex-wrap gap-1.5">
+            <Badge className={`text-xs border ${badgeClass}`}>
+              {template.category}
+            </Badge>
+            {(template.test_types ?? []).slice(0, 2).map((tt) => (
+              <Badge key={tt} variant="secondary" className="text-xs">
+                {tt}
+              </Badge>
+            ))}
+            {(template.test_types ?? []).length > 2 && (
+              <Badge variant="outline" className="text-xs">
+                +{template.test_types.length - 2}
+              </Badge>
+            )}
+          </div>
+
+          {/* Meta row */}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>{template.template_content.testCaseCount} cases</span>
+            <span className="truncate max-w-[120px]" title={modelLabel}>
+              {modelLabel}
+            </span>
+            <span className="flex items-center gap-1">
+              <TrendingUp className="h-3 w-3" />
+              {template.usage_count}×
+            </span>
+          </div>
+
+          {/* Last used */}
+          {lastUsedLabel && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              Last used {lastUsedLabel}
+            </p>
+          )}
+        </CardContent>
+
+        {/* Footer — primary action */}
+        <CardFooter className="pt-3 pb-3 border-t flex gap-2">
+          <Button
+            className="flex-1 gap-1.5"
+            size="sm"
+            onClick={() => useTemplate(template)}
+          >
+            <Play className="h-3.5 w-3.5" />
+            Use template
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => openEditDialog(template)}
+          >
+            <Edit className="h-3.5 w-3.5" />
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  }
+
+  // ─── Template grid ────────────────────────────────────────────────────────
+
+  function TemplateGrid() {
+    if (!user) {
+      return (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            Sign in to view and manage your templates.
+          </CardContent>
+        </Card>
+      );
+    }
+
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      );
+    }
+
+    if (filteredTemplates.length === 0) {
+      return (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No templates found</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              {searchQuery || categoryFilter !== "all"
+                ? "Try adjusting your filters"
+                : "Create your first template to get started"}
+            </p>
+            {!searchQuery && categoryFilter === "all" && (
+              <Button onClick={openNewDialog}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Template
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filteredTemplates.map((template) => (
+          <TemplateCard key={template.id} template={template} />
+        ))}
+      </div>
+    );
+  }
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div />
@@ -521,7 +723,6 @@ export function TemplateManager() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {/* Total Templates - Neutral/Primary */}
         <Card className="border-slate-200 dark:border-slate-800 hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -532,16 +733,13 @@ export function TemplateManager() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {templates.length}
-            </div>
+            <div className="text-3xl font-bold">{templates.length}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {favoriteTemplates.length} marked as favorite
             </p>
           </CardContent>
         </Card>
 
-        {/* Most Used Template - Purple/Popular */}
         <Card className="border-purple-200 dark:border-purple-800 hover:shadow-md transition-shadow bg-purple-50/50 dark:bg-purple-950/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-purple-700 dark:text-purple-300">
@@ -564,7 +762,6 @@ export function TemplateManager() {
           </CardContent>
         </Card>
 
-        {/* Favorite Templates - Amber/Gold */}
         <Card className="border-amber-200 dark:border-amber-800 hover:shadow-md transition-shadow bg-amber-50/50 dark:bg-amber-950/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-amber-700 dark:text-amber-300">
@@ -586,7 +783,6 @@ export function TemplateManager() {
           </CardContent>
         </Card>
 
-        {/* Recent Activity - Blue/Activity */}
         <Card className="border-blue-200 dark:border-blue-800 hover:shadow-md transition-shadow bg-blue-50/50 dark:bg-blue-950/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-300">
@@ -608,23 +804,20 @@ export function TemplateManager() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search templates..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search templates..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
         </div>
-
         <Select
           value={categoryFilter}
-          onValueChange={(value) =>
-            setCategoryFilter(value as TemplateCategory | "all")
+          onValueChange={(v) =>
+            setCategoryFilter(v as TemplateCategory | "all")
           }
         >
           <SelectTrigger className="w-full sm:w-[200px]">
@@ -646,177 +839,24 @@ export function TemplateManager() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)}>
+        <TabsList>
+          <TabsTrigger value="my-templates" className="gap-2">
+            <FileText className="h-4 w-4" />
+            My Templates
+            {templates.length > 0 && (
+              <Badge variant="secondary" className="text-xs ml-1">
+                {templates.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
         <TabsContent value="my-templates" className="mt-6">
-          {!user ? (
-            <Card>
-              <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                Sign in to view and manage your templates.
-              </CardContent>
-            </Card>
-          ) : loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredTemplates.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">
-                  No templates found
-                </h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {searchQuery || categoryFilter !== "all"
-                    ? "Try adjusting your filters"
-                    : "Create your first template to get started"}
-                </p>
-                {!searchQuery && categoryFilter === "all" && (
-                  <Button onClick={openNewDialog}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Template
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredTemplates.map((template) => {
-                const CategoryIcon = CATEGORY_ICONS[template.category];
-                const categoryColor = CATEGORY_COLORS[template.category];
-
-                return (
-                  <Card
-                    key={template.id}
-                    className="relative group hover:shadow-lg transition-shadow overflow-hidden"
-                  >
-                    <div
-                      className={`absolute top-0 left-0 w-full h-1 ${categoryColor} rounded-t-lg`}
-                    />
-
-                    <CardHeader className="pt-6">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <CategoryIcon className="h-5 w-5 text-muted-foreground" />
-                          <div className="flex-1 min-w-0">
-                            <CardTitle
-                              className="text-lg leading-snug line-clamp-2 break-words"
-                              title={template.name}
-                            >
-                              {template.name}
-                            </CardTitle>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => toggleFavorite(template)}
-                          >
-                            <Star
-                              className={`h-4 w-4 ${
-                                template.is_favorite
-                                  ? "fill-yellow-400 text-yellow-400"
-                                  : "text-muted-foreground"
-                              }`}
-                            />
-                          </Button>
-
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => openEditDialog(template)}
-                              >
-                                <Edit className="h-4 w-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => duplicateTemplate(template)}
-                              >
-                                <Copy className="h-4 w-4 mr-2" />
-                                Duplicate
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => deleteTemplate(template.id)}
-                                className="text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
-
-                      {template.description && (
-                        <CardDescription className="line-clamp-2">
-                          {template.description}
-                        </CardDescription>
-                      )}
-                    </CardHeader>
-
-                    <CardContent className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {template.category}
-                        </Badge>
-                        <Badge variant="secondary" className="text-xs">
-                          {template.template_content.testCaseCount} tests
-                        </Badge>
-                      </div>
-
-                      <div className="text-xs text-muted-foreground space-y-1">
-                        <div className="flex justify-between">
-                          <span>Model:</span>
-                          <span className="font-medium">
-                            {getDefaultModel()}
-                          </span>
-                        </div>
-
-                        {template.test_types?.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {template.test_types.slice(0, 3).map((tt) => (
-                              <Badge
-                                key={tt}
-                                variant="secondary"
-                                className="text-[10px]"
-                              >
-                                {tt}
-                              </Badge>
-                            ))}
-                            {template.test_types.length > 3 && (
-                              <Badge variant="outline" className="text-[10px]">
-                                +{template.test_types.length - 3}
-                              </Badge>
-                            )}
-                          </div>
-                        )}
-
-                        <div className="flex justify-between">
-                          <span>Used:</span>
-                          <span>{template.usage_count} times</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+          <TemplateGrid />
         </TabsContent>
       </Tabs>
 
-      {/* Editor Dialog */}
+      {/* Editor dialog */}
       <TemplateEditorDialog
         open={showDialog}
         onOpenChange={setShowDialog}
