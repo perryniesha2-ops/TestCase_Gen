@@ -82,7 +82,7 @@ export default function PricingPage() {
   const [yearly, setYearly] = React.useState(false);
   const [contactSheetOpen, setContactSheetOpen] = React.useState(false);
   const [selectedPlan, setSelectedPlan] = React.useState<"team" | "enterprise">(
-    "team"
+    "team",
   );
   const reduceMotion = useReducedMotion();
 
@@ -315,9 +315,7 @@ export default function PricingPage() {
         initial={reduceMotion ? false : "hidden"}
         whileInView={reduceMotion ? undefined : "show"}
         viewport={{ once: true, amount: 0.4 }}
-      >
-        Powered by OpenAI • Anthropic • Supabase
-      </motion.p>
+      ></motion.p>
 
       {/* Contact Sales Sheet */}
       <PricingContactSheet
@@ -355,7 +353,7 @@ function MotionPlanCard(
     contactSales?: boolean;
     href?: string;
     onClick?: () => void;
-  }
+  },
 ) {
   const {
     title,
@@ -495,7 +493,7 @@ function MotionPlanCard(
 }
 
 function MotionFaqItem(
-  props: React.ComponentProps<typeof motion.div> & { q: string; a: string }
+  props: React.ComponentProps<typeof motion.div> & { q: string; a: string },
 ) {
   const { q, a, ...motionProps } = props;
   const [open, setOpen] = React.useState(false);
@@ -525,8 +523,8 @@ function MotionFaqItem(
             open && !reduceMotion
               ? { height: "auto", opacity: 1, marginTop: 8 }
               : open
-              ? { height: "auto", opacity: 1, marginTop: 8 }
-              : { height: 0, opacity: 0, marginTop: 0 }
+                ? { height: "auto", opacity: 1, marginTop: 8 }
+                : { height: 0, opacity: 0, marginTop: 0 }
           }
           transition={
             reduceMotion ? { duration: 0 } : { duration: 0.22, ease: easeOut }
