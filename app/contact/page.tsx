@@ -5,6 +5,7 @@ import * as React from "react";
 import Link from "next/link";
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
+import { MobileMenuButton } from "@/components/pagecomponents/mobilemenubutton";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -82,23 +83,14 @@ export default function ContactUs() {
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[240px_1fr]">
       <AppSidebar className="hidden md:block" />
-      <div className="flex min-h-screen flex-col">
+      <div className="flex min-h-screen flex-col px-4 md:px-6">
+        <SiteHeader
+          title="Contact Us"
+          subtitle="  Have a question about SynthQA or ran into an issue? We’re here
+                to help."
+        />
         {/* Page hero */}
-        <section className="relative">
-          <div className="absolute inset-0 -z-10 bg-gradient-to-b from-primary/5 via-transparent to-transparent" />
-          <div className="px-4 md:px-8 pt-6">
-            <div className="max-w-5xl">
-              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
-                Contact Us
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Have a question about SynthQA or ran into an issue? We’re here
-                to help.
-              </p>
-              <p className="mt-4 text-sm text-muted-foreground"></p>
-            </div>
-          </div>
-        </section>
+        <div className="h-4" />
 
         <main className="px-4 md:px-8 pb-10">
           <div className="mx-auto grid max-w-5xl gap-8 md:grid-cols-5">
@@ -259,11 +251,11 @@ export default function ContactUs() {
                     </Button>
                     <span className="ml-3 text-xs text-muted-foreground">
                       By sending, you agree to our{" "}
-                      <Link href="/terms" className="underline">
+                      <Link href="/docs/terms" className="underline">
                         Terms
                       </Link>{" "}
                       and{" "}
-                      <Link href="/privacy" className="underline">
+                      <Link href="/docs/privacy" className="underline">
                         Privacy Policy
                       </Link>
                       .

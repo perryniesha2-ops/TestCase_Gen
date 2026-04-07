@@ -42,6 +42,7 @@ import {
   Library,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Logo } from "../pagecomponents/brandlogo";
 
 const PRO_ONLY_ROUTES = [
   "/automation",
@@ -158,24 +159,8 @@ export function MobileMenuButton({ className }: MobileMenuButtonProps) {
         <div className="flex h-full flex-col">
           {/* Logo */}
           <div className="flex h-16 items-center px-4 border-b">
-            <Link href="/dashboard" onClick={() => setOpen(false)}>
-              <Image
-                src="/logo-sq-dark.svg"
-                alt="SynthQA"
-                width={120}
-                height={48}
-                className="hidden dark:inline-block h-10 w-auto"
-              />
-              <Image
-                src="/logo-sq-light.svg"
-                alt="SynthQA"
-                width={120}
-                height={48}
-                className="inline-block dark:hidden h-10 w-auto"
-              />
-            </Link>
+            <Logo size="lg" />
           </div>
-
           {/* Nav */}
           <div className="flex-1 px-4 py-6 overflow-y-auto">
             <nav className="space-y-1">

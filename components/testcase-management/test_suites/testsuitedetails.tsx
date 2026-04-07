@@ -165,8 +165,7 @@ function SortableAssignedRow(props: {
         </div>
       </TableCell>
 
-      {/* ... rest of the row remains the same ... */}
-      <TableCell className="w-[360px] max-w-[360px] font-medium">
+      <TableCell className="w-[200px] sm:w-[360px] max-w-[200px] sm:max-w-[360px] font-medium">
         {suiteTestCase.test_cases ? (
           <div className="min-w-0">
             <div className="font-medium truncate">
@@ -183,7 +182,8 @@ function SortableAssignedRow(props: {
         )}
       </TableCell>
 
-      <TableCell>
+      {/* Hide platform/type column on small screens */}
+      <TableCell className="hidden sm:table-cell">
         {suiteTestCase.test_cases && (
           <Badge variant="outline" className="capitalize">
             {suiteTestCase.test_cases.platform ||
@@ -200,7 +200,7 @@ function SortableAssignedRow(props: {
           }
           disabled={props.busy}
         >
-          <SelectTrigger className="w-[120px] h-8">
+          <SelectTrigger className="w-[100px] sm:w-[120px] h-8">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -212,7 +212,8 @@ function SortableAssignedRow(props: {
         </Select>
       </TableCell>
 
-      <TableCell>
+      {/* Hide exec status on small screens */}
+      <TableCell className="hidden md:table-cell">
         {suiteTestCase.test_cases && (
           <div className="flex items-center gap-2">
             {props.getStatusIcon(suiteTestCase.test_cases.execution_status)}
@@ -226,7 +227,8 @@ function SortableAssignedRow(props: {
         )}
       </TableCell>
 
-      <TableCell>
+      {/* Hide duration on small screens */}
+      <TableCell className="hidden lg:table-cell">
         <span className="text-sm">
           {suiteTestCase.estimated_duration_minutes}m
         </span>
@@ -272,20 +274,16 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [savingSuite, setSavingSuite] = useState(false);
 
-  // ✅ Use ref to track latest state for async operations
   const orderedRef = useRef<SuiteTestCase[]>([]);
 
-  // Local ordered list (so drag reorder actually changes UI)
   const [orderedSuiteTestCases, setOrderedSuiteTestCases] = useState<
     SuiteTestCase[]
   >([]);
 
-  // ✅ Update ref whenever state changes
   useEffect(() => {
     orderedRef.current = orderedSuiteTestCases;
   }, [orderedSuiteTestCases]);
 
-  // Bulk select on available tab
   const [selectedAvailableIds, setSelectedAvailableIds] = useState<Set<string>>(
     new Set(),
   );
@@ -299,10 +297,8 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
     project_id: suite.project_id ?? "",
   });
 
-  // Get suite kind (with fallback for TypeScript)
   const suiteKind = (suite as any).kind || "regular";
 
-  // keep form in sync when suite changes
   useEffect(() => {
     setEditForm({
       name: suite.name ?? "",
@@ -320,8 +316,6 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
     suite.project_id,
   ]);
 
-  // ✅ Keep local ordered list in sync with incoming suiteTestCases
-  // AND ensure sequence is always sequential (1, 2, 3, ...)
   useEffect(() => {
     const sorted = [...suiteTestCases].sort((a, b) => {
       const ao = normalizeOrderValue(a.sequence_order);
@@ -330,9 +324,7 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
       return String(a.id).localeCompare(String(b.id));
     });
 
-    // ✅ Ensure sequence_order is always 1, 2, 3, ... (fix any gaps or duplicates)
     const normalized = ensureSequentialOrder(sorted);
-
     setOrderedSuiteTestCases(normalized);
   }, [suiteTestCases]);
 
@@ -451,7 +443,6 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
     }
   }
 
-  // ✅ Fixed DnD reorder handling
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
@@ -461,7 +452,6 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
       const { active, over } = event;
       if (!over || active?.id === over?.id) return;
 
-      // ✅ Calculate the new order synchronously from current state
       const currentItems = orderedRef.current;
       const oldIndex = currentItems.findIndex((x) => x.id === active.id);
       const newIndex = currentItems.findIndex((x) => x.id === over.id);
@@ -471,10 +461,8 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
       const moved = arrayMove(currentItems, oldIndex, newIndex);
       const reordered = ensureSequentialOrder(moved);
 
-      // ✅ Update state optimistically
       setOrderedSuiteTestCases(reordered);
 
-      // ✅ Persist to backend
       if (onReorderSuiteTestCases) {
         try {
           const payload = reordered.map((item) => ({
@@ -485,7 +473,6 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
           await onReorderSuiteTestCases(payload);
         } catch (e) {
           console.error("Persist reorder failed:", e);
-          // ✅ Revert to server state on error
           router.refresh();
         }
       }
@@ -493,7 +480,6 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
     [onReorderSuiteTestCases, router],
   );
 
-  // ----- Bulk assign -----
   const bulkAssignSelected = useCallback(async () => {
     if (busy) return;
 
@@ -502,7 +488,6 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
 
     setBulkAssigning(true);
     try {
-      // Keep a stable order: assign in the order items appear in the filtered list
       const byId = new Map(filteredAvailableTestCases.map((t) => [t.id, t]));
       const ordered = visibleAvailableIds.filter((id) =>
         selectedAvailableIds.has(id),
@@ -530,11 +515,12 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* ... rest of the component remains the same ... */}
-      {/* The render section doesn't need changes */}
-      <div className="flex items-start justify-between gap-3 mb-4">
+      {/* ── Header ── */}
+      {/* On mobile: stack title block above the action buttons */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+        {/* Left: title + badges */}
         <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
             <h2 className="text-base font-semibold truncate">{suite.name}</h2>
             <Badge
               variant={suiteKind === "cross-platform" ? "secondary" : "outline"}
@@ -570,9 +556,15 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Right: action buttons — full-width row on mobile, auto on sm+ */}
+        <div className="flex items-center gap-2 sm:shrink-0">
           {props.showOpenFullPageButton && (
-            <Button asChild variant="outline" size="sm" className="gap-2">
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="gap-2 flex-1 sm:flex-none justify-center"
+            >
               <Link href={`/test-library/${suite.id}`}>
                 <ArrowUpRight className="h-4 w-4" />
                 Open
@@ -584,7 +576,7 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
             onClick={() => void saveSuite()}
             disabled={busy || savingSuite}
             size="sm"
-            className="gap-2"
+            className="gap-2 flex-1 sm:flex-none justify-center"
           >
             {savingSuite ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -596,29 +588,42 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
         </div>
       </div>
 
+      {/* ── Tabs ── */}
       <Tabs
         value={activeTab}
         onValueChange={setActiveTab}
         className="flex-1 flex flex-col overflow-hidden"
       >
+        {/* Tab triggers: icon-only on xs, icon+label on sm+ */}
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="details" className="gap-2">
-            <Settings className="h-4 w-4" />
-            Details
+          <TabsTrigger value="details" className="gap-1 sm:gap-2">
+            <Settings className="h-4 w-4 shrink-0" />
+            <span className="hidden xs:inline sm:inline">Details</span>
           </TabsTrigger>
-          <TabsTrigger value="assigned" className="gap-2">
-            <ListChecks className="h-4 w-4" />
-            Assigned ({orderedSuiteTestCases.length})
+          <TabsTrigger value="assigned" className="gap-1 sm:gap-2">
+            <ListChecks className="h-4 w-4 shrink-0" />
+            <span className="hidden xs:inline sm:inline">
+              Assigned ({orderedSuiteTestCases.length})
+            </span>
+            {/* Compact count shown only on xs */}
+            <span className="xs:hidden text-xs">
+              ({orderedSuiteTestCases.length})
+            </span>
           </TabsTrigger>
-          <TabsTrigger value="available" className="gap-2">
-            <Plus className="h-4 w-4" />
-            Available ({filteredAvailableTestCases.length})
+          <TabsTrigger value="available" className="gap-1 sm:gap-2">
+            <Plus className="h-4 w-4 shrink-0" />
+            <span className="hidden xs:inline sm:inline">
+              Available ({filteredAvailableTestCases.length})
+            </span>
+            <span className="xs:hidden text-xs">
+              ({filteredAvailableTestCases.length})
+            </span>
           </TabsTrigger>
         </TabsList>
 
-        {/* DETAILS */}
+        {/* ── DETAILS TAB ── */}
         <TabsContent value="details" className="flex-1 overflow-auto mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
             <div className="space-y-2">
               <Label>Suite Name *</Label>
               <Input
@@ -728,7 +733,7 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
               </Select>
             </div>
 
-            <div className="space-y-2 md:col-span-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label>Description</Label>
               <Textarea
                 value={editForm.description}
@@ -742,7 +747,7 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
           </div>
         </TabsContent>
 
-        {/* ASSIGNED (with real reorder) */}
+        {/* ── ASSIGNED TAB ── */}
         <TabsContent
           value="assigned"
           className="flex-1 overflow-hidden flex flex-col mt-4"
@@ -753,6 +758,7 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
               : "Test cases currently assigned to this suite."}
           </div>
 
+          {/* Horizontal scroll wrapper so table never squishes below min-width */}
           <div className="flex-1 overflow-auto">
             {initialLoading ? (
               <div className="text-center py-12">
@@ -781,52 +787,61 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
                   items={orderedSuiteTestCases.map((x) => x.id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[70px]">Order</TableHead>
-                        <TableHead>Test Case</TableHead>
-                        <TableHead className="w-[110px]">
-                          {suiteKind === "cross-platform" ? "Platform" : "Type"}
-                        </TableHead>
-                        <TableHead className="w-[130px]">Priority</TableHead>
-                        <TableHead className="w-[140px]">Exec Status</TableHead>
-                        <TableHead className="w-[120px]">
-                          Est. Duration
-                        </TableHead>
-                        <TableHead className="w-[90px] text-right">
-                          Remove
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
+                  {/* min-w keeps the table readable on narrow viewports */}
+                  <div className="min-w-[520px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[70px]">Order</TableHead>
+                          <TableHead>Test Case</TableHead>
+                          {/* Hidden on small screens */}
+                          <TableHead className="hidden sm:table-cell w-[110px]">
+                            {suiteKind === "cross-platform"
+                              ? "Platform"
+                              : "Type"}
+                          </TableHead>
+                          <TableHead className="w-[130px]">Priority</TableHead>
+                          <TableHead className="hidden md:table-cell w-[140px]">
+                            Exec Status
+                          </TableHead>
+                          <TableHead className="hidden lg:table-cell w-[120px]">
+                            Est. Duration
+                          </TableHead>
+                          <TableHead className="w-[90px] text-right">
+                            Remove
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
 
-                    <TableBody>
-                      {orderedSuiteTestCases.map((suiteTestCase) => (
-                        <SortableAssignedRow
-                          key={suiteTestCase.id}
-                          suiteTestCase={suiteTestCase}
-                          suiteKind={suiteKind}
-                          busy={busy}
-                          getStatusIcon={getStatusIcon}
-                          getPriorityColor={getPriorityColor}
-                          onUpdatePriority={onUpdatePriority}
-                          onRemoveTestCase={onRemoveTestCase}
-                        />
-                      ))}
-                    </TableBody>
-                  </Table>
+                      <TableBody>
+                        {orderedSuiteTestCases.map((suiteTestCase) => (
+                          <SortableAssignedRow
+                            key={suiteTestCase.id}
+                            suiteTestCase={suiteTestCase}
+                            suiteKind={suiteKind}
+                            busy={busy}
+                            getStatusIcon={getStatusIcon}
+                            getPriorityColor={getPriorityColor}
+                            onUpdatePriority={onUpdatePriority}
+                            onRemoveTestCase={onRemoveTestCase}
+                          />
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </SortableContext>
               </DndContext>
             )}
           </div>
         </TabsContent>
 
-        {/* AVAILABLE (with bulk toolbar) */}
+        {/* ── AVAILABLE TAB ── */}
         <TabsContent
           value="available"
           className="flex-1 overflow-hidden flex flex-col mt-4"
         >
-          <div className="space-y-4 mb-4">
+          <div className="space-y-3 mb-4">
+            {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -837,8 +852,9 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
               />
             </div>
 
-            {/* Bulk actions toolbar */}
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+            {/* Bulk actions toolbar — stacks on mobile */}
+            <div className="flex flex-col xs:flex-row xs:flex-wrap items-start xs:items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+              {/* Left: select-all + count */}
               <div className="flex items-center gap-3">
                 <Checkbox
                   checked={
@@ -863,18 +879,20 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              {/* Right: action buttons — full-width on mobile */}
+              <div className="flex items-center gap-2 w-full xs:w-auto">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={clearSelection}
                   disabled={busy || selectedAvailableIds.size === 0}
+                  className="flex-1 xs:flex-none"
                 >
                   Clear
                 </Button>
                 <Button
                   size="sm"
-                  className="gap-2"
+                  className="gap-2 flex-1 xs:flex-none justify-center"
                   onClick={() => void bulkAssignSelected()}
                   disabled={
                     busy || bulkAssigning || selectedAvailableIds.size === 0
@@ -891,6 +909,7 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
             </div>
           </div>
 
+          {/* Horizontally scrollable table */}
           <div className="flex-1 overflow-auto">
             {filteredAvailableTestCases.length === 0 ? (
               <div className="text-center py-12 border-2 border-dashed border-muted rounded-lg">
@@ -902,88 +921,97 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
                 </p>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[44px]">
-                      <span className="sr-only">Select</span>
-                    </TableHead>
-                    <TableHead className="w-[360px]">Test Case</TableHead>
-                    <TableHead className="w-[110px]">
-                      {suiteKind === "cross-platform" ? "Platform" : "Type"}
-                    </TableHead>
-                    <TableHead className="w-[110px]">Priority</TableHead>
-                    <TableHead className="w-[140px]">Exec Status</TableHead>
-                    <TableHead className="w-[90px] text-right">Add</TableHead>
-                  </TableRow>
-                </TableHeader>
+              <div className="min-w-[480px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[44px]">
+                        <span className="sr-only">Select</span>
+                      </TableHead>
+                      <TableHead>Test Case</TableHead>
+                      {/* Hide platform/type on xs */}
+                      <TableHead className="hidden sm:table-cell w-[110px]">
+                        {suiteKind === "cross-platform" ? "Platform" : "Type"}
+                      </TableHead>
+                      <TableHead className="w-[110px]">Priority</TableHead>
+                      {/* Hide exec status on xs */}
+                      <TableHead className="hidden sm:table-cell w-[140px]">
+                        Exec Status
+                      </TableHead>
+                      <TableHead className="w-[90px] text-right">Add</TableHead>
+                    </TableRow>
+                  </TableHeader>
 
-                <TableBody>
-                  {filteredAvailableTestCases.map((testCase) => {
-                    const checked = selectedAvailableIds.has(testCase.id);
-                    return (
-                      <TableRow key={testCase.id}>
-                        <TableCell>
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={() => toggleSelectOne(testCase.id)}
-                            aria-label={`Select ${testCase.title}`}
-                          />
-                        </TableCell>
+                  <TableBody>
+                    {filteredAvailableTestCases.map((testCase) => {
+                      const checked = selectedAvailableIds.has(testCase.id);
+                      return (
+                        <TableRow key={testCase.id}>
+                          <TableCell>
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() =>
+                                toggleSelectOne(testCase.id)
+                              }
+                              aria-label={`Select ${testCase.title}`}
+                            />
+                          </TableCell>
 
-                        <TableCell className="w-[360px] max-w-[360px] font-medium">
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">
-                              {testCase.title}
+                          <TableCell className="font-medium">
+                            <div className="min-w-0">
+                              <div className="font-medium truncate">
+                                {testCase.title}
+                              </div>
+                              <div className="text-sm text-muted-foreground line-clamp-1">
+                                {testCase.description}
+                              </div>
                             </div>
-                            <div className="text-sm text-muted-foreground line-clamp-1">
-                              {testCase.description}
+                          </TableCell>
+
+                          {/* Hidden on xs */}
+                          <TableCell className="hidden sm:table-cell">
+                            <Badge variant="outline" className="capitalize">
+                              {testCase.platform || testCase.test_type}
+                            </Badge>
+                          </TableCell>
+
+                          <TableCell>
+                            <Badge
+                              className={getPriorityColor(testCase.priority)}
+                            >
+                              {testCase.priority}
+                            </Badge>
+                          </TableCell>
+
+                          {/* Hidden on xs */}
+                          <TableCell className="hidden sm:table-cell">
+                            <div className="flex items-center gap-2">
+                              {getStatusIcon(testCase.execution_status)}
+                              <span className="text-sm capitalize">
+                                {(
+                                  testCase.execution_status ?? "not_run"
+                                ).replace("_", " ")}
+                              </span>
                             </div>
-                          </div>
-                        </TableCell>
+                          </TableCell>
 
-                        <TableCell>
-                          <Badge variant="outline" className="capitalize">
-                            {testCase.platform || testCase.test_type}
-                          </Badge>
-                        </TableCell>
-
-                        <TableCell>
-                          <Badge
-                            className={getPriorityColor(testCase.priority)}
-                          >
-                            {testCase.priority}
-                          </Badge>
-                        </TableCell>
-
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {getStatusIcon(testCase.execution_status)}
-                            <span className="text-sm capitalize">
-                              {(testCase.execution_status ?? "not_run").replace(
-                                "_",
-                                " ",
-                              )}
-                            </span>
-                          </div>
-                        </TableCell>
-
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            onClick={() => void onAddTestCase(testCase)}
-                            disabled={busy}
-                            className="h-8"
-                            aria-label="Add to suite"
-                          >
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              onClick={() => void onAddTestCase(testCase)}
+                              disabled={busy}
+                              className="h-8"
+                              aria-label="Add to suite"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </div>
         </TabsContent>

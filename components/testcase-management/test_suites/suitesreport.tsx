@@ -94,7 +94,7 @@ export function SuiteReports({
   const [executionTrends, setExecutionTrends] = useState<ExecutionTrend[]>([]);
   const [availableSuites, setAvailableSuites] = useState<TestSuite[]>([]);
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState("30"); // days
+  const [timeRange, setTimeRange] = useState("30");
   const [selectedSuite, setSelectedSuite] = useState<string>("all");
   const [error, setError] = useState<string | null>(null);
 
@@ -118,12 +118,8 @@ export function SuiteReports({
     setLoading(true);
     setError(null);
     try {
-      // 1) Get suites and store them
       const suites = await fetchAvailableSuites();
-
-      // 2) Fetch all report data using the fresh suite list
       const supabase = createClient();
-
       const days = parseInt(timeRange, 10);
       const suiteFilter = selectedSuite !== "all" ? selectedSuite : null;
 
@@ -208,7 +204,6 @@ export function SuiteReports({
     }
     try {
       const supabase = createClient();
-
       const { data, error } = await supabase
         .from("suites")
         .select("id, name, kind")
@@ -216,7 +211,6 @@ export function SuiteReports({
         .order("name");
 
       if (error) throw error;
-
       const suites = data || [];
       setAvailableSuites(suites);
       return suites;
@@ -234,7 +228,6 @@ export function SuiteReports({
     }
     try {
       const supabase = createClient();
-
       let suitesToAnalyze =
         suitesFromCaller && suitesFromCaller.length > 0
           ? suitesFromCaller
@@ -261,14 +254,7 @@ export function SuiteReports({
             .eq("suite_id", suite.id)
             .gte("created_at", cutoffDate);
 
-          if (error) {
-            console.error(
-              `Error fetching executions for suite ${suite.id}:`,
-              error,
-            );
-            return null;
-          }
-
+          if (error) return null;
           if (!executions || executions.length === 0) {
             return {
               suite_id: suite.id,
@@ -365,10 +351,8 @@ export function SuiteReports({
 
   async function fetchTestCasePerformance() {
     if (!user) return;
-
     try {
       const supabase = createClient();
-
       const cutoffDate = new Date(
         Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000,
       ).toISOString();
@@ -385,7 +369,6 @@ export function SuiteReports({
       }
 
       const { data: executions, error } = await query;
-
       if (error) throw error;
       if (!executions || executions.length === 0) {
         setTestCasePerformance([]);
@@ -439,7 +422,6 @@ export function SuiteReports({
           const failedExecs = execs.filter(
             (e) => e.execution_status === "failed",
           );
-
           const passRate =
             totalExecs > 0 ? (passedExecs / totalExecs) * 100 : 0;
 
@@ -487,17 +469,15 @@ export function SuiteReports({
       throw error;
     }
   }
+
   async function fetchExecutionTrends() {
     if (!user) return;
-
     try {
       const supabase = createClient();
-
       const cutoffDate = new Date(
         Date.now() - parseInt(timeRange) * 24 * 60 * 60 * 1000,
       ).toISOString();
 
-      // Build query
       let query = supabase
         .from("test_executions")
         .select("execution_status, created_at")
@@ -508,14 +488,12 @@ export function SuiteReports({
       }
 
       const { data: executions, error } = await query;
-
       if (error) throw error;
       if (!executions || executions.length === 0) {
         setExecutionTrends([]);
         return;
       }
 
-      // Group by date
       const dailyStats = new Map<
         string,
         {
@@ -574,9 +552,7 @@ export function SuiteReports({
         "Suite Name,Total Tests,Pass Rate,Avg Time (min),Last Execution",
         ...suiteStats.map(
           (suite) =>
-            `"${suite.suite_name}",${suite.total_tests},${
-              suite.avg_pass_rate
-            }%,${suite.avg_execution_time},"${
+            `"${suite.suite_name}",${suite.total_tests},${suite.avg_pass_rate}%,${suite.avg_execution_time},"${
               suite.last_execution
                 ? new Date(suite.last_execution).toLocaleString()
                 : "Never"
@@ -588,9 +564,7 @@ export function SuiteReports({
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `test-suite-report-${
-        new Date().toISOString().split("T")[0]
-      }.csv`;
+      a.download = `test-suite-report-${new Date().toISOString().split("T")[0]}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
       toast.success("Report exported successfully");
@@ -631,45 +605,46 @@ export function SuiteReports({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div></div>
-        <div className="flex items-center gap-4">
-          {showAllSuites && (
-            <Select value={selectedSuite} onValueChange={setSelectedSuite}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="All Suites" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Suites</SelectItem>
-                {availableSuites.map((suite) => (
-                  <SelectItem key={suite.id} value={suite.id}>
-                    {suite.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
+      {/* ── Toolbar: filters + export ── */}
+      {/* Stacks vertically on mobile, row on sm+ */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
+        {showAllSuites && (
+          <Select value={selectedSuite} onValueChange={setSelectedSuite}>
+            <SelectTrigger className="w-full sm:w-48">
+              <SelectValue placeholder="All Suites" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="7">Last 7 days</SelectItem>
-              <SelectItem value="14">Last 2 weeks</SelectItem>
-              <SelectItem value="30">Last 30 days</SelectItem>
-              <SelectItem value="90">Last 3 months</SelectItem>
+              <SelectItem value="all">All Suites</SelectItem>
+              {availableSuites.map((suite) => (
+                <SelectItem key={suite.id} value={suite.id}>
+                  {suite.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          <Button
-            onClick={exportReport}
-            variant="outline"
-            disabled={!hasAnyData}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
-        </div>
+        )}
+
+        <Select value={timeRange} onValueChange={setTimeRange}>
+          <SelectTrigger className="w-full sm:w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7">Last 7 days</SelectItem>
+            <SelectItem value="14">Last 2 weeks</SelectItem>
+            <SelectItem value="30">Last 30 days</SelectItem>
+            <SelectItem value="90">Last 3 months</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Button
+          onClick={exportReport}
+          variant="outline"
+          disabled={!hasAnyData}
+          className="w-full sm:w-auto"
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Export
+        </Button>
       </div>
 
       {!hasAnyData ? (
@@ -683,16 +658,18 @@ export function SuiteReports({
           </CardContent>
         </Card>
       ) : (
-        <Tabs defaultValue="overview" className="space-y-20">
-          <TabsList>
+        <Tabs defaultValue="overview" className="space-y-6">
+          {/* Tab list — full width, even columns */}
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="performance">Test Performance</TabsTrigger>
+            <TabsTrigger value="performance">Performance</TabsTrigger>
             <TabsTrigger value="trends">Trends</TabsTrigger>
           </TabsList>
 
+          {/* ── OVERVIEW TAB ── */}
           <TabsContent value="overview" className="space-y-6">
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Summary stat cards — 1 col on xs, 3 on md */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">Total Executions</CardTitle>
@@ -705,7 +682,7 @@ export function SuiteReports({
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Across {suiteStats.length} test suite
+                    Across {suiteStats.length} suite
                     {suiteStats.length !== 1 ? "s" : ""}
                   </p>
                 </CardContent>
@@ -713,7 +690,7 @@ export function SuiteReports({
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Average Pass Rate</CardTitle>
+                  <CardTitle className="text-base">Avg Pass Rate</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-green-600">
@@ -735,9 +712,7 @@ export function SuiteReports({
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">
-                    Avg Execution Time
-                  </CardTitle>
+                  <CardTitle className="text-base">Avg Exec Time</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
@@ -758,163 +733,194 @@ export function SuiteReports({
               </Card>
             </div>
 
-            {/* Suite Performance Table */}
+            {/* Suite performance table — horizontally scrollable on mobile */}
             <Card>
               <CardHeader>
                 <CardTitle>Suite Performance Overview</CardTitle>
                 <CardDescription>
-                  Performance metrics for test suites in the selected time
-                  period
+                  Performance metrics for test suites in the selected period
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-0 sm:p-6">
                 {suiteStats.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
+                  <div className="text-center py-8 text-muted-foreground px-6">
                     No suite execution data available for the selected period
                   </div>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Suite Name</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Executions</TableHead>
-                        <TableHead>Pass Rate</TableHead>
-                        <TableHead>Avg Time</TableHead>
-                        <TableHead>Trend</TableHead>
-                        <TableHead>Last Run</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {suiteStats.map((suite) => (
-                        <TableRow key={suite.suite_id}>
-                          <TableCell className="font-medium">
-                            {suite.suite_name}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="capitalize">
-                              {suite.suite_type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{suite.execution_count}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`font-medium ${
-                                  suite.avg_pass_rate >= 80
-                                    ? "text-green-600"
-                                    : suite.avg_pass_rate >= 60
-                                      ? "text-yellow-600"
-                                      : "text-red-600"
-                                }`}
-                              >
-                                {suite.avg_pass_rate}%
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell>{suite.avg_execution_time}m</TableCell>
-                          <TableCell>{getTrendIcon(suite.trend)}</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {suite.last_execution
-                              ? new Date(
-                                  suite.last_execution,
-                                ).toLocaleDateString()
-                              : "Never"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  /* Horizontal scroll wrapper */
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[560px]">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Suite Name</TableHead>
+                            <TableHead className="hidden sm:table-cell">
+                              Type
+                            </TableHead>
+                            <TableHead>Runs</TableHead>
+                            <TableHead>Pass Rate</TableHead>
+                            <TableHead className="hidden md:table-cell">
+                              Avg Time
+                            </TableHead>
+                            <TableHead className="hidden sm:table-cell">
+                              Trend
+                            </TableHead>
+                            <TableHead>Last Run</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {suiteStats.map((suite) => (
+                            <TableRow key={suite.suite_id}>
+                              <TableCell className="font-medium max-w-[160px] truncate">
+                                {suite.suite_name}
+                              </TableCell>
+                              <TableCell className="hidden sm:table-cell">
+                                <Badge variant="outline" className="capitalize">
+                                  {suite.suite_type}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>{suite.execution_count}</TableCell>
+                              <TableCell>
+                                <span
+                                  className={`font-medium ${
+                                    suite.avg_pass_rate >= 80
+                                      ? "text-green-600"
+                                      : suite.avg_pass_rate >= 60
+                                        ? "text-yellow-600"
+                                        : "text-red-600"
+                                  }`}
+                                >
+                                  {suite.avg_pass_rate}%
+                                </span>
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                {suite.avg_execution_time}m
+                              </TableCell>
+                              <TableCell className="hidden sm:table-cell">
+                                {getTrendIcon(suite.trend)}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-sm">
+                                {suite.last_execution
+                                  ? new Date(
+                                      suite.last_execution,
+                                    ).toLocaleDateString()
+                                  : "Never"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
 
+          {/* ── PERFORMANCE TAB ── */}
           <TabsContent value="performance" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Test Case Performance Analysis</CardTitle>
+                <CardTitle>Test Case Performance</CardTitle>
                 <CardDescription>
                   Identify problematic test cases and performance bottlenecks
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-0 sm:p-6">
                 {testCasePerformance.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
+                  <div className="text-center py-8 text-muted-foreground px-6">
                     No test case execution data available for the selected
                     period
                   </div>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Test Case</TableHead>
-                        <TableHead>Executions</TableHead>
-                        <TableHead>Pass Rate</TableHead>
-                        <TableHead>Failure Rate</TableHead>
-                        <TableHead>Avg Time</TableHead>
-                        <TableHead>Last Failure</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {testCasePerformance.slice(0, 20).map((test) => (
-                        <TableRow key={test.test_case_id}>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">
-                                {test.test_title}
-                              </div>
-                              {test.last_failure_reason && (
-                                <div className="text-xs text-red-600 mt-1 line-clamp-1">
-                                  {test.last_failure_reason}
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[500px]">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Test Case</TableHead>
+                            <TableHead className="hidden sm:table-cell">
+                              Runs
+                            </TableHead>
+                            <TableHead>Pass Rate</TableHead>
+                            <TableHead>Fail Rate</TableHead>
+                            <TableHead className="hidden md:table-cell">
+                              Avg Time
+                            </TableHead>
+                            <TableHead className="hidden sm:table-cell">
+                              Last Failure
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {testCasePerformance.slice(0, 20).map((test) => (
+                            <TableRow key={test.test_case_id}>
+                              {/* max-w-0 + w-full is the table trick that makes overflow-hidden
+                                  actually work inside a <td>, preventing long unbroken strings
+                                  (e.g. error messages) from expanding the column infinitely */}
+                              <TableCell className="max-w-0 w-full">
+                                <div className="overflow-hidden">
+                                  <div className="font-medium truncate">
+                                    {test.test_title}
+                                  </div>
+                                  {test.last_failure_reason && (
+                                    <div className="text-xs text-red-600 mt-1 truncate break-all">
+                                      {test.last_failure_reason}
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>{test.total_executions}</TableCell>
-                          <TableCell>
-                            <span
-                              className={`font-medium ${
-                                test.pass_rate >= 80
-                                  ? "text-green-600"
-                                  : test.pass_rate >= 60
-                                    ? "text-yellow-600"
-                                    : "text-red-600"
-                              }`}
-                            >
-                              {test.pass_rate}%
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className={`font-medium ${
-                                test.failure_frequency <= 10
-                                  ? "text-green-600"
-                                  : test.failure_frequency <= 25
-                                    ? "text-yellow-600"
-                                    : "text-red-600"
-                              }`}
-                            >
-                              {test.failure_frequency}%
-                            </span>
-                          </TableCell>
-                          <TableCell>{test.avg_execution_time}m</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {test.last_failure_date
-                              ? new Date(
-                                  test.last_failure_date,
-                                ).toLocaleDateString()
-                              : "None"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                              </TableCell>
+                              <TableCell className="hidden sm:table-cell">
+                                {test.total_executions}
+                              </TableCell>
+                              <TableCell>
+                                <span
+                                  className={`font-medium ${
+                                    test.pass_rate >= 80
+                                      ? "text-green-600"
+                                      : test.pass_rate >= 60
+                                        ? "text-yellow-600"
+                                        : "text-red-600"
+                                  }`}
+                                >
+                                  {test.pass_rate}%
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <span
+                                  className={`font-medium ${
+                                    test.failure_frequency <= 10
+                                      ? "text-green-600"
+                                      : test.failure_frequency <= 25
+                                        ? "text-yellow-600"
+                                        : "text-red-600"
+                                  }`}
+                                >
+                                  {test.failure_frequency}%
+                                </span>
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                {test.avg_execution_time}m
+                              </TableCell>
+                              <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
+                                {test.last_failure_date
+                                  ? new Date(
+                                      test.last_failure_date,
+                                    ).toLocaleDateString()
+                                  : "None"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
 
+          {/* ── TRENDS TAB ── */}
           <TabsContent value="trends" className="space-y-6">
             <Card>
               <CardHeader>
@@ -932,23 +938,30 @@ export function SuiteReports({
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {executionTrends.slice(-14).map((trend) => (
-                      <div key={trend.date} className="flex items-center gap-4">
-                        <div className="w-24 text-sm text-muted-foreground">
-                          {new Date(trend.date).toLocaleDateString()}
+                      <div
+                        key={trend.date}
+                        className="flex flex-col xs:flex-row xs:items-center gap-1 xs:gap-3"
+                      >
+                        {/* Date label — short format on mobile */}
+                        <div className="w-full xs:w-20 text-xs text-muted-foreground shrink-0">
+                          {new Date(trend.date).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                          })}
                         </div>
-                        <div className="flex-1 flex items-center gap-2">
-                          <div className="w-full bg-gray-200 rounded-full h-6 flex overflow-hidden">
+
+                        {/* Bar + count */}
+                        <div className="flex flex-1 items-center gap-2">
+                          <div className="flex-1 bg-muted rounded-full h-5 flex overflow-hidden">
                             {trend.total > 0 && (
                               <>
                                 {trend.passed > 0 && (
                                   <div
                                     className="bg-green-500 h-full flex items-center justify-center text-white text-xs font-medium"
                                     style={{
-                                      width: `${
-                                        (trend.passed / trend.total) * 100
-                                      }%`,
+                                      width: `${(trend.passed / trend.total) * 100}%`,
                                     }}
                                   >
                                     {trend.passed}
@@ -958,9 +971,7 @@ export function SuiteReports({
                                   <div
                                     className="bg-red-500 h-full flex items-center justify-center text-white text-xs font-medium"
                                     style={{
-                                      width: `${
-                                        (trend.failed / trend.total) * 100
-                                      }%`,
+                                      width: `${(trend.failed / trend.total) * 100}%`,
                                     }}
                                   >
                                     {trend.failed}
@@ -970,9 +981,7 @@ export function SuiteReports({
                                   <div
                                     className="bg-orange-500 h-full flex items-center justify-center text-white text-xs font-medium"
                                     style={{
-                                      width: `${
-                                        (trend.blocked / trend.total) * 100
-                                      }%`,
+                                      width: `${(trend.blocked / trend.total) * 100}%`,
                                     }}
                                   >
                                     {trend.blocked}
@@ -982,9 +991,7 @@ export function SuiteReports({
                                   <div
                                     className="bg-gray-500 h-full flex items-center justify-center text-white text-xs font-medium"
                                     style={{
-                                      width: `${
-                                        (trend.skipped / trend.total) * 100
-                                      }%`,
+                                      width: `${(trend.skipped / trend.total) * 100}%`,
                                     }}
                                   >
                                     {trend.skipped}
@@ -993,27 +1000,29 @@ export function SuiteReports({
                               </>
                             )}
                           </div>
-                          <div className="w-16 text-sm text-muted-foreground">
+                          <div className="w-14 text-xs text-muted-foreground shrink-0 text-right">
                             {trend.total} test{trend.total !== 1 ? "s" : ""}
                           </div>
                         </div>
                       </div>
                     ))}
-                    <div className="flex items-center justify-center gap-6 pt-4 text-sm">
+
+                    {/* Legend — wraps on narrow screens */}
+                    <div className="flex flex-wrap items-center justify-center gap-4 pt-4 text-sm border-t">
                       <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-green-500 rounded"></div>
+                        <div className="w-3 h-3 bg-green-500 rounded shrink-0" />
                         <span>Passed</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-red-500 rounded"></div>
+                        <div className="w-3 h-3 bg-red-500 rounded shrink-0" />
                         <span>Failed</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-orange-500 rounded"></div>
+                        <div className="w-3 h-3 bg-orange-500 rounded shrink-0" />
                         <span>Blocked</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-gray-500 rounded"></div>
+                        <div className="w-3 h-3 bg-gray-500 rounded shrink-0" />
                         <span>Skipped</span>
                       </div>
                     </div>
