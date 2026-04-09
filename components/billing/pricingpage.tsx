@@ -103,11 +103,7 @@ export default function PricingPage() {
         whileInView={reduceMotion ? undefined : "show"}
         viewport={viewportOnce}
       >
-        <motion.div variants={itemUp}>
-          <Badge variant="secondary" className="mb-3">
-            Pricing
-          </Badge>
-        </motion.div>
+        <motion.div variants={itemUp}></motion.div>
 
         <motion.h1
           variants={itemUp}
