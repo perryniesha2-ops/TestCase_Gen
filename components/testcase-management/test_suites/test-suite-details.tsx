@@ -293,21 +293,21 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
               className="flex items-center gap-1 sm:gap-2"
             >
               <FileText className="h-4 w-4 shrink-0" />
-              <span className="hidden xs:inline">Test Cases</span>
+              <span>Test Cases</span>
             </TabsTrigger>
             <TabsTrigger
               value="run-history"
               className="flex items-center gap-1 sm:gap-2"
             >
               <Clock className="h-4 w-4 shrink-0" />
-              <span className="hidden xs:inline">Run History</span>
+              <span>Run History</span>
             </TabsTrigger>
             <TabsTrigger
               value="reports"
               className="flex items-center gap-1 sm:gap-2"
             >
               <BarChart3 className="h-4 w-4 shrink-0" />
-              <span className="hidden xs:inline">Reports</span>
+              <span>Reports</span>
             </TabsTrigger>
           </TabsList>
 

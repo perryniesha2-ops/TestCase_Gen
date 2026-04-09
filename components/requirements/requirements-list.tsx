@@ -322,7 +322,14 @@ export function RequirementsList({
     <div className="space-y-6">
       {/* Top actions */}
       <div className="flex items-center justify-end gap-2">
-        <ImportRequirementsDialog projectId={selectedProject}>
+        <ImportRequirementsDialog
+          projectId={selectedProject}
+          onImportComplete={async () => {
+            setCurrentPage(1);
+            await fetchRequirementsList();
+            router.refresh();
+          }}
+        >
           <Button variant="outline">
             <Upload className="h-4 w-4 mr-2" />
             Import

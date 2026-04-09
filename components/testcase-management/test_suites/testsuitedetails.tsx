@@ -598,26 +598,15 @@ export function SuiteDetailsTabs(props: SuiteDetailsTabsProps) {
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="details" className="gap-1 sm:gap-2">
             <Settings className="h-4 w-4 shrink-0" />
-            <span className="hidden xs:inline sm:inline">Details</span>
+            <span>Details</span>
           </TabsTrigger>
           <TabsTrigger value="assigned" className="gap-1 sm:gap-2">
             <ListChecks className="h-4 w-4 shrink-0" />
-            <span className="hidden xs:inline sm:inline">
-              Assigned ({orderedSuiteTestCases.length})
-            </span>
-            {/* Compact count shown only on xs */}
-            <span className="xs:hidden text-xs">
-              ({orderedSuiteTestCases.length})
-            </span>
+            <span>Assigned ({orderedSuiteTestCases.length})</span>
           </TabsTrigger>
           <TabsTrigger value="available" className="gap-1 sm:gap-2">
             <Plus className="h-4 w-4 shrink-0" />
-            <span className="hidden xs:inline sm:inline">
-              Available ({filteredAvailableTestCases.length})
-            </span>
-            <span className="xs:hidden text-xs">
-              ({filteredAvailableTestCases.length})
-            </span>
+            <span>Available ({filteredAvailableTestCases.length})</span>
           </TabsTrigger>
         </TabsList>
 

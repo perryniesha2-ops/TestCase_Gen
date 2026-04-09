@@ -50,14 +50,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Read file
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
     let requirements: ImportedRequirement[] = [];
     const fileName = file.name.toLowerCase();
 
-    // Parse based on file type
     try {
       if (fileName.endsWith(".csv")) {
         requirements = parseCSV(buffer.toString("utf-8"), source);
@@ -72,7 +70,6 @@ export async function POST(req: Request) {
         );
       }
     } catch (parseError: any) {
-      // "Negative test" scenario: file is valid, but not importable as requirements
       if (parseError instanceof ImportValidationError) {
         return NextResponse.json(
           {
@@ -85,7 +82,6 @@ export async function POST(req: Request) {
         );
       }
 
-      // True parsing failures (invalid JSON, unreadable CSV, etc.)
       return NextResponse.json(
         {
           error: "Failed to parse file",
@@ -103,14 +99,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // Insert requirements
+    // Insert requirements and collect the IDs Supabase assigns
     let imported = 0;
     let failed = 0;
     const errors: string[] = [];
+    const importedIds: string[] = [];
 
     for (const req of requirements) {
       try {
-        const { error: insertError } = await supabase
+        // .select("id") returns the inserted row so we can capture the UUID
+        const { data: inserted, error: insertError } = await supabase
           .from("requirements")
           .insert({
             user_id: user.id,
@@ -128,7 +126,9 @@ export async function POST(req: Request) {
               import_source: source,
               original_file: file.name,
             },
-          });
+          })
+          .select("id")
+          .single();
 
         if (insertError) {
           failed++;
@@ -136,6 +136,7 @@ export async function POST(req: Request) {
           console.error("❌ Insert error:", insertError);
         } else {
           imported++;
+          if (inserted?.id) importedIds.push(inserted.id);
         }
       } catch (error: any) {
         failed++;
@@ -148,7 +149,10 @@ export async function POST(req: Request) {
       imported,
       failed,
       total: requirements.length,
-      errors: errors.slice(0, 10), // Return first 10 errors
+      errors: errors.slice(0, 10),
+      // IDs of successfully inserted requirements — used by the dialog
+      // to run post-import quality analysis on each one
+      imported_ids: importedIds,
     });
   } catch (error: any) {
     console.error("❌ Import error:", error);
@@ -170,7 +174,6 @@ function parseCSV(content: string, source: string): ImportedRequirement[] {
   const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
   const requirements: ImportedRequirement[] = [];
 
-  // Find column indices
   const colMap = {
     title: findColumn(headers, ["title", "summary", "name", "issue"]),
     description: findColumn(headers, [
@@ -323,7 +326,6 @@ function parseJSON(content: string, source: string): ImportedRequirement[] {
   try {
     data = JSON.parse(content);
   } catch (e: any) {
-    // Truly invalid JSON
     throw new ImportValidationError(
       "INVALID_JSON",
       e?.message || "Invalid JSON",
@@ -332,21 +334,16 @@ function parseJSON(content: string, source: string): ImportedRequirement[] {
 
   let items: any[] | null = null;
 
-  // Handle different JSON structures (known exports)
   if (Array.isArray(data)) {
     items = data;
   } else if (Array.isArray(data?.issues)) {
-    // Jira format
     items = data.issues;
   } else if (Array.isArray(data?.results)) {
-    // Confluence format
     items = data.results;
   } else if (Array.isArray(data?.value)) {
-    // Azure DevOps format
     items = data.value;
   }
 
-  // Negative test: valid JSON but wrong shape (e.g., package.json)
   if (!items) {
     const topLevelKeys =
       data && typeof data === "object" && !Array.isArray(data)
@@ -363,7 +360,6 @@ function parseJSON(content: string, source: string): ImportedRequirement[] {
   const requirements: ImportedRequirement[] = [];
 
   for (const item of items) {
-    // Jira / generic item mapping
     const title =
       item.title || item.summary || item.fields?.summary || item.System?.Title;
 
@@ -393,7 +389,6 @@ function parseJSON(content: string, source: string): ImportedRequirement[] {
     });
   }
 
-  // Negative test: correct container, but nothing importable
   if (requirements.length === 0) {
     throw new ImportValidationError(
       "NO_IMPORTABLE_ROWS",
