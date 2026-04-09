@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120; // increased — batches of 4 AI calls can take >60s
 
 const BATCH_SIZE = 4;
 
@@ -50,22 +50,111 @@ interface TestStep {
   };
 }
 
+type Framework =
+  | "playwright"
+  | "selenium"
+  | "cypress"
+  | "puppeteer"
+  | "testcafe"
+  | "webdriverio";
+
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
+// Structured output schema — forces the AI to return valid JSON every time.
+// Same pattern as the generate route (tool_use). No more JSON.parse fragility.
+const ENHANCED_STEPS_SCHEMA: Anthropic.Tool["input_schema"] = {
+  type: "object",
+  required: ["enhanced_steps"],
+  additionalProperties: false,
+  properties: {
+    enhanced_steps: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["step_number", "action", "expected"],
+        additionalProperties: false,
+        properties: {
+          step_number: { type: "integer" },
+          action: { type: "string" },
+          expected: { type: "string" },
+          action_type: {
+            type: "string",
+            enum: [
+              "click",
+              "fill",
+              "type",
+              "select",
+              "check",
+              "uncheck",
+              "hover",
+              "wait",
+              "navigate",
+              "press",
+            ],
+          },
+          selector: { type: "string" },
+          input_value: { type: "string" },
+          wait_time: { type: "integer" },
+          assertion: {
+            type: "object",
+            required: ["type"],
+            additionalProperties: false,
+            properties: {
+              type: {
+                type: "string",
+                enum: [
+                  "visible",
+                  "hidden",
+                  "text",
+                  "exact-text",
+                  "value",
+                  "url",
+                  "title",
+                  "count",
+                  "enabled",
+                  "disabled",
+                  "checked",
+                  "attribute",
+                ],
+              },
+              target: { type: "string" },
+              value: { type: "string" },
+              attribute: { type: "string" },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
-function extractUrlFromAction(
-  action: string,
-  applicationUrl: string,
-): string | null {
+/**
+ * Strips the origin from a URL so navigate steps contain path-only values.
+ * Exporters prepend baseUrl themselves — full URLs cause double-URL bugs.
+ *   https://app.example.com/generate  →  /generate
+ *   /generate                         →  /generate  (unchanged)
+ */
+function toPathOnly(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname + parsed.search + parsed.hash || "/";
+  } catch {
+    // Not a full URL — already a path or relative reference
+    return url.startsWith("/") ? url : `/${url}`;
+  }
+}
+
+function extractUrlFromAction(action: string): string | null {
   const fullUrlMatch = action.match(/https?:\/\/[^\s]+/);
-  if (fullUrlMatch) return fullUrlMatch[0];
+  if (fullUrlMatch) return toPathOnly(fullUrlMatch[0]);
 
   const pathMatch = action.match(/\/[a-z0-9\/-]+/i);
   if (pathMatch) return pathMatch[0];
@@ -83,7 +172,7 @@ function extractUrlFromAction(
     const pathInPhrase = afterPhrase.match(
       /^(https?:\/\/[^\s]+|\/[a-z0-9\/-]+)/i,
     );
-    if (pathInPhrase) return pathInPhrase[0];
+    if (pathInPhrase) return toPathOnly(pathInPhrase[0]);
   }
 
   return null;
@@ -99,18 +188,27 @@ function isNavigationAction(action: string): boolean {
     "access",
     "browse to",
   ];
-  const lowerAction = action.toLowerCase();
-  return navigationKeywords.some((keyword) => lowerAction.includes(keyword));
+  return navigationKeywords.some((kw) => action.toLowerCase().includes(kw));
 }
 
+/**
+ * Strips automation fields for regeneration — also clears input_value so
+ * the AI gets a fresh chance to set it correctly rather than inheriting a
+ * previously wrong value.
+ */
 function stripAutomationFields(step: any) {
   if (!step || typeof step !== "object") return step;
-  const { selector, action_type, input_value, wait_time, assertion, ...rest } =
-    step;
-  return rest;
+  // Keep only the human-readable fields — everything automation-related is regenerated
+  const { action, expected, step_number } = step;
+  return { step_number, action, expected };
 }
 
-function truncateLongValues(step: any): any {
+/**
+ * Truncates long action descriptions for the AI prompt — but NOT input_value.
+ * input_value for boundary tests is intentionally long or empty (the exporter
+ * generates the long string from the action description).
+ */
+function truncateForPrompt(step: any): any {
   if (!step || typeof step !== "object") return step;
   return {
     ...step,
@@ -118,69 +216,146 @@ function truncateLongValues(step: any): any {
       step.action?.length > 500
         ? step.action.slice(0, 500) + "... [truncated]"
         : step.action,
-    input_value:
-      step.input_value?.length > 200
-        ? step.input_value.slice(0, 200) + "... [truncated]"
-        : step.input_value,
+    // Do NOT truncate input_value — boundary tests need it preserved or empty
   };
 }
 
-function extractJson(raw: string): string {
-  const match = raw.match(/\{[\s\S]*\}/);
-  return match ? match[0] : "{}";
+// ============================================================================
+// FRAMEWORK-SPECIFIC PROMPT ADDITIONS
+// ============================================================================
+
+function getFrameworkGuidance(framework: Framework): string {
+  switch (framework) {
+    case "cypress":
+      return `
+FRAMEWORK: Cypress
+- Use CSS selectors compatible with cy.get()
+- Do NOT use :has-text() — it crashes Cypress/Sizzle. Use [data-testid], [aria-label], or class selectors instead
+- For text-based element selection use data-testid attributes
+- navigate input_value should be path-only (e.g. /generate, not full URL)`;
+
+    case "selenium":
+      return `
+FRAMEWORK: Selenium (Java)
+- Use CSS selectors compatible with By.cssSelector()
+- Do NOT use :has-text() — use XPath or data-testid instead
+- Selectors go inside Java double-quoted strings — use single quotes inside: input[name='email']
+- navigate input_value should be path-only (e.g. /generate, not full URL)`;
+
+    case "puppeteer":
+      return `
+FRAMEWORK: Puppeteer
+- Use CSS selectors compatible with page.click() and page.type()
+- Do NOT use :has-text() — standard CSS only
+- For text-based selection use [data-testid] or class selectors
+- navigate input_value should be path-only (e.g. /generate, not full URL)`;
+
+    case "playwright":
+    default:
+      return `
+FRAMEWORK: Playwright
+- Use CSS selectors, data-testid, aria-label, or role selectors
+- :has-text() is supported but prefer data-testid for stability
+- navigate input_value should be path-only (e.g. /generate, not full URL)`;
+  }
 }
 
 // ============================================================================
 // AUTOMATION ENHANCEMENT PROMPT
 // ============================================================================
 
-const AUTOMATION_ENHANCEMENT_PROMPT = `You are enhancing test case steps with automation data for Playwright.
+function buildEnhancementPrompt(
+  tc: {
+    title: string;
+    description?: string | null;
+    expected_result?: string | null;
+  },
+  stepsForModel: any[],
+  applicationUrl: string,
+  framework: Framework,
+  platform?: string,
+): string {
+  const frameworkGuidance = getFrameworkGuidance(framework);
+  const platformCtx = platform ? `\nPLATFORM: ${platform}` : "";
 
-For each test step, add these fields:
-- selector: CSS selector, data-testid, or aria-label
-- action_type: click|fill|type|select|check|uncheck|hover|wait|navigate|press
-- input_value: Value to enter or URL (when applicable)
-- wait_time: Milliseconds to wait (optional)
-- assertion: Object with type, target, value, attribute
+  return `You are enhancing test case steps with automation data.
 
-ACTION TYPES:
-- click: Click an element
-- fill: Fill input field (clears first)
-- type: Type text sequentially
-- select: Select dropdown option
-- check/uncheck: Checkbox operations
-- hover: Hover over element
-- wait: Wait for element to appear
-- navigate: Navigate to URL (CRITICAL: MUST set input_value to full URL or path)
-- press: Press keyboard key
+${frameworkGuidance}${platformCtx}
+APPLICATION URL: ${applicationUrl}
+TEST CASE: ${tc.title}
+DESCRIPTION: ${tc.description || "N/A"}
+${tc.expected_result ? `EXPECTED RESULT: ${tc.expected_result}` : ""}
 
-CRITICAL NAVIGATION RULES:
-For ANY step that involves navigation (navigate to, go to, visit, open, load, access, browse to), you MUST:
-1. Set action_type = "navigate"
-2. Set selector = "body"
-3. Set input_value = FULL URL OR PATH (REQUIRED)
-4. Set assertion with type "url" to verify navigation succeeded
+For each step, add:
+  action_type  — click | fill | type | select | check | uncheck | hover | wait | navigate | press
+  selector     — CSS selector for the target element (omit for navigate)
+  input_value  — value to type/select, OR path for navigate (e.g. /generate)
+  assertion    — what to verify after the action
+  wait_time    — ms to wait (only for explicit waits with no selector)
 
-SELECTOR PREFERENCES (in order):
-1. [data-testid="..."] - Most stable
-2. [aria-label="..."] - Semantic
-3. input[name="..."] - Form fields
-4. button[type="..."] - Semantic HTML
-5. #id - If stable
-6. .class - Only if stable
+SELECTOR PRIORITY:
+  1. [data-testid="..."]
+  2. input[name="..."] or textarea[name="..."]
+  3. [aria-label="..."]
+  4. button[type="submit"]
+  5. #id (if stable)
+  Avoid: positional selectors, long class chains, nth-child
 
-AVOID: Generated classes, fragile paths (div > div > button), position selectors (:nth-child)
+NAVIGATION RULES — critical:
+  - action_type = "navigate"
+  - selector = "body"
+  - input_value = PATH ONLY (e.g. /generate, /dashboard — never a full URL)
+  - assertion = { type: "url", value: "/the-path" }
 
-ASSERTION TYPES:
-visible, hidden, text, exact-text, value, url, title, count (NUMBER only), enabled, disabled, checked, attribute
+BOUNDARY / LONG STRING STEPS:
+  - If the step says "type exactly N characters", "string of N characters", or similar:
+    - Set action_type = "fill"
+    - Set input_value = "" (empty string — the exporter generates the repeated string)
+    - Set assertion = { type: "count", value: "N" } where N is the number from the action
+    - Do NOT set assertion type to "attribute", "value", or "text" for these steps
+    - Do NOT assert "have.value" or "have.attr" — assert the character count instead
+  - Example: "Type exactly 5000 characters in the textarea"
+    - input_value = ""
+    - assertion = { type: "count", value: "5000" }
 
-CRITICAL RULES:
-- EVERY navigation step MUST have selector="body" and input_value with URL/path
-- Use realistic test data (john@example.com, not "valid email")
-- Infer selectors from action descriptions using semantic HTML
-- Include assertions that verify the expected outcome
-- Add wait_time (milliseconds) for async operations
-- For verification steps without actions, use action_type="wait"`;
+REALISTIC TEST DATA:
+  - Use real-looking values: john@example.com, SecurePass123!, not "valid email"
+  - For negative tests: wrong@invalid, WrongPassword123
+
+STEPS TO ENHANCE:
+${JSON.stringify(stepsForModel, null, 2)}
+
+Call the enhance_steps tool with the enhanced_steps array.`;
+}
+
+// ============================================================================
+// STRUCTURED AI CALL
+// ============================================================================
+
+async function enhanceStepsWithAI(
+  prompt: string,
+): Promise<{ enhanced_steps?: TestStep[] }> {
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 4000,
+    tools: [
+      {
+        name: "enhance_steps",
+        description: "Return the enhanced test steps with automation data.",
+        input_schema: ENHANCED_STEPS_SCHEMA,
+      },
+    ],
+    tool_choice: { type: "any" },
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const toolUse = response.content.find(
+    (b: any): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+  );
+  if (!toolUse) throw new Error("AI did not call the enhance_steps tool");
+
+  return toolUse.input as { enhanced_steps?: TestStep[] };
+}
 
 // ============================================================================
 // POST-PROCESSING
@@ -191,83 +366,48 @@ function postProcessSteps(
   applicationUrl: string,
 ): TestStep[] {
   return steps.map((step, index) => {
-    const processedStep = { ...step };
+    const s = { ...step };
 
-    if (!processedStep.step_number) {
-      processedStep.step_number = index + 1;
-    }
+    if (!s.step_number) s.step_number = index + 1;
 
-    if (processedStep.action_type === "navigate") {
-      if (!processedStep.selector || processedStep.selector === "") {
-        processedStep.selector = "body";
+    // Ensure all navigate steps have correct fields
+    if (s.action_type === "navigate") {
+      s.selector = "body";
+
+      // Strip origin from input_value — exporters prepend baseUrl themselves
+      if (s.input_value) {
+        s.input_value = toPathOnly(s.input_value);
+      } else {
+        // Try to extract path from action text as fallback
+        const extracted = extractUrlFromAction(s.action);
+        if (extracted) s.input_value = extracted;
       }
 
-      if (!processedStep.input_value) {
-        const extractedUrl = extractUrlFromAction(
-          processedStep.action,
-          applicationUrl,
-        );
-        if (extractedUrl) {
-          processedStep.input_value = extractedUrl;
-        } else {
-          console.warn(
-            `[Automation] Navigation step ${processedStep.step_number} missing URL - check: ${processedStep.action}`,
-          );
-        }
-      }
-
-      if (!processedStep.assertion || processedStep.assertion.type !== "url") {
-        const urlValue = processedStep.input_value || "";
-        const pathMatch = urlValue.match(/\/[a-z0-9\/-]*/i);
-        if (pathMatch) {
-          processedStep.assertion = { type: "url", value: pathMatch[0] };
-        }
+      // Ensure URL assertion uses path only
+      if (s.assertion?.type === "url" && s.assertion.value) {
+        s.assertion.value = toPathOnly(s.assertion.value);
+      } else if (!s.assertion && s.input_value) {
+        s.assertion = { type: "url", value: s.input_value };
       }
     }
 
-    if (
-      !processedStep.action_type &&
-      isNavigationAction(processedStep.action)
-    ) {
-      processedStep.action_type = "navigate";
-      processedStep.selector = "body";
-      const extractedUrl = extractUrlFromAction(
-        processedStep.action,
-        applicationUrl,
-      );
-      if (extractedUrl) {
-        processedStep.input_value = extractedUrl;
-      }
+    // Heuristic: if action_type is missing but looks like navigation, set it
+    if (!s.action_type && isNavigationAction(s.action)) {
+      s.action_type = "navigate";
+      s.selector = "body";
+      const extracted = extractUrlFromAction(s.action);
+      if (extracted) s.input_value = extracted;
     }
 
-    return processedStep;
+    return s;
   });
 }
 
 // ============================================================================
-// SHARED ANTHROPIC CALL
+// BATCH PROCESSOR
 // ============================================================================
 
-async function enhanceStepsWithAI(
-  prompt: string,
-): Promise<{ enhanced_steps?: TestStep[] }> {
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 4000,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const content =
-    response.content[0].type === "text" ? response.content[0].text : "{}";
-
-  return JSON.parse(extractJson(content)) as { enhanced_steps?: TestStep[] };
-}
-
-// ============================================================================
-// BATCH PROCESSOR — runs items in parallel chunks of BATCH_SIZE
-// ============================================================================
-
-async function processBatch<T>(
+async function processBatch<T = any>(
   items: T[],
   processor: (item: T) => Promise<void>,
 ): Promise<void> {
@@ -298,19 +438,15 @@ export async function POST(req: Request) {
       suite_id?: string;
       application_url?: string;
       regenerate?: boolean;
-      automation_framework?:
-        | "playwright"
-        | "selenium"
-        | "cypress"
-        | "puppeteer"
-        | "testcafe"
-        | "webdriverio";
+      automation_framework?: Framework;
     };
 
     const testCaseIds = body.test_case_ids || [];
     const suiteId = body.suite_id;
     const applicationUrl = body.application_url || "https://app.example.com";
-    const regenerate = Boolean(body.regenerate);
+    const framework: Framework = body.automation_framework || "playwright";
+    // shouldRegenerate may be promoted to true later if framework changed
+    let shouldRegenerate = Boolean(body.regenerate);
 
     if (!testCaseIds.length && !suiteId) {
       return NextResponse.json(
@@ -322,7 +458,7 @@ export async function POST(req: Request) {
     if (suiteId) {
       const { data: suite, error: suiteError } = await supabase
         .from("suites")
-        .select("id, kind, user_id")
+        .select("id, kind, user_id, automation_framework")
         .eq("id", suiteId)
         .eq("user_id", user.id)
         .single();
@@ -336,6 +472,30 @@ export async function POST(req: Request) {
           { status: 404 },
         );
       }
+
+      // If the requested framework differs from what the suite was last enhanced
+      // for, treat this as a regenerate regardless of the regenerate flag —
+      // the existing selectors were optimised for a different framework.
+      if (
+        suite.automation_framework &&
+        suite.automation_framework !== framework
+      ) {
+        console.log(
+          `[enhance] Framework changed: ${suite.automation_framework} → ${framework}. Forcing regenerate.`,
+        );
+        // Promote regenerate for this request
+        shouldRegenerate = true;
+      }
+
+      // Mark suite as in_progress immediately so UI can show a spinner
+      await supabase
+        .from("suites")
+        .update({
+          automation_status: "in_progress",
+          automation_framework: framework,
+          automation_config_updated_at: new Date().toISOString(),
+        })
+        .eq("id", suiteId);
     }
 
     let finalTestCaseIds = testCaseIds;
@@ -364,18 +524,15 @@ export async function POST(req: Request) {
         );
       }
 
-      const regularIds = suiteItems
-        .map((item) => item.test_case_id)
-        .filter((id): id is string => Boolean(id));
+      finalTestCaseIds = suiteItems
+        .map((item: any) => item.test_case_id)
+        .filter((id: any): id is string => Boolean(id));
 
-      const platformIds = suiteItems
-        .map((item) => item.platform_test_case_id)
-        .filter((id): id is string => Boolean(id));
+      platformTestCaseIds = suiteItems
+        .map((item: any) => item.platform_test_case_id)
+        .filter((id: any): id is string => Boolean(id));
 
-      finalTestCaseIds = regularIds;
-      platformTestCaseIds = platformIds;
-
-      if (regularIds.length === 0 && platformIds.length === 0) {
+      if (finalTestCaseIds.length === 0 && platformTestCaseIds.length === 0) {
         return NextResponse.json(
           {
             error: "No test cases found in suite",
@@ -407,12 +564,12 @@ export async function POST(req: Request) {
         );
       }
 
-      const casesToProcess = testCases.filter((tc) => {
+      const casesToProcess = testCases.filter((tc: any) => {
         const steps = Array.isArray(tc.test_steps) ? tc.test_steps : [];
         const hasAutomation = steps.some(
           (s: any) => s.selector && s.action_type,
         );
-        if (!regenerate && hasAutomation) {
+        if (!shouldRegenerate && hasAutomation) {
           totalSkipped++;
           return false;
         }
@@ -433,22 +590,18 @@ export async function POST(req: Request) {
             return;
           }
 
+          // On regenerate: strip ALL automation fields so AI gets a clean slate.
+          // On first-time enhance: send existing steps (AI fills missing fields only).
           const stepsForModel = (
-            regenerate ? rawSteps.map(stripAutomationFields) : rawSteps
-          ).map(truncateLongValues);
+            shouldRegenerate ? rawSteps.map(stripAutomationFields) : rawSteps
+          ).map(truncateForPrompt);
 
-          const prompt = `${AUTOMATION_ENHANCEMENT_PROMPT}
-
-APPLICATION URL: ${applicationUrl}
-
-TEST CASE: ${tc.title}
-DESCRIPTION: ${tc.description || "N/A"}
-EXPECTED RESULT: ${tc.expected_result || "N/A"}
-
-STEPS TO ENHANCE:
-${JSON.stringify(stepsForModel, null, 2)}
-
-Return ONLY a valid JSON object with an "enhanced_steps" array. No explanation, no markdown, no backticks. Just the raw JSON.`;
+          const prompt = buildEnhancementPrompt(
+            tc,
+            stepsForModel,
+            applicationUrl,
+            framework,
+          );
 
           const parsed = await enhanceStepsWithAI(prompt);
 
@@ -507,15 +660,18 @@ Return ONLY a valid JSON object with an "enhanced_steps" array. No explanation, 
         .eq("user_id", user.id);
 
       if (fetchError || !platformCases) {
-        console.error("[Automation] Fetch error:", fetchError);
+        console.error("[Automation] Platform fetch error:", fetchError);
       } else {
         const casesNeedingAutomation = platformCases.filter((tc: any) => {
           const steps = Array.isArray(tc.steps) ? tc.steps : [];
           const hasAutomation = steps.some(
             (s: any) => typeof s === "object" && s.selector && s.action_type,
           );
-          if (hasAutomation) totalSkipped++;
-          return !hasAutomation;
+          if (!shouldRegenerate && hasAutomation) {
+            totalSkipped++;
+            return false;
+          }
+          return true;
         });
 
         await processBatch(casesNeedingAutomation, async (tc: any) => {
@@ -532,6 +688,7 @@ Return ONLY a valid JSON object with an "enhanced_steps" array. No explanation, 
               return;
             }
 
+            // Normalise platform steps — they may be plain strings
             const stepObjects = steps.map((step: any, i: number) => {
               if (typeof step === "string") {
                 return {
@@ -546,21 +703,18 @@ Return ONLY a valid JSON object with an "enhanced_steps" array. No explanation, 
             });
 
             const stepsForModel = (
-              regenerate ? stepObjects.map(stripAutomationFields) : stepObjects
-            ).map(truncateLongValues);
+              shouldRegenerate
+                ? stepObjects.map(stripAutomationFields)
+                : stepObjects
+            ).map(truncateForPrompt);
 
-            const prompt = `${AUTOMATION_ENHANCEMENT_PROMPT}
-
-PLATFORM: ${tc.platform}
-APPLICATION URL: ${applicationUrl}
-
-TEST CASE: ${tc.title}
-DESCRIPTION: ${tc.description || "N/A"}
-
-STEPS TO ENHANCE:
-${JSON.stringify(stepsForModel, null, 2)}
-
-Return ONLY a valid JSON object with an "enhanced_steps" array. No explanation, no markdown, no backticks. Just the raw JSON.`;
+            const prompt = buildEnhancementPrompt(
+              { title: tc.title, description: tc.description },
+              stepsForModel,
+              applicationUrl,
+              framework,
+              tc.platform,
+            );
 
             const parsed = await enhanceStepsWithAI(prompt);
 
@@ -616,22 +770,30 @@ Return ONLY a valid JSON object with an "enhanced_steps" array. No explanation, 
     }
 
     // ── Update suite metadata ───────────────────────────────────────────────
-    if (suiteId && (totalEnhanced > 0 || regenerate)) {
+    if (suiteId) {
       const now = new Date().toISOString();
-      const { error: updateError } = await supabase
+      // Set ready if any cases were enhanced, otherwise back to not_configured
+      // if nothing was enhanced and this wasn't a re-enhance run.
+      const finalStatus =
+        totalEnhanced > 0
+          ? "ready"
+          : totalFailed > 0 && totalEnhanced === 0
+            ? "not_configured"
+            : "ready"; // all skipped = already ready
+
+      await supabase
         .from("suites")
         .update({
-          automation_enabled: true,
-          automation_status: "ready",
-          automation_generated: true,
+          automation_enabled: totalEnhanced > 0 || totalSkipped > 0,
+          automation_status: finalStatus,
+          automation_framework: framework,
           last_generated_at: now,
-          automation_ready_count: totalEnhanced,
+          automation_ready_count: totalEnhanced + totalSkipped, // total with automation data
+          automated_by: user.id,
+          automated_at: now,
+          automation_config_updated_at: now,
         })
         .eq("id", suiteId);
-
-      if (updateError) {
-        console.error("Failed to update suite metadata:", updateError);
-      }
     }
 
     return NextResponse.json({
@@ -643,142 +805,10 @@ Return ONLY a valid JSON object with an "enhanced_steps" array. No explanation, 
       failed: allFailed,
     });
   } catch (error) {
-    console.error("[Automation] Generation error:", error);
+    console.error("[Automation] Enhancement error:", error);
     return NextResponse.json(
-      { error: "Failed to generate automation data" },
+      { error: "Failed to enhance automation data" },
       { status: 500 },
     );
   }
-}
-
-// ============================================================================
-// CROSS-PLATFORM AUTOMATION HANDLER
-// ============================================================================
-
-async function handleCrossPlatformAutomation(
-  supabase: any,
-  userId: string,
-  suiteId: string,
-  platformTestCaseIds: string[],
-  applicationUrl: string,
-) {
-  const { data: platformCases, error: fetchError } = await supabase
-    .from("platform_test_cases")
-    .select("id, title, description, steps, expected_results, platform")
-    .in("id", platformTestCaseIds)
-    .eq("user_id", userId);
-
-  if (fetchError || !platformCases) {
-    return NextResponse.json(
-      { error: "Failed to fetch platform test cases" },
-      { status: 500 },
-    );
-  }
-
-  const casesNeedingAutomation = platformCases.filter((tc: any) => {
-    const steps = Array.isArray(tc.steps) ? tc.steps : [];
-    const hasAutomation = steps.some((s: any) => s.selector && s.action_type);
-    return !hasAutomation;
-  });
-
-  if (casesNeedingAutomation.length === 0) {
-    return NextResponse.json({
-      success: true,
-      message: "All platform test cases already have automation data",
-      enhanced_count: 0,
-      skipped_count: platformCases.length,
-    });
-  }
-
-  const enhanced: any[] = [];
-  const failed: any[] = [];
-
-  await processBatch(casesNeedingAutomation, async (tc: any) => {
-    try {
-      const steps = Array.isArray(tc.steps) ? tc.steps : [];
-
-      if (steps.length === 0) {
-        failed.push({ id: tc.id, title: tc.title, reason: "No test steps" });
-        return;
-      }
-
-      const prompt = `${AUTOMATION_ENHANCEMENT_PROMPT}
-
-PLATFORM: ${tc.platform}
-APPLICATION URL: ${applicationUrl}
-
-TEST CASE: ${tc.title}
-DESCRIPTION: ${tc.description || "N/A"}
-
-STEPS TO ENHANCE:
-${JSON.stringify(steps, null, 2)}
-
-Return ONLY a valid JSON object with an "enhanced_steps" array. No explanation, no markdown, no backticks. Just the raw JSON.`;
-
-      const parsed = await enhanceStepsWithAI(prompt);
-
-      if (!parsed.enhanced_steps || !Array.isArray(parsed.enhanced_steps)) {
-        failed.push({
-          id: tc.id,
-          title: tc.title,
-          reason: "Invalid AI response",
-        });
-        return;
-      }
-
-      const enhanced_steps = postProcessSteps(
-        parsed.enhanced_steps,
-        applicationUrl,
-      );
-
-      const { error: updateError } = await supabase
-        .from("platform_test_cases")
-        .update({ steps: enhanced_steps })
-        .eq("id", tc.id);
-
-      if (updateError) {
-        failed.push({
-          id: tc.id,
-          title: tc.title,
-          reason: updateError.message,
-        });
-      } else {
-        enhanced.push({
-          id: tc.id,
-          title: tc.title,
-          platform: tc.platform,
-          steps_enhanced: enhanced_steps.length,
-        });
-      }
-    } catch (error) {
-      failed.push({
-        id: tc.id,
-        title: tc.title,
-        reason: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  });
-
-  const now = new Date().toISOString();
-
-  if (enhanced.length > 0) {
-    await supabase
-      .from("suites")
-      .update({
-        automation_generated: true,
-        last_generated_at: now,
-        automation_ready_count: enhanced.length,
-      })
-      .eq("id", suiteId);
-  }
-
-  return NextResponse.json({
-    success: true,
-    suite_kind: "cross-platform",
-    enhanced_count: enhanced.length,
-    skipped_count: platformCases.length - casesNeedingAutomation.length,
-    failed_count: failed.length,
-    enhanced,
-    failed,
-  });
 }
