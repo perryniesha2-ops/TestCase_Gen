@@ -57,7 +57,6 @@ import {
   ClipboardCheck,
   ListChecks,
   Zap,
-  UserStar,
 } from "lucide-react";
 
 import { toastError, toastInfo, toastSuccess } from "@/lib/utils/toast-utils";
@@ -404,7 +403,6 @@ export function ExecutionHistory({
   const [runsSearch, setRunsSearch] = useState("");
   const debouncedRunsSearch = useDebouncedValue(runsSearch, 300);
   const [showAborted, setShowAborted] = useState(false);
-  const [integrationLoading, setIntegrationLoading] = useState(false);
 
   // executions tab
   const [rows, setRows] = useState<ExecutionHistoryRow[]>([]);
@@ -414,6 +412,7 @@ export function ExecutionHistory({
   const [hasEvidence, setHasEvidence] = useState(false);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
+  const [integrationLoading, setIntegrationLoading] = useState(false);
 
   // pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -1122,15 +1121,15 @@ export function ExecutionHistory({
 
           <Card>
             <CardHeader className="flex flex-row items-center gap-3 py-4">
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2 w-full">
                 <Input
                   value={runsSearch}
                   onChange={(e) => setRunsSearch(e.target.value)}
                   placeholder="Search run name, suite…"
-                  className="w-[280px]"
+                  className="w-full sm:w-[240px]"
                 />
                 <Select value={dateFilter} onValueChange={setDateFilter}>
-                  <SelectTrigger className="w-[160px]">
+                  <SelectTrigger className="w-full sm:w-[160px]">
                     <SelectValue placeholder="Date range" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1143,7 +1142,7 @@ export function ExecutionHistory({
                 </Select>
                 {!propSuiteId && (
                   <Select value={suiteId} onValueChange={setSuiteId}>
-                    <SelectTrigger className="w-[220px]">
+                    <SelectTrigger className="w-full sm:w-[200px]">
                       <SelectValue placeholder="All suites" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1192,120 +1191,110 @@ export function ExecutionHistory({
                         key={r.id}
                         className="hover:bg-muted/50 transition-colors"
                       >
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3 min-w-[140px]">
-                              <Calendar className="h-5 w-5 text-muted-foreground" />
-                              <div>
-                                <div className="font-medium text-sm">
-                                  {created.toLocaleDateString()}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {created.toLocaleTimeString()}
-                                </div>
-                              </div>
+                        <CardContent className="p-3 sm:p-4">
+                          {/* ── Row 1: date · status badges · review button ── */}
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
+                              <Calendar className="h-3.5 w-3.5 shrink-0" />
+                              <span className="font-medium text-foreground">
+                                {created.toLocaleDateString()}
+                              </span>
+                              <span className="hidden sm:inline">
+                                · {created.toLocaleTimeString()}
+                              </span>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-sm font-medium text-muted-foreground">
-                                  {r.suite_name}
-                                </span>
-                                {runStatusBadge(r.status)}
-                                {/* Automation badge — same styling, clear label */}
-                                {r.is_automation && (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[10px] gap-1 border-blue-200 text-blue-600 dark:border-blue-800 dark:text-blue-400"
-                                  >
-                                    <Zap className="h-2.5 w-2.5" />
-                                    automated
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="font-semibold mb-2">
-                                {r.name || `Run ${r.id.slice(0, 8)}…`}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {r.test_cases_completed}/{r.test_cases_total}{" "}
-                                complete · {r.progress_percentage ?? passRate}%
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-6">
-                              <div className="space-y-1.5">
-                                <div className="text-xs font-medium text-muted-foreground mb-2">
-                                  Results
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  <Badge
-                                    variant="secondary"
-                                    className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-100"
-                                  >
-                                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                                    {r.passed_cases}
-                                  </Badge>
-                                  <Badge
-                                    variant="secondary"
-                                    className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-100"
-                                  >
-                                    <XCircle className="h-3 w-3 mr-1" />
-                                    {r.failed_cases}
-                                  </Badge>
-                                  <Badge
-                                    variant="secondary"
-                                    className="bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-100"
-                                  >
-                                    <AlertTriangle className="h-3 w-3 mr-1" />
-                                    {r.blocked_cases}
-                                  </Badge>
-                                  <Badge
-                                    variant="secondary"
-                                    className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                                  >
-                                    <MinusCircle className="h-3 w-3 mr-1" />
-                                    {r.skipped_cases}
-                                  </Badge>
-                                </div>
-                                <div className="text-xs text-muted-foreground mt-2">
-                                  Pass rate: {passRate}%
-                                </div>
-                              </div>
-                              <div className="space-y-2 min-w-[100px]">
-                                <div className="flex items-center gap-2 text-sm">
-                                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                                  <span className="font-medium">
-                                    {r.evidence_total}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground">
-                                    evidence
-                                  </span>
-                                </div>
-                                {r.linked_issue_count > 0 ? (
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <FileText className="h-4 w-4 text-muted-foreground" />
-                                    <span className="font-medium">
-                                      {r.linked_issue_count}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      issues
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <div className="text-xs text-muted-foreground">
-                                    No issues
-                                  </div>
-                                )}
-                              </div>
-                              {/* Unified Review button — same action for both run types */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {runStatusBadge(r.status)}
+                              {r.is_automation && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] gap-1 border-blue-200 text-blue-600 dark:border-blue-800 dark:text-blue-400"
+                                >
+                                  <Zap className="h-2.5 w-2.5" />
+                                  <span className="hidden xs:inline">auto</span>
+                                </Badge>
+                              )}
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="gap-2"
+                                className="gap-1.5 h-7 text-xs px-2"
                                 onClick={() => openRunReview(r)}
                               >
-                                <Eye className="h-4 w-4" />
-                                Review
+                                <Eye className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline">Review</span>
                               </Button>
                             </div>
+                          </div>
+
+                          {/* ── Row 2: suite name + run name ── */}
+                          <div className="mb-2.5">
+                            <div className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">
+                              {r.suite_name}
+                            </div>
+                            <div className="font-semibold text-sm leading-snug truncate">
+                              {r.name || `Run ${r.id.slice(0, 8)}…`}
+                            </div>
+                          </div>
+
+                          {/* ── Row 3: progress + result badges + meta ── */}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                            {/* Progress */}
+                            <span className="text-xs text-muted-foreground">
+                              {r.test_cases_completed}/{r.test_cases_total}
+                              {" · "}
+                              {passRate}% pass
+                            </span>
+
+                            {/* Result badges */}
+                            <div className="flex gap-1 flex-wrap">
+                              <Badge
+                                variant="secondary"
+                                className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300 text-[11px] h-5 px-1.5"
+                              >
+                                <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                                {r.passed_cases}
+                              </Badge>
+                              <Badge
+                                variant="secondary"
+                                className="bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300 text-[11px] h-5 px-1.5"
+                              >
+                                <XCircle className="h-2.5 w-2.5 mr-0.5" />
+                                {r.failed_cases}
+                              </Badge>
+                              {r.blocked_cases > 0 && (
+                                <Badge
+                                  variant="secondary"
+                                  className="bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300 text-[11px] h-5 px-1.5"
+                                >
+                                  <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
+                                  {r.blocked_cases}
+                                </Badge>
+                              )}
+                              {r.skipped_cases > 0 && (
+                                <Badge
+                                  variant="secondary"
+                                  className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 text-[11px] h-5 px-1.5"
+                                >
+                                  <MinusCircle className="h-2.5 w-2.5 mr-0.5" />
+                                  {r.skipped_cases}
+                                </Badge>
+                              )}
+                            </div>
+
+                            {/* Evidence + issues */}
+                            {r.evidence_total > 0 && (
+                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <ImageIcon className="h-3.5 w-3.5" />
+                                {r.evidence_total}
+                              </span>
+                            )}
+                            {r.linked_issue_count > 0 && (
+                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <FileText className="h-3.5 w-3.5" />
+                                {r.linked_issue_count} issue
+                                {r.linked_issue_count !== 1 ? "s" : ""}
+                              </span>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -1347,16 +1336,16 @@ export function ExecutionHistory({
           </div>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
-              <div className="flex flex-wrap items-center gap-3">
+            <CardHeader className="py-4">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2 w-full">
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search suite, test title, reason…"
-                  className="w-[280px]"
+                  className="w-full sm:w-[240px]"
                 />
                 <Select value={dateFilter} onValueChange={setDateFilter}>
-                  <SelectTrigger className="w-[160px]">
+                  <SelectTrigger className="w-full sm:w-[160px]">
                     <SelectValue placeholder="Date range" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1369,7 +1358,7 @@ export function ExecutionHistory({
                 </Select>
                 {!propSuiteId && (
                   <Select value={suiteId} onValueChange={setSuiteId}>
-                    <SelectTrigger className="w-[220px]">
+                    <SelectTrigger className="w-full sm:w-[200px]">
                       <SelectValue placeholder="All suites" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1386,7 +1375,7 @@ export function ExecutionHistory({
                   value={status}
                   onValueChange={(v) => setStatus(v as StatusFilter)}
                 >
-                  <SelectTrigger className="w-[140px]">
+                  <SelectTrigger className="w-full sm:w-[140px]">
                     <SelectValue placeholder="All results" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1397,33 +1386,35 @@ export function ExecutionHistory({
                     <SelectItem value="skipped">Skipped</SelectItem>
                   </SelectContent>
                 </Select>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={hasEvidence}
-                    onCheckedChange={(v) => setHasEvidence(Boolean(v))}
-                  />
-                  <span className="text-sm text-muted-foreground">
-                    Has evidence
-                  </span>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={hasEvidence}
+                      onCheckedChange={(v) => setHasEvidence(Boolean(v))}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      Has evidence
+                    </span>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-2">
+                        <Download className="h-4 w-4" />
+                        Export
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={exportToCSV}>
+                        <FileText className="h-4 w-4 mr-2" />
+                        Export All Data (CSV)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={exportTrendReport}>
+                        <BarChart3 className="h-4 w-4 mr-2" />
+                        Export Trend Report (CSV)
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="gap-2">
-                      <Download className="h-4 w-4" />
-                      Export
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={exportToCSV}>
-                      <FileText className="h-4 w-4 mr-2" />
-                      Export All Data (CSV)
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={exportTrendReport}>
-                      <BarChart3 className="h-4 w-4 mr-2" />
-                      Export Trend Report (CSV)
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
             </CardHeader>
 

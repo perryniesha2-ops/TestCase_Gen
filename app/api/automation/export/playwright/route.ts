@@ -154,6 +154,20 @@ function resolveEnvVar(selector: string | undefined, value: string): string {
 // STEP CODE GENERATOR
 // ============================================================================
 
+function detectGeneratedString(
+  action: string,
+  inputValue: string | undefined,
+): string | null {
+  const exactMatch = action.match(/exactly\s+(\d+)\s+char/i);
+  const countMatch = action.match(/string of\s+(\d+)\s+char/i);
+  const genericMatch = action.match(/(\d+)[- ]char/i);
+  const match = exactMatch ?? countMatch ?? genericMatch;
+  if (!match) return null;
+  const count = parseInt(match[1], 10);
+  if (!Number.isFinite(count) || count <= 0 || count > 100_000) return null;
+  return `'a'.repeat(${count})`;
+}
+
 function generateExecutableStep(step: TestStep): string {
   const lines: string[] = [];
   const hasExecutableData = step.selector && step.action_type;
@@ -165,12 +179,21 @@ function generateExecutableStep(step: TestStep): string {
       case "click":
         lines.push(`await page.locator('${sel}').click();`);
         break;
-      case "fill":
-        if (step.input_value !== undefined) {
+      case "fill": {
+        const generatedVal = detectGeneratedString(
+          step.action,
+          step.input_value,
+        );
+        if (generatedVal) {
+          lines.push(
+            `await page.locator('${sel}').evaluate((el, val) => { (el as HTMLInputElement).value = val; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, ${generatedVal});`,
+          );
+        } else if (step.input_value !== undefined) {
           const val = resolveEnvVar(step.selector, step.input_value);
           lines.push(`await page.locator('${sel}').fill(${val});`);
         }
         break;
+      }
       case "type":
         if (step.input_value !== undefined) {
           const val = resolveEnvVar(step.selector, step.input_value);
@@ -288,6 +311,18 @@ function generateExecutableStep(step: TestStep): string {
             const countValue = step.assertion.value;
             if (typeof countValue === "string") {
               const trimmed = countValue.trim();
+              const countNum = parseInt(String(countValue), 10);
+              const isLengthAssertion =
+                (step.action_type === "fill" || step.action_type === "type") &&
+                detectGeneratedString(step.action, step.input_value) !== null;
+
+              if (isLengthAssertion && Number.isFinite(countNum)) {
+                lines.push(
+                  `const fieldValue = await page.locator('${escapedTarget}').inputValue();`,
+                );
+                lines.push(`expect(fieldValue).toHaveLength(${countNum});`);
+                break;
+              }
               if (trimmed.startsWith(">=")) {
                 const num = trimmed.replace(/[>=\s]/g, "") || "0";
                 lines.push(
@@ -876,7 +911,9 @@ export async function POST(req: Request) {
     // ── Suite ──────────────────────────────────────────────────────────────────
     const { data: suite, error: suiteErr } = await supabase
       .from("suites")
-      .select("id, name, description, base_url")
+      .select(
+        "id, name, description, base_url, automation_framework, automation_status, export_count",
+      )
       .eq("id", suiteId)
       .single<SuiteRow>();
 
@@ -1131,6 +1168,24 @@ export async function POST(req: Request) {
 
     const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
     const fileName = `${root}.zip`;
+
+    await supabase
+      .from("suites")
+      .update({
+        last_export_at: new Date().toISOString(),
+        export_count: ((suite as any).export_count ?? 0) + 1,
+      })
+      .eq("id", suiteId);
+
+    if (
+      (suite as any).automation_framework &&
+      (suite as any).automation_framework !== "playwright" &&
+      (suite as any).automation_status === "ready"
+    ) {
+      console.warn(
+        `[export/playwright] Suite was enhanced for ${(suite as any).automation_framework} — selectors may not be optimised for Playwright`,
+      );
+    }
 
     return new Response(new Uint8Array(zipBuffer), {
       status: 200,

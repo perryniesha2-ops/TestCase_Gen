@@ -72,7 +72,6 @@ export function useBulkActions(
       const supabase = createClient();
       const patch = { ...updates, updated_at: new Date().toISOString() };
 
-      // Run both updates (if needed)
       const [regRes, crossRes] = await Promise.all([
         regularIds.length
           ? supabase.from("test_cases").update(patch).in("id", regularIds)
@@ -110,24 +109,84 @@ export function useBulkActions(
     try {
       const supabase = createClient();
 
-      const [regRes, crossRes] = await Promise.all([
-        regularIds.length
-          ? supabase.from("test_cases").delete().in("id", regularIds)
-          : Promise.resolve({ error: null as any }),
-        crossIds.length
-          ? supabase.from("platform_test_cases").delete().in("id", crossIds)
-          : Promise.resolve({ error: null as any }),
-      ]);
+      // ── Regular test cases — cascade in dependency order ──────────────────
+      if (regularIds.length > 0) {
+        // 1. Attachments
+        await supabase
+          .from("test_attachments")
+          .delete()
+          .in("test_case_id", regularIds);
 
-      if (regRes.error) throw regRes.error;
-      if (crossRes.error) throw crossRes.error;
+        // 2. Requirement links
+        await supabase
+          .from("requirement_test_cases")
+          .delete()
+          .in("test_case_id", regularIds);
+
+        // 3. Execution history
+        await supabase
+          .from("test_executions")
+          .delete()
+          .in("test_case_id", regularIds);
+
+        // 4. Suite assignments
+        await supabase
+          .from("suite_items")
+          .delete()
+          .in("test_case_id", regularIds);
+
+        // 5. Test cases themselves
+        const { error } = await supabase
+          .from("test_cases")
+          .delete()
+          .in("id", regularIds);
+
+        if (error) throw error;
+      }
+
+      // ── Cross-platform test cases — cascade in dependency order ───────────
+      if (crossIds.length > 0) {
+        // 1. Attachments
+        await supabase
+          .from("test_attachments")
+          .delete()
+          .in("platform_test_case_id", crossIds);
+
+        // 2. Requirement links
+        await supabase
+          .from("requirement_platform_test_cases")
+          .delete()
+          .in("test_case_id", crossIds);
+
+        // 3. Execution history
+        await supabase
+          .from("test_executions")
+          .delete()
+          .in("platform_test_case_id", crossIds);
+
+        // 4. Suite assignments
+        await supabase
+          .from("suite_items")
+          .delete()
+          .in("platform_test_case_id", crossIds);
+
+        // 5. Platform test cases themselves
+        const { error } = await supabase
+          .from("platform_test_cases")
+          .delete()
+          .in("id", crossIds);
+
+        if (error) throw error;
+      }
 
       toast.success(`Deleted ${total} test case${total === 1 ? "" : "s"}`);
       deselectAll();
       onRefresh();
     } catch (error) {
       console.error("Bulk delete error:", error);
-      toast.error("Failed to delete test cases");
+      toast.error(
+        "Failed to delete test cases. Some may be linked to other records.",
+      );
       throw error;
     } finally {
       setIsProcessing(false);

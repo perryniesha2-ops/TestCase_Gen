@@ -178,20 +178,23 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
 
   return (
     <div className="space-y-4">
-      {/* Page header */}
+      {/* ── Page header ── */}
       <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
+        {/* Row 1: Back button + action buttons */}
+        {/* On mobile: Back sits alone left, actions wrap into a second row */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <Button
             variant="outline"
             size="sm"
-            className="gap-2"
+            className="gap-2 self-start"
             onClick={() => router.back()}
           >
             <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
 
-          <div className="flex items-center gap-2">
+          {/* Action buttons — wrap naturally on mobile */}
+          <div className="flex flex-wrap items-center gap-2">
             <UnifiedExportButton
               suiteId={suiteId}
               suiteKind={suiteKind}
@@ -241,21 +244,23 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
           </div>
         </div>
 
-        {/* Suite name + badges */}
-        <div className="flex items-center gap-2">
-          <div className="text-sm text-muted-foreground">{suiteName}</div>
+        {/* Row 2: Suite name + kind/platform badges */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-sm text-muted-foreground truncate max-w-[280px] sm:max-w-none">
+            {suiteName}
+          </div>
           {!metadataLoading && (
             <>
-              <Badge variant="outline" className="capitalize">
+              <Badge variant="outline" className="capitalize shrink-0">
                 {suiteKind}
               </Badge>
               {suiteKind === "cross-platform" && platforms.length > 0 && (
-                <div className="flex items-center gap-1">
+                <div className="flex flex-wrap items-center gap-1">
                   {platforms.map((platform) => (
                     <Badge
                       key={platform}
                       variant="secondary"
-                      className="capitalize text-xs"
+                      className="capitalize text-xs shrink-0"
                     >
                       {platform}
                     </Badge>
@@ -267,7 +272,7 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
         </div>
       </div>
 
-      {/* Main content tabs */}
+      {/* ── Main content tabs ── */}
       {!details.suite ? (
         <div className="flex items-center justify-center py-20">
           <div className="flex items-center gap-2 text-muted-foreground">
@@ -281,27 +286,33 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
           onValueChange={setActiveTab}
           className="space-y-4"
         >
+          {/* Tab triggers — icon+label on sm+, icon-only on xs */}
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="test-cases" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Test Cases
+            <TabsTrigger
+              value="test-cases"
+              className="flex items-center gap-1 sm:gap-2"
+            >
+              <FileText className="h-4 w-4 shrink-0" />
+              <span>Test Cases</span>
             </TabsTrigger>
             <TabsTrigger
               value="run-history"
-              className="flex items-center gap-2"
+              className="flex items-center gap-1 sm:gap-2"
             >
-              <Clock className="h-4 w-4" />
-              Run History
+              <Clock className="h-4 w-4 shrink-0" />
+              <span>Run History</span>
             </TabsTrigger>
-            <TabsTrigger value="reports" className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4" />
-              Reports
+            <TabsTrigger
+              value="reports"
+              className="flex items-center gap-1 sm:gap-2"
+            >
+              <BarChart3 className="h-4 w-4 shrink-0" />
+              <span>Reports</span>
             </TabsTrigger>
           </TabsList>
 
-          {/* Test Cases tab — existing content */}
           <TabsContent value="test-cases">
-            <div className="border rounded-lg p-4 bg-background">
+            <div className="border rounded-lg p-3 sm:p-4 bg-background">
               <SuiteDetailsTabs
                 suite={details.suite}
                 suiteTestCases={details.suiteTestCases}
@@ -319,12 +330,10 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
             </div>
           </TabsContent>
 
-          {/* Run History tab — scoped to this suite */}
           <TabsContent value="run-history">
             <ExecutionHistory suiteId={suiteId} />
           </TabsContent>
 
-          {/* Reports tab — scoped to this suite */}
           <TabsContent value="reports">
             <SuiteReports suiteId={suiteId} showAllSuites={false} />
           </TabsContent>
@@ -338,7 +347,6 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
           onOpenChange={setRunOpen}
           onSessionComplete={() => {
             setRunOpen(false);
-            // Switch to run history so user sees results immediately
             setActiveTab("run-history");
           }}
         />

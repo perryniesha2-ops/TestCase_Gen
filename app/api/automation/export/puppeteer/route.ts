@@ -24,14 +24,45 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://www.synthqa.app"}/api/automation/webhook/results`;
+
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("api_key")
+      .eq("id", user.id)
+      .single();
+
     const { data: suite, error: suiteErr } = await supabase
       .from("suites")
-      .select("id, name, description, base_url")
+      .select(
+        "id, name, description, base_url, automation_framework, automation_status, export_count",
+      )
       .eq("id", suiteId)
       .single();
 
     if (suiteErr || !suite) {
       return NextResponse.json({ error: "Suite not found" }, { status: 404 });
+    }
+
+    if (!suite.base_url?.trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "Please set a Base URL in Automation Configuration before exporting.",
+        },
+        { status: 400 },
+      );
+    }
+
+    // Warn if suite was enhanced for a different framework
+    if (
+      suite.automation_framework &&
+      suite.automation_framework !== "puppeteer" &&
+      suite.automation_status === "ready"
+    ) {
+      console.warn(
+        `[export/puppeteer] Suite ${suiteId} was enhanced for ${suite.automation_framework} — selectors may not be optimised for Puppeteer`,
+      );
     }
 
     const { data: suiteItems } = await supabase
@@ -54,20 +85,10 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!suite.base_url?.trim()) {
-      return NextResponse.json(
-        {
-          error:
-            "Please set a Base URL in Automation Configuration before exporting.",
-        },
-        { status: 400 },
-      );
-    }
-
     const zip = new JSZip();
     const root = `puppeteer-${suite.name.toLowerCase().replace(/\s+/g, "-")}-${suite.id.slice(0, 8)}`;
 
-    // package.json
+    // ── package.json ────────────────────────────────────────────────────────────
     zip.file(
       `${root}/package.json`,
       JSON.stringify(
@@ -93,7 +114,7 @@ export async function POST(req: Request) {
       ),
     );
 
-    // jest.config.js
+    // ── jest.config.js ───────────────────────────────────────────────────────────
     zip.file(
       `${root}/jest.config.js`,
       `require('dotenv').config();
@@ -109,7 +130,7 @@ module.exports = {
 `,
     );
 
-    // jest-puppeteer.config.js
+    // ── jest-puppeteer.config.js ─────────────────────────────────────────────────
     zip.file(
       `${root}/jest-puppeteer.config.js`,
       `module.exports = {
@@ -123,7 +144,7 @@ module.exports = {
 `,
     );
 
-    // Reporter
+    // ── Reporter ─────────────────────────────────────────────────────────────────
     zip.file(
       `${root}/support/synthqa-reporter.js`,
       `const fs = require('fs');
@@ -132,15 +153,10 @@ const path = require('path');
 const WEBHOOK_URL = process.env.SYNTHQA_WEBHOOK_URL;
 const API_KEY = process.env.SYNTHQA_API_KEY;
 const SUITE_ID = process.env.SYNTHQA_SUITE_ID;
-
 const RESULTS_FILE = path.join(process.cwd(), '.synthqa-results.json');
 
 let puppeteerVersion = 'unknown';
-try {
-  puppeteerVersion = require('puppeteer/package.json').version;
-} catch {
-  puppeteerVersion = 'unknown';
-}
+try { puppeteerVersion = require('puppeteer/package.json').version; } catch {}
 
 const getOS = () => {
   const p = process.platform;
@@ -151,21 +167,13 @@ const getOS = () => {
 
 function saveResult(result) {
   let existing = [];
-  try {
-    existing = JSON.parse(fs.readFileSync(RESULTS_FILE, 'utf8'));
-  } catch {
-    existing = [];
-  }
+  try { existing = JSON.parse(fs.readFileSync(RESULTS_FILE, 'utf8')); } catch {}
   existing.push(result);
   fs.writeFileSync(RESULTS_FILE, JSON.stringify(existing));
 }
 
 function loadResults() {
-  try {
-    return JSON.parse(fs.readFileSync(RESULTS_FILE, 'utf8'));
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(fs.readFileSync(RESULTS_FILE, 'utf8')); } catch { return []; }
 }
 
 function clearResults() {
@@ -197,8 +205,8 @@ async function reportResults(results) {
     return;
   }
 
-  const passed = results.filter((r) => r.execution_status === 'passed').length;
-  const failed = results.filter((r) => r.execution_status === 'failed').length;
+  const passed  = results.filter((r) => r.execution_status === 'passed').length;
+  const failed  = results.filter((r) => r.execution_status === 'failed').length;
   const skipped = results.filter((r) => r.execution_status === 'skipped').length;
 
   const payload = {
@@ -221,18 +229,13 @@ async function reportResults(results) {
   try {
     const res = await fetch(WEBHOOK_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: \`Bearer \${API_KEY}\`,
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: \`Bearer \${API_KEY}\` },
       body: JSON.stringify(payload),
     });
-
     if (!res.ok) {
-      const text = await res.text();
-      console.error(\`[SynthQA] Webhook failed (\${res.status}): \${text}\`);
+      console.error(\`[SynthQA] Webhook failed (\${res.status}): \${await res.text()}\`);
     } else {
-      const json = await res.json();
+      console.log('[SynthQA] Results synced to SynthQA');
     }
   } catch (err) {
     console.error('[SynthQA] Webhook error:', err);
@@ -243,7 +246,7 @@ module.exports = { saveResult, loadResults, clearResults, makeResult, reportResu
 `,
     );
 
-    // Global setup/teardown
+    // ── Global teardown ──────────────────────────────────────────────────────────
     zip.file(
       `${root}/support/global-setup.js`,
       `const { loadResults, clearResults, reportResults } = require('./synthqa-reporter');
@@ -256,46 +259,58 @@ module.exports = async function globalTeardown() {
 `,
     );
 
-    // Generate test files
+    // ── Test files ───────────────────────────────────────────────────────────────
     testCases.forEach((tc: any, idx: number) => {
       const steps = Array.isArray(tc.test_steps) ? tc.test_steps : [];
-      const fileName = `${String(idx + 1).padStart(3, "0")}-${tc.title.toLowerCase().replace(/\s+/g, "-")}.test.js`;
+      const fileName = `${String(idx + 1).padStart(3, "0")}-${tc.title.toLowerCase().replace(/\s+/g, "-").slice(0, 60)}.test.js`;
       zip.file(
         `${root}/tests/${fileName}`,
         generatePuppeteerTest(tc, steps, suite.base_url),
       );
     });
 
-    // cypress.env.json equivalent — jest uses process.env but we ship a .env
+    // ── .env ─────────────────────────────────────────────────────────────────────
     zip.file(
       `${root}/.env`,
-      `SYNTHQA_WEBHOOK_URL=${process.env.NEXT_PUBLIC_APP_URL}/api/automation/webhook/results
-SYNTHQA_API_KEY=your_api_key_here
-SYNTHQA_SUITE_ID=${suite.id}
+      `# Application
 BASE_URL=${suite.base_url}
-TEST_ENVIRONMENT=local
-HEADLESS=true
+
+# Test credentials — update with your test account
 TEST_USER_EMAIL=your_test_email@example.com
 TEST_USER_PASSWORD=your_test_password
-TEST_USER_USERNAME=your_test_username
+
+# SynthQA Integration
+SYNTHQA_WEBHOOK_URL=${webhookUrl}
+SYNTHQA_API_KEY=${profile?.api_key || ""}
+SYNTHQA_SUITE_ID=${suite.id}
+
+# Test environment
+TEST_ENVIRONMENT=local
+HEADLESS=true
 `,
     );
-    //generate gitignore
 
+    // ── .gitignore ───────────────────────────────────────────────────────────────
     zip.file(
       `${root}/.gitignore`,
       `node_modules
 .env
-test-results/,
 .synthqa-results.json
-test-results/screenshots
+test-results/
 `,
     );
 
-    zip.file(
-      `${root}/README.md`,
-      generateReadme("Puppeteer", suite.name, testCases.length),
-    );
+    // ── README ───────────────────────────────────────────────────────────────────
+    zip.file(`${root}/README.md`, generateReadme(suite.name, testCases.length));
+
+    // ── Record export ────────────────────────────────────────────────────────────
+    await supabase
+      .from("suites")
+      .update({
+        last_export_at: new Date().toISOString(),
+        export_count: (suite.export_count ?? 0) + 1,
+      })
+      .eq("id", suiteId);
 
     const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
 
@@ -314,6 +329,10 @@ test-results/screenshots
   }
 }
 
+// ============================================================================
+// HELPERS
+// ============================================================================
+
 function escapeForJs(str: string): string {
   return str
     .replace(/\\/g, "\\\\")
@@ -324,6 +343,28 @@ function escapeForJs(str: string): string {
     .replace(/\r/g, "\\r");
 }
 
+/**
+ * Detects "N characters" patterns in a step action description.
+ * Returns a JS expression like 'a'.repeat(5001) when found, null otherwise.
+ */
+function detectGeneratedString(
+  action: string,
+  inputValue: string | undefined,
+): string | null {
+  const exactMatch = action.match(/exactly\s+(\d+)\s+char/i);
+  const countMatch = action.match(/string of\s+(\d+)\s+char/i);
+  const genericMatch = action.match(/(\d+)[- ]char/i);
+  const match = exactMatch ?? countMatch ?? genericMatch;
+  if (!match) return null;
+  const count = parseInt(match[1], 10);
+  if (!Number.isFinite(count) || count <= 0 || count > 100_000) return null;
+  return `'a'.repeat(${count})`;
+}
+
+// ============================================================================
+// TEST GENERATOR
+// ============================================================================
+
 function generatePuppeteerTest(
   testCase: any,
   steps: TestStep[],
@@ -332,88 +373,206 @@ function generatePuppeteerTest(
   const stepsCode = steps
     .map((step, idx) => {
       const lines: string[] = [];
+      // Normalise selector — single quotes inside, safe in JS template literals
       const sel = escapeForJs(step.selector || "");
-      const val = escapeForJs(step.input_value || "");
 
+      // ── Navigate ──────────────────────────────────────────────────────────────
       if (step.action_type === "navigate") {
         const url = step.input_value || "/";
-        const isFullUrl =
-          url.startsWith("http://") || url.startsWith("https://");
-        const isPlaceholder =
-          url.includes("example.com") ||
-          url.includes("localhost:3000") ||
-          url.includes("your-app");
-
-        if (isFullUrl && !isPlaceholder) {
-          lines.push(`await page.goto('${escapeForJs(url)}');`);
-        } else if (isFullUrl && isPlaceholder) {
-          // Extract path and use BASE_URL instead
+        let path: string;
+        if (url.startsWith("http://") || url.startsWith("https://")) {
           try {
-            const parsedPath = new URL(url).pathname;
-            lines.push(
-              `await page.goto(\`\${BASE_URL}${escapeForJs(parsedPath)}\`);`,
-            );
+            const parsed = new URL(url);
+            path = parsed.pathname + parsed.search + parsed.hash;
           } catch {
-            lines.push(`await page.goto(BASE_URL);`);
+            path = url;
           }
         } else {
-          const path = url.startsWith("/") ? url : `/${url}`;
-          lines.push(`await page.goto(\`\${BASE_URL}${escapeForJs(path)}\`);`);
+          path = url.startsWith("/") ? url : `/${url}`;
         }
-      } else if (step.action_type === "click") {
+        lines.push(`await page.goto(\`\${BASE_URL}${escapeForJs(path)}\`);`);
+        // URL assertion — only if step doesn't already have a url assertion
+        if (!step.assertion || step.assertion.type !== "url") {
+          lines.push(`expect(page.url()).toContain('${escapeForJs(path)}');`);
+        }
+      }
+      // ── Click ─────────────────────────────────────────────────────────────────
+      else if (step.action_type === "click") {
         lines.push(`await page.click('${sel}');`);
-      } else if (step.action_type === "fill" || step.action_type === "type") {
-        const isEmailField =
-          sel.includes("email") ||
-          step.action?.toLowerCase().includes("email") ||
-          val.includes("@");
-        const isPasswordField =
-          sel.includes("password") ||
-          step.action?.toLowerCase().includes("password");
-        const isUsernameField =
-          sel.includes("username") ||
-          step.action?.toLowerCase().includes("username");
+      }
+      // ── Fill / Type ───────────────────────────────────────────────────────────
+      else if (step.action_type === "fill" || step.action_type === "type") {
+        const generatedVal = detectGeneratedString(
+          step.action,
+          step.input_value,
+        );
 
-        let typedVal: string;
-        if (isEmailField) {
-          typedVal = `' + (process.env.TEST_USER_EMAIL || '${val}') + '`;
+        // Only use env vars when the SELECTOR identifies the field type —
+        // not when the value being typed mentions email/password in text
+        const isEmailField = sel.includes("email") || sel.includes("username");
+        const isPasswordField = sel.includes("password");
+
+        if (generatedVal) {
+          // Long string — use evaluate to set value directly (page.type is too slow)
+          lines.push(`await page.evaluate((sel, val) => {`);
+          lines.push(`  const el = document.querySelector(sel);`);
+          lines.push(
+            `  if (el) { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }`,
+          );
+          lines.push(`}, '${sel}', ${generatedVal});`);
+        } else if (isEmailField) {
+          lines.push(`await page.click('${sel}', { clickCount: 3 });`);
+          lines.push(
+            `await page.type('${sel}', process.env.TEST_USER_EMAIL || '${escapeForJs(step.input_value || "")}');`,
+          );
         } else if (isPasswordField) {
-          typedVal = `' + (process.env.TEST_USER_PASSWORD || '${val}') + '`;
-        } else if (isUsernameField) {
-          typedVal = `' + (process.env.TEST_USER_USERNAME || '${val}') + '`;
+          lines.push(`await page.click('${sel}', { clickCount: 3 });`);
+          lines.push(
+            `await page.type('${sel}', process.env.TEST_USER_PASSWORD || '${escapeForJs(step.input_value || "")}');`,
+          );
         } else {
-          typedVal = val;
+          lines.push(`await page.click('${sel}', { clickCount: 3 });`);
+          lines.push(
+            `await page.type('${sel}', '${escapeForJs(step.input_value || "")}');`,
+          );
         }
-
-        lines.push(`await page.click('${sel}', { clickCount: 3 });`);
-        lines.push(`await page.type('${sel}', '${typedVal}');`);
-      } else if (step.action_type === "check") {
+      }
+      // ── Check ─────────────────────────────────────────────────────────────────
+      else if (step.action_type === "check") {
         lines.push(`await page.click('${sel}');`);
-      } else if (step.action_type === "select") {
-        lines.push(`await page.select('${sel}', '${val}');`);
-      } else {
-        lines.push(`// TODO: ${step.action}`);
       }
-
-      if (step.assertion?.type === "visible") {
-        const target = escapeForJs(
-          step.assertion.target || step.selector || "",
-        );
-        lines.push(`await expect(page).toMatchElement('${target}');`);
-      } else if (step.assertion?.type === "text") {
-        const target = escapeForJs(
-          step.assertion.target || step.selector || "",
-        );
-        const assertVal = escapeForJs(step.assertion.value || "");
+      // ── Select ────────────────────────────────────────────────────────────────
+      else if (step.action_type === "select") {
         lines.push(
-          `await expect(page).toMatchElement('${target}', { text: '${assertVal}' });`,
+          `await page.select('${sel}', '${escapeForJs(step.input_value || "")}');`,
         );
-      } else if (step.assertion?.type === "url") {
-        const assertVal = escapeForJs(step.assertion.value || "");
-        lines.push(`expect(page.url()).toContain('${assertVal}');`);
+      }
+      // ── Hover ─────────────────────────────────────────────────────────────────
+      else if (step.action_type === "hover") {
+        lines.push(`await page.hover('${sel}');`);
+      }
+      // ── Wait ──────────────────────────────────────────────────────────────────
+      else if (step.action_type === "wait") {
+        if (sel) {
+          const timeout =
+            step.wait_time && step.wait_time > 0 ? step.wait_time : 10000;
+          lines.push(
+            `await page.waitForSelector('${sel}', { timeout: ${timeout} });`,
+          );
+        } else if (step.wait_time && step.wait_time > 0) {
+          lines.push(
+            `await page.waitForTimeout(${step.wait_time}); // TODO: replace with waitForSelector`,
+          );
+        }
+      }
+      // ── Press ─────────────────────────────────────────────────────────────────
+      else if (step.action_type === "press") {
+        lines.push(
+          `await page.keyboard.press('${escapeForJs(step.input_value || "")}');`,
+        );
+      }
+      // ── Unknown ───────────────────────────────────────────────────────────────
+      else {
+        lines.push(`// TODO: implement — ${escapeForJs(step.action)}`);
+        if (sel) lines.push(`// Selector available: '${sel}'`);
       }
 
-      return `    // Step ${idx + 1}: ${step.action}\n    ${lines.join("\n    ")}`;
+      // ── Assertions ────────────────────────────────────────────────────────────
+      if (step.assertion?.type) {
+        const target = escapeForJs(
+          step.assertion.target || step.selector || "",
+        );
+        const assertVal = escapeForJs(String(step.assertion.value ?? ""));
+
+        switch (step.assertion.type) {
+          case "visible":
+            lines.push(`await expect(page).toMatchElement('${target}');`);
+            break;
+          case "hidden":
+            lines.push(
+              `await page.waitForSelector('${target}', { hidden: true });`,
+            );
+            break;
+          case "text":
+            lines.push(
+              `await expect(page).toMatchElement('${target}', { text: '${assertVal}' });`,
+            );
+            break;
+          case "exact-text":
+            lines.push(
+              `await expect(page).toMatchElement('${target}', { text: '${assertVal}' });`,
+            );
+            break;
+          case "value": {
+            lines.push(
+              `const fieldVal = await page.$eval('${target}', el => el.value);`,
+            );
+            lines.push(`expect(fieldVal).toBe('${assertVal}');`);
+            break;
+          }
+          case "url": {
+            let urlPath = String(step.assertion.value ?? "");
+            if (
+              urlPath.startsWith("http://") ||
+              urlPath.startsWith("https://")
+            ) {
+              try {
+                urlPath = new URL(urlPath).pathname;
+              } catch {}
+            }
+            lines.push(
+              `expect(page.url()).toContain('${escapeForJs(urlPath)}');`,
+            );
+            break;
+          }
+          case "count": {
+            const countNum = parseInt(String(step.assertion.value ?? "0"), 10);
+            const isLengthAssertion =
+              (step.action_type === "fill" || step.action_type === "type") &&
+              detectGeneratedString(step.action, step.input_value) !== null;
+            if (isLengthAssertion && Number.isFinite(countNum)) {
+              lines.push(
+                `const fieldLength = await page.$eval('${target}', el => el.value.length);`,
+              );
+              lines.push(`expect(fieldLength).toBe(${countNum});`);
+            } else {
+              lines.push(
+                `const elCount = await page.$$eval('${target}', els => els.length);`,
+              );
+              lines.push(`expect(elCount).toBe(${countNum});`);
+            }
+            break;
+          }
+          case "enabled":
+            lines.push(
+              `const isEnabled = await page.$eval('${target}', el => !el.disabled);`,
+            );
+            lines.push(`expect(isEnabled).toBe(true);`);
+            break;
+          case "disabled":
+            lines.push(
+              `const isDisabled = await page.$eval('${target}', el => el.disabled);`,
+            );
+            lines.push(`expect(isDisabled).toBe(true);`);
+            break;
+          case "checked":
+            lines.push(
+              `const isChecked = await page.$eval('${target}', el => el.checked);`,
+            );
+            lines.push(`expect(isChecked).toBe(true);`);
+            break;
+          case "attribute":
+            if (step.assertion.attribute) {
+              lines.push(
+                `const attrVal = await page.$eval('${target}', (el, attr) => el.getAttribute(attr), '${escapeForJs(step.assertion.attribute)}');`,
+              );
+              lines.push(`expect(attrVal).toBe('${assertVal}');`);
+            }
+            break;
+        }
+      }
+
+      return `    // Step ${idx + 1}: ${escapeForJs(step.action)}\n    ${lines.join("\n    ")}`;
     })
     .join("\n\n");
 
@@ -460,45 +619,54 @@ ${stepsCode}
 `;
 }
 
-function generateReadme(
-  framework: string,
-  suiteName: string,
-  caseCount: number,
-): string {
-  return `# ${suiteName} - ${framework} Tests
+function generateReadme(suiteName: string, caseCount: number): string {
+  return `# ${suiteName} — Puppeteer Tests
 
 Generated by SynthQA
 
 ## Quick Start
 
 \`\`\`bash
+# 1. Install dependencies
 npm install
+
+# 2. Configure environment
+# .env is pre-filled — update TEST_USER_EMAIL and TEST_USER_PASSWORD
+
+# 3. Run tests
 npm test
+
+# 4. Run headed (visible browser)
+npm run test:headed
 \`\`\`
 
 ## Configuration
 
-Update \`.env\` with your API key before running:
+All configuration lives in \`.env\`. Do not commit this file.
 
-\`\`\`
-SYNTHQA_API_KEY=your_api_key_here
-\`\`\`
-
-All other values are pre-filled from your SynthQA configuration.
-
-> ⚠️ Do not commit \`.env\` — it is already in \`.gitignore\`.
+| Variable | Description |
+|---|---|
+| \`BASE_URL\` | URL of the application under test |
+| \`TEST_USER_EMAIL\` | Email used for authenticated tests |
+| \`TEST_USER_PASSWORD\` | Password used for authenticated tests |
+| \`SYNTHQA_API_KEY\` | Pre-filled from your SynthQA account |
 
 ## Test Cases
 
-- **Total Tests**: ${caseCount}
+- **Total**: ${caseCount}
 - **Location**: \`tests/\`
 
 ## CI/CD
 
 \`\`\`yaml
-- name: Run ${framework} tests
+- name: Run Puppeteer tests
   env:
+    BASE_URL: \${{ secrets.BASE_URL }}
+    TEST_USER_EMAIL: \${{ secrets.TEST_USER_EMAIL }}
+    TEST_USER_PASSWORD: \${{ secrets.TEST_USER_PASSWORD }}
     SYNTHQA_API_KEY: \${{ secrets.SYNTHQA_API_KEY }}
+    SYNTHQA_WEBHOOK_URL: \${{ secrets.SYNTHQA_WEBHOOK_URL }}
+    SYNTHQA_SUITE_ID: \${{ secrets.SYNTHQA_SUITE_ID }}
   run: npm test
 \`\`\`
 `;

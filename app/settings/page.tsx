@@ -2,6 +2,7 @@
 import { AppSidebar } from "@/components/pagecomponents/app-sidebar";
 import SettingsPage from "@/components/settings/settings-page";
 import { SiteHeader } from "@/components/pagecomponents/site-header";
+import { SiteFooter } from "@/components/pagecomponents/site-footer";
 
 export default function Settings() {
   return (
@@ -16,6 +17,7 @@ export default function Settings() {
         />
 
         <SettingsPage />
+        <SiteFooter />
       </div>
     </div>
   );

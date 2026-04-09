@@ -14,6 +14,7 @@ import {
   useMotionValue,
 } from "framer-motion";
 import { useEffect, useState } from "react";
+import { Separator } from "../ui/separator";
 
 export function SiteNav() {
   const reduce = useReducedMotion();

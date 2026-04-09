@@ -199,13 +199,18 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
     // Check if test cases were updated after last automation generation
     if (suiteData.last_generated_at) {
       const lastGenerated = new Date(suiteData.last_generated_at);
-      const hasNewerCases = cases.some((tc) => {});
-
+      // Add 30s buffer — updates within 30s of generation are from the enhancer itself
+      const bufferMs = 30_000;
+      const hasNewerCases = cases.some((tc) => {
+        if (!tc.updated_at) return false;
+        return (
+          new Date(tc.updated_at).getTime() > lastGenerated.getTime() + bufferMs
+        );
+      });
       if (hasNewerCases) {
-        reasons.push("Test cases have been updated");
+        reasons.push("Test cases have been updated since last generation");
       }
     }
-
     // Check if suite config was updated after last generation
     if (suiteData.last_generated_at && suiteData.automation_config_updated_at) {
       const lastGenerated = new Date(suiteData.last_generated_at);
@@ -247,6 +252,7 @@ export function AutomationPage({ suiteId }: AutomationPageProps) {
           suite_id: suite.id,
           application_url: suite.base_url || "https://app.example.com",
           regenerate: true,
+          automation_framework: suite.automation_framework || "playwright",
         }),
       });
 

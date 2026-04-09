@@ -88,7 +88,7 @@ type Preferences = {
   test_case_defaults: {
     model: ModelKey;
     count: number;
-    test_types: string[]; // Keep as string[] for DB compatibility
+    test_types: string[];
   };
 };
 
@@ -263,7 +263,6 @@ export default function SettingsPage() {
 
       let finalProfile = profile;
 
-      // Create profile if it doesn't exist
       if (!finalProfile) {
         const initialPrefs = safePreferences(
           authUser.user_metadata?.preferences ?? DEFAULT_PREFERENCES,
@@ -315,8 +314,6 @@ export default function SettingsPage() {
       };
 
       setUser(userProfile);
-
-      // Hydrate form state
       setFullName(userProfile.full_name || "");
       setEmail(userProfile.email);
       setThemePref(prefs.theme);
@@ -367,30 +364,44 @@ export default function SettingsPage() {
 
         const { error: uploadError } = await supabase.storage
           .from("avatars")
-          .upload(fileName, file, {
-            cacheControl: "3600",
-            upsert: false,
-          });
+          .upload(fileName, file, { cacheControl: "3600", upsert: false });
         if (uploadError) throw uploadError;
 
         const { data } = supabase.storage
           .from("avatars")
           .getPublicUrl(fileName);
+        const publicUrl = data.publicUrl;
 
+        // 1. Update auth user metadata
         const { error: updateError } = await supabase.auth.updateUser({
-          data: { avatar_url: data.publicUrl, full_name: fullName },
+          data: { avatar_url: publicUrl, full_name: fullName },
         });
         if (updateError) throw updateError;
 
-        setUser((prev) =>
-          prev ? { ...prev, avatar_url: data.publicUrl } : prev,
-        );
+        // 2. Sync avatar_url into user_profiles so other reads stay consistent
+        const { error: profileError } = await supabase
+          .from("user_profiles")
+          .update({
+            avatar_url: publicUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", user.id);
+        if (profileError) throw profileError;
+
+        // 3. Refresh the session so useAuth() in SiteHeader picks up the new
+        //    avatar_url from the updated JWT / user metadata immediately.
+        await supabase.auth.refreshSession();
+
+        // 4. Update local state
+        setUser((prev) => (prev ? { ...prev, avatar_url: publicUrl } : prev));
         toastSuccess("Avatar updated successfully!");
       } catch (err) {
         console.error("Error uploading avatar:", err);
         toastError("Failed to upload avatar");
       } finally {
         setUploadingAvatar(false);
+        // Reset the file input so the same file can be re-selected if needed
+        event.target.value = "";
       }
     },
     [user, fullName, supabase],
@@ -399,10 +410,21 @@ export default function SettingsPage() {
   const handleRemoveAvatar = useCallback(async () => {
     if (!user?.avatar_url) return;
     try {
+      // 1. Clear from auth metadata
       const { error } = await supabase.auth.updateUser({
         data: { avatar_url: null, full_name: fullName },
       });
       if (error) throw error;
+
+      // 2. Clear from user_profiles table
+      const { error: profileError } = await supabase
+        .from("user_profiles")
+        .update({ avatar_url: null, updated_at: new Date().toISOString() })
+        .eq("id", user.id);
+      if (profileError) throw profileError;
+
+      // 3. Refresh session so SiteHeader reflects the removal immediately
+      await supabase.auth.refreshSession();
 
       setUser((prev) => (prev ? { ...prev, avatar_url: undefined } : prev));
       toastSuccess("Avatar removed successfully!");
@@ -431,13 +453,11 @@ export default function SettingsPage() {
         },
       };
 
-      // Update auth metadata
       const { error: authError } = await supabase.auth.updateUser({
         data: { full_name: fullName, preferences },
       });
       if (authError) throw authError;
 
-      // Update user_profiles table
       const { error: profileError } = await supabase
         .from("user_profiles")
         .update({
@@ -450,6 +470,9 @@ export default function SettingsPage() {
 
       if (profileError) throw profileError;
 
+      // Refresh session so the header greeting updates immediately
+      await supabase.auth.refreshSession();
+
       setUser((prev) =>
         prev ? { ...prev, full_name: fullName, preferences } : prev,
       );
@@ -457,7 +480,7 @@ export default function SettingsPage() {
       setNextTheme(themePref);
 
       toastSuccess("Profile updated successfully!", {
-        description: "Your defaults will be used in the test case generator",
+        description: "Your preferences have been saved.",
       });
     } catch (err) {
       toastError("Failed to update profile");
@@ -1003,7 +1026,7 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>API Integration</CardTitle>
               <CardDescription>
-                Use these credentials to sync Playwright test results back to
+                Use these credentials to sync automation test results back to
                 SynthQA
               </CardDescription>
             </CardHeader>
@@ -1100,7 +1123,7 @@ export default function SettingsPage() {
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Webhook URL</p>
                   <p className="text-xs text-muted-foreground">
-                    Use this URL in your Playwright exports to sync test results
+                    Use this URL in your automation exports to sync test results
                   </p>
                 </div>
 
@@ -1177,7 +1200,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* Save Bar */}
-        <div className="flex items-center gap-2 pt-4 border-t">
+        <div className="flex items-center gap-2 pt-4">
           <Button onClick={handleSaveProfile} disabled={saving}>
             {saving ? (
               <>

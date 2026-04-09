@@ -41,6 +41,20 @@ function initials(name?: string, email?: string) {
   return (email?.[0] ?? "U").toUpperCase();
 }
 
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function getFirstName(fullName: string, email: string): string {
+  const name = fullName.trim();
+  if (name) return name.split(/\s+/)[0];
+  // Fall back to the part before @ in the email
+  return email.split("@")[0] ?? "there";
+}
+
 export function SiteHeader({
   className,
   title,
@@ -56,6 +70,8 @@ export function SiteHeader({
 
   const avatarText = initials(fullName, email);
   const displayName = fullName || email || "User";
+  const firstName = getFirstName(fullName, email);
+  const greeting = getGreeting();
   const showAuthUI = Boolean(user);
 
   return (
@@ -104,10 +120,20 @@ export function SiteHeader({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="relative h-8 w-8 rounded-full"
+                  className="flex items-center gap-2 h-8 px-2 rounded-full"
                   aria-label="Account menu"
                 >
-                  <Avatar className="h-8 w-8">
+                  {/* Greeting — hidden on xs, visible on sm+ */}
+                  {!loading && (
+                    <span className="hidden sm:inline text-sm text-muted-foreground whitespace-nowrap">
+                      {greeting},{" "}
+                      <span className="font-medium text-foreground">
+                        {firstName}
+                      </span>
+                    </span>
+                  )}
+
+                  <Avatar className="h-8 w-8 shrink-0">
                     {avatarUrl && (
                       <AvatarImage
                         src={avatarUrl}

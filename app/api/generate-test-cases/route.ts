@@ -26,10 +26,56 @@ export const dynamic = "force-dynamic";
 
 type Priority = "low" | "medium" | "high" | "critical";
 
+/**
+ * Structured step — every field the Cypress/Playwright/Selenium exporters need.
+ *
+ * action_type drives code generation:
+ *   navigate  → cy.visit() / page.goto()
+ *   click     → cy.get().click()
+ *   fill      → cy.get().type() / invoke('val')
+ *   select    → cy.get().select()
+ *   check     → cy.get().check()
+ *   hover     → cy.get().trigger('mouseover')
+ *   wait      → cy.get({ timeout }).should('be.visible')
+ *   press     → cy.get().type('{key}')
+ *
+ * assertion drives the expect/should call after the action.
+ */
 interface TestStep {
   step_number: number;
-  action: string;
-  expected: string;
+  action: string; // Human-readable description (kept for readability)
+  expected: string; // Human-readable expected outcome
+  // ── Automation fields ──────────────────────────────────────────────────────
+  action_type?:
+    | "navigate"
+    | "click"
+    | "fill"
+    | "select"
+    | "check"
+    | "uncheck"
+    | "hover"
+    | "wait"
+    | "press";
+  selector?: string; // CSS selector  e.g. "input[name='email']"
+  input_value?: string; // Value to type/select/navigate to
+  wait_time?: number; // ms — only when action_type is "wait" and no selector
+  assertion?: {
+    type:
+      | "visible"
+      | "hidden"
+      | "text"
+      | "exact-text"
+      | "value"
+      | "url"
+      | "enabled"
+      | "disabled"
+      | "checked"
+      | "attribute"
+      | "count";
+    target?: string; // CSS selector for the asserted element (defaults to selector)
+    value?: string; // Expected text / url fragment / attribute value
+    attribute?: string; // For type "attribute"
+  };
 }
 
 interface GeneratedTestCase {
@@ -62,13 +108,64 @@ interface RequestBody {
 
 // ─── Structured output schema ─────────────────────────────────────────────────
 //
-// Both Anthropic (tool_use) and OpenAI (json_schema response_format) accept a
-// JSON Schema object describing the shape we want.  We define it once here and
-// pass it to whichever provider we're talking to.
+// The step schema now includes all automation fields so the AI populates them
+// directly. The exporters (Cypress / Playwright / Selenium) read these fields
+// instead of trying to parse human-readable action strings.
 
-// Typed as Anthropic.Tool["input_schema"] so it can be passed directly to both
-// the Anthropic tools array and (cast once) to the OpenAI json_schema field
-// without `as const` making the arrays readonly.
+const STEP_SCHEMA: Anthropic.Tool["input_schema"] = {
+  type: "object",
+  required: ["step_number", "action", "expected"],
+  additionalProperties: false,
+  properties: {
+    step_number: { type: "integer" },
+    action: { type: "string" },
+    expected: { type: "string" },
+    action_type: {
+      type: "string",
+      enum: [
+        "navigate",
+        "click",
+        "fill",
+        "select",
+        "check",
+        "uncheck",
+        "hover",
+        "wait",
+        "press",
+      ],
+    },
+    selector: { type: "string" },
+    input_value: { type: "string" },
+    wait_time: { type: "integer" },
+    assertion: {
+      type: "object",
+      required: ["type"],
+      additionalProperties: false,
+      properties: {
+        type: {
+          type: "string",
+          enum: [
+            "visible",
+            "hidden",
+            "text",
+            "exact-text",
+            "value",
+            "url",
+            "enabled",
+            "disabled",
+            "checked",
+            "attribute",
+            "count",
+          ],
+        },
+        target: { type: "string" },
+        value: { type: "string" },
+        attribute: { type: "string" },
+      },
+    },
+  },
+};
+
 const RESPONSE_SCHEMA: Anthropic.Tool["input_schema"] = {
   type: "object",
   required: ["test_cases"],
@@ -114,16 +211,7 @@ const RESPONSE_SCHEMA: Anthropic.Tool["input_schema"] = {
           preconditions: { type: ["string", "null"] },
           test_steps: {
             type: "array",
-            items: {
-              type: "object",
-              required: ["step_number", "action", "expected"],
-              additionalProperties: false,
-              properties: {
-                step_number: { type: "integer" },
-                action: { type: "string" },
-                expected: { type: "string" },
-              },
-            },
+            items: STEP_SCHEMA,
           },
           expected_result: { type: "string" },
           is_edge_case: { type: "boolean" },
@@ -222,15 +310,82 @@ Generate critical path tests that verify basic functionality.
 Focus on: application loads, core features are accessible, no JavaScript errors, no blocking errors.`,
 };
 
-const AUTOMATION_GUIDELINES = `
-You are generating test cases that will be automatically converted to Playwright scripts.
+// ─── Automation guidelines ────────────────────────────────────────────────────
+//
+// This is the most important prompt section for export quality.
+// Every field described here maps directly to the step schema above.
+// The more specific and consistent the examples, the better the output.
 
-Step action rules:
-- Navigation:  "Navigate to https://app.example.com/path"
-- Click:       "Click the button with text 'Sign In'" or "Click button[type='submit']"
-- Type:        "Type 'test@example.com' in input[name='email']"
-- Verify:      "Verify text 'Welcome' is visible" or "Verify URL contains '/dashboard'"
-- Always use specific, realistic test data — not placeholders like "valid email".
+const AUTOMATION_GUIDELINES = `
+You are generating test cases that will be automatically converted to runnable Cypress, Playwright, and Selenium scripts.
+
+Each step MUST include both human-readable fields AND structured automation fields:
+
+REQUIRED automation fields per step:
+  action_type  — one of: navigate, click, fill, select, check, uncheck, hover, wait, press
+  selector     — CSS selector for the target element (required for all except navigate)
+  input_value  — the value to type/select/navigate to (required for fill, select, navigate)
+
+OPTIONAL automation fields:
+  assertion    — what to verify after the action (type + target + value)
+  wait_time    — milliseconds, only when action_type is "wait" and there's no selector
+
+SELECTOR RULES — prefer in this order:
+  1. data-testid:  [data-testid="submit-button"]
+  2. name attr:    input[name="email"]
+  3. type attr:    input[type="password"]
+  4. aria-label:   [aria-label="Close dialog"]
+  5. text-based:   button:has-text("Generate Test Cases")   ← Cypress/Playwright only
+  Never use: nth-child, positional selectors, or long class chains
+
+STEP EXAMPLES:
+
+Navigate:
+  action: "Navigate to /generate"
+  action_type: "navigate"
+  input_value: "/generate"          ← path only, never full URL
+  selector: "body"
+  assertion: { type: "url", value: "/generate" }
+
+Fill a text field:
+  action: "Type 'test@example.com' in the email field"
+  action_type: "fill"
+  selector: "input[name='email']"
+  input_value: "test@example.com"
+  assertion: { type: "value", target: "input[name='email']", value: "test@example.com" }
+
+Fill with a long generated string (boundary test):
+  action: "Type a string of exactly 5001 characters in the requirements textarea"
+  action_type: "fill"
+  selector: "textarea[name='requirements']"
+  input_value: ""                   ← leave empty; the exporter generates 'a'.repeat(5001)
+  assertion: { type: "value", target: "textarea[name='requirements']", value: "" }
+
+Click:
+  action: "Click the Generate Test Cases button"
+  action_type: "click"
+  selector: "button[data-testid='generate-button']"
+  assertion: { type: "visible", target: "[data-testid='loading-indicator']" }
+
+Wait for element:
+  action: "Wait for success message to appear"
+  action_type: "wait"
+  selector: "[data-testid='success-message']"
+  wait_time: 10000
+  assertion: { type: "text", target: "[data-testid='success-message']", value: "Test cases generated successfully" }
+
+Select dropdown:
+  action: "Select 'Monthly' from the billing period dropdown"
+  action_type: "select"
+  selector: "select[name='billing_period']"
+  input_value: "Monthly"
+
+IMPORTANT RULES:
+- Use path-only input_value for navigate steps (e.g. "/dashboard" not "https://app.example.com/dashboard")
+- For boundary tests that require N characters, set input_value to "" and describe the count in the action text
+- For special characters (accents, quotes, symbols), put the exact value in input_value — the exporter handles escaping
+- Every step that changes state should have an assertion verifying the outcome
+- Use realistic test data — not placeholders like "valid email" or "some text"
 `;
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -266,7 +421,7 @@ function buildTypePrompt(params: {
   const label = TEST_TYPE_LABELS[testType] ?? testType;
   const typeGuide = TEST_TYPE_INSTRUCTIONS[testType] ?? "";
   const urlCtx = application_url
-    ? `\nApplication base URL: ${application_url}`
+    ? `\nApplication base URL (for context only — use path-only in navigate steps): ${application_url}`
     : "";
   const tmplCtx = template ? `\nTemplate structure:\n${template}` : "";
 
@@ -278,7 +433,8 @@ ${requirements}${urlCtx}${tmplCtx}
 Test type guidance:
 ${typeGuide}
 
-Return your response by calling the generate_test_cases tool with a test_cases array containing EXACTLY ${count} objects.`;
+Return your response by calling the generate_test_cases tool with a test_cases array containing EXACTLY ${count} objects.
+Every step MUST include action_type, selector (where applicable), and input_value (where applicable).`;
 }
 
 // ─── Structured LLM calls ─────────────────────────────────────────────────────
@@ -289,10 +445,6 @@ interface BatchResult {
   model: string;
 }
 
-/**
- * Call Anthropic with tool_use forcing structured output.
- * The model MUST call the tool — no free-text response possible.
- */
 async function callAnthropic(
   modelId: string,
   prompt: string,
@@ -321,9 +473,6 @@ async function callAnthropic(
   return input.test_cases ?? [];
 }
 
-/**
- * Call OpenAI with json_schema response_format forcing structured output.
- */
 async function callOpenAI(
   modelId: string,
   prompt: string,
@@ -348,10 +497,6 @@ async function callOpenAI(
   return parsed.test_cases ?? [];
 }
 
-/**
- * Try primary provider, fall back to the other if it throws.
- * Both branches now use structured outputs — no JSON parsing fragility.
- */
 async function callWithFallback(
   modelKey: ModelKey,
   prompt: string,
@@ -364,7 +509,6 @@ async function callWithFallback(
   );
   const fallbackModelId = getModelId(fallbackKey);
 
-  // Primary
   try {
     if (primaryIsAnthropic) {
       const cases = await callAnthropic(primaryModelId, prompt, expectedCount);
@@ -377,14 +521,11 @@ async function callWithFallback(
     console.error(`[LLM] Primary (${primaryModelId}) failed:`, err);
   }
 
-  // Fallback
   try {
     if (primaryIsAnthropic) {
-      // primary was Anthropic → fallback is OpenAI
       const cases = await callOpenAI(fallbackModelId, prompt, expectedCount);
       return { cases, provider: "openai", model: fallbackModelId };
     } else {
-      // primary was OpenAI → fallback is Anthropic
       const cases = await callAnthropic(fallbackModelId, prompt, expectedCount);
       return { cases, provider: "anthropic", model: fallbackModelId };
     }
@@ -405,10 +546,6 @@ interface TypeBatchResult {
   error?: string;
 }
 
-/**
- * Run one structured LLM call per test type in parallel.
- * Types that fail are retried once before being marked as failed.
- */
 async function generateAllTypes(params: {
   requirements: string;
   testTypes: string[];
@@ -454,7 +591,6 @@ async function generateAllTypes(params: {
     }
   };
 
-  // First wave — all types in parallel
   const firstWave = await Promise.allSettled(testTypes.map(runBatch));
 
   const results: TypeBatchResult[] = [];
@@ -466,7 +602,6 @@ async function generateAllTypes(params: {
       retryTypes.push(testTypes[i]);
       continue;
     }
-    // Also retry if we got significantly fewer cases than requested
     const expected = countPerType[r.value.testType] ?? 1;
     if (r.value.cases.length < Math.ceil(expected * 0.8)) {
       retryTypes.push(r.value.testType);
@@ -475,7 +610,6 @@ async function generateAllTypes(params: {
     }
   }
 
-  // Retry wave — sequential to avoid hammering the API
   if (retryTypes.length > 0) {
     console.warn(`[batch] Retrying types: ${retryTypes.join(", ")}`);
     for (const testType of retryTypes) {
@@ -528,7 +662,6 @@ export async function POST(request: Request) {
     const description = body.description ?? null;
     const application_url = (body.application_url ?? "").trim();
 
-    // ── Validation ────────────────────────────────────────────────────────────
     if (!requirements) {
       return NextResponse.json(
         { error: "Requirements are required", field: "requirements" },
@@ -551,7 +684,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── Usage quota ───────────────────────────────────────────────────────────
     try {
       await checkUsageQuota(user.id, testCaseCount);
     } catch (e) {
@@ -593,7 +725,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── Distribute counts and generate in parallel batches ────────────────────
     const countPerType = distributeCount(testCaseCount, testTypes);
     console.log("[generate] countPerType:", countPerType);
 
@@ -606,7 +737,6 @@ export async function POST(request: Request) {
       template: template || undefined,
     });
 
-    // Flatten all cases, trim to requested total
     const allCases = batchResults
       .flatMap((r) => r.cases)
       .slice(0, testCaseCount);
@@ -620,13 +750,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Derive a representative provider/model from whichever batch ran last successfully
     const lastSuccessful = batchResults.findLast((r) => r.cases.length > 0);
     const providerUsed = lastSuccessful?.provider ?? "anthropic";
     const modelUsed = lastSuccessful?.model ?? getModelId(modelKey);
 
-    // ── Save generation record ────────────────────────────────────────────────
-    // Use the prompt from the first batch as a representative sample
     const samplePrompt = buildTypePrompt({
       requirements,
       testType: testTypes[0],
@@ -655,7 +782,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── Save test cases ───────────────────────────────────────────────────────
     const rows = allCases.map((tc) => ({
       generation_id: generation.id,
       requirement_id,
@@ -692,7 +818,6 @@ export async function POST(request: Request) {
       () => {},
     );
 
-    // ── Partial failure reporting ─────────────────────────────────────────────
     const failedTypes = batchResults
       .filter((r) => r.error || r.cases.length === 0)
       .map((r) => r.testType);
