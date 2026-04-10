@@ -50,6 +50,7 @@ import {
   Layers,
   Zap,
   Lock,
+  ChartNoAxesColumn,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -75,6 +76,7 @@ const PRO_ONLY_ROUTES = [
   "/analytics",
   "/integrations",
   "/test-runs",
+  "/reports",
 ];
 
 const navigation = [
@@ -87,6 +89,7 @@ const navigation = [
   { name: "Test Suites", href: "/test-library", icon: Library },
   { name: "Automation", href: "/automation", icon: Zap },
   { name: "Templates", href: "/template-manager", icon: Layout },
+  { name: "Reports", href: "/reports", icon: ChartNoAxesColumn },
 ];
 
 const secondaryNavigation = [

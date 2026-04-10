@@ -58,6 +58,7 @@
     "openai": "^6.8.1",
     "playwright": "^1.57.0",
     "playwright-core": "^1.57.0",
+    "puppeteer": "^24.40.0",
     "react": "19.2.3",
     "react-day-picker": "^9.12.0",
     "react-dom": "19.2.3",
