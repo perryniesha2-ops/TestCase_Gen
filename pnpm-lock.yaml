@@ -80,6 +80,9 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.8
         version: 1.2.8(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@sparticuz/chromium':
+        specifier: ^147.0.0
+        version: 147.0.0
       '@stripe/stripe-js':
         specifier: ^8.4.0
         version: 8.4.0
@@ -146,6 +149,9 @@ importers:
       puppeteer:
         specifier: ^24.40.0
         version: 24.40.0(typescript@5.9.3)
+      puppeteer-core:
+        specifier: ^24.40.0
+        version: 24.40.0
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -1096,6 +1102,10 @@ packages:
         optional: true
       react-redux:
         optional: true
+
+  '@sparticuz/chromium@147.0.0':
+    resolution: {integrity: sha512-4ZKeAQQa8up2mt675qSitztLdbQrlf8BKdC5naeap+5Mv1OV1OlJdPoU+EJC/p5sQUJUQmN4r+q5+EhaaOUHpQ==}
+    engines: {node: '>=20.11.0'}
 
   '@stablelib/base64@1.0.1':
     resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
@@ -3466,6 +3476,16 @@ snapshots:
     optionalDependencies:
       react: 19.2.3
       react-redux: 9.2.0(@types/react@19.2.7)(react@19.2.3)(redux@5.0.1)
+
+  '@sparticuz/chromium@147.0.0':
+    dependencies:
+      follow-redirects: 1.15.11
+      tar-fs: 3.1.2
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - bare-buffer
+      - debug
+      - react-native-b4a
 
   '@stablelib/base64@1.0.1': {}
 

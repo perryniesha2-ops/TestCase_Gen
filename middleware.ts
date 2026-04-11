@@ -62,6 +62,8 @@ export async function middleware(request: NextRequest) {
     "/analytics",
     "/integrations",
     "/test-runs",
+    "/automation",
+    "/reports",
   ];
 
   const isDocPage =
