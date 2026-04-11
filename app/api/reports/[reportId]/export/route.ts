@@ -55,11 +55,17 @@ export async function POST(
       });
     } else {
       // Production/Vercel: use sparticuz chromium
-      const chromium = await import("@sparticuz/chromium");
+
+      const chromium = await import("@sparticuz/chromium-min");
       const puppeteer = await import("puppeteer-core");
+
+      const executablePath = await chromium.default.executablePath(
+        "https://github.com/Sparticuz/chromium/releases/download/v147.0.0/chromium-v147.0.0-pack.tar",
+      );
+
       browser = await puppeteer.default.launch({
         args: chromium.default.args,
-        executablePath: await chromium.default.executablePath(),
+        executablePath,
         headless: true,
       });
     }

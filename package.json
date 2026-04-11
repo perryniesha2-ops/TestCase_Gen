@@ -38,6 +38,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@sparticuz/chromium": "^147.0.0",
+    "@sparticuz/chromium-min": "^147.0.0",
     "@stripe/stripe-js": "^8.4.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.80.0",
