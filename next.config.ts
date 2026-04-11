@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
     },
   },
 
-  // Remove webpack section completely
+  serverExternalPackages: ["@sparticuz/chromium-min", "puppeteer-core"],
 };
 
 export default nextConfig;

@@ -514,12 +514,12 @@ export default function JiraIntegrationDocsPage() {
                 },
                 {
                   problem: "Webhook fires but test case is not flagged",
-                  fix: "Check that the Jira issue was created via SynthQA's Create Issues button. Issues created manually in Jira are not tracked. Also confirm the test_cases.status constraint allows needs_rerun.",
+                  fix: "Check that the Jira issue was created via SynthQA's Create Issues button. Issues created manually in Jira are not tracked.",
                 },
                 {
                   problem:
                     "Fix Verification panel shows nothing after Jira issue is closed",
-                  fix: "Check Vercel logs for [jira-webhook] entries. The most common causes are: the webhook URL has the wrong integration_id, or the integration_issues row has no execution_id linked.",
+                  fix: "The most common causes are: the webhook URL has the wrong integration_id, or the integration_issues row has no execution_id linked.",
                 },
                 {
                   problem: "Session pending badge not showing",

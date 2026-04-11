@@ -7,6 +7,25 @@ export async function middleware(request: NextRequest) {
 
   const response = NextResponse.next();
 
+  // ─── Beta Gate ──────────────────────────────────────────────────────────────
+  // Block all pages except /beta and /api/beta/* unless beta_auth cookie is set
+
+  const isBetaPage = pathname === "/beta-login";
+  const isBetaApi = pathname.startsWith("/api/beta-login");
+  const hasBetaAuth = request.cookies.get("beta_auth")?.value === "true";
+
+  if (!hasBetaAuth && !isBetaPage && !isBetaApi) {
+    return NextResponse.redirect(new URL("/beta-login", request.url));
+  }
+
+  // ─── Skip full auth logic for beta page and beta API ────────────────────────
+
+  if (isBetaPage || isBetaApi) {
+    return response;
+  }
+
+  // ─── Supabase Client ────────────────────────────────────────────────────────
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -26,7 +45,6 @@ export async function middleware(request: NextRequest) {
 
   // ─── Route Definitions ──────────────────────────────────────────────────────
 
-  // Fully public — no auth required, no tier check
   const publicRoutes = [
     "/",
     "/login",
@@ -42,7 +60,6 @@ export async function middleware(request: NextRequest) {
     "/docs",
   ];
 
-  // Requires login, accessible to free tier
   const freeAuthRoutes = [
     "/dashboard",
     "/billing",
@@ -52,7 +69,6 @@ export async function middleware(request: NextRequest) {
     "/cross-platform-cases",
   ];
 
-  // Requires login + active paid subscription
   const proOnlyRoutes = [
     "/automation",
     "/test-library",
@@ -62,6 +78,8 @@ export async function middleware(request: NextRequest) {
     "/analytics",
     "/integrations",
     "/test-runs",
+    "/automation",
+    "/reports",
   ];
 
   const isDocPage =
@@ -74,7 +92,6 @@ export async function middleware(request: NextRequest) {
     publicRoutes.some((r) => pathname === r) || isAuthCallback || isDocPage;
 
   const isFreeAuthRoute = freeAuthRoutes.some((r) => pathname.startsWith(r));
-
   const isProOnlyRoute = proOnlyRoutes.some((r) => pathname.startsWith(r));
 
   // ─── Get User ───────────────────────────────────────────────────────────────
@@ -123,11 +140,10 @@ export async function middleware(request: NextRequest) {
     const tierCacheTime = request.cookies.get("tier_cache_time")?.value;
     const now = Date.now();
     const cacheAge = tierCacheTime ? now - parseInt(tierCacheTime) : Infinity;
-    const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+    const CACHE_TTL = 5 * 60 * 1000;
 
     let userTier: string = "free";
 
-    // Always fetch fresh if cache is stale or missing
     if (!cachedTier || cacheAge > CACHE_TTL) {
       const { data: profile } = await supabase
         .from("user_profiles")
@@ -137,14 +153,11 @@ export async function middleware(request: NextRequest) {
 
       const subscriptionStatus = profile?.subscription_status ?? "inactive";
       const rawTier = profile?.subscription_tier ?? "free";
-
-      // Only grant pro access if subscription is actually active
       const isActive =
         subscriptionStatus === "active" || subscriptionStatus === "trial";
 
       userTier = isActive && rawTier !== "free" ? rawTier : "free";
 
-      // Cache the resolved tier
       response.cookies.set("user_tier", userTier, {
         maxAge: CACHE_TTL / 1000,
         httpOnly: true,
