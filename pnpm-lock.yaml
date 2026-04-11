@@ -80,12 +80,9 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.8
         version: 1.2.8(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      '@sparticuz/chromium':
-        specifier: ^147.0.0
-        version: 147.0.0
       '@sparticuz/chromium-min':
-        specifier: ^147.0.0
-        version: 147.0.0
+        specifier: ^143.0.4
+        version: 143.0.4
       '@stripe/stripe-js':
         specifier: ^8.4.0
         version: 8.4.0
@@ -1106,12 +1103,8 @@ packages:
       react-redux:
         optional: true
 
-  '@sparticuz/chromium-min@147.0.0':
-    resolution: {integrity: sha512-NGmo7YpM7yihKSIXvOuqelLcoJFTsc1lAiWIqA2/5W/gWop5+ZDceflDdnaJYUjZOCUY3kTHDDakbNKb74km9A==}
-    engines: {node: '>=20.11.0'}
-
-  '@sparticuz/chromium@147.0.0':
-    resolution: {integrity: sha512-4ZKeAQQa8up2mt675qSitztLdbQrlf8BKdC5naeap+5Mv1OV1OlJdPoU+EJC/p5sQUJUQmN4r+q5+EhaaOUHpQ==}
+  '@sparticuz/chromium-min@143.0.4':
+    resolution: {integrity: sha512-vAV731SUEVH0FUmMc+404ZoRq0glq7DlhEGpAX0C7/rXupZ0HasOIJHbrjNNNE+VElenkdmwBm8MVTzwYcFPyQ==}
     engines: {node: '>=20.11.0'}
 
   '@stablelib/base64@1.0.1':
@@ -3484,17 +3477,7 @@ snapshots:
       react: 19.2.3
       react-redux: 9.2.0(@types/react@19.2.7)(react@19.2.3)(redux@5.0.1)
 
-  '@sparticuz/chromium-min@147.0.0':
-    dependencies:
-      follow-redirects: 1.15.11
-      tar-fs: 3.1.2
-    transitivePeerDependencies:
-      - bare-abort-controller
-      - bare-buffer
-      - debug
-      - react-native-b4a
-
-  '@sparticuz/chromium@147.0.0':
+  '@sparticuz/chromium-min@143.0.4':
     dependencies:
       follow-redirects: 1.15.11
       tar-fs: 3.1.2
