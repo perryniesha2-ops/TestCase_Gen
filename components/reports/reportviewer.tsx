@@ -388,42 +388,40 @@ function ExecutionTrendLine({ data }: { data: ReportData }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="w-full overflow-hidden">
-          <ResponsiveContainer width="100%" minWidth={300} height={300}>
-            <LineChart data={data.execution_trend}>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-              <XAxis
-                dataKey="date"
-                style={{ fontSize: "12px" }}
-                tickFormatter={(v) => {
-                  const d = new Date(v);
-                  return `${d.getMonth() + 1}/${d.getDate()}`;
-                }}
-              />
-              <YAxis style={{ fontSize: "12px" }} />
-              <Tooltip
-                contentStyle={{ fontSize: "12px", borderRadius: "8px" }}
-              />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="passed"
-                stroke="#10b981"
-                strokeWidth={2}
-                dot={{ r: 3 }}
-                name="Passed"
-              />
-              <Line
-                type="monotone"
-                dataKey="failed"
-                stroke="#ef4444"
-                strokeWidth={2}
-                dot={{ r: 3 }}
-                name="Failed"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={data.execution_trend}>
+            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+            <XAxis
+              dataKey="date"
+              style={{ fontSize: "12px" }}
+              tickFormatter={(v) => {
+                const d = new Date(v);
+                return `${d.getMonth() + 1}/${d.getDate()}`;
+              }}
+            />
+            <YAxis style={{ fontSize: "12px" }} />
+            <Tooltip contentStyle={{ fontSize: "12px", borderRadius: "8px" }} />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey="passed"
+              stroke="#10b981"
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              name="Passed"
+              isAnimationActive={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="failed"
+              stroke="#ef4444"
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              name="Failed"
+              isAnimationActive={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </CardContent>
     </Card>
   );
@@ -466,6 +464,7 @@ function StatusDistributionPie({ data }: { data: ReportData }) {
               cy="50%"
               outerRadius={110}
               dataKey="value"
+              isAnimationActive={false}
               label={({ name, percent }) =>
                 `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
               }
@@ -503,24 +502,21 @@ function TestTypeBreakdownBar({ data }: { data: ReportData }) {
         <CardDescription>Distribution of test case types</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="w-full overflow-hidden">
-          <ResponsiveContainer width="100%" minWidth={300} height={300}>
-            <BarChart data={data.test_type_breakdown}>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-              <XAxis dataKey="name" style={{ fontSize: "12px" }} />
-              <YAxis style={{ fontSize: "12px" }} />
-              <Tooltip
-                contentStyle={{ fontSize: "12px", borderRadius: "8px" }}
-              />
-              <Bar
-                dataKey="count"
-                fill="#6366f1"
-                radius={[4, 4, 0, 0]}
-                name="Tests"
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={data.test_type_breakdown}>
+            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+            <XAxis dataKey="name" style={{ fontSize: "12px" }} />
+            <YAxis style={{ fontSize: "12px" }} />
+            <Tooltip contentStyle={{ fontSize: "12px", borderRadius: "8px" }} />
+            <Bar
+              dataKey="count"
+              fill="#6366f1"
+              radius={[4, 4, 0, 0]}
+              name="Tests"
+              isAnimationActive={false}
+            />
+          </BarChart>
+        </ResponsiveContainer>
       </CardContent>
     </Card>
   );
@@ -753,8 +749,8 @@ export function ReportViewer({
   const { user } = useAuth();
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   // Resolved from props or fetched from Supabase when only reportId is passed
   const [resolvedConfig, setResolvedConfig] = useState<ReportConfig | null>(
     configProp ?? null,
@@ -766,19 +762,20 @@ export function ReportViewer({
   // Fetch report config from Supabase when only reportId is provided
   useEffect(() => {
     if (configProp || !reportId) return;
-
-    fetch(`/api/reports/${reportId}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Not found");
-        return res.json();
-      })
-      .then((report) => {
+    const supabase = createClient();
+    supabase
+      .from("reports")
+      .select("name, config")
+      .eq("id", reportId)
+      .single()
+      .then(({ data: report, error: fetchErr }) => {
+        if (fetchErr || !report) {
+          setError("Report not found");
+          setLoading(false);
+          return;
+        }
         setResolvedConfig(report.config as ReportConfig);
         setResolvedName(report.name);
-      })
-      .catch(() => {
-        setError("Report not found");
-        setLoading(false);
       });
   }, [reportId, configProp]);
 
@@ -806,66 +803,205 @@ export function ReportViewer({
   const reportName = resolvedName;
 
   const handleExport = async () => {
-    if (!reportId) {
-      toast.error("Save the report first to export as PDF");
-      return;
-    }
     setExporting(true);
     try {
-      console.log("[PDF export] Starting for reportId:", reportId);
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas-pro"),
+        import("jspdf"),
+      ]);
 
-      const res = await fetch(`/api/reports/${reportId}/export`, {
-        method: "POST",
+      const reportEl = document.getElementById("report-content");
+      if (!reportEl) {
+        toast.error("Report content not found");
+        return;
+      }
+
+      // Create a wrapper with explicit light-mode hex colors
+      // html2canvas does NOT support oklch/lab color functions — use hex only
+      const wrapper = document.createElement("div");
+      Object.assign(wrapper.style, {
+        position: "fixed",
+        top: "-99999px",
+        left: "0",
+        width: "1200px",
+        backgroundColor: "#ffffff",
+        color: "#0f172a",
+        padding: "40px",
+        boxSizing: "border-box",
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        zIndex: "-1",
       });
 
-      console.log("[PDF export] Status:", res.status, res.statusText);
-      console.log(
-        "[PDF export] Content-Type:",
-        res.headers.get("content-type"),
-      );
+      // Override all CSS vars with plain hex equivalents (no oklch)
+      const lightVars = [
+        ["--background", "#ffffff"],
+        ["--foreground", "#0f172a"],
+        ["--card", "#ffffff"],
+        ["--card-foreground", "#0f172a"],
+        ["--popover", "#ffffff"],
+        ["--popover-foreground", "#0f172a"],
+        ["--primary", "#1e293b"],
+        ["--primary-foreground", "#f8fafc"],
+        ["--secondary", "#f1f5f9"],
+        ["--secondary-foreground", "#1e293b"],
+        ["--muted", "#f1f5f9"],
+        ["--muted-foreground", "#64748b"],
+        ["--accent", "#f1f5f9"],
+        ["--accent-foreground", "#1e293b"],
+        ["--destructive", "#ef4444"],
+        ["--border", "#e2e8f0"],
+        ["--input", "#e2e8f0"],
+        ["--ring", "#94a3b8"],
+      ];
+      lightVars.forEach(([k, v]) => wrapper.style.setProperty(k, v));
 
-      if (!res.ok) {
-        const errText = await res.text().catch(() => "(unreadable)");
-        console.error("[PDF export] Server error:", res.status, errText);
-        toast.error(`Export failed (${res.status}): ${errText.slice(0, 100)}`);
-        return;
-      }
+      const clone = reportEl.cloneNode(true) as HTMLElement;
+      clone.classList.remove("dark");
+      wrapper.appendChild(clone);
+      document.body.appendChild(wrapper);
 
-      const contentType = res.headers.get("content-type") ?? "";
-      if (!contentType.includes("application/pdf")) {
-        const body = await res.text().catch(() => "(unreadable)");
-        console.error(
-          "[PDF export] Wrong content-type:",
-          contentType,
-          "Body:",
-          body.slice(0, 500),
+      // Walk every element and replace any computed color that html2canvas
+      // can't handle (oklch, lab, lch) with plain hex equivalents
+      wrapper.querySelectorAll("*").forEach((el) => {
+        const htmlEl = el as HTMLElement;
+        const cs = window.getComputedStyle(htmlEl);
+
+        // Background
+        const bg = cs.backgroundColor;
+        if (bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") {
+          const nums = bg.match(/[\d.]+/g)?.map(Number) ?? [];
+          if (nums.length >= 3) {
+            const lum = (nums[0] * 299 + nums[1] * 587 + nums[2] * 114) / 1000;
+            htmlEl.style.backgroundColor = lum < 80 ? "#ffffff" : bg;
+          }
+        } else {
+          htmlEl.style.backgroundColor = "transparent";
+        }
+
+        // Text color
+        const fg = cs.color;
+        if (fg) {
+          const nums = fg.match(/[\d.]+/g)?.map(Number) ?? [];
+          if (nums.length >= 3) {
+            const lum = (nums[0] * 299 + nums[1] * 587 + nums[2] * 114) / 1000;
+            htmlEl.style.color = lum > 200 ? "#0f172a" : fg;
+          }
+        }
+
+        // Border
+        const border = cs.borderColor;
+        if (border && border.includes("oklch")) {
+          htmlEl.style.borderColor = "#e2e8f0";
+        }
+      });
+
+      // Disable all CSS animations and transitions so charts are fully rendered
+      const styleTag = document.createElement("style");
+      styleTag.textContent =
+        "* { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; }";
+      wrapper.appendChild(styleTag);
+
+      // Short settle time for DOM to fully paint
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const canvas = await html2canvas(wrapper, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        width: 1200,
+        logging: false,
+        onclone: (_doc, el) => {
+          // Disable animations in the cloned document too
+          const s = _doc.createElement("style");
+          s.textContent =
+            "* { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; }";
+          _doc.head.appendChild(s);
+
+          // Replace any remaining oklch/lab in inline styles
+          el.querySelectorAll("[style]").forEach((node) => {
+            const htmlNode = node as HTMLElement;
+            if (
+              htmlNode.style.cssText.includes("oklch") ||
+              htmlNode.style.cssText.includes("lab(")
+            ) {
+              htmlNode.style.backgroundColor = "#ffffff";
+              htmlNode.style.color = "#0f172a";
+              htmlNode.style.borderColor = "#e2e8f0";
+            }
+          });
+        },
+      });
+
+      document.body.removeChild(wrapper);
+
+      // A4 dimensions in mm
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 12;
+      const contentWidth = pageWidth - margin * 2;
+
+      // Image starts at the top margin — no duplicate header
+      const imgData = canvas.toDataURL("image/png");
+      const imgWidth = contentWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const startY = margin;
+      const availableHeight = pageHeight - startY - margin;
+
+      // Scale factor: how many canvas pixels per mm on the PDF
+      const scale = canvas.width / imgWidth;
+
+      // How tall (in canvas px) fits on each PDF page
+      const pageSlicePx = Math.floor((pageHeight - margin * 2) * scale);
+
+      // Slice the canvas using a temp canvas — one slice per PDF page
+      const sliceCanvas = document.createElement("canvas");
+      sliceCanvas.width = canvas.width;
+      const sliceCtx = sliceCanvas.getContext("2d")!;
+
+      let offsetY = 0;
+      let pageNum = 0;
+
+      while (offsetY < canvas.height) {
+        const remainingPx = canvas.height - offsetY;
+        const slicePx = Math.min(pageSlicePx, remainingPx);
+
+        sliceCanvas.height = slicePx;
+        sliceCtx.fillStyle = "#ffffff";
+        sliceCtx.fillRect(0, 0, sliceCanvas.width, slicePx);
+        sliceCtx.drawImage(
+          canvas,
+          0,
+          offsetY, // source x, y
+          canvas.width,
+          slicePx, // source width, height
+          0,
+          0, // dest x, y
+          canvas.width,
+          slicePx, // dest width, height
         );
-        toast.error("Server returned unexpected response — check console");
-        return;
+
+        const sliceImg = sliceCanvas.toDataURL("image/png");
+        const sliceHeightMm = slicePx / scale;
+
+        if (pageNum > 0) pdf.addPage();
+
+        pdf.addImage(sliceImg, "PNG", margin, margin, imgWidth, sliceHeightMm);
+
+        offsetY += slicePx;
+        pageNum++;
       }
 
-      const blob = await res.blob();
-      console.log("[PDF export] Blob size:", blob.size, "bytes");
-
-      if (blob.size === 0) {
-        console.error("[PDF export] Empty PDF blob");
-        toast.error("PDF was empty — the print page may not have loaded");
-        return;
-      }
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${reportName.replace(/\s+/g, "-")}-${new Date().toISOString().split("T")[0]}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const fileName = `${reportName.replace(/\s+/g, "-")}-${new Date().toISOString().split("T")[0]}.pdf`;
+      pdf.save(fileName);
       toast.success("PDF downloaded");
-      console.log("[PDF export] Done");
     } catch (e: any) {
-      console.error("[PDF export] Exception:", e?.message, e?.stack);
-      toast.error(`Export failed: ${e?.message ?? "Unknown error"}`);
+      console.error("[PDF export]", e);
+      toast.error("Failed to generate PDF");
     } finally {
       setExporting(false);
     }
