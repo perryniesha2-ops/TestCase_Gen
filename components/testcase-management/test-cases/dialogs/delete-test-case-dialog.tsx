@@ -1,7 +1,5 @@
 // components/testcase-management/dialogs/delete-test-case-dialog.tsx
-
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -41,25 +39,24 @@ export function DeleteTestCaseDialog({
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      const supabase = createClient();
-
       const table = isRegularTestCase(testCase)
-        ? "test_cases"
-        : "platform_test_cases";
+        ? "test-cases"
+        : "platform-test-cases";
+      const res = await fetch(`/api/${table}/${testCase.id}`, {
+        method: "DELETE",
+      });
 
-      const { error } = await supabase
-        .from(table)
-        .delete()
-        .eq("id", testCase.id);
-
-      if (error) throw error;
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Failed to delete");
+      }
 
       toast.success("Test case deleted");
       onSuccess();
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Delete error:", error);
-      toast.error("Failed to delete test case");
+      toast.error(error?.message ?? "Failed to delete test case");
     } finally {
       setDeleting(false);
     }

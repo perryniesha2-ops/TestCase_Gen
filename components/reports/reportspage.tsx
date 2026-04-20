@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -349,33 +348,32 @@ export function ReportsPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchReports = async () => {
-    if (!user) return;
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("reports")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("updated_at", { ascending: false });
-
-    if (error) {
+    if (!user?.id) return;
+    try {
+      const res = await fetch("/api/reports", { cache: "no-store" });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.error ?? "Failed to load reports");
+      setReports((payload.reports ?? []) as SavedReport[]);
+    } catch {
       toast.error("Failed to load reports");
-    } else {
-      setReports((data ?? []) as SavedReport[]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
+    if (!user?.id) return;
     void fetchReports();
-  }, [user]);
+  }, [user?.id]);
 
   const handleDelete = async (id: string, name: string) => {
     const confirmed = window.confirm(
       `Delete "${name}"? This cannot be undone.`,
     );
     if (!confirmed) return;
-    const supabase = createClient();
-    const { error } = await supabase.from("reports").delete().eq("id", id);
+    const res = await fetch(`/api/reports/${id}`, { method: "DELETE" });
+    const error = res.ok ? null : true;
+
     if (error) {
       toast.error("Failed to delete report");
     } else {

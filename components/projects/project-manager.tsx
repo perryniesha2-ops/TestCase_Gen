@@ -66,19 +66,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { ProjectEditorDialog } from "@/components/projects/projecteditor";
-
-// Types
-type ProjectStatus = "active" | "archived" | "completed" | "on_hold";
-type ProjectColor =
-  | "blue"
-  | "green"
-  | "purple"
-  | "orange"
-  | "red"
-  | "pink"
-  | "indigo"
-  | "yellow"
-  | "gray";
+import { ProjectStatus, ProjectColor, ProjectFormData } from "@/types/projects";
 
 interface ProjectWithStats {
   id: string;
@@ -98,16 +86,6 @@ interface ProjectWithStats {
   requirements_count: number;
   templates_count: number;
   test_cases_count: number;
-}
-
-interface ProjectFormData {
-  name: string;
-  description: string;
-  status: ProjectStatus;
-  color: ProjectColor;
-  icon: string;
-  start_date: string;
-  target_end_date: string;
 }
 
 const projectIcons: Record<
@@ -230,12 +208,10 @@ export function ProjectManager() {
     if (authLoading) return;
     if (!user) return;
     void fetchProjects();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user?.id]);
 
   useEffect(() => {
     filterProjects();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects, searchQuery, statusFilter, activeTab]);
 
   async function fetchProjects() {

@@ -28,8 +28,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const project_id = url.searchParams.get("project_id");
 
-  const db = serviceClient();
-
+  const db = supabase;
   // Fetch needs_rerun cases
   let q = db
     .from("test_cases")
@@ -152,8 +151,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
 
-  const db = serviceClient();
-
+  const db = supabase;
   // Verify cases belong to this user and are needs_rerun
   const { data: cases, error: casesError } = await db
     .from("test_cases")

@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -52,12 +51,9 @@ export function BulkUpdateDialog({
   const [selectedSuite, setSelectedSuite] = useState("");
 
   useEffect(() => {
-    if (open && action === "project") {
-      fetchProjects();
-    }
-    if (open && action === "suite") {
-      fetchSuites();
-    }
+    if (!open) return;
+    if (action === "project") void fetchProjects();
+    if (action === "suite") void fetchSuites();
   }, [open, action]);
 
   useEffect(() => {
@@ -69,47 +65,31 @@ export function BulkUpdateDialog({
     }
   }, [open]);
 
+  // ── Fetch via API routes — no direct Supabase ─────────────────────────────
+
   async function fetchProjects() {
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from("projects")
-        .select("id, name, color, icon")
-        .eq("user_id", user.id)
-        .order("name");
-
-      if (error) throw error;
-      setProjects(data || []);
+      const res = await fetch("/api/projects/list", { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to load projects");
+      const data = await res.json();
+      setProjects(data.projects ?? []);
     } catch (error) {
-      console.error("Error fetching projects:", error);
+      console.error("[BulkUpdateDialog] fetchProjects error:", error);
     }
   }
 
   async function fetchSuites() {
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from("suites")
-        .select("id, name, suite_type, kind, status, created_at, project_id")
-        .eq("user_id", user.id)
-        .order("name");
-
-      if (error) throw error;
-      setSuites(data || []);
+      const res = await fetch("/api/suites/list", { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to load suites");
+      const data = await res.json();
+      setSuites(data.suites ?? []);
     } catch (error) {
-      console.error("Error fetching suites:", error);
+      console.error("[BulkUpdateDialog] fetchSuites error:", error);
     }
   }
+
+  // ── Submit ────────────────────────────────────────────────────────────────
 
   async function handleSubmit() {
     setLoading(true);
@@ -119,22 +99,17 @@ export function BulkUpdateDialog({
           alert("Please select a suite");
           return;
         }
-        if (onAddToSuite) {
-          await onAddToSuite(selectedSuite);
-        }
+        if (onAddToSuite) await onAddToSuite(selectedSuite);
         onOpenChange(false);
         return;
       }
 
       if (onUpdate) {
         const updates: any = {};
-
-        if (action === "status" && selectedStatus) {
+        if (action === "status" && selectedStatus)
           updates.status = selectedStatus;
-        }
-        if (action === "priority" && selectedPriority) {
+        if (action === "priority" && selectedPriority)
           updates.priority = selectedPriority;
-        }
         if (action === "project") {
           updates.project_id =
             selectedProject === "__none__" ? null : selectedProject || null;
@@ -144,7 +119,6 @@ export function BulkUpdateDialog({
           alert("Please select a value");
           return;
         }
-
         await onUpdate(updates);
         onOpenChange(false);
       }
@@ -168,20 +142,17 @@ export function BulkUpdateDialog({
     }
   }
 
-  function getDialogDescription() {
-    return `Update ${selectedCount} test case${selectedCount === 1 ? "" : "s"}`;
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>{getDialogTitle()}</DialogTitle>
-          <DialogDescription>{getDialogDescription()}</DialogDescription>
+          <DialogDescription>
+            Update {selectedCount} test case{selectedCount === 1 ? "" : "s"}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Status Selection - Both types */}
           {action === "status" && (
             <div className="space-y-2">
               <Label htmlFor="status">New Status</Label>
@@ -198,7 +169,6 @@ export function BulkUpdateDialog({
             </div>
           )}
 
-          {/* Priority Selection - Both types */}
           {action === "priority" && (
             <div className="space-y-2">
               <Label htmlFor="priority">New Priority</Label>
@@ -219,7 +189,6 @@ export function BulkUpdateDialog({
             </div>
           )}
 
-          {/* Project Selection - Both types */}
           {action === "project" && (
             <div className="space-y-2">
               <Label htmlFor="project">Project</Label>
@@ -242,7 +211,6 @@ export function BulkUpdateDialog({
             </div>
           )}
 
-          {/* Suite Selection - Both types */}
           {action === "suite" && (
             <div className="space-y-2">
               <Label htmlFor="suite">Test Suite</Label>

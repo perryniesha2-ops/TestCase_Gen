@@ -46,32 +46,12 @@ import {
   migrateModelKey,
 } from "@/lib/ai-models/config";
 import { Separator } from "@radix-ui/react-separator";
-
-type TemplateCategory =
-  | "functional"
-  | "security"
-  | "performance"
-  | "integration"
-  | "regression"
-  | "accessibility"
-  | "other";
-
-type Coverage = "standard" | "comprehensive" | "exhaustive";
-
-type UserProfile = {
-  id: string;
-  email: string;
-  full_name?: string;
-  avatar_url?: string;
-};
-
-type TemplateContent = {
-  model: string;
-  testCaseCount: number;
-  coverage: Coverage;
-  includeEdgeCases?: boolean;
-  includeNegativeTests?: boolean;
-};
+import {
+  TemplateContent,
+  Coverage,
+  TemplateCategory,
+  TemplateFormData,
+} from "@/types/templates";
 
 type TemplateFromSelect = {
   id: string;
@@ -287,7 +267,7 @@ function useGeneratorBootstrap(userId: string | undefined) {
   useEffect(() => {
     void load();
     return () => abortRef.current?.abort();
-  }, [load, userId]);
+  }, [load]);
 
   return { bootstrapping, projects, requirements, defaults, reload: load };
 }
@@ -298,9 +278,31 @@ export function GeneratorForm() {
 
   const {
     bootstrapping,
+    projects: bootProjects,
     requirements: bootReqs,
     defaults,
   } = useGeneratorBootstrap(user?.id);
+
+  const mappedProjects = useMemo(
+    () =>
+      bootProjects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        status: "active" as const,
+        color: (p.color ?? "blue") as
+          | "blue"
+          | "green"
+          | "purple"
+          | "orange"
+          | "red"
+          | "pink"
+          | "indigo"
+          | "yellow"
+          | "gray",
+        icon: p.icon ?? "folder",
+      })),
+    [bootProjects],
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [mode, setMode] = useState<"quick" | "saved">("quick");
@@ -803,11 +805,17 @@ export function GeneratorForm() {
                   linking assets.
                 </p>
               </div>
-              <ProjectSelect
-                value={selectedProject || undefined}
-                disabled={pageBusy}
-                onSelect={(p) => setSelectedProject(p?.id ?? "")}
-              />
+              {!bootstrapping ? (
+                <ProjectSelect
+                  value={selectedProject || undefined}
+                  disabled={pageBusy}
+                  projects={mappedProjects}
+                  disableFetch={mappedProjects.length > 0}
+                  onSelect={(p) => setSelectedProject(p?.id ?? "")}
+                />
+              ) : (
+                <div className="h-10 bg-muted rounded animate-pulse" />
+              )}
             </div>
 
             {/* Template Selection */}

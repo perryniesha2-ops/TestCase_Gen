@@ -21,27 +21,9 @@ import {
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 
-type ProjectStatus = "active" | "archived" | "completed" | "on_hold";
-type ProjectColor =
-  | "blue"
-  | "green"
-  | "purple"
-  | "orange"
-  | "red"
-  | "pink"
-  | "indigo"
-  | "yellow"
-  | "gray";
+//types
 
-export interface ProjectFormData {
-  name: string;
-  description: string;
-  status: ProjectStatus;
-  color: ProjectColor;
-  icon: string;
-  start_date: string;
-  target_end_date: string;
-}
+import { ProjectStatus, ProjectColor, ProjectFormData } from "@/types/projects";
 
 interface ProjectEditorDialogProps {
   open: boolean;

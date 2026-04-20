@@ -39,23 +39,7 @@ import {
   getDefaultModel,
 } from "@/lib/ai-models/config";
 
-import { TemplateFormData } from "@/types/templates";
-
-type TemplateCategory =
-  | "functional"
-  | "security"
-  | "performance"
-  | "integration"
-  | "regression"
-  | "accessibility"
-  | "other";
-
-type TemplateContent = {
-  model: string;
-  testCaseCount: number;
-  includeEdgeCases?: boolean;
-  includeNegativeTests?: boolean;
-};
+import { TemplateCategory, TemplateFormData } from "@/types/templates";
 
 type Props = {
   open: boolean;

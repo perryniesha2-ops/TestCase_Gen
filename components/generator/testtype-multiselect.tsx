@@ -3,7 +3,6 @@
 
 import * as React from "react";
 import { Check, ChevronsUpDown, X } from "lucide-react";
-
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,9 +19,6 @@ import {
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 
-/**
- * Keep this aligned with your backend TEST_TYPE_INSTRUCTIONS keys.
- */
 export type CanonicalTestType =
   | "happy-path"
   | "negative"

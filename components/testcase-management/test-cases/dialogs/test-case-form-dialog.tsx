@@ -187,8 +187,9 @@ export function TestCaseFormDialog({
 
   // Fetch projects on mount
   useEffect(() => {
+    if (!open) return;
     void fetchProjects();
-  }, []);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -260,22 +261,12 @@ export function TestCaseFormDialog({
 
   async function fetchProjects() {
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from("projects")
-        .select("id, name, color, icon")
-        .eq("user_id", user.id)
-        .order("name");
-
-      if (error) throw error;
-      setProjects(data || []);
+      const res = await fetch("/api/projects/list", { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to load projects");
+      const data = await res.json();
+      setProjects(data.projects ?? []);
     } catch (error) {
-      console.error("Error fetching projects:", error);
+      console.error("[TestCaseFormDialog] fetchProjects error:", error);
     }
   }
 

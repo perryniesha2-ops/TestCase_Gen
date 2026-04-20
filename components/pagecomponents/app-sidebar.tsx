@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -97,46 +97,6 @@ const secondaryNavigation = [
   { name: "Billing", href: "/billing", icon: CircleDollarSign },
   { name: "Help & Support", href: "/contact", icon: HelpCircle },
 ];
-
-// ─── Shared user-data hook ────────────────────────────────────────────────────
-
-function useUserData() {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [userTier, setUserTier] = useState<"free" | "pro">("free");
-  const [loading, setLoading] = useState(true);
-  const supabase = createClient();
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          setUser({
-            id: user.id,
-            email: user.email || "",
-            full_name: user.user_metadata?.full_name || "",
-            avatar_url: user.user_metadata?.avatar_url || "",
-          });
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("subscription_tier, subscription_status")
-            .eq("id", user.id)
-            .single();
-          const status = profile?.subscription_status ?? "inactive";
-          const tier = profile?.subscription_tier ?? "free";
-          const isActive = status === "active" || status === "trial";
-          setUserTier(isActive && tier !== "free" ? "pro" : "free");
-        }
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [supabase]);
-
-  return { user, userTier, loading };
-}
 
 // ─── Nav helpers ──────────────────────────────────────────────────────────────
 
@@ -489,8 +449,22 @@ export function AppSidebar({
   className,
   initialCollapsed = false,
 }: SidebarProps) {
-  const { user, userTier, loading } = useUserData();
+  const { user: authUser, loading, signOut } = useAuth();
   const router = useRouter();
+
+  const user = authUser
+    ? {
+        id: authUser.id,
+        email: authUser.email ?? "",
+        full_name:
+          authUser.full_name ?? authUser.user_metadata?.full_name ?? "",
+        avatar_url:
+          authUser.avatar_url ?? authUser.user_metadata?.avatar_url ?? "",
+      }
+    : null;
+
+  const userTier: "free" | "pro" =
+    authUser?.subscription_tier === "pro" ? "pro" : "free";
 
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
@@ -517,17 +491,13 @@ export function AppSidebar({
 
   async function handleSignOut() {
     try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      router.push("/beta-login");
+      await signOut();
       toast.success("Signed out successfully");
     } catch (error) {
       console.error("Error signing out:", error);
       toast.error("Failed to sign out");
     }
   }
-
   return (
     <aside
       className={cn(
@@ -552,17 +522,29 @@ export function AppSidebar({
 
 function MobileNav() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const { user, userTier, loading } = useUserData();
+  const { user: authUser, loading, signOut } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
+
+  // Derive user and tier from authUser — same pattern as AppSidebar
+  const userTier: "free" | "pro" =
+    authUser?.subscription_tier === "pro" ? "pro" : "free";
+
+  const user = authUser
+    ? {
+        id: authUser.id,
+        email: authUser.email ?? "",
+        full_name:
+          authUser.full_name ?? authUser.user_metadata?.full_name ?? "",
+        avatar_url:
+          authUser.avatar_url ?? authUser.user_metadata?.avatar_url ?? "",
+      }
+    : null;
+
   const { isActive, isLocked, handleNavClick } = useNavHelpers(userTier);
 
   async function handleSignOut() {
     try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      router.push("/beta-login");
+      await signOut();
       toast.success("Signed out successfully");
     } catch (error) {
       console.error("Error signing out:", error);

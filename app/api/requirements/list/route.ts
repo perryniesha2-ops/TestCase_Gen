@@ -15,6 +15,12 @@ function clampString(s: string | null, maxLen: number) {
   return t.length > maxLen ? t.slice(0, maxLen) : t;
 }
 
+// Escape PostgREST ilike wildcard characters so user input can't
+// inject filter syntax or construct unintended patterns.
+function escapeLikePattern(s: string): string {
+  return s.replace(/[%_\\]/g, "\\$&");
+}
+
 type ProjectRow = { id: string; name: string; color: string; icon: string };
 
 type RequirementRow = {
@@ -53,10 +59,10 @@ export async function GET(req: Request) {
 
     const url = new URL(req.url);
 
-    const projectId = clampString(url.searchParams.get("projectId"), 64) ?? "";
+    const projectId = clampString(url.searchParams.get("projectId"), 64);
     const status = clampString(url.searchParams.get("status"), 50) || "all";
     const priority = clampString(url.searchParams.get("priority"), 20) || "all";
-    const q = clampString(url.searchParams.get("q"), 120) ?? "";
+    const q = clampString(url.searchParams.get("q"), 120);
 
     const page = toInt(url.searchParams.get("page"), 1);
     const pageSize = Math.min(toInt(url.searchParams.get("pageSize"), 10), 100);
@@ -64,7 +70,7 @@ export async function GET(req: Request) {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    // 1) requirements page query
+    // ── 1. Requirements page query ────────────────────────────────────────────
     let qb = supabase
       .from("requirements")
       .select(
@@ -92,7 +98,10 @@ export async function GET(req: Request) {
     if (priority !== "all") qb = qb.eq("priority", priority);
 
     if (q) {
-      const pattern = `%${q}%`;
+      // Escape wildcards before building the ilike pattern so users can't
+      // inject PostgREST filter syntax via the search term.
+      const escaped = escapeLikePattern(q);
+      const pattern = `%${escaped}%`;
       qb = qb.or(
         `title.ilike.${pattern},description.ilike.${pattern},external_id.ilike.${pattern}`,
       );
@@ -109,12 +118,11 @@ export async function GET(req: Request) {
     }
 
     const requirements = (rows ?? []) as RequirementRow[];
-
-    // Fast return
     const totalCount = count ?? 0;
     const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
     const hasNextPage = page < totalPages;
 
+    // Fast return for empty results
     if (requirements.length === 0) {
       return NextResponse.json(
         {
@@ -129,7 +137,7 @@ export async function GET(req: Request) {
       );
     }
 
-    // 2) load link rows for these requirements (counts for BOTH types)
+    // ── 2. Link counts for the returned requirements ───────────────────────────
     const requirementIds = requirements.map((r) => r.id);
 
     const { data: links, error: linksErr } = await supabase
@@ -154,17 +162,15 @@ export async function GET(req: Request) {
       }
     }
 
-    // 3) enrich requirements
+    // ── 3. Enrich requirements with link counts ───────────────────────────────
     const enriched = requirements.map((r) => {
       const regular = regularCountByReq[r.id] ?? 0;
       const platform = platformCountByReq[r.id] ?? 0;
-      const total = regular + platform;
-
       return {
         ...r,
         regular_test_case_count: regular,
         platform_test_case_count: platform,
-        test_case_count: total,
+        test_case_count: regular + platform,
       };
     });
 

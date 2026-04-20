@@ -86,6 +86,8 @@ export function isCrossPlatformTestCase(
   );
 }
 
+export type TestCaseType = "regular" | "cross-platform";
+
 export interface TestCaseForm {
   title: string;
   description: string;

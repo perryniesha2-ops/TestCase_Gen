@@ -1,11 +1,16 @@
 "use client";
 
-import React, { useCallback, useMemo, useState, useEffect } from "react";
+import React, {
+  useCallback,
+  useMemo,
+  useState,
+  useEffect,
+  useRef,
+} from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth/auth-context";
-
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -378,8 +383,14 @@ export function CrossPlatformGeneratorForm() {
   const pageBusy = authLoading || submitting || bootstrappingReqs;
 
   // Bootstrap saved requirements
+  // Add this ref alongside the other state declarations:
+  const bootstrapRan = useRef(false);
+
+  // Replace the existing bootstrap useEffect with:
   useEffect(() => {
     if (!user?.id) return;
+    if (bootstrapRan.current) return; // ← prevents double-trigger from user ref changes
+    bootstrapRan.current = true;
 
     let cancelled = false;
     const ac = new AbortController();
@@ -1006,10 +1017,7 @@ export function CrossPlatformGeneratorForm() {
                 disabled={pageBusy}
                 onSelect={(p) => {
                   setProjectId(p?.id ?? "");
-                  if (!p?.id) {
-                    // User explicitly cleared the selection
-                    setProjectSource("none");
-                  }
+                  if (!p?.id) setProjectSource("none");
                 }}
               />
             </div>

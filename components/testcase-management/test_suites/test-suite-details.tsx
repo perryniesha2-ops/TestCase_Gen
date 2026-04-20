@@ -78,9 +78,14 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
     }
   }, [user?.id, suiteId]);
 
+  const metadataFetchedRef = React.useRef(false);
+
   React.useEffect(() => {
+    if (!user?.id || !suiteId) return;
+    if (metadataFetchedRef.current) return;
+    metadataFetchedRef.current = true;
     void fetchSuiteMetadata();
-  }, [fetchSuiteMetadata]);
+  }, [user?.id, suiteId]);
 
   const fetchExportSummary = React.useCallback(async () => {
     if (!user?.id || !suiteId) return;
@@ -110,9 +115,13 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
     }
   }, [user?.id, suiteId]);
 
+  const exportFetchedRef = React.useRef(false);
   React.useEffect(() => {
+    if (!user?.id || !suiteId) return;
+    if (exportFetchedRef.current) return;
+    exportFetchedRef.current = true;
     void fetchExportSummary();
-  }, [fetchExportSummary]);
+  }, [user?.id, suiteId]);
 
   const [deleting, setDeleting] = React.useState(false);
 
@@ -340,7 +349,7 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
         </Tabs>
       )}
 
-      {details.suite && runOpen && (
+      {details.suite && (
         <TestSessionExecution
           suite={details.suite}
           open={runOpen}

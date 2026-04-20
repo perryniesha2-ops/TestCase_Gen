@@ -116,7 +116,6 @@ export function TabbedTestCaseTable() {
 
   useEffect(() => {
     if (loading) return;
-
     setExecution((prev) => {
       const next = { ...prev };
       for (const tc of [...testCases, ...crossPlatformCases]) {
@@ -130,7 +129,7 @@ export function TabbedTestCaseTable() {
       }
       return next;
     });
-  }, [loading, testCases, crossPlatformCases, executionByCaseId, setExecution]);
+  }, [loading, testCases, crossPlatformCases]);
 
   // Add _caseType to test cases
   const regularCasesWithType = useMemo(

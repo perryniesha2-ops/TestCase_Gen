@@ -1,7 +1,7 @@
 // components/requirements/requirements-table.tsx
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
@@ -19,7 +19,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  MoreHorizontal,
   FolderOpen,
 } from "lucide-react";
 
@@ -27,8 +26,6 @@ import {
   getTypeColor,
   getPriorityColor,
   getStatusBadge,
-  getCoverageIcon,
-  getCoverageColor,
   getProjectColor,
   getRelativeTime,
 } from "@/lib/utils/requirement-helpers";
@@ -56,20 +53,18 @@ export function RequirementsTable({
   totalCount,
   itemsPerPage,
   onRowClick,
-
   onPageChange,
 }: RequirementsTableProps) {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = Math.min(startIndex + itemsPerPage, totalCount);
 
-  const [actionsOpen, setActionsOpen] = React.useState(false);
-  const [activeRequirement, setActiveRequirement] =
-    React.useState<Requirement | null>(null);
-
-  const openActions = React.useCallback((r: Requirement) => {
-    setActiveRequirement(r);
-    setActionsOpen(true);
-  }, []);
+  // Sliding window — always centres around the current page
+  const pageNumbers = useMemo(() => {
+    const delta = 2;
+    const start = Math.max(1, currentPage - delta);
+    const end = Math.min(totalPages, currentPage + delta);
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  }, [currentPage, totalPages]);
 
   return (
     <div className="space-y-4">
@@ -92,7 +87,7 @@ export function RequirementsTable({
           <TableBody>
             {requirements.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-12">
+                <TableCell colSpan={8} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Search className="h-8 w-8 text-muted-foreground" />
                     <p className="text-muted-foreground">
@@ -108,7 +103,6 @@ export function RequirementsTable({
                   requirement={requirement}
                   selectable={selectable}
                   onRowClick={onRowClick}
-                  onOpenActions={openActions}
                 />
               ))
             )}
@@ -120,7 +114,7 @@ export function RequirementsTable({
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {startIndex + 1}-{endIndex} of {totalCount} requirements
+            Showing {startIndex + 1}–{endIndex} of {totalCount} requirements
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -133,19 +127,49 @@ export function RequirementsTable({
               Previous
             </Button>
 
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const pageNum = i + 1;
-              return (
+            {/* First page + ellipsis if needed */}
+            {pageNumbers[0] > 1 && (
+              <>
                 <Button
-                  key={pageNum}
-                  variant={currentPage === pageNum ? "default" : "outline"}
+                  variant="outline"
                   size="sm"
-                  onClick={() => onPageChange(pageNum)}
+                  onClick={() => onPageChange(1)}
                 >
-                  {pageNum}
+                  1
                 </Button>
-              );
-            })}
+                {pageNumbers[0] > 2 && (
+                  <span className="text-muted-foreground px-1">…</span>
+                )}
+              </>
+            )}
+
+            {/* Sliding window buttons */}
+            {pageNumbers.map((pageNum) => (
+              <Button
+                key={pageNum}
+                variant={currentPage === pageNum ? "default" : "outline"}
+                size="sm"
+                onClick={() => onPageChange(pageNum)}
+              >
+                {pageNum}
+              </Button>
+            ))}
+
+            {/* Last page + ellipsis if needed */}
+            {pageNumbers[pageNumbers.length - 1] < totalPages && (
+              <>
+                {pageNumbers[pageNumbers.length - 1] < totalPages - 1 && (
+                  <span className="text-muted-foreground px-1">…</span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onPageChange(totalPages)}
+                >
+                  {totalPages}
+                </Button>
+              </>
+            )}
 
             <Button
               variant="outline"
@@ -165,18 +189,18 @@ export function RequirementsTable({
   );
 }
 
+// ─── Row ──────────────────────────────────────────────────────────────────────
+
 interface RequirementRowProps {
   requirement: Requirement;
   selectable: boolean;
   onRowClick: (requirement: Requirement) => void;
-  onOpenActions: (requirement: Requirement) => void;
 }
 
 function RequirementRow({
   requirement,
   selectable,
   onRowClick,
-  onOpenActions,
 }: RequirementRowProps) {
   return (
     <TableRow
@@ -185,7 +209,7 @@ function RequirementRow({
       }`}
       onClick={() => onRowClick(requirement)}
     >
-      {/* Title & Description */}
+      {/* Title */}
       <TableCell>
         <div className="max-w-[320px] truncate font-medium">
           {requirement.title}
@@ -242,7 +266,7 @@ function RequirementRow({
         {getRelativeTime(requirement.created_at)}
       </TableCell>
 
-      {/* Actions (Sheet trigger) */}
+      {/* View */}
       <TableCell className="text-right">
         <Button
           asChild
