@@ -31,10 +31,7 @@ import {
 import { Loader2, Sparkles, Info, FileText } from "lucide-react";
 import { TemplateSelect } from "@/components/templates/template-select";
 import { ProjectSelect } from "@/components/projects/project-select";
-import { Project, ProjectColor } from "@/types/projects";
-import { TemplateContent, TemplateCategory } from "@/types/templates";
-import { RequirementRow, RequirementOption } from "@/types/requirements";
-
+import { Project } from "@/types/projects";
 import {
   AI_MODELS,
   MODEL_GROUPS,
@@ -44,8 +41,20 @@ import {
   migrateModelKey,
 } from "@/lib/ai-models/config";
 import { Separator } from "@radix-ui/react-separator";
+import { TemplateContent, TemplateCategory } from "@/types/templates";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type ProjectColor =
+  | "blue"
+  | "green"
+  | "purple"
+  | "orange"
+  | "red"
+  | "pink"
+  | "indigo"
+  | "yellow"
+  | "gray";
 
 type TemplateFromSelect = {
   id: string;
@@ -53,6 +62,27 @@ type TemplateFromSelect = {
   description?: string | null;
   category: TemplateCategory;
   template_content: TemplateContent;
+};
+
+type RequirementRow = {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  priority: string;
+  status?: string;
+  project_id?: string | null;
+};
+
+type RequirementOption = {
+  id: string;
+  label: string;
+  title: string;
+  description: string;
+  type: string;
+  priority: string;
+  value: string;
+  project_id?: string | null;
 };
 
 type ProjectRowLite = {
@@ -228,6 +258,13 @@ export function GeneratorForm() {
   );
 
   const [submitting, setSubmitting] = useState(false);
+  const [jobStatus, setJobStatus] = useState<{
+    jobId: string | null;
+    casesSaved: number;
+    casesRequested: number;
+    phase: "idle" | "queued" | "processing" | "done";
+  }>({ jobId: null, casesSaved: 0, casesRequested: 0, phase: "idle" });
+  const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const [mode, setMode] = useState<"quick" | "saved">("quick");
   const [selectedRequirement, setSelectedRequirement] = useState("");
   const [customRequirements, setCustomRequirements] = useState("");
@@ -338,6 +375,74 @@ export function GeneratorForm() {
       .trim();
   }
 
+  function stopPolling() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }
+
+  function startPolling(
+    jobId: string,
+    generationId: string,
+    casesRequested: number,
+  ) {
+    stopPolling();
+    setJobStatus({ jobId, casesSaved: 0, casesRequested, phase: "queued" });
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });
+        if (!res.ok) return; // transient error, keep polling
+
+        const data = await res.json();
+
+        setJobStatus((prev) => ({
+          ...prev,
+          casesSaved: data.cases_saved ?? 0,
+          phase:
+            data.status === "pending"
+              ? "queued"
+              : data.status === "processing"
+                ? "processing"
+                : "done",
+        }));
+
+        if (data.status === "complete" || data.status === "failed") {
+          stopPolling();
+          setSubmitting(false);
+          setJobStatus({
+            jobId: null,
+            casesSaved: 0,
+            casesRequested: 0,
+            phase: "idle",
+          });
+
+          if (data.status === "failed") {
+            toast.error("Generation failed", {
+              description: data.error ?? "Please try again.",
+              duration: 8000,
+            });
+          } else {
+            toast.success(`${data.cases_saved} test cases generated!`);
+            if (data.partial) {
+              toast.warning(
+                `${data.cases_saved} of ${casesRequested} cases generated — some batches failed. Try again for more.`,
+                { duration: 8000 },
+              );
+            }
+            router.push(`/test-cases?generation=${generationId}`);
+          }
+        }
+      } catch {
+        // Network hiccup — keep polling
+      }
+    }, 3000);
+  }
+
+  // Clean up on unmount
+  useEffect(() => () => stopPolling(), []);
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -429,19 +534,16 @@ export function GeneratorForm() {
           duration: 8000,
           action: { label: "Upgrade", onClick: () => router.push("/billing") },
         });
+        setSubmitting(false);
         return;
       }
 
       if (!response.ok) {
-        if ([502, 503, 504].includes(response.status)) {
-          toast.error("Generation timed out. Please try again.");
-          return;
-        }
-        throw new Error(data?.error || "Generation failed");
+        throw new Error(data?.error || "Failed to queue generation");
       }
 
-      toast.success(`${data.count} test cases generated!`);
-      router.push(`/test-cases?generation=${data.generation_id}`);
+      // Job created — start polling. setSubmitting stays true until polling completes.
+      startPolling(data.job_id, data.generation_id, testCaseCountNum);
     } catch (err) {
       console.error("❌ Generation error:", err);
       toast.error("Unable to generate test cases", {
@@ -449,7 +551,6 @@ export function GeneratorForm() {
           err instanceof Error ? err.message : "Please try again later",
         duration: 7000,
       });
-    } finally {
       setSubmitting(false);
     }
   }
@@ -801,27 +902,41 @@ export function GeneratorForm() {
                       <SelectItem value="20">20 test cases</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    AI generates a balanced mix of happy path, error handling,
+                    boundary, edge case, and security tests.
+                  </p>
                 </div>
               </div>
             )}
 
-            {/* Generation progress — shown while waiting for the synchronous API response */}
+            {/* Generation progress — shows while job is queued or processing */}
             {submitting && (
               <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-                <div className="flex items-center gap-3">
-                  <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
-                  <span className="text-sm font-medium">
-                    Generating test cases…
-                  </span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                    <span className="text-sm font-medium">
+                      {jobStatus.phase === "queued"
+                        ? "Job queued — starting shortly…"
+                        : "Generating test cases…"}
+                    </span>
+                  </div>
+                  {jobStatus.phase === "processing" &&
+                    jobStatus.casesRequested > 0 && (
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {jobStatus.casesSaved} / {jobStatus.casesRequested}
+                      </span>
+                    )}
                 </div>
                 <div className="space-y-1.5">
                   <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                     <div className="h-1.5 rounded-full bg-primary animate-pulse w-full" />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Running {Math.ceil(parseInt(testCaseCount, 10) / 5)}{" "}
-                    parallel AI batches across coverage areas — typically 20–45
-                    seconds.
+                    {jobStatus.phase === "queued"
+                      ? "Your generation job has been queued."
+                      : `Running ${Math.ceil(parseInt(testCaseCount, 10) / 5)} parallel AI batches — typically 20–45 seconds.`}
                   </p>
                 </div>
               </div>
