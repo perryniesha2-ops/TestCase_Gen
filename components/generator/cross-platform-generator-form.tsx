@@ -1,12 +1,6 @@
 "use client";
 
-import React, {
-  useCallback,
-  useMemo,
-  useState,
-  useEffect,
-  useRef,
-} from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -30,7 +24,6 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
 import {
   Loader2,
   Layers,
@@ -41,22 +34,16 @@ import {
   Zap,
   FileText,
 } from "lucide-react";
-
 import {
   TemplateSelect,
   type Template,
 } from "@/components/templates/template-select";
 import { ProjectSelect } from "@/components/projects/project-select";
-
-import {
-  CrossPlatformTestTypeMultiselect,
-  type PlatformId as MultiselectPlatformId,
-} from "@/components/generator/cross-platform-test-type-multiselect";
+import { RequirementRow, RequirementOption } from "@/types/requirements";
 
 import {
   type ModelKey,
   AI_MODELS,
-  MODEL_MIGRATIONS,
   isModelAllowed,
   migrateModelKey,
   getDefaultModel,
@@ -65,15 +52,9 @@ import {
 import { Separator } from "@radix-ui/react-separator";
 import { toastWarning } from "@/lib/utils/toast-utils";
 
-/* =========================
-   Types
-========================= */
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-type GenerationResult = {
-  platform: string;
-  count: number;
-  error?: string;
-};
+type GenerationResult = { platform: string; count: number; error?: string };
 
 type CrossPlatformResponse = {
   success?: boolean;
@@ -84,53 +65,22 @@ type CrossPlatformResponse = {
   message?: string;
   error?: string;
   details?: string;
-  requestId?: string;
   upgradeRequired?: boolean;
   remaining?: number;
   requested?: number;
   used?: number;
   limit?: number;
-  usage?: {
-    requested: number;
-    perPlatform: number;
-    platforms: number;
-  };
+  usage?: { requested: number; perPlatform: number; platforms: number };
 };
 
 type PlatformId = "web" | "mobile" | "api" | "accessibility" | "performance";
-
 type ApiProtocol = "REST" | "SOAP" | "GraphQL" | "gRPC" | "WebSocket";
 type ApiAuth = "None" | "Basic" | "Bearer" | "OAuth2" | "API Key" | "mTLS";
 type ApiFormat = "JSON" | "XML";
 
-type RequirementRow = {
-  id: string;
-  title: string;
-  description: string;
-  type: string;
-  priority: string;
-  status?: string;
-  project_id?: string | null;
-};
+type BootstrapResponse = { requirements: RequirementRow[] };
 
-type RequirementOption = {
-  id: string;
-  label: string;
-  title: string;
-  description: string;
-  type: string;
-  priority: string;
-  value: string; // text we feed to generator
-  project_id?: string | null;
-};
-
-type BootstrapResponse = {
-  requirements: RequirementRow[];
-};
-
-/* =========================
-   Constants / Helpers
-========================= */
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const MIN_REQUIREMENT_LENGTH = 10;
 const MAX_REQUIREMENT_LENGTH = 5000;
@@ -235,6 +185,8 @@ const PLACEHOLDER_REQUIREMENTS: RequirementOption[] = [
   },
 ];
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function mapRequirementsToOptions(rows: RequirementRow[]): RequirementOption[] {
   return (rows ?? []).map((req) => ({
     id: req.id,
@@ -255,67 +207,15 @@ function clampInt(n: unknown, min: number, max: number, fallback: number) {
   return Math.max(min, Math.min(max, Math.floor(x)));
 }
 
-function uniq(arr: string[]) {
-  return Array.from(new Set(arr.filter(Boolean)));
+function sanitizeInput(input: string): string {
+  return input
+    .replace(/<[^>]*>/g, "")
+    .replace(/javascript:/gi, "")
+    .replace(/on\w+\s*=/gi, "")
+    .trim();
 }
 
-/**
- * Default (recommended) test types per platform.
- * These MUST match CrossPlatformTestTypeMultiselect values.
- */
-const DEFAULT_TEST_TYPES: Record<PlatformId, string[]> = {
-  web: [
-    "functional",
-    "negative",
-    "edge-boundary",
-    "validation",
-    "regression-smoke",
-    "ui-ux-basic",
-    "security-basic",
-    "accessibility-basic",
-  ],
-  mobile: [
-    "functional",
-    "negative",
-    "edge-boundary",
-    "offline-network",
-    "permissions",
-    "device-os",
-    "regression-smoke",
-    "performance-basic-mobile",
-  ],
-  api: [
-    "contract-schema",
-    "authn-authz",
-    "negative",
-    "edge-boundary",
-    "idempotency-replay",
-    "rate-limits",
-    "paging-filter-sort",
-    "data-integrity",
-  ],
-  accessibility: [
-    "a11y-keyboard",
-    "a11y-focus",
-    "a11y-screenreader",
-    "a11y-contrast",
-    "a11y-forms-errors",
-    "a11y-zoom-reflow",
-  ],
-  performance: [
-    "load",
-    "stress",
-    "spike",
-    "soak",
-    "latency-sla",
-    "resources",
-    "reliability",
-  ],
-};
-
-/* =========================
-   Component
-========================= */
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function CrossPlatformGeneratorForm() {
   const router = useRouter();
@@ -323,13 +223,16 @@ export function CrossPlatformGeneratorForm() {
 
   const [submitting, setSubmitting] = useState(false);
 
-  // Inputs
+  // Core inputs
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [requirement, setRequirement] = useState(""); // quick entry text
+  const [requirement, setRequirement] = useState("");
   const [projectId, setProjectId] = useState<string>("");
+  const [projectSource, setProjectSource] = useState<"none" | "requirement">(
+    "none",
+  );
 
-  // Model/settings
+  // Model / count
   const [model, setModel] = useState(getDefaultModel());
   const [perPlatformCount, setPerPlatformCount] = useState<string>("10");
 
@@ -342,108 +245,74 @@ export function CrossPlatformGeneratorForm() {
     Record<PlatformId, string>
   >({} as Record<PlatformId, string>);
 
-  // Per-platform test types
-  const [testTypesByPlatform, setTestTypesByPlatform] = useState<
-    Partial<Record<PlatformId, string[]>>
-  >({});
-
-  // API-specific advanced config (applies to API platform only)
+  // API-specific config
   const [apiProtocol, setApiProtocol] = useState<ApiProtocol>("REST");
   const [apiAuth, setApiAuth] = useState<ApiAuth>("Bearer");
   const [apiFormat, setApiFormat] = useState<ApiFormat>("JSON");
   const [apiContract, setApiContract] = useState<string>("");
 
-  // Requirements bootstrap (saved requirements)
+  // Requirements bootstrap
   const [bootstrappingReqs, setBootstrappingReqs] = useState(false);
   const [savedReqs, setSavedReqs] = useState<RequirementOption[]>([]);
-
-  // Requirement mode
   const [mode, setMode] = useState<"quick" | "saved">("quick");
   const [selectedRequirementId, setSelectedRequirementId] =
     useState<string>("");
 
-  // Track if project came from requirement (optional)
-  const [projectSource, setProjectSource] = useState<"none" | "requirement">(
-    "none",
+  const availableRequirements = useMemo(
+    () => (savedReqs.length > 0 ? savedReqs : PLACEHOLDER_REQUIREMENTS),
+    [savedReqs],
   );
 
-  // Derived requirement text
-  const availableRequirements = useMemo(() => {
-    return savedReqs.length > 0 ? savedReqs : PLACEHOLDER_REQUIREMENTS;
-  }, [savedReqs]);
-
-  const selectedReqData = useMemo(() => {
-    return availableRequirements.find((r) => r.id === selectedRequirementId);
-  }, [availableRequirements, selectedRequirementId]);
+  const selectedReqData = useMemo(
+    () => availableRequirements.find((r) => r.id === selectedRequirementId),
+    [availableRequirements, selectedRequirementId],
+  );
 
   const savedRequirementsText = selectedReqData?.value ?? "";
   const finalRequirementText =
     mode === "quick" ? requirement : savedRequirementsText;
 
-  const pageBusy = authLoading || submitting || bootstrappingReqs;
+  const requestedTotal = useMemo(() => {
+    const per = clampInt(perPlatformCount, 1, 20, 10);
+    return per * selectedPlatforms.length;
+  }, [perPlatformCount, selectedPlatforms.length]);
+
+  const pageBusy = authLoading || submitting;
 
   // Bootstrap saved requirements
-  // Add this ref alongside the other state declarations:
-  const bootstrapRan = useRef(false);
-
-  // Replace the existing bootstrap useEffect with:
   useEffect(() => {
     if (!user?.id) return;
-    if (bootstrapRan.current) return; // ← prevents double-trigger from user ref changes
-    bootstrapRan.current = true;
 
-    let cancelled = false;
-    const ac = new AbortController();
+    let stale = false;
+    setBootstrappingReqs(true);
 
-    (async () => {
-      setBootstrappingReqs(true);
-      try {
-        const res = await fetch(
-          "/api/generate-test-cases/bootstrap?requirementsLimit=200",
-          {
-            method: "GET",
-            headers: { "Content-Type": "application/json" },
-            signal: ac.signal,
-            cache: "no-store",
-          },
-        );
-
-        const data = (await res.json()) as Partial<BootstrapResponse> & {
-          error?: string;
-          details?: string;
-        };
-
-        if (res.status === 401) {
-          toast.error("Please sign in to continue");
-          router.push("/login");
-          return;
-        }
-
-        if (!res.ok) {
-          throw new Error(
-            data?.error ||
-              data?.details ||
-              `Requirements bootstrap failed (HTTP ${res.status})`,
-          );
-        }
-
-        const mapped = mapRequirementsToOptions(data.requirements ?? []);
-        if (!cancelled) setSavedReqs(mapped);
-      } catch (e) {
-        if ((e as any)?.name === "AbortError") return;
-        if (!cancelled) setSavedReqs([]);
-      } finally {
-        if (!cancelled) setBootstrappingReqs(false);
-      }
-    })();
+    fetch(
+      "/api/generate-test-cases/bootstrap?requirementsLimit=200&requirementsOnly=true",
+      { method: "GET", cache: "no-store" },
+    )
+      .then((res) => {
+        if (!res.ok) throw new Error(`Bootstrap failed (${res.status})`);
+        return res.json() as Promise<
+          Partial<BootstrapResponse> & { error?: string }
+        >;
+      })
+      .then((data) => {
+        if (stale) return;
+        setSavedReqs(mapRequirementsToOptions(data.requirements ?? []));
+      })
+      .catch(() => {
+        if (!stale) setSavedReqs([]);
+      })
+      .finally(() => {
+        setBootstrappingReqs(false); // always clear — stale or not
+      });
 
     return () => {
-      cancelled = true;
-      ac.abort();
+      stale = true;
     };
-  }, [user?.id, router]);
+  }, [user?.id]);
 
-  // Ensure selectedRequirementId has a value when in saved mode
+  // Auto-select first requirement in saved mode
   useEffect(() => {
     if (mode !== "saved") return;
     if (selectedRequirementId) return;
@@ -451,34 +320,22 @@ export function CrossPlatformGeneratorForm() {
     setSelectedRequirementId(availableRequirements[0].id);
   }, [mode, selectedRequirementId, availableRequirements]);
 
-  // Auto-fill title/description when a saved requirement is selected
+  // Auto-fill title/description from selected requirement
   useEffect(() => {
-    if (mode !== "saved") return;
-    if (!selectedReqData) {
-      // Clear title when no requirement is selected in saved mode
-      setTitle("");
-      setDescription("");
-      return;
-    }
-
-    // Force overwrite by constructing fresh title
+    if (mode !== "saved" || !selectedReqData) return;
     setTitle(`${selectedReqData.title} Cross-Platform Suite`);
     setDescription(selectedReqData.description || "");
-  }, [mode, selectedReqData, selectedRequirementId]); // Added selectedRequirementId to force re-run on selection change
+  }, [mode, selectedReqData, selectedRequirementId]);
 
-  // Auto-apply project from requirement if present
+  // Auto-apply project from requirement
   useEffect(() => {
-    if (mode !== "saved") return;
-    if (!selectedReqData) return;
-
+    if (mode !== "saved" || !selectedReqData) return;
     const reqProjectId = selectedReqData.project_id ?? null;
-
     if (reqProjectId) {
       setProjectId(reqProjectId);
       setProjectSource("requirement");
       return;
     }
-
     if (projectSource === "requirement") {
       setProjectId("");
       setProjectSource("none");
@@ -496,39 +353,23 @@ export function CrossPlatformGeneratorForm() {
     });
   }, []);
 
-  const seedDefaultTestTypes = useCallback((platform: PlatformId) => {
-    setTestTypesByPlatform((prev) => {
-      const existing = prev[platform] ?? [];
-      if (existing.length > 0) return prev;
-      return { ...prev, [platform]: DEFAULT_TEST_TYPES[platform] ?? [] };
-    });
-  }, []);
-
   const togglePlatform = useCallback(
     (platformId: PlatformId) => {
       setSelectedPlatforms((prev) => {
         const isSelected = prev.includes(platformId);
-
         if (isSelected) {
           setFrameworkByPlatform((fwPrev) => {
             const next = { ...fwPrev };
             delete (next as any)[platformId];
             return next as Record<PlatformId, string>;
           });
-          setTestTypesByPlatform((ttPrev) => {
-            const next = { ...ttPrev };
-            delete (next as any)[platformId];
-            return next;
-          });
           return prev.filter((x) => x !== platformId);
         }
-
         ensureDefaultFramework(platformId);
-        seedDefaultTestTypes(platformId);
         return [...prev, platformId];
       });
     },
-    [ensureDefaultFramework, seedDefaultTestTypes],
+    [ensureDefaultFramework],
   );
 
   const setFrameworkForPlatform = useCallback(
@@ -541,34 +382,20 @@ export function CrossPlatformGeneratorForm() {
     [],
   );
 
-  const requestedTotal = useMemo(() => {
-    const per = clampInt(perPlatformCount, 1, 100, 10);
-    return per * selectedPlatforms.length;
-  }, [perPlatformCount, selectedPlatforms.length]);
-
   const platformsPayload = useMemo(() => {
     return selectedPlatforms.map((p) => {
-      const test_types = testTypesByPlatform[p] ?? [];
-
       if (p !== "api") {
-        return {
-          platform: p,
-          framework: frameworkByPlatform[p] || "",
-          test_types,
-        };
+        return { platform: p, framework: frameworkByPlatform[p] || "" };
       }
-
       return {
         platform: "api" as const,
         framework: frameworkByPlatform[p] || "REST API",
-        test_types,
         protocol: apiProtocol,
         auth: apiAuth,
         format: apiFormat,
         contract: apiContract.trim() || undefined,
         required_checks: [
           "schema validation",
-          "SOAP faults",
           "headers",
           "replay/idempotency",
           "rate limits",
@@ -578,7 +405,6 @@ export function CrossPlatformGeneratorForm() {
     });
   }, [
     selectedPlatforms,
-    testTypesByPlatform,
     frameworkByPlatform,
     apiProtocol,
     apiAuth,
@@ -593,28 +419,19 @@ export function CrossPlatformGeneratorForm() {
     if (!title.trim()) return "Please enter a suite title.";
     if (selectedPlatforms.length === 0)
       return "Please select at least one platform.";
-
     for (const p of selectedPlatforms) {
       if (!frameworkByPlatform[p]?.trim()) {
         const name = platformOptions.find((x) => x.id === p)?.name ?? p;
         return `Please select a framework for ${name}.`;
       }
-      const types = testTypesByPlatform[p] ?? [];
-      if (types.length === 0) {
-        const name = platformOptions.find((x) => x.id === p)?.name ?? p;
-        return `Please select at least one test type for ${name}.`;
-      }
     }
-
-    const per = clampInt(perPlatformCount, 1, 100, 10);
-    if (per < 1) return "Test cases per platform must be at least 1.";
-
-    if (selectedPlatforms.includes("api")) {
-      if (apiProtocol === "SOAP" && apiFormat !== "XML") {
-        return "For SOAP, please set payload format to XML.";
-      }
+    if (
+      selectedPlatforms.includes("api") &&
+      apiProtocol === "SOAP" &&
+      apiFormat !== "XML"
+    ) {
+      return "For SOAP, please set payload format to XML.";
     }
-
     return null;
   }, [
     user,
@@ -622,19 +439,9 @@ export function CrossPlatformGeneratorForm() {
     title,
     selectedPlatforms,
     frameworkByPlatform,
-    testTypesByPlatform,
-    perPlatformCount,
     apiProtocol,
     apiFormat,
   ]);
-
-  function sanitizeInput(input: string): string {
-    return input
-      .replace(/<[^>]*>/g, "") // strip HTML tags
-      .replace(/javascript:/gi, "") // strip js: protocol
-      .replace(/on\w+\s*=/gi, "") // strip event handlers
-      .trim();
-  }
 
   const onSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -653,19 +460,16 @@ export function CrossPlatformGeneratorForm() {
         return;
       }
 
-      // Sanitize all user-provided text inputs
       const sanitizedRequirement = sanitizeInput(finalRequirementText);
       const sanitizedTitle = sanitizeInput(title);
       const sanitizedDescription = description
         ? sanitizeInput(description)
         : null;
 
-      // Re-validate after sanitization
       if (!sanitizedTitle) {
-        toast.error("Title contains invalid characters. Please revise.");
+        toast.error("Title contains invalid characters.");
         return;
       }
-
       if (
         !sanitizedRequirement ||
         sanitizedRequirement.length < MIN_REQUIREMENT_LENGTH
@@ -684,7 +488,7 @@ export function CrossPlatformGeneratorForm() {
             mode === "saved" && selectedReqData ? selectedRequirementId : null,
           platforms: platformsPayload,
           model: model.trim(),
-          testCaseCount: clampInt(perPlatformCount, 1, 100, 10),
+          testCaseCount: clampInt(perPlatformCount, 1, 20, 10),
           template: template?.id ?? null,
           title: sanitizedTitle,
           description: sanitizedDescription,
@@ -704,25 +508,16 @@ export function CrossPlatformGeneratorForm() {
           router.push("/login");
           return;
         }
-
-        if (res.status === 504 || res.status === 502 || res.status === 503) {
-          toast.error(
-            "Generation timed out. This can happen with larger test case counts — please try again.",
-          );
+        if ([502, 503, 504].includes(res.status)) {
+          toast.error("Generation timed out. Please try again.");
           return;
         }
 
         if (res.status === 429) {
           const remaining = data.remaining ?? 0;
-          const requested = data.requested ?? requestedTotal;
-          const used = data.used ?? 0;
-          const limit = data.limit ?? 50;
-
-          toastWarning("Quota exceeded");
-
           if (remaining === 0) {
             toast.error("Monthly usage limit reached", {
-              description: `You have used all ${limit} of your test cases. Upgrade to Pro for 500 test cases/month.`,
+              description: `You have used all ${data.limit ?? 50} test cases. Upgrade to Pro for more.`,
               duration: 8000,
               action: {
                 label: "Upgrade",
@@ -731,7 +526,7 @@ export function CrossPlatformGeneratorForm() {
             });
           } else {
             toast.error("Not enough test cases remaining", {
-              description: `You requested ${requested} test cases (${data.usage?.perPlatform ?? 0} per platform × ${data.usage?.platforms ?? 0} platforms) but only have ${remaining} remaining. (${used}/${limit} used).`,
+              description: `Requested ${data.requested ?? requestedTotal} but only ${remaining} remaining.`,
               duration: 8000,
               action: {
                 label: "Upgrade",
@@ -743,15 +538,9 @@ export function CrossPlatformGeneratorForm() {
         }
 
         if (!res.ok) {
-          const msg =
-            data.details ||
-            data.error ||
-            `Failed to generate cross-platform tests (HTTP ${res.status})`;
-          toast.error("Unable to generate cross-platform tests", {
-            description: msg,
-            duration: 8000,
-          });
-          return;
+          throw new Error(
+            data.details || data.error || `Failed (HTTP ${res.status})`,
+          );
         }
 
         toast.success("Cross-platform tests generated!", {
@@ -760,13 +549,12 @@ export function CrossPlatformGeneratorForm() {
           duration: 6000,
         });
 
-        if (data.suite_id) router.push(`/test-library`);
-        else router.push(`/test-cases`);
-      } catch (err2) {
-        console.error("❌ Cross-platform generation error:", err2);
+        router.push(data.suite_id ? "/test-library" : "/test-cases");
+      } catch (err) {
+        console.error("❌ Cross-platform generation error:", err);
         toast.error("Unable to generate cross-platform tests", {
           description:
-            err2 instanceof Error ? err2.message : "Please try again later",
+            err instanceof Error ? err.message : "Please try again later",
           duration: 8000,
         });
       } finally {
@@ -819,14 +607,15 @@ export function CrossPlatformGeneratorForm() {
           </CardTitle>
           <CardDescription>
             Generate platform-specific test suites
-            (web/mobile/API/accessibility/performance).
+            (web/mobile/API/accessibility/performance). AI automatically covers
+            happy path, error handling, boundary values, edge cases, and
+            security.
           </CardDescription>
-
           <div className="pt-3 flex flex-wrap items-center gap-2">
             <Badge variant="secondary">
               {selectedPlatforms.length} platform(s)
             </Badge>
-            <Badge variant="secondary">{requestedTotal} total requested</Badge>
+            <Badge variant="secondary">{requestedTotal} total cases</Badge>
             {template?.name ? (
               <Badge variant="outline">Template: {template.name}</Badge>
             ) : null}
@@ -849,7 +638,6 @@ export function CrossPlatformGeneratorForm() {
                   required
                 />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
                 <Input
@@ -863,7 +651,7 @@ export function CrossPlatformGeneratorForm() {
               </div>
             </div>
 
-            {/* Requirement (Quick vs Saved) */}
+            {/* Requirement */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-base font-medium">
@@ -884,7 +672,6 @@ export function CrossPlatformGeneratorForm() {
                 </div>
               )}
 
-              {/* Mode Toggle */}
               <div className="flex items-center gap-2 p-1 bg-muted rounded-lg">
                 <Button
                   type="button"
@@ -902,20 +689,19 @@ export function CrossPlatformGeneratorForm() {
                   size="sm"
                   className="flex-1 h-8"
                   onClick={() => setMode("saved")}
-                  disabled={pageBusy}
+                  disabled={pageBusy || bootstrappingReqs}
                 >
-                  {savedReqs.length > 0
-                    ? "Saved Requirements"
-                    : "Example Requirements"}
+                  {bootstrappingReqs
+                    ? "Loading…"
+                    : savedReqs.length > 0
+                      ? "Saved Requirements"
+                      : "Example Requirements"}
                 </Button>
               </div>
 
-              {/* Quick Entry Mode */}
               {mode === "quick" && (
                 <>
                   <textarea
-                    id="requirement"
-                    name="requirement"
                     className="w-full min-h-[140px] p-3 text-sm border rounded-md resize-y focus-visible:ring-2 focus-visible:ring-primary"
                     placeholder="Describe the requirement you want to test across multiple platforms."
                     value={requirement}
@@ -944,7 +730,6 @@ export function CrossPlatformGeneratorForm() {
                 </>
               )}
 
-              {/* Saved Requirements Mode */}
               {mode === "saved" && (
                 <div className="space-y-3">
                   <Select
@@ -960,11 +745,7 @@ export function CrossPlatformGeneratorForm() {
                         <SelectItem key={req.id} value={req.id}>
                           <div className="flex items-center gap-2">
                             <div
-                              className={`w-2 h-2 rounded-full ${
-                                savedReqs.length > 0
-                                  ? "bg-blue-500"
-                                  : "bg-gray-400"
-                              }`}
+                              className={`w-2 h-2 rounded-full ${savedReqs.length > 0 ? "bg-blue-500" : "bg-gray-400"}`}
                             />
                             {req.label}
                           </div>
@@ -972,7 +753,6 @@ export function CrossPlatformGeneratorForm() {
                       ))}
                     </SelectContent>
                   </Select>
-
                   {selectedReqData && (
                     <div className="border rounded-md bg-muted/20">
                       <div className="flex items-center justify-between p-3 border-b bg-muted/40">
@@ -1008,8 +788,7 @@ export function CrossPlatformGeneratorForm() {
               <div>
                 <Label className="text-sm font-medium">Project</Label>
                 <p className="text-xs text-muted-foreground">
-                  Optional, but recommended for organizing generated suites and
-                  linking assets.
+                  Optional — recommended for organizing generated suites.
                 </p>
               </div>
               <ProjectSelect
@@ -1065,15 +844,12 @@ export function CrossPlatformGeneratorForm() {
                     <SelectItem value="10">10 test cases</SelectItem>
                     <SelectItem value="15">15 test cases</SelectItem>
                     <SelectItem value="20">20 test cases</SelectItem>
-                    <SelectItem value="30">30 test cases</SelectItem>
-                    <SelectItem value="50">50 test cases</SelectItem>
-                    <SelectItem value="75">75 test cases</SelectItem>
-                    <SelectItem value="100">100 test cases</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Total requested = per-platform count × number of selected
-                  platforms.
+                  Total Cases: {clampInt(perPlatformCount, 1, 20, 10)} ×{" "}
+                  {selectedPlatforms.length} platform(s) = {requestedTotal}{" "}
+                  cases.
                 </p>
               </div>
             </div>
@@ -1085,8 +861,8 @@ export function CrossPlatformGeneratorForm() {
                   Target Platforms *
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  Select platforms, choose the framework/technology, and select
-                  test types per platform.
+                  Select platforms and choose the framework/technology. AI
+                  handles coverage automatically.
                 </p>
               </div>
 
@@ -1098,11 +874,7 @@ export function CrossPlatformGeneratorForm() {
                   return (
                     <div
                       key={p.id}
-                      className={`border rounded-lg p-4 transition-all ${
-                        isSelected
-                          ? "border-primary bg-primary/5"
-                          : "border-border"
-                      }`}
+                      className={`border rounded-lg p-4 transition-all ${isSelected ? "border-primary bg-primary/5" : "border-border"}`}
                     >
                       <div className="flex items-start gap-3">
                         <Checkbox
@@ -1112,7 +884,6 @@ export function CrossPlatformGeneratorForm() {
                           disabled={pageBusy}
                           className="mt-1"
                         />
-
                         <div className="flex-1 space-y-3">
                           <div className="flex items-center gap-3">
                             <Icon className="h-5 w-5 text-muted-foreground" />
@@ -1133,11 +904,11 @@ export function CrossPlatformGeneratorForm() {
                           </div>
 
                           {isSelected && (
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                               {/* Framework */}
                               <div className="space-y-2">
                                 <Label className="text-sm">
-                                  Framework/Technology
+                                  Framework / Technology
                                 </Label>
                                 <Select
                                   value={frameworkByPlatform[p.id] || ""}
@@ -1163,33 +934,15 @@ export function CrossPlatformGeneratorForm() {
                                 </Select>
                               </div>
 
-                              {/* Test Types (per platform) */}
-                              <div className="space-y-2">
-                                <Label className="text-sm">Test Types *</Label>
-                                <CrossPlatformTestTypeMultiselect
-                                  platform={p.id as MultiselectPlatformId}
-                                  value={testTypesByPlatform[p.id] ?? []}
-                                  onChange={(v) =>
-                                    setTestTypesByPlatform((prev) => ({
-                                      ...prev,
-                                      [p.id]: uniq(v),
-                                    }))
-                                  }
-                                  disabled={pageBusy}
-                                  placeholder={`Select ${p.name} test types...`}
-                                />
-                              </div>
-
-                              {/* API Advanced */}
+                              {/* API advanced config */}
                               {p.id === "api" && (
                                 <div className="border rounded-md p-3 bg-muted/20 space-y-3">
                                   <div className="flex items-center gap-2">
                                     <Globe className="h-4 w-4 text-muted-foreground" />
                                     <p className="text-sm font-medium">
-                                      API Configuration (Recommended)
+                                      API Configuration (Optional)
                                     </p>
                                   </div>
-
                                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                     <div className="space-y-1.5">
                                       <Label className="text-xs">
@@ -1203,7 +956,7 @@ export function CrossPlatformGeneratorForm() {
                                         disabled={pageBusy}
                                       >
                                         <SelectTrigger className="h-9">
-                                          <SelectValue placeholder="Protocol" />
+                                          <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
                                           {apiProtocolOptions.map((x) => (
@@ -1214,7 +967,6 @@ export function CrossPlatformGeneratorForm() {
                                         </SelectContent>
                                       </Select>
                                     </div>
-
                                     <div className="space-y-1.5">
                                       <Label className="text-xs">Auth</Label>
                                       <Select
@@ -1225,7 +977,7 @@ export function CrossPlatformGeneratorForm() {
                                         disabled={pageBusy}
                                       >
                                         <SelectTrigger className="h-9">
-                                          <SelectValue placeholder="Auth" />
+                                          <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
                                           {apiAuthOptions.map((x) => (
@@ -1236,7 +988,6 @@ export function CrossPlatformGeneratorForm() {
                                         </SelectContent>
                                       </Select>
                                     </div>
-
                                     <div className="space-y-1.5">
                                       <Label className="text-xs">
                                         Payload Format
@@ -1249,7 +1000,7 @@ export function CrossPlatformGeneratorForm() {
                                         disabled={pageBusy}
                                       >
                                         <SelectTrigger className="h-9">
-                                          <SelectValue placeholder="Format" />
+                                          <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
                                           {apiFormatOptions.map((x) => (
@@ -1261,15 +1012,14 @@ export function CrossPlatformGeneratorForm() {
                                       </Select>
                                     </div>
                                   </div>
-
                                   <div className="space-y-2">
                                     <Label className="text-xs">
-                                      Contract (Optional: OpenAPI/WSDL/schema
+                                      Contract (Optional — OpenAPI/WSDL/schema
                                       snippet or URL)
                                     </Label>
                                     <textarea
                                       className="w-full min-h-[90px] p-2 text-xs border rounded-md resize-y focus-visible:ring-2 focus-visible:ring-primary"
-                                      placeholder="Paste OpenAPI/WSDL fragment or a URL. This produces much better API test cases."
+                                      placeholder="Paste OpenAPI/WSDL fragment or a URL. Produces much better API test cases."
                                       value={apiContract}
                                       onChange={(e) =>
                                         setApiContract(e.target.value)
@@ -1277,9 +1027,9 @@ export function CrossPlatformGeneratorForm() {
                                       disabled={pageBusy}
                                     />
                                     <p className="text-xs text-muted-foreground">
-                                      If you provide a contract, tests will
-                                      include schema validation and strict
-                                      fault/error coverage.
+                                      If provided, tests will include schema
+                                      validation and strict fault/error
+                                      coverage.
                                     </p>
                                   </div>
                                 </div>
@@ -1301,13 +1051,35 @@ export function CrossPlatformGeneratorForm() {
               )}
             </div>
 
+            {/* Generation progress */}
+            {submitting && (
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                  <span className="text-sm font-medium">
+                    Generating cross-platform test cases…
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-primary animate-pulse w-full" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Running parallel AI batches across{" "}
+                    {selectedPlatforms.length} platform(s) — typically 20–60
+                    seconds.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Submit */}
             <Button
               type="submit"
               className="w-full h-11"
               disabled={pageBusy || selectedPlatforms.length === 0}
             >
-              {pageBusy ? (
+              {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Generating cross-platform tests…
@@ -1319,34 +1091,6 @@ export function CrossPlatformGeneratorForm() {
                 </>
               )}
             </Button>
-
-            <div className="text-xs text-muted-foreground space-y-1">
-              <p>
-                Request summary: {selectedPlatforms.length} platform(s),{" "}
-                {clampInt(perPlatformCount, 1, 100, 10)} per platform, total{" "}
-                {requestedTotal}.
-              </p>
-              <p>
-                Requirement mode: <code>{mode}</code>
-                {mode === "saved" && selectedRequirementId ? (
-                  <>
-                    {" "}
-                    (requirement_id: <code>{selectedRequirementId}</code>)
-                  </>
-                ) : null}
-              </p>
-              {selectedPlatforms.map((p) => (
-                <p key={p}>
-                  {p}: {(testTypesByPlatform[p] ?? []).join(", ") || "—"}
-                </p>
-              ))}
-              {template?.id ? (
-                <p>
-                  Template ID sent: <code>{template.id}</code> (API resolves to{" "}
-                  <code>test_case_templates.template_content</code>)
-                </p>
-              ) : null}
-            </div>
           </form>
         </CardContent>
       </Card>

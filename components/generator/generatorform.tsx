@@ -28,15 +28,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  TestTypeMultiselect,
-  CanonicalTestType,
-} from "@/components/generator/testtype-multiselect";
-
 import { Loader2, Sparkles, Info, FileText } from "lucide-react";
-
 import { TemplateSelect } from "@/components/templates/template-select";
 import { ProjectSelect } from "@/components/projects/project-select";
+import { Project, ProjectColor } from "@/types/projects";
+import { TemplateContent, TemplateCategory } from "@/types/templates";
+import { RequirementRow, RequirementOption } from "@/types/requirements";
+
 import {
   AI_MODELS,
   MODEL_GROUPS,
@@ -46,12 +44,8 @@ import {
   migrateModelKey,
 } from "@/lib/ai-models/config";
 import { Separator } from "@radix-ui/react-separator";
-import {
-  TemplateContent,
-  Coverage,
-  TemplateCategory,
-  TemplateFormData,
-} from "@/types/templates";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type TemplateFromSelect = {
   id: string;
@@ -59,27 +53,6 @@ type TemplateFromSelect = {
   description?: string | null;
   category: TemplateCategory;
   template_content: TemplateContent;
-};
-
-type RequirementRow = {
-  id: string;
-  title: string;
-  description: string;
-  type: string;
-  priority: string;
-  status?: string;
-  project_id?: string | null;
-};
-
-type RequirementOption = {
-  id: string;
-  label: string;
-  title: string;
-  description: string;
-  type: string;
-  priority: string;
-  value: string;
-  project_id?: string | null;
 };
 
 type ProjectRowLite = {
@@ -157,6 +130,8 @@ const PLACEHOLDER_REQUIREMENTS: RequirementOption[] = [
   },
 ];
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function mapRequirementsToOptions(rows: RequirementRow[]): RequirementOption[] {
   return (rows ?? []).map((req) => ({
     id: req.id,
@@ -170,107 +145,63 @@ function mapRequirementsToOptions(rows: RequirementRow[]): RequirementOption[] {
   }));
 }
 
-const CANONICAL = new Set<CanonicalTestType>([
-  "happy-path",
-  "negative",
-  "security",
-  "boundary",
-  "edge-case",
-  "performance",
-  "integration",
-  "regression",
-  "smoke",
-]);
-
-function coerceCanonicalTestTypes(
-  v: unknown,
-  fallback: CanonicalTestType[] = ["happy-path"],
-): CanonicalTestType[] {
-  if (!Array.isArray(v)) return fallback;
-  const out = v
-    .filter((x): x is string => typeof x === "string")
-    .map((s) => s.trim())
-    .filter((s): s is CanonicalTestType =>
-      CANONICAL.has(s as CanonicalTestType),
-    );
-  return out.length > 0 ? out : fallback;
-}
-
 function clampTestCount(n: number, min = 1, max = 100) {
   if (!Number.isFinite(n)) return min;
   return Math.max(min, Math.min(max, Math.floor(n)));
 }
 
+// ─── Bootstrap hook ───────────────────────────────────────────────────────────
+
 function useGeneratorBootstrap(userId: string | undefined) {
-  const router = useRouter();
-  const [bootstrapping, setBootstrapping] = useState(true);
+  const [bootstrapping, setBootstrapping] = useState(false);
   const [projects, setProjects] = useState<ProjectRowLite[]>([]);
   const [requirements, setRequirements] = useState<RequirementOption[]>([]);
   const [defaults, setDefaults] = useState<BootstrapDefaults>(null);
 
-  const abortRef = useRef<AbortController | null>(null);
-  const load = useCallback(async () => {
-    if (!userId) {
-      setBootstrapping(false);
-      return;
-    }
+  useEffect(() => {
+    if (!userId) return;
 
-    abortRef.current?.abort();
-    const ac = new AbortController();
-    abortRef.current = ac;
+    let stale = false;
     setBootstrapping(true);
 
-    try {
-      const res = await fetch(
-        "/api/generate-test-cases/bootstrap?requirementsLimit=200&templatesLimit=200",
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-          signal: ac.signal,
-          cache: "no-store",
-        },
-      );
-
-      const data = (await res.json()) as Partial<BootstrapResponse> & {
-        error?: string;
-        details?: string;
-      };
-
-      if (res.status === 401) {
-        toast.error("Please sign in to continue");
-        router.push("/login");
-        return;
-      }
-      if (!res.ok)
-        throw new Error(
-          data?.error ||
-            data?.details ||
-            `Bootstrap failed (HTTP ${res.status})`,
-        );
-
-      setProjects(data.projects ?? []);
-      setRequirements(mapRequirementsToOptions(data.requirements ?? []));
-      setDefaults(data.defaults ?? null);
-    } catch (e) {
-      if ((e as any)?.name === "AbortError") return;
-      console.error("❌ Bootstrap load error:", e);
-      toast.error("Unable to load generator data", {
-        description: e instanceof Error ? e.message : "Please try again.",
-        duration: 7000,
+    fetch(
+      "/api/generate-test-cases/bootstrap?requirementsLimit=200&templatesLimit=200",
+      { method: "GET", cache: "no-store" },
+    )
+      .then((res) => {
+        if (!res.ok) throw new Error(`Bootstrap failed (${res.status})`);
+        return res.json() as Promise<
+          Partial<BootstrapResponse> & { error?: string }
+        >;
+      })
+      .then((data) => {
+        if (stale) return;
+        setProjects(data.projects ?? []);
+        setRequirements(mapRequirementsToOptions(data.requirements ?? []));
+        setDefaults(data.defaults ?? null);
+      })
+      .catch((e) => {
+        if (stale) return;
+        console.error("❌ Bootstrap load error:", e);
+        toast.error("Unable to load generator data", {
+          description: e instanceof Error ? e.message : "Please try again.",
+          duration: 7000,
+        });
+        setRequirements([]);
+      })
+      .finally(() => {
+        setBootstrapping(false); // always clear — stale or not
       });
-      setRequirements([]);
-    } finally {
-      setBootstrapping(false);
-    }
-  }, [userId, router]);
 
-  useEffect(() => {
-    void load();
-    return () => abortRef.current?.abort();
-  }, [load]);
+    return () => {
+      stale = true;
+    };
+  }, [userId]);
 
-  return { bootstrapping, projects, requirements, defaults, reload: load };
+  return { bootstrapping, projects, requirements, defaults };
 }
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function GeneratorForm() {
   const router = useRouter();
@@ -283,22 +214,14 @@ export function GeneratorForm() {
     defaults,
   } = useGeneratorBootstrap(user?.id);
 
-  const mappedProjects = useMemo(
+  // Map bootstrap projects to the Project type for ProjectSelect
+  const mappedProjects = useMemo<Project[]>(
     () =>
       bootProjects.map((p) => ({
         id: p.id,
         name: p.name,
         status: "active" as const,
-        color: (p.color ?? "blue") as
-          | "blue"
-          | "green"
-          | "purple"
-          | "orange"
-          | "red"
-          | "pink"
-          | "indigo"
-          | "yellow"
-          | "gray",
+        color: (p.color ?? "blue") as ProjectColor,
         icon: p.icon ?? "folder",
       })),
     [bootProjects],
@@ -312,9 +235,6 @@ export function GeneratorForm() {
     useState<TemplateFromSelect | null>(null);
   const [model, setModel] = useState(getDefaultModel);
   const [testCaseCount, setTestCaseCount] = useState("10");
-  const [selectedTestTypes, setSelectedTestTypes] = useState<
-    CanonicalTestType[]
-  >(["happy-path", "negative", "boundary"]);
   const [generationTitle, setGenerationTitle] = useState("");
   const [generationDescription, setGenerationDescription] = useState("");
   const [selectedProject, setSelectedProject] = useState<string>("");
@@ -322,6 +242,7 @@ export function GeneratorForm() {
     "none",
   );
 
+  // Apply bootstrap defaults once
   const defaultsAppliedRef = useRef(false);
   useEffect(() => {
     if (defaultsAppliedRef.current) return;
@@ -331,14 +252,12 @@ export function GeneratorForm() {
         ? migrateModelKey(defaults.model!)
         : getDefaultModel(),
     );
-    setTestCaseCount(String(clampTestCount(defaults.count ?? 10, 1, 100)));
-    setSelectedTestTypes(
-      coerceCanonicalTestTypes(defaults.test_types, [
-        "happy-path",
-        "negative",
-        "boundary",
-      ]),
+    // Snap count to nearest valid option: 5, 10, 15, 20
+    const raw = clampTestCount(defaults.count ?? 10, 5, 20);
+    const snapped = [5, 10, 15, 20].reduce((prev, curr) =>
+      Math.abs(curr - raw) < Math.abs(prev - raw) ? curr : prev,
     );
+    setTestCaseCount(String(snapped));
     defaultsAppliedRef.current = true;
   }, [defaults]);
 
@@ -363,12 +282,14 @@ export function GeneratorForm() {
   const finalRequirementsText =
     mode === "quick" ? customRequirements : savedRequirementsText;
 
+  // Auto-fill title/description from selected requirement
   useEffect(() => {
     if (mode !== "saved" || !selectedReqData) return;
     setGenerationTitle(`${selectedReqData.title} Test Cases`);
     setGenerationDescription(selectedReqData.description || "");
   }, [mode, selectedReqData?.id]);
 
+  // Auto-assign project from requirement
   useEffect(() => {
     if (mode !== "saved" || !selectedReqData) return;
     const reqProjectId = selectedReqData.project_id ?? null;
@@ -430,21 +351,18 @@ export function GeneratorForm() {
 
     try {
       const testCaseCountNum = parseInt(testCaseCount, 10);
-
       if (
         Number.isNaN(testCaseCountNum) ||
         testCaseCountNum < 1 ||
-        testCaseCountNum > 100
+        testCaseCountNum > 20
       ) {
-        toast.error("Please select a valid number of test cases.");
+        toast.error("Please select a valid number of test cases (1–20).");
         return;
       }
-
       if (!generationTitle.trim()) {
         toast.error("Please enter a generation title.");
         return;
       }
-
       if (mode === "quick") {
         const trimmed = customRequirements.trim();
         if (!trimmed) {
@@ -464,7 +382,6 @@ export function GeneratorForm() {
           return;
         }
       }
-
       if (mode === "saved" && !savedRequirementsText.trim()) {
         toast.error("Please select a requirement.");
         return;
@@ -477,43 +394,38 @@ export function GeneratorForm() {
       const sanitizedRequirements = sanitizeInput(finalRequirementsText);
 
       if (!sanitizedTitle) {
-        toast.error("Title contains invalid characters. Please revise.");
+        toast.error("Title contains invalid characters.");
         return;
       }
       if (
         !sanitizedRequirements ||
         sanitizedRequirements.length < MIN_REQUIREMENTS_LENGTH
       ) {
-        toast.error(
-          "Requirements contain invalid content or are too short after sanitization.",
-        );
+        toast.error("Requirements contain invalid content or are too short.");
         return;
       }
-
-      const requestPayload = {
-        requirements: sanitizedRequirements,
-        requirement_id:
-          mode === "saved" && selectedReqData ? selectedRequirement : null,
-        model: model.trim(),
-        testCaseCount: testCaseCountNum,
-        testTypes: selectedTestTypes,
-        template: selectedTemplate?.id || null,
-        title: sanitizedTitle,
-        description: sanitizedDescription,
-        project_id: selectedProject || null,
-      };
 
       const response = await fetch("/api/generate-test-cases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestPayload),
+        body: JSON.stringify({
+          requirements: sanitizedRequirements,
+          requirement_id:
+            mode === "saved" && selectedReqData ? selectedRequirement : null,
+          model: model.trim(),
+          testCaseCount: testCaseCountNum,
+          template: selectedTemplate?.id || null,
+          title: sanitizedTitle,
+          description: sanitizedDescription,
+          project_id: selectedProject || null,
+        }),
       });
 
       const data = await response.json();
 
       if (response.status === 429) {
         toast.error("Monthly usage limit reached", {
-          description: `You have ${data.remaining || 0} test cases remaining. Upgrade to Pro for 500 test cases/month.`,
+          description: `You have ${data.remaining || 0} test cases remaining. Upgrade to Pro for more.`,
           duration: 8000,
           action: { label: "Upgrade", onClick: () => router.push("/billing") },
         });
@@ -522,17 +434,13 @@ export function GeneratorForm() {
 
       if (!response.ok) {
         if ([502, 503, 504].includes(response.status)) {
-          toast.error(
-            "Generation timed out. This can happen with larger test case counts — please try again.",
-          );
+          toast.error("Generation timed out. Please try again.");
           return;
         }
         throw new Error(data?.error || "Generation failed");
       }
 
-      toast.success("Test cases generated!", {
-        description: `Created ${data.count} test cases using ${data.provider_used}`,
-      });
+      toast.success(`${data.count} test cases generated!`);
       router.push(`/test-cases?generation=${data.generation_id}`);
     } catch (err) {
       console.error("❌ Generation error:", err);
@@ -631,7 +539,6 @@ export function GeneratorForm() {
                 </Button>
               </div>
 
-              {/* Mode Toggle */}
               <div
                 className="flex items-center gap-2 p-1 bg-muted rounded-lg"
                 data-testid="requirements-mode-toggle"
@@ -662,7 +569,6 @@ export function GeneratorForm() {
                 </Button>
               </div>
 
-              {/* Quick Entry Mode */}
               {mode === "quick" && (
                 <div className="space-y-3">
                   <Label htmlFor="custom-requirements" className="text-sm">
@@ -697,7 +603,6 @@ export function GeneratorForm() {
                       {customRequirements.length} / {MAX_REQUIREMENTS_LENGTH}
                     </span>
                   </div>
-
                   {customRequirements.length > 10 && (
                     <div
                       className="p-3 bg-blue-50 border border-blue-200 rounded-md"
@@ -722,7 +627,6 @@ export function GeneratorForm() {
                 </div>
               )}
 
-              {/* Saved Requirements Mode */}
               {mode === "saved" && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
@@ -733,7 +637,6 @@ export function GeneratorForm() {
                       <span className="text-destructive">*</span>
                     </Label>
                   </div>
-
                   <Select
                     value={selectedRequirement}
                     onValueChange={setSelectedRequirement}
@@ -758,7 +661,6 @@ export function GeneratorForm() {
                       ))}
                     </SelectContent>
                   </Select>
-
                   {selectedReqData && (
                     <div
                       className="border rounded-md bg-muted/20"
@@ -793,7 +695,7 @@ export function GeneratorForm() {
               )}
             </div>
 
-            {/* Project Selection */}
+            {/* Project Selection — uses bootstrap projects, no internal fetch */}
             <div
               className="mt-4 space-y-3 border rounded-lg p-4 bg-muted/30"
               data-testid="project-selection"
@@ -805,17 +707,13 @@ export function GeneratorForm() {
                   linking assets.
                 </p>
               </div>
-              {!bootstrapping ? (
-                <ProjectSelect
-                  value={selectedProject || undefined}
-                  disabled={pageBusy}
-                  projects={mappedProjects}
-                  disableFetch={mappedProjects.length > 0}
-                  onSelect={(p) => setSelectedProject(p?.id ?? "")}
-                />
-              ) : (
-                <div className="h-10 bg-muted rounded animate-pulse" />
-              )}
+              <ProjectSelect
+                value={selectedProject || undefined}
+                disabled={pageBusy}
+                projects={mappedProjects}
+                disableFetch
+                onSelect={(p) => setSelectedProject(p?.id ?? "")}
+              />
             </div>
 
             {/* Template Selection */}
@@ -852,7 +750,6 @@ export function GeneratorForm() {
                 className="grid grid-cols-1 md:grid-cols-2 gap-6"
                 data-testid="generation-settings"
               >
-                {/* AI Model */}
                 <div className="space-y-2">
                   <Label htmlFor="model">AI Model</Label>
                   <Select
@@ -883,7 +780,6 @@ export function GeneratorForm() {
                   </Select>
                 </div>
 
-                {/* Test Case Count */}
                 <div className="space-y-2">
                   <Label htmlFor="testCaseCount">Number of Test Cases</Label>
                   <Select
@@ -903,28 +799,29 @@ export function GeneratorForm() {
                       <SelectItem value="10">10 test cases</SelectItem>
                       <SelectItem value="15">15 test cases</SelectItem>
                       <SelectItem value="20">20 test cases</SelectItem>
-                      <SelectItem value="30">30 test cases</SelectItem>
-                      <SelectItem value="50">50 test cases</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+            )}
 
-                {/* Test Types */}
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="test-types" className="text-base font-medium">
-                    Test Types <span className="text-destructive ml-1">*</span>
-                  </Label>
-                  <div data-testid="select-test-types">
-                    <TestTypeMultiselect
-                      value={selectedTestTypes}
-                      onChange={setSelectedTestTypes}
-                      disabled={pageBusy}
-                      placeholder="Select test types to generate..."
-                    />
+            {/* Generation progress — shown while waiting for the synchronous API response */}
+            {submitting && (
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                  <span className="text-sm font-medium">
+                    Generating test cases…
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-primary animate-pulse w-full" />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Select which types of test cases to generate. More types =
-                    more comprehensive coverage.
+                    Running {Math.ceil(parseInt(testCaseCount, 10) / 5)}{" "}
+                    parallel AI batches across coverage areas — typically 20–45
+                    seconds.
                   </p>
                 </div>
               </div>
@@ -936,7 +833,7 @@ export function GeneratorForm() {
               disabled={pageBusy}
               data-testid="btn-generate"
             >
-              {pageBusy ? (
+              {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Generating test cases…

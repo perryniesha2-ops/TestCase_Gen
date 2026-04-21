@@ -20,3 +20,15 @@ export interface ProjectFormData {
   start_date: string;
   target_end_date: string;
 }
+
+export interface Project {
+  id: string;
+  name: string;
+  description?: string | null;
+  status: ProjectStatus;
+  color: ProjectColor;
+  icon: string;
+  test_suites_count?: number;
+  requirements_count?: number;
+  templates_count?: number;
+}

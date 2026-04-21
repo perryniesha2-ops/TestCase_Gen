@@ -47,7 +47,6 @@ import type {
   CrossPlatformTestCase,
   Project,
 } from "@/types/test-cases";
-import { testTypes } from "@/types/test-cases";
 
 type CombinedTestCase = TestCase | CrossPlatformTestCase;
 
@@ -78,7 +77,6 @@ type PlatformKey = keyof typeof PLATFORM_FRAMEWORKS;
 interface RegularFormData {
   title: string;
   description: string;
-  test_type: string;
   priority: string;
   preconditions: string;
   test_steps: Array<{
@@ -139,7 +137,6 @@ export function TestCaseFormDialog({
   const [regularFormData, setRegularFormData] = useState<RegularFormData>({
     title: "",
     description: "",
-    test_type: "functional",
     priority: "medium",
     preconditions: "",
     test_steps: [{ step_number: 1, action: "", expected: "" }],
@@ -199,10 +196,6 @@ export function TestCaseFormDialog({
 
       if (isRegularTestCase(testCase)) {
         setActiveType("regular");
-        const testTypesList = testTypes as readonly string[];
-        const normalizedTestType = testTypesList.includes(testCase.test_type)
-          ? testCase.test_type
-          : "functional";
 
         setRegularFormData({
           title: testCase.title,
@@ -210,7 +203,6 @@ export function TestCaseFormDialog({
             (testCase as any).description ??
             (testCase as any).description_text ??
             "",
-          test_type: normalizedTestType,
           priority: testCase.priority,
           preconditions: testCase.preconditions || "",
           test_steps: testCase.test_steps,
@@ -274,7 +266,6 @@ export function TestCaseFormDialog({
     setRegularFormData({
       title: "",
       description: "",
-      test_type: "functional",
       priority: "medium",
       preconditions: "",
       test_steps: [{ step_number: 1, action: "", expected: "" }],
@@ -470,7 +461,6 @@ export function TestCaseFormDialog({
           generation_id: generationId || null,
           title: formData.title,
           description: formData.description,
-          test_type: formData.test_type,
           priority: formData.priority,
           preconditions: formData.preconditions || null,
           test_steps: formData.test_steps,
@@ -494,7 +484,6 @@ export function TestCaseFormDialog({
         .update({
           title: formData.title,
           description: formData.description,
-          test_type: formData.test_type,
           priority: formData.priority,
           preconditions: formData.preconditions || null,
           test_steps: formData.test_steps,
@@ -706,104 +695,76 @@ export function TestCaseFormDialog({
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-                <div className="space-y-2">
-                  <Label htmlFor="test_type">Test Type</Label>
-                  <Select
-                    value={regularFormData.test_type}
-                    onValueChange={(value) =>
-                      setRegularFormData((prev) => ({
-                        ...prev,
-                        test_type: value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger id="test_type">
-                      <SelectValue placeholder="Select test type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {testTypes.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type.charAt(0).toUpperCase() + type.slice(1)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="priority">Priority</Label>
+                <Select
+                  value={regularFormData.priority}
+                  onValueChange={(value) =>
+                    setRegularFormData((prev) => ({
+                      ...prev,
+                      priority: value,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="priority">
+                    <SelectValue placeholder="Select priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="priority">Priority</Label>
-                  <Select
-                    value={regularFormData.priority}
-                    onValueChange={(value) =>
-                      setRegularFormData((prev) => ({
-                        ...prev,
-                        priority: value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger id="priority">
-                      <SelectValue placeholder="Select priority" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="critical">Critical</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <Select
+                  value={regularFormData.status}
+                  onValueChange={(value) =>
+                    setRegularFormData((prev) => ({ ...prev, status: value }))
+                  }
+                >
+                  <SelectTrigger id="status">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="archived">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
-                  <Select
-                    value={regularFormData.status}
-                    onValueChange={(value) =>
-                      setRegularFormData((prev) => ({ ...prev, status: value }))
-                    }
-                  >
-                    <SelectTrigger id="status">
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="archived">Archived</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="project">Project (Optional)</Label>
-                  <Select
-                    value={regularFormData.project_id || "none"}
-                    onValueChange={(value) =>
-                      setRegularFormData((prev) => ({
-                        ...prev,
-                        project_id: value === "none" ? null : value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger id="project">
-                      <SelectValue placeholder="Select a project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">
-                        <span className="text-muted-foreground">
-                          No Project
-                        </span>
+              <div className="space-y-2">
+                <Label htmlFor="project">Project (Optional)</Label>
+                <Select
+                  value={regularFormData.project_id || "none"}
+                  onValueChange={(value) =>
+                    setRegularFormData((prev) => ({
+                      ...prev,
+                      project_id: value === "none" ? null : value,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="project">
+                    <SelectValue placeholder="Select a project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      <span className="text-muted-foreground">No Project</span>
+                    </SelectItem>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        <div className="flex items-center gap-2">
+                          <FolderOpen className="h-4 w-4" />
+                          {project.name}
+                        </div>
                       </SelectItem>
-                      {projects.map((project) => (
-                        <SelectItem key={project.id} value={project.id}>
-                          <div className="flex items-center gap-2">
-                            <FolderOpen className="h-4 w-4" />
-                            {project.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">

@@ -24,6 +24,7 @@ import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
 import { TestCaseFormDialog } from "@/components/testcase-management/test-cases/dialogs/test-case-form-dialog";
 import { TestRunnerDialog } from "@/components/testcase-management/test-cases/dialogs/test-runner-dialog";
 import { ExecutionHistoryTab } from "@/components/testcase-management/test-cases/executionhistory";
+import { VersionHistoryPanel } from "@/components/testcase-management/test-cases/versionhistorypanel";
 import { useExecutions } from "@/hooks/useExecutions";
 import { toastError, toastSuccess } from "@/lib/utils/toast-utils";
 
@@ -66,8 +67,6 @@ export function TestCaseDetailsPageClient({
   const [showEditDialog, setShowEditDialog] = React.useState(false);
   const [showRunnerDialog, setShowRunnerDialog] = React.useState(false);
 
-  const fetchRan = React.useRef(false);
-
   const {
     execution,
     setExecution,
@@ -78,31 +77,25 @@ export function TestCaseDetailsPageClient({
     reset,
   } = useExecutions({ sessionId: null });
 
-  // ── Fetch via API route ───────────────────────────────────────────────────
-
   const fetchTestCase = React.useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/test-cases/${testCaseId}`, {
         cache: "no-store",
       });
-
       if (res.status === 404) {
         toast.error("Test case not found");
         router.push("/test-library");
         return;
       }
-
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload?.error ?? `Failed (${res.status})`);
       }
-
       const payload = await res.json();
       setTestCase(payload.testCase);
       setCaseType(payload.caseType ?? "regular");
-    } catch (error: any) {
-      console.error("[TestCaseDetailsPageClient] fetchTestCase error:", error);
+    } catch {
       toast.error("Failed to load test case");
       router.push("/test-library");
     } finally {
@@ -110,13 +103,11 @@ export function TestCaseDetailsPageClient({
     }
   }, [testCaseId, router]);
 
-  // Run once when user is available — ref prevents double-fetch from auth re-renders
   React.useEffect(() => {
     if (!user?.id) return;
     void fetchTestCase();
-  }, [user?.id]);
+  }, [user?.id, fetchTestCase]);
 
-  // Seed execution status when test case loads
   React.useEffect(() => {
     if (!testCase) return;
     setExecution((prev) => ({
@@ -128,15 +119,12 @@ export function TestCaseDetailsPageClient({
         failedSteps: prev[testCaseId]?.failedSteps ?? [],
       },
     }));
-  }, [testCase, setExecution]);
-
-  // ── Delete via API route ──────────────────────────────────────────────────
+  }, [testCase, setExecution, testCaseId]);
 
   const handleDelete = async () => {
     if (!testCase) return;
-
     const confirmed = window.confirm(
-      `Delete test case "${testCase.title}"?\n\nThis will also delete:\n• All linked suite assignments\n• All execution history\n• All requirement links\n• All attachments\n\nThis cannot be undone.`,
+      `Delete test case "${testCase.title}"?\n\nThis will also delete:\n• All linked suite assignments\n• All execution history\n• All requirement links\n• All attachments\n• All saved versions\n\nThis cannot be undone.`,
     );
     if (!confirmed) return;
 
@@ -147,14 +135,10 @@ export function TestCaseDetailsPageClient({
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error ?? "Failed to delete");
-
       toastSuccess("Test case deleted successfully");
       router.push("/test-cases");
     } catch (error: any) {
-      toastError(
-        error?.message ??
-          "Failed to delete test case. It may be linked to other records.",
-      );
+      toastError(error?.message ?? "Failed to delete test case.");
     } finally {
       setDeleting(false);
     }
@@ -164,13 +148,8 @@ export function TestCaseDetailsPageClient({
     if (!testCase) return;
     try {
       await hydrateOne(testCaseId, caseType);
-    } catch (e) {}
+    } catch {}
     setShowRunnerDialog(true);
-  };
-
-  const handleEditSuccess = () => {
-    void fetchTestCase();
-    setShowEditDialog(false);
   };
 
   const getPriorityColor = (priority: string) => {
@@ -235,7 +214,6 @@ export function TestCaseDetailsPageClient({
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
-
             <div className="flex items-center gap-2">
               <Button size="sm" className="gap-2" onClick={handleRun}>
                 <Play className="h-4 w-4" />
@@ -298,34 +276,40 @@ export function TestCaseDetailsPageClient({
           </div>
         </div>
 
-        {/* Content Tabs */}
+        {/* Tabs */}
         <Tabs defaultValue="details" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList
+            className={`grid w-full ${isRegular ? "grid-cols-3" : "grid-cols-2"}`}
+          >
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="execution">Execution History</TabsTrigger>
+            {isRegular && (
+              <TabsTrigger value="versions">Version History</TabsTrigger>
+            )}
           </TabsList>
 
+          {/* Details */}
           <TabsContent value="details" className="space-y-6 mt-6">
-            <div className="rounded-lg border bg-card p-6 shadow-sm">
+            <div className="rounded-lg border bg-card p-6 shadow-sm overflow-hidden">
               <h3 className="text-lg font-semibold mb-3">Description</h3>
-              <p className="text-muted-foreground">
+              <p className="text-muted-foreground break-words">
                 {testCase.description || "No description provided"}
               </p>
             </div>
 
             {testCase.preconditions && (
-              <div className="rounded-lg border bg-card p-6 shadow-sm">
+              <div className="rounded-lg border bg-card p-6 shadow-sm overflow-hidden">
                 <h3 className="text-lg font-semibold mb-3">Preconditions</h3>
                 {Array.isArray(testCase.preconditions) ? (
                   <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                    {testCase.preconditions.map(
-                      (precond: string, idx: number) => (
-                        <li key={idx}>{precond}</li>
-                      ),
-                    )}
+                    {testCase.preconditions.map((p: string, i: number) => (
+                      <li key={i} className="break-words">
+                        {p}
+                      </li>
+                    ))}
                   </ul>
                 ) : (
-                  <p className="text-muted-foreground">
+                  <p className="text-muted-foreground break-words">
                     {testCase.preconditions}
                   </p>
                 )}
@@ -333,16 +317,19 @@ export function TestCaseDetailsPageClient({
             )}
 
             {isRegular && (
-              <div className="rounded-lg border bg-card p-6 shadow-sm">
+              <div className="rounded-lg border bg-card p-6 shadow-sm overflow-hidden">
                 <h3 className="text-lg font-semibold mb-4">Test Steps</h3>
                 {testCase.test_steps?.length ? (
                   <div className="space-y-3">
                     {testCase.test_steps.map((step, idx) => (
-                      <div key={idx} className="border rounded-lg p-4">
-                        <div className="font-medium mb-2">
+                      <div
+                        key={idx}
+                        className="border rounded-lg p-4 overflow-hidden"
+                      >
+                        <div className="font-medium mb-2 break-words">
                           Step {step.step_number}: {step.action}
                         </div>
-                        <div className="text-sm text-muted-foreground">
+                        <div className="text-sm text-muted-foreground break-words">
                           Expected: {step.expected}
                         </div>
                       </div>
@@ -365,7 +352,7 @@ export function TestCaseDetailsPageClient({
                           Step {idx + 1}: {step}
                         </div>
                         {testCase.expected_results?.[idx] && (
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-sm text-muted-foreground break-words">
                             Expected: {testCase.expected_results[idx]}
                           </div>
                         )}
@@ -379,20 +366,22 @@ export function TestCaseDetailsPageClient({
             )}
 
             {isRegular && testCase.expected_result && (
-              <div className="rounded-lg border bg-card p-6 shadow-sm">
+              <div className="rounded-lg border bg-card p-6 shadow-sm overflow-hidden">
                 <h3 className="text-lg font-semibold mb-3">Expected Result</h3>
-                <p className="text-muted-foreground">
+                <p className="text-muted-foreground break-words">
                   {testCase.expected_result}
                 </p>
               </div>
             )}
 
             {isCrossPlatform && testCase.automation_hints?.length ? (
-              <div className="rounded-lg border bg-card p-6 shadow-sm">
+              <div className="rounded-lg border bg-card p-6 shadow-sm overflow-hidden">
                 <h3 className="text-lg font-semibold mb-3">Automation Hints</h3>
                 <ul className="list-disc list-inside text-muted-foreground space-y-1">
                   {testCase.automation_hints.map((hint, idx) => (
-                    <li key={idx}>{hint}</li>
+                    <li key={idx} className="break-words">
+                      {hint}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -440,9 +429,21 @@ export function TestCaseDetailsPageClient({
             <div className="h-2" />
           </TabsContent>
 
+          {/* Execution History */}
           <TabsContent value="execution" className="mt-6">
             <ExecutionHistoryTab testCaseId={testCase.id} caseType={caseType} />
           </TabsContent>
+
+          {/* Version History — regular cases only */}
+          {isRegular && (
+            <TabsContent value="versions" className="mt-6">
+              <VersionHistoryPanel
+                testCaseId={testCase.id}
+                currentTestCase={testCase as TestCase}
+                onRestored={() => void fetchTestCase()}
+              />
+            </TabsContent>
+          )}
         </Tabs>
         <div className="h-4" />
       </div>
@@ -456,7 +457,10 @@ export function TestCaseDetailsPageClient({
           isRegular && testCase.generation_id ? testCase.generation_id : null
         }
         onClose={() => setShowEditDialog(false)}
-        onSuccess={handleEditSuccess}
+        onSuccess={() => {
+          void fetchTestCase();
+          setShowEditDialog(false);
+        }}
       />
 
       <TestRunnerDialog

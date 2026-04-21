@@ -8,7 +8,11 @@ import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FlaskConical, Layers, Loader2 } from "lucide-react";
 
-import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
+import type {
+  TestCase,
+  CrossPlatformTestCase,
+  TestCaseType,
+} from "@/types/test-cases";
 
 import { TestCaseToolbar } from "./toolbars/TestCaseToolbar";
 import type { RunStatusFilter } from "./toolbars/TestCaseToolbar";
@@ -26,7 +30,6 @@ import { ExportButton } from "@/components/testcase-management/export-button";
 import { Badge } from "@/components/ui/badge";
 import { Clock } from "lucide-react";
 
-type CaseType = "regular" | "cross-platform";
 type CombinedTestCase = (TestCase | CrossPlatformTestCase) & {
   _caseType?: "regular" | "cross-platform";
 };
@@ -60,7 +63,7 @@ export function TabbedTestCaseTable() {
   const [runnerCase, setRunnerCase] = useState<
     TestCase | CrossPlatformTestCase | null
   >(null);
-  const [runnerCaseType, setRunnerCaseType] = useState<CaseType>("regular");
+  const [runnerCaseType, setRunnerCaseType] = useState<TestCaseType>("regular");
   const [updating, setUpdating] = useState<string | null>(null);
 
   // Data
@@ -306,7 +309,7 @@ export function TabbedTestCaseTable() {
 
   // CRUD handlers
   const openRunner = useCallback(
-    async (tc: TestCase | CrossPlatformTestCase, type: CaseType) => {
+    async (tc: TestCase | CrossPlatformTestCase, type: TestCaseType) => {
       setRunnerCase(tc);
       setRunnerCaseType(type);
       try {

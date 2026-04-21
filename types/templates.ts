@@ -31,6 +31,7 @@ export interface Template {
   last_used_at?: string | null;
   created_at: string;
   updated_at: string;
+  project_id: string | null;
 }
 
 export interface CreateTemplateInput {
@@ -54,7 +55,6 @@ export interface TemplateFormData {
   testCaseCount: number;
   includeEdgeCases: boolean;
   includeNegativeTests: boolean;
-  test_types: CanonicalTestType[];
   project_id: string | null;
 }
 
@@ -64,13 +64,3 @@ export interface TemplateStats {
   mostUsedTemplate?: Template;
   recentTemplates: Template[];
 }
-export type CanonicalTestType =
-  | "happy-path"
-  | "negative"
-  | "security"
-  | "boundary"
-  | "edge-case"
-  | "performance"
-  | "integration"
-  | "regression"
-  | "smoke";

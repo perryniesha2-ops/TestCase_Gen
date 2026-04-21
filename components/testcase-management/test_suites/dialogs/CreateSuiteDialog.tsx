@@ -40,17 +40,7 @@ import {
   X,
 } from "lucide-react";
 
-import type { SuiteType, Project } from "@/types/test-cases";
-
-interface FormData {
-  name: string;
-  description: string;
-  kind: "regular" | "cross-platform";
-  suite_type: SuiteType;
-  planned_start_date: string;
-  planned_end_date: string;
-  project_id: string;
-}
+import type { SuiteType, Project, FormData } from "@/types/test-cases";
 
 interface CreateSuiteDialogProps {
   open: boolean;

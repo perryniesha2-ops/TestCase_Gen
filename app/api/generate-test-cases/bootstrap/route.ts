@@ -52,12 +52,41 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
 
+    // ── Short-circuit: requirements-only mode ─────────────────────────────────
+    // Used by pages that only need the requirements list (e.g. cross-platform
+    // generator). Skips the projects, templates, and preferences queries entirely.
+    const requirementsOnly =
+      url.searchParams.get("requirementsOnly") === "true";
+
     const requirementsLimit = toInt(
       url.searchParams.get("requirementsLimit"),
       LIMITS.requirements.default,
       LIMITS.requirements.min,
       LIMITS.requirements.max,
     );
+
+    if (requirementsOnly) {
+      const { data, error } = await supabase
+        .from("requirements")
+        .select("id, title, description, type, priority, status, project_id")
+        .eq("user_id", user.id)
+        .neq("status", "archived")
+        .order("title", { ascending: true })
+        .limit(requirementsLimit);
+
+      if (error) return jsonError(error.message);
+
+      return NextResponse.json(
+        {
+          projects: [],
+          requirements: data ?? [],
+          templates: [],
+          defaults: null,
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     const templatesLimit = toInt(
       url.searchParams.get("templatesLimit"),
       LIMITS.templates.default,
@@ -68,57 +97,52 @@ export async function GET(req: Request) {
       url.searchParams.get("projectsIncludeArchived") === "true";
 
     // ── All queries run in parallel ───────────────────────────────────────────
-    // Note: user_profiles preferences are returned by /api/auth/me and stored
-    // in the auth context. If test_case_defaults is needed here, add
-    // `preferences` to the /api/auth/me response and remove the profile query.
-    const [projectsRes, requirementsRes, templatesRes] = await Promise.all([
-      includeArchivedProjects
-        ? supabase
-            .from("projects")
-            .select("id, name, color, icon, status")
-            .eq("user_id", user.id)
-            .order("name")
-        : supabase
-            .from("projects")
-            .select("id, name, color, icon, status")
-            .eq("user_id", user.id)
-            .neq("status", "archived")
-            .order("name"),
+    const [projectsRes, requirementsRes, templatesRes, profileRes] =
+      await Promise.all([
+        includeArchivedProjects
+          ? supabase
+              .from("projects")
+              .select("id, name, color, icon, status")
+              .eq("user_id", user.id)
+              .order("name")
+          : supabase
+              .from("projects")
+              .select("id, name, color, icon, status")
+              .eq("user_id", user.id)
+              .neq("status", "archived")
+              .order("name"),
 
-      supabase
-        .from("requirements")
-        .select("id, title, description, type, priority, status, project_id")
-        .eq("user_id", user.id)
-        .neq("status", "archived")
-        .order("title", { ascending: true })
-        .limit(requirementsLimit),
+        supabase
+          .from("requirements")
+          .select("id, title, description, type, priority, status, project_id")
+          .eq("user_id", user.id)
+          .neq("status", "archived")
+          .order("title", { ascending: true })
+          .limit(requirementsLimit),
 
-      supabase
-        .from("test_case_templates")
-        .select(
-          "id, name, description, category, template_content, is_favorite, usage_count, project_id, last_used_at",
-        )
-        .eq("user_id", user.id)
-        .order("is_favorite", { ascending: false })
-        .order("usage_count", { ascending: false })
-        .limit(templatesLimit),
-    ]);
+        supabase
+          .from("test_case_templates")
+          .select(
+            "id, name, description, category, template_content, is_favorite, usage_count, project_id, last_used_at",
+          )
+          .eq("user_id", user.id)
+          .order("is_favorite", { ascending: false })
+          .order("usage_count", { ascending: false })
+          .limit(templatesLimit),
+
+        supabase
+          .from("user_profiles")
+          .select("preferences")
+          .eq("id", user.id)
+          .maybeSingle(),
+      ]);
 
     if (projectsRes.error) return jsonError(projectsRes.error.message);
     if (requirementsRes.error) return jsonError(requirementsRes.error.message);
     if (templatesRes.error) return jsonError(templatesRes.error.message);
+    // profileRes failure is non-fatal — defaults gracefully to null
 
-    // ── Fetch preferences separately — small query, not on critical path ──────
-    // This is kept here until preferences are added to /api/auth/me.
-    // Once preferences are in the auth context, remove this query and
-    // read defaults from useAuth() on the client instead.
-    const { data: profileData } = await supabase
-      .from("user_profiles")
-      .select("preferences")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    const defaults = profileData?.preferences?.test_case_defaults ?? null;
+    const defaults = profileRes.data?.preferences?.test_case_defaults ?? null;
 
     return NextResponse.json(
       {

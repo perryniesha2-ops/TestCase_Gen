@@ -59,27 +59,10 @@ import {
   TemplateContent,
   TemplateCategory,
   TemplateFormData,
+  Template,
 } from "@/types/templates";
-import type { CanonicalTestType } from "@/components/generator/testtype-multiselect";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Template {
-  id: string;
-  user_id: string;
-  project_id?: string | null;
-  name: string;
-  description?: string | null;
-  category: TemplateCategory;
-  template_content: TemplateContent;
-  is_public: boolean;
-  is_favorite: boolean;
-  usage_count: number;
-  last_used_at?: string | null;
-  created_at: string;
-  updated_at: string;
-  test_types: string[];
-}
 
 type Tab = "my-templates";
 
@@ -131,30 +114,12 @@ const DEFAULT_FORM: TemplateFormData = {
   category: "functional",
   model: getDefaultModel(),
   testCaseCount: 10,
-  test_types: ["happy-path", "negative", "boundary"],
   includeEdgeCases: true,
   includeNegativeTests: true,
   project_id: null,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function toCanonicalTestTypes(types: string[]): CanonicalTestType[] {
-  const valid: CanonicalTestType[] = [
-    "happy-path",
-    "negative",
-    "security",
-    "boundary",
-    "edge-case",
-    "performance",
-    "integration",
-    "regression",
-    "smoke",
-  ];
-  return types.filter((t): t is CanonicalTestType =>
-    valid.includes(t as CanonicalTestType),
-  );
-}
 
 function relativeTime(dateStr: string | null | undefined): string | null {
   if (!dateStr) return null;
@@ -270,16 +235,6 @@ function TemplateCard({
           <Badge className={`text-xs border ${badgeClass}`}>
             {template.category}
           </Badge>
-          {(template.test_types ?? []).slice(0, 2).map((tt) => (
-            <Badge key={tt} variant="secondary" className="text-xs">
-              {tt}
-            </Badge>
-          ))}
-          {(template.test_types ?? []).length > 2 && (
-            <Badge variant="outline" className="text-xs">
-              +{template.test_types.length - 2}
-            </Badge>
-          )}
         </div>
 
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -509,7 +464,6 @@ export function TemplateManager() {
       category: template.category,
       model: template.template_content.model,
       testCaseCount: template.template_content.testCaseCount,
-      test_types: toCanonicalTestTypes(template.test_types ?? []),
       includeEdgeCases: template.template_content.includeEdgeCases ?? true,
       includeNegativeTests:
         template.template_content.includeNegativeTests ?? true,
@@ -540,7 +494,6 @@ export function TemplateManager() {
           includeEdgeCases: formData.includeEdgeCases,
           includeNegativeTests: formData.includeNegativeTests,
         } satisfies TemplateContent,
-        test_types: formData.test_types,
         is_public: false,
         is_favorite: editingTemplate?.is_favorite ?? false,
         project_id: formData.project_id || null,
@@ -625,7 +578,6 @@ export function TemplateManager() {
             description: template.description ?? null,
             category: template.category,
             template_content: template.template_content,
-            test_types: template.test_types ?? [],
             is_public: false,
             is_favorite: false,
             project_id: template.project_id ?? null,

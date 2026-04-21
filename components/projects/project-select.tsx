@@ -40,29 +40,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ProjectStatus = "active" | "archived" | "completed" | "on_hold";
-type ProjectColor =
-  | "blue"
-  | "green"
-  | "purple"
-  | "orange"
-  | "red"
-  | "pink"
-  | "indigo"
-  | "yellow"
-  | "gray";
-
-export interface Project {
-  id: string;
-  name: string;
-  description?: string | null;
-  status: ProjectStatus;
-  color: ProjectColor;
-  icon: string;
-  test_suites_count?: number;
-  requirements_count?: number;
-  templates_count?: number;
-}
+import { Project, ProjectColor, ProjectStatus } from "@/types/projects";
 
 interface ProjectSelectProps {
   value?: string;
@@ -120,21 +98,25 @@ export function ProjectSelect({
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Keep internal state in sync when parent provides projects
+  // ── Sync internal list when parent provides/updates projects ───────────────
+  // useState(projectsProp ?? []) only runs once at mount. The parent typically
+  // resolves projectsProp after an async bootstrap, so without this effect the
+  // dropdown stays empty even after the parent has data.
+  useEffect(() => {
+    if (projectsProp !== undefined) {
+      setProjects(projectsProp);
+    }
+  }, [projectsProp]);
+
+  // ── Fetch from API when not using parent-provided list ─────────────────────
+  // Only runs when disableFetch=false AND projectsProp is not provided.
   useEffect(() => {
     if (disableFetch) return;
-    if (projectsProp) return;
+    if (projectsProp !== undefined) return;
     void fetchProjects();
   }, [disableFetch, projectsProp]);
 
-  // Fetch via API route — no direct Supabase call, no useAuth needed
-  useEffect(() => {
-    if (disableFetch) return;
-    if (projectsProp) return;
-    void fetchProjects();
-  }, [disableFetch, projectsProp]);
-
-  // Sync selectedProject when value or projects list changes
+  // ── Keep selectedProject in sync with value + current list ────────────────
   useEffect(() => {
     if (value) {
       setSelectedProject(projects.find((p) => p.id === value) ?? null);
@@ -149,7 +131,6 @@ export function ProjectSelect({
       const res = await fetch("/api/projects/list", { cache: "no-store" });
       if (!res.ok) throw new Error("Failed to load projects");
       const data = await res.json();
-      // Route doesn't return status — don't filter, use all projects
       setProjects(data.projects ?? []);
     } catch (err) {
       console.error("[ProjectSelect] fetch error:", err);

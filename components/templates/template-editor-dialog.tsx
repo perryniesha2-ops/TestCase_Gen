@@ -23,11 +23,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import {
-  TestTypeMultiselect,
-  type CanonicalTestType,
-} from "@/components/generator/testtype-multiselect";
-
 import { ProjectSelect } from "@/components/projects/project-select";
 
 import {
@@ -215,29 +210,10 @@ export function TemplateEditorDialog({
                     <SelectItem value="10">10 test cases</SelectItem>
                     <SelectItem value="15">15 test cases</SelectItem>
                     <SelectItem value="20">20 test cases</SelectItem>
-                    <SelectItem value="30">30 test cases</SelectItem>
-                    <SelectItem value="50">50 test cases</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Test Types</Label>
-
-              <TestTypeMultiselect
-                value={formData.test_types}
-                onChange={(next) =>
-                  setFormData((p) => ({ ...p, test_types: next }))
-                }
-                disabled={saving}
-                placeholder="Select test types..."
-              />
-
-              <p className="text-xs text-muted-foreground">
-                Choose which kinds of tests to generate when this template is
-                used.
-              </p>
+              <div className="h-4" />
             </div>
           </section>
         </div>

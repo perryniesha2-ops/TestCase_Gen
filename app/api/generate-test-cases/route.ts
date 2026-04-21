@@ -22,30 +22,17 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Increase Vercel function timeout via config export (works on Pro plan)
+export const maxDuration = 300;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Priority = "low" | "medium" | "high" | "critical";
 
-/**
- * Structured step — every field the Cypress/Playwright/Selenium exporters need.
- *
- * action_type drives code generation:
- *   navigate  → cy.visit() / page.goto()
- *   click     → cy.get().click()
- *   fill      → cy.get().type() / invoke('val')
- *   select    → cy.get().select()
- *   check     → cy.get().check()
- *   hover     → cy.get().trigger('mouseover')
- *   wait      → cy.get({ timeout }).should('be.visible')
- *   press     → cy.get().type('{key}')
- *
- * assertion drives the expect/should call after the action.
- */
 interface TestStep {
   step_number: number;
-  action: string; // Human-readable description (kept for readability)
-  expected: string; // Human-readable expected outcome
-  // ── Automation fields ──────────────────────────────────────────────────────
+  action: string;
+  expected: string;
   action_type?:
     | "navigate"
     | "click"
@@ -56,9 +43,9 @@ interface TestStep {
     | "hover"
     | "wait"
     | "press";
-  selector?: string; // CSS selector  e.g. "input[name='email']"
-  input_value?: string; // Value to type/select/navigate to
-  wait_time?: number; // ms — only when action_type is "wait" and no selector
+  selector?: string;
+  input_value?: string;
+  wait_time?: number;
   assertion?: {
     type:
       | "visible"
@@ -72,9 +59,9 @@ interface TestStep {
       | "checked"
       | "attribute"
       | "count";
-    target?: string; // CSS selector for the asserted element (defaults to selector)
-    value?: string; // Expected text / url fragment / attribute value
-    attribute?: string; // For type "attribute"
+    target?: string;
+    value?: string;
+    attribute?: string;
   };
 }
 
@@ -106,11 +93,95 @@ interface RequestBody {
   application_url?: string;
 }
 
-// ─── Structured output schema ─────────────────────────────────────────────────
-//
-// The step schema now includes all automation fields so the AI populates them
-// directly. The exporters (Cypress / Playwright / Selenium) read these fields
-// instead of trying to parse human-readable action strings.
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const BATCH_SIZE = 5;
+
+const PRIORITY_VALUES = new Set<Priority>([
+  "low",
+  "medium",
+  "high",
+  "critical",
+]);
+const PRIORITY_ALIASES: Record<string, Priority> = {
+  p0: "critical",
+  blocker: "critical",
+  p1: "high",
+  p2: "medium",
+  p3: "low",
+};
+
+// ─── Coverage areas ───────────────────────────────────────────────────────────
+
+const COVERAGE_AREAS = [
+  {
+    name: "happy-path",
+    label: "Core Flows",
+    instruction: `Focus on HAPPY PATH and CORE FLOW scenarios:
+- Valid inputs producing expected outputs
+- Standard user journeys from start to finish
+- Successful CRUD operations with correct data
+- Normal workflow completion including confirmation/success states
+Set is_negative_test, is_boundary_test, is_edge_case, is_security_test = false on all cases.
+Assign priority critical or high to the most important flows.`,
+  },
+  {
+    name: "negative",
+    label: "Error Handling",
+    instruction: `Focus on NEGATIVE and ERROR HANDLING scenarios:
+- Missing required fields (submit empty form, omit each required field individually)
+- Invalid data formats (wrong email format, non-numeric where numeric expected)
+- Data that exceeds limits (too long, too large, wrong type)
+- Attempting actions without required permissions or in wrong state
+- Meaningful error messages shown to the user
+Set is_negative_test = true on every case.`,
+  },
+  {
+    name: "boundary",
+    label: "Boundary Values",
+    instruction: `Focus on BOUNDARY VALUE scenarios:
+- Numeric limits: minimum valid, minimum-1 (invalid), maximum valid, maximum+1 (invalid)
+- String lengths: empty string, single character, exactly at max length, one over max length
+- Date edges: today, yesterday, far future, invalid dates (Feb 30, Feb 29 non-leap year)
+- File sizes: 0 bytes, just under limit, exactly at limit, one byte over limit
+- Collection limits: empty list, single item, exactly at maximum items, one over maximum
+Set is_boundary_test = true on every case.`,
+  },
+  {
+    name: "edge-case",
+    label: "Edge Cases",
+    instruction: `Focus on EDGE CASE and UNUSUAL SCENARIO testing:
+- Special characters in inputs: apostrophes, quotes, ampersands, unicode (José O'Brien-Smith)
+- Whitespace: leading/trailing spaces, multiple spaces, tabs, newlines in fields
+- Concurrent or rapid repeated actions (double-click submit, rapid navigation)
+- Unexpected sequences: skip steps, go backwards, refresh mid-flow
+- Empty states: no data in lists, first-time user experience
+Set is_edge_case = true on every case.`,
+  },
+  {
+    name: "security",
+    label: "Security",
+    instruction: `Focus on SECURITY scenarios:
+- SQL injection attempts: ' OR '1'='1, '; DROP TABLE users;--
+- XSS attempts: <script>alert('XSS')</script>, <img onerror="alert(1)" src=x>
+- Accessing pages/resources without authentication (direct URL navigation)
+- Horizontal privilege escalation: changing IDs in URLs to access other users' data
+- Session management: session after logout, concurrent sessions
+Set is_security_test = true on every case.`,
+  },
+  {
+    name: "integration",
+    label: "Integration & State",
+    instruction: `Focus on INTEGRATION and STATE MANAGEMENT scenarios:
+- Data persisting correctly after save and page refresh
+- Changes in one area correctly reflected in related areas
+- Multi-step workflows maintaining state between steps
+- Actions triggering correct downstream effects (emails sent, counts updated)
+- Undo/cancel operations correctly reverting state`,
+  },
+];
+
+// ─── Schema ───────────────────────────────────────────────────────────────────
 
 const STEP_SCHEMA: Anthropic.Tool["input_schema"] = {
   type: "object",
@@ -209,10 +280,7 @@ const RESPONSE_SCHEMA: Anthropic.Tool["input_schema"] = {
             enum: ["low", "medium", "high", "critical"],
           },
           preconditions: { type: ["string", "null"] },
-          test_steps: {
-            type: "array",
-            items: STEP_SCHEMA,
-          },
+          test_steps: { type: "array", items: STEP_SCHEMA },
           expected_result: { type: "string" },
           is_edge_case: { type: "boolean" },
           is_negative_test: { type: "boolean" },
@@ -230,229 +298,99 @@ const RESPONSE_SCHEMA: Anthropic.Tool["input_schema"] = {
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Prompt ───────────────────────────────────────────────────────────────────
 
-const PRIORITY_VALUES = new Set<Priority>([
-  "low",
-  "medium",
-  "high",
-  "critical",
-]);
-const PRIORITY_ALIASES: Record<string, Priority> = {
-  p0: "critical",
-  blocker: "critical",
-  p1: "high",
-  p2: "medium",
-  p3: "low",
-};
-
-const TEST_TYPE_LABELS: Record<string, string> = {
-  "happy-path": "Happy Path",
-  negative: "Negative",
-  security: "Security",
-  boundary: "Boundary",
-  "edge-case": "Edge Case",
-  performance: "Performance",
-  integration: "Integration",
-  regression: "Regression",
-  smoke: "Smoke",
-};
-
-// ─── Test type instructions ───────────────────────────────────────────────────
-
-const TEST_TYPE_INSTRUCTIONS: Record<string, string> = {
-  "happy-path": `
-Generate tests that verify the system works correctly with valid inputs and expected user flows.
-Focus on: valid user journeys, expected use cases, successful operations with proper data, normal workflow completion.`,
-
-  negative: `
-Generate tests that verify the system handles invalid inputs and error conditions correctly.
-Focus on: empty/missing required fields, invalid data formats, data exceeding limits, wrong data types, unauthorized access attempts.
-Set is_negative_test = true on every case.`,
-
-  security: `
-Generate tests that verify security controls. Cover:
-- SQL injection: ' OR '1'='1
-- XSS: <script>alert('XSS')</script>
-- Path traversal: ../../etc/passwd
-- Access restricted pages without login
-- Changing user IDs in URLs to access other users' data
-- Session timeout and concurrent sessions
-Set is_security_test = true on every case.`,
-
-  boundary: `
-Generate tests that probe limits. Cover:
-- Numeric: min value, min-1, max value, max+1
-- String length: empty, single char, max length, max+1
-- Dates: past when future required, leap year (Feb 29), invalid (Feb 30)
-- File size: 0 bytes, just under limit, at limit, just over limit
-Set is_boundary_test = true on every case.`,
-
-  "edge-case": `
-Generate tests for unusual but valid scenarios.
-Focus on: rare user actions, uncommon data combinations, special characters in names/data (e.g. José O'Brien-Smith), concurrent operations.
-Set is_edge_case = true on every case.`,
-
-  performance: `
-Generate tests that verify system performance and response times.
-Focus on: page load times under stated SLAs, API response times, large data sets, concurrent users.`,
-
-  integration: `
-Generate tests that verify component interactions.
-Focus on: data flow between systems, third-party API integrations, database transactions, email/webhook delivery.`,
-
-  regression: `
-Generate tests that verify existing functionality still works after changes.
-Focus on: core user flows, previously fixed bugs, critical business logic.`,
-
-  smoke: `
-Generate critical path tests that verify basic functionality.
-Focus on: application loads, core features are accessible, no JavaScript errors, no blocking errors.`,
-};
-
-// ─── Automation guidelines ────────────────────────────────────────────────────
-//
-// This is the most important prompt section for export quality.
-// Every field described here maps directly to the step schema above.
-// The more specific and consistent the examples, the better the output.
-
-const AUTOMATION_GUIDELINES = `
-You are generating test cases that will be automatically converted to runnable Cypress, Playwright, and Selenium scripts.
-
-Each step MUST include both human-readable fields AND structured automation fields:
-
-REQUIRED automation fields per step:
+const STEP_GUIDELINES = `
+AUTOMATION FIELDS — every step must include:
   action_type  — one of: navigate, click, fill, select, check, uncheck, hover, wait, press
   selector     — CSS selector for the target element (required for all except navigate)
   input_value  — the value to type/select/navigate to (required for fill, select, navigate)
 
-OPTIONAL automation fields:
-  assertion    — what to verify after the action (type + target + value)
-  wait_time    — milliseconds, only when action_type is "wait" and there's no selector
-
-SELECTOR RULES — prefer in this order:
-  1. data-testid:  [data-testid="submit-button"]
-  2. name attr:    input[name="email"]
-  3. type attr:    input[type="password"]
-  4. aria-label:   [aria-label="Close dialog"]
-  5. text-based:   button:has-text("Generate Test Cases")   ← Cypress/Playwright only
+SELECTOR PRIORITY (use the first that applies):
+  1. [data-testid="submit-button"]
+  2. input[name="email"]
+  3. input[type="password"]
+  4. [aria-label="Close dialog"]
+  5. button:has-text("Generate Test Cases")
   Never use: nth-child, positional selectors, or long class chains
 
 STEP EXAMPLES:
+  Navigate:  action_type="navigate"  input_value="/login"  selector="body"  assertion={type:"url",value:"/login"}
+  Fill:      action_type="fill"      selector="input[name='email']"  input_value="user@example.com"  assertion={type:"value",target:"input[name='email']",value:"user@example.com"}
+  Click:     action_type="click"     selector="[data-testid='submit-btn']"  assertion={type:"visible",target:"[data-testid='success-msg']"}
+  Wait:      action_type="wait"      selector="[data-testid='result']"  wait_time=5000  assertion={type:"text",target:"[data-testid='result']",value:"Saved"}
+  Select:    action_type="select"    selector="select[name='role']"  input_value="Admin"
 
-Navigate:
-  action: "Navigate to /generate"
-  action_type: "navigate"
-  input_value: "/generate"          ← path only, never full URL
-  selector: "body"
-  assertion: { type: "url", value: "/generate" }
-
-Fill a text field:
-  action: "Type 'test@example.com' in the email field"
-  action_type: "fill"
-  selector: "input[name='email']"
-  input_value: "test@example.com"
-  assertion: { type: "value", target: "input[name='email']", value: "test@example.com" }
-
-Fill with a long generated string (boundary test):
-  action: "Type a string of exactly 5001 characters in the requirements textarea"
-  action_type: "fill"
-  selector: "textarea[name='requirements']"
-  input_value: ""                   ← leave empty; the exporter generates 'a'.repeat(5001)
-  assertion: { type: "value", target: "textarea[name='requirements']", value: "" }
-
-Click:
-  action: "Click the Generate Test Cases button"
-  action_type: "click"
-  selector: "button[data-testid='generate-button']"
-  assertion: { type: "visible", target: "[data-testid='loading-indicator']" }
-
-Wait for element:
-  action: "Wait for success message to appear"
-  action_type: "wait"
-  selector: "[data-testid='success-message']"
-  wait_time: 10000
-  assertion: { type: "text", target: "[data-testid='success-message']", value: "Test cases generated successfully" }
-
-Select dropdown:
-  action: "Select 'Monthly' from the billing period dropdown"
-  action_type: "select"
-  selector: "select[name='billing_period']"
-  input_value: "Monthly"
-
-IMPORTANT RULES:
-- Use path-only input_value for navigate steps (e.g. "/dashboard" not "https://app.example.com/dashboard")
-- For boundary tests that require N characters, set input_value to "" and describe the count in the action text
-- For special characters (accents, quotes, symbols), put the exact value in input_value — the exporter handles escaping
-- Every step that changes state should have an assertion verifying the outcome
-- Use realistic test data — not placeholders like "valid email" or "some text"
+RULES:
+  - Use path-only input_value for navigate steps ("/dashboard" not "https://...")
+  - Use realistic data throughout — not placeholders like "valid email" or "some text"
+  - Every step that changes state should have an assertion verifying the outcome
 `;
 
-// ─── Utilities ────────────────────────────────────────────────────────────────
-
-function normalizePriority(p: unknown): Priority {
-  const s = (typeof p === "string" ? p : "").toLowerCase().trim();
-  if (PRIORITY_ALIASES[s]) return PRIORITY_ALIASES[s];
-  return PRIORITY_VALUES.has(s as Priority) ? (s as Priority) : "medium";
-}
-
-/** Distribute N cases across types as evenly as possible, remainder front-loaded. */
-function distributeCount(
-  total: number,
-  types: string[],
-): Record<string, number> {
-  const perType = Math.floor(total / types.length);
-  const remainder = total % types.length;
-  return Object.fromEntries(
-    types.map((t, i) => [t, perType + (i < remainder ? 1 : 0)]),
-  );
-}
-
-// ─── Prompt builder (per-type) ────────────────────────────────────────────────
-
-function buildTypePrompt(params: {
+function buildPrompt(params: {
   requirements: string;
-  testType: string;
   count: number;
+  area: (typeof COVERAGE_AREAS)[number];
+  batchIndex: number;
+  totalBatches: number;
+  allAreaNames: string[];
   application_url?: string;
   template?: string;
 }): string {
-  const { requirements, testType, count, application_url, template } = params;
-  const label = TEST_TYPE_LABELS[testType] ?? testType;
-  const typeGuide = TEST_TYPE_INSTRUCTIONS[testType] ?? "";
+  const {
+    requirements,
+    count,
+    area,
+    batchIndex,
+    totalBatches,
+    allAreaNames,
+    application_url,
+    template,
+  } = params;
+
   const urlCtx = application_url
-    ? `\nApplication base URL (for context only — use path-only in navigate steps): ${application_url}`
+    ? `\nApplication base URL (context only — use path-only in navigate steps): ${application_url}`
     : "";
-  const tmplCtx = template ? `\nTemplate structure:\n${template}` : "";
+  const tmplCtx = template ? `\nTemplate to follow:\n${template}` : "";
+  const otherAreas = allAreaNames.filter((n) => n !== area.name);
+  const dedupeCtx =
+    otherAreas.length > 0
+      ? `\nOther batches in this generation cover: ${otherAreas.join(", ")}. Do NOT duplicate those scenarios — stay focused on ${area.label}.`
+      : "";
 
-  return `${AUTOMATION_GUIDELINES}
+  return `You are a senior QA engineer creating production-ready test cases that will be executed by testers and exported to Cypress, Playwright, and Selenium.
 
-Generate EXACTLY ${count} ${label} test case${count !== 1 ? "s" : ""} for the following requirements:
+Requirements to test:
 ${requirements}${urlCtx}${tmplCtx}
 
-Test type guidance:
-${typeGuide}
+${STEP_GUIDELINES}
 
-Return your response by calling the generate_test_cases tool with a test_cases array containing EXACTLY ${count} objects.
-Every step MUST include action_type, selector (where applicable), and input_value (where applicable).`;
+YOUR TASK — generate EXACTLY ${count} test case${count !== 1 ? "s" : ""} covering: ${area.label.toUpperCase()}
+
+${area.instruction}
+${dedupeCtx}
+
+QUALITY RULES (apply to every case):
+  ✓ Title is unique, specific, and self-explanatory
+  ✓ Steps are sequential and complete — a tester can follow them without guessing
+  ✓ Expected result clearly states what a PASS looks like
+  ✓ Preconditions state any required setup (or null if none needed)
+  ✓ Use realistic, specific test data (not "test@test.com" or placeholder text)
+  ✓ Each case tests one distinct scenario — no duplicates
+
+Call the generate_test_cases tool with a test_cases array containing EXACTLY ${count} objects.`;
 }
 
-// ─── Structured LLM calls ─────────────────────────────────────────────────────
-
-interface BatchResult {
-  cases: GeneratedTestCase[];
-  provider: "anthropic" | "openai";
-  model: string;
-}
+// ─── LLM callers ─────────────────────────────────────────────────────────────
 
 async function callAnthropic(
   modelId: string,
   prompt: string,
-  expectedCount: number,
+  count: number,
 ): Promise<GeneratedTestCase[]> {
   const res = await anthropic.messages.create({
     model: modelId,
-    max_tokens: Math.min(64000, Math.max(4000, expectedCount * 800)),
+    max_tokens: Math.min(16000, Math.max(4000, count * 1000)),
     tools: [
       {
         name: "generate_test_cases",
@@ -463,12 +401,13 @@ async function callAnthropic(
     tool_choice: { type: "any" },
     messages: [{ role: "user", content: prompt }],
   });
-
   const toolUse = res.content.find(
     (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
   );
-  if (!toolUse) throw new Error("Anthropic did not call the tool");
-
+  if (!toolUse)
+    throw new Error(
+      `Anthropic returned no tool call (stop_reason: ${res.stop_reason})`,
+    );
   const input = toolUse.input as { test_cases?: GeneratedTestCase[] };
   return input.test_cases ?? [];
 }
@@ -476,11 +415,11 @@ async function callAnthropic(
 async function callOpenAI(
   modelId: string,
   prompt: string,
-  expectedCount: number,
+  count: number,
 ): Promise<GeneratedTestCase[]> {
   const res = await openai.chat.completions.create({
     model: modelId,
-    max_tokens: Math.min(16384, Math.max(4000, expectedCount * 800)),
+    max_tokens: Math.min(16000, Math.max(4000, count * 1000)),
     response_format: {
       type: "json_schema",
       json_schema: {
@@ -491,367 +430,256 @@ async function callOpenAI(
     },
     messages: [{ role: "user", content: prompt }],
   });
-
   const raw = res.choices?.[0]?.message?.content ?? "{}";
   const parsed = JSON.parse(raw) as { test_cases?: GeneratedTestCase[] };
   return parsed.test_cases ?? [];
 }
 
-async function callWithFallback(
+async function callLLM(
   modelKey: ModelKey,
   prompt: string,
-  expectedCount: number,
-): Promise<BatchResult> {
+  count: number,
+): Promise<GeneratedTestCase[]> {
   const primaryIsAnthropic = isAnthropicModel(modelKey);
-  const primaryModelId = getModelId(modelKey);
+  const primaryId = getModelId(modelKey);
   const fallbackKey = getFallbackModel(
     primaryIsAnthropic ? "openai" : "anthropic",
   );
-  const fallbackModelId = getModelId(fallbackKey);
+  const fallbackId = getModelId(fallbackKey);
 
   try {
-    if (primaryIsAnthropic) {
-      const cases = await callAnthropic(primaryModelId, prompt, expectedCount);
-      return { cases, provider: "anthropic", model: primaryModelId };
-    } else {
-      const cases = await callOpenAI(primaryModelId, prompt, expectedCount);
-      return { cases, provider: "openai", model: primaryModelId };
-    }
-  } catch (err) {
-    console.error(`[LLM] Primary (${primaryModelId}) failed:`, err);
+    return primaryIsAnthropic
+      ? await callAnthropic(primaryId, prompt, count)
+      : await callOpenAI(primaryId, prompt, count);
+  } catch (primaryErr) {
+    console.error(
+      `[LLM] Primary ${primaryId} failed, trying fallback:`,
+      primaryErr,
+    );
+    return primaryIsAnthropic
+      ? await callOpenAI(fallbackId, prompt, count)
+      : await callAnthropic(fallbackId, prompt, count);
   }
-
-  try {
-    if (primaryIsAnthropic) {
-      const cases = await callOpenAI(fallbackModelId, prompt, expectedCount);
-      return { cases, provider: "openai", model: fallbackModelId };
-    } else {
-      const cases = await callAnthropic(fallbackModelId, prompt, expectedCount);
-      return { cases, provider: "anthropic", model: fallbackModelId };
-    }
-  } catch (err) {
-    console.error(`[LLM] Fallback (${fallbackModelId}) failed:`, err);
-  }
-
-  throw new Error("All LLM providers failed");
 }
 
-// ─── Per-type batch orchestration ─────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-interface TypeBatchResult {
-  testType: string;
-  cases: GeneratedTestCase[];
-  provider: "anthropic" | "openai";
-  model: string;
-  error?: string;
+function normalizePriority(p: unknown): Priority {
+  const s = (typeof p === "string" ? p : "").toLowerCase().trim();
+  if (PRIORITY_ALIASES[s]) return PRIORITY_ALIASES[s];
+  return PRIORITY_VALUES.has(s as Priority) ? (s as Priority) : "medium";
 }
 
-async function generateAllTypes(params: {
-  requirements: string;
-  testTypes: string[];
-  countPerType: Record<string, number>;
-  modelKey: ModelKey;
-  application_url?: string;
-  template?: string;
-}): Promise<TypeBatchResult[]> {
-  const {
-    requirements,
-    testTypes,
-    countPerType,
-    modelKey,
-    application_url,
-    template,
-  } = params;
+interface BatchPlan {
+  batchIndex: number;
+  count: number;
+  area: (typeof COVERAGE_AREAS)[number];
+}
 
-  const runBatch = async (testType: string): Promise<TypeBatchResult> => {
-    const count = countPerType[testType] ?? 1;
-    const prompt = buildTypePrompt({
-      requirements,
-      testType,
-      count,
-      application_url,
-      template,
+function buildBatchPlan(totalCount: number): BatchPlan[] {
+  const numBatches = Math.ceil(totalCount / BATCH_SIZE);
+  const plans: BatchPlan[] = [];
+  let remaining = totalCount;
+  for (let i = 0; i < numBatches; i++) {
+    plans.push({
+      batchIndex: i,
+      count: Math.min(BATCH_SIZE, remaining),
+      area: COVERAGE_AREAS[i % COVERAGE_AREAS.length],
     });
-
-    try {
-      const result = await callWithFallback(modelKey, prompt, count);
-      console.log(
-        `[batch] ${testType}: got ${result.cases.length}/${count} via ${result.provider}`,
-      );
-      return { testType, ...result };
-    } catch (err) {
-      console.error(`[batch] ${testType} failed:`, err);
-      return {
-        testType,
-        cases: [],
-        provider: "anthropic",
-        model: "",
-        error: String(err),
-      };
-    }
-  };
-
-  const firstWave = await Promise.allSettled(testTypes.map(runBatch));
-
-  const results: TypeBatchResult[] = [];
-  const retryTypes: string[] = [];
-
-  for (let i = 0; i < firstWave.length; i++) {
-    const r = firstWave[i];
-    if (r.status === "rejected") {
-      retryTypes.push(testTypes[i]);
-      continue;
-    }
-    const expected = countPerType[r.value.testType] ?? 1;
-    if (r.value.cases.length < Math.ceil(expected * 0.8)) {
-      retryTypes.push(r.value.testType);
-    } else {
-      results.push(r.value);
-    }
+    remaining -= Math.min(BATCH_SIZE, remaining);
   }
-
-  if (retryTypes.length > 0) {
-    console.warn(`[batch] Retrying types: ${retryTypes.join(", ")}`);
-    for (const testType of retryTypes) {
-      const retried = await runBatch(testType);
-      results.push(retried);
-    }
-  }
-
-  return results;
+  return plans;
 }
 
-// ─── Route handlers ───────────────────────────────────────────────────────────
+// ─── POST handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json()) as RequestBody;
+  const requirements = (body.requirements ?? "").trim();
+  const requirement_id = body.requirement_id || null;
+  const project_id = body.project_id || null;
+  const rawModelKey = String(body.model ?? "").trim();
+  const modelKey: ModelKey = rawModelKey
+    ? migrateModelKey(rawModelKey)
+    : getDefaultModel();
+  const title = (body.title ?? "").trim();
+  const description = body.description ?? null;
+  const application_url = (body.application_url ?? "").trim();
+  const template = body.template ?? "";
+
+  if (!isModelAllowed(modelKey)) {
+    return NextResponse.json(
+      { error: "Unsupported AI model" },
+      { status: 400 },
+    );
+  }
+  if (!requirements) {
+    return NextResponse.json(
+      { error: "Requirements are required" },
+      { status: 400 },
+    );
+  }
+  if (!title) {
+    return NextResponse.json({ error: "Title is required" }, { status: 400 });
+  }
+
+  const testCaseCount = Math.min(
+    30,
+    Math.max(1, Number(body.testCaseCount ?? 10)),
+  );
+
   try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = (await request.json()) as RequestBody;
-
-    const requirements = (body.requirements ?? "").trim();
-    const requirement_id = body.requirement_id || null;
-    const project_id = body.project_id || null;
-    const rawModelKey = String(body.model ?? "").trim();
-    const modelKey: ModelKey = rawModelKey
-      ? migrateModelKey(rawModelKey)
-      : getDefaultModel();
-
-    if (!isModelAllowed(modelKey)) {
-      return NextResponse.json(
-        { error: "Unsupported AI model", field: "model" },
-        { status: 400 },
-      );
-    }
-
-    const testCaseCount = Number(body.testCaseCount ?? 10);
-    const testTypes =
-      Array.isArray(body.testTypes) && body.testTypes.length > 0
-        ? body.testTypes
-        : ["happy-path"];
-    const template = body.template ?? "";
-    const title = (body.title ?? "").trim();
-    const description = body.description ?? null;
-    const application_url = (body.application_url ?? "").trim();
-
-    if (!requirements) {
-      return NextResponse.json(
-        { error: "Requirements are required", field: "requirements" },
-        { status: 400 },
-      );
-    }
-    if (!title) {
-      return NextResponse.json(
-        { error: "Generation title is required", field: "title" },
-        { status: 400 },
-      );
-    }
-    if (testCaseCount < 1 || testCaseCount > 50) {
+    await checkUsageQuota(user.id, testCaseCount);
+  } catch (e) {
+    if (e instanceof UsageQuotaError) {
       return NextResponse.json(
         {
-          error: "Test case count must be between 1 and 50",
-          field: "testCaseCount",
-        },
-        { status: 400 },
-      );
-    }
-
-    try {
-      await checkUsageQuota(user.id, testCaseCount);
-    } catch (e) {
-      if (e instanceof UsageQuotaError) {
-        return NextResponse.json(
-          {
-            error: e.message,
-            remaining: e.remaining,
-            requested: e.requested,
-            used: e.used,
-            limit: e.limit,
-            upgradeRequired: true,
-          },
-          { status: 429 },
-        );
-      }
-      let remaining = 0;
-      try {
-        const { data: usage } = await supabase
-          .from("user_usage_tracking")
-          .select("test_cases_generated, test_case_limit")
-          .eq("user_id", user.id)
-          .single();
-        if (usage) {
-          const limit = usage.test_case_limit || 50;
-          remaining = Math.max(0, limit - (usage.test_cases_generated || 0));
-        }
-      } catch {
-        /* ignore */
-      }
-      return NextResponse.json(
-        {
-          error: e instanceof Error ? e.message : "Usage limit exceeded",
+          error: e.message,
+          remaining: e.remaining,
+          requested: e.requested,
+          used: e.used,
+          limit: e.limit,
           upgradeRequired: true,
-          remaining,
-          requested: testCaseCount,
         },
         { status: 429 },
       );
     }
-
-    const countPerType = distributeCount(testCaseCount, testTypes);
-    console.log("[generate] countPerType:", countPerType);
-
-    const batchResults = await generateAllTypes({
-      requirements,
-      testTypes,
-      countPerType,
-      modelKey,
-      application_url: application_url || undefined,
-      template: template || undefined,
-    });
-
-    const allCases = batchResults
-      .flatMap((r) => r.cases)
-      .slice(0, testCaseCount);
-
-    if (allCases.length === 0) {
-      return NextResponse.json(
-        {
-          error: "Generation temporarily unavailable. Please try again later.",
-        },
-        { status: 503 },
-      );
-    }
-
-    const lastSuccessful = batchResults.findLast((r) => r.cases.length > 0);
-    const providerUsed = lastSuccessful?.provider ?? "anthropic";
-    const modelUsed = lastSuccessful?.model ?? getModelId(modelKey);
-
-    const samplePrompt = buildTypePrompt({
-      requirements,
-      testType: testTypes[0],
-      count: countPerType[testTypes[0]],
-      application_url: application_url || undefined,
-      template: template || undefined,
-    });
-
-    const { data: generation, error: genError } = await supabase
-      .from("test_case_generations")
-      .insert({
-        user_id: user.id,
-        title,
-        description,
-        ai_provider: providerUsed,
-        ai_model: modelUsed,
-        prompt_used: samplePrompt,
-      })
-      .select()
-      .single();
-
-    if (genError || !generation) {
-      return NextResponse.json(
-        { error: "Failed to save generation" },
-        { status: 500 },
-      );
-    }
-
-    const rows = allCases.map((tc) => ({
-      generation_id: generation.id,
-      requirement_id,
-      project_id,
-      user_id: user.id,
-      title: tc.title,
-      description: tc.description,
-      test_type: tc.test_type || "functional",
-      priority: normalizePriority(tc.priority),
-      preconditions: tc.preconditions ?? null,
-      test_steps: tc.test_steps,
-      expected_result: tc.expected_result,
-      is_edge_case: Boolean(tc.is_edge_case),
-      is_negative_test: Boolean(tc.is_negative_test),
-      is_security_test: Boolean(tc.is_security_test),
-      is_boundary_test: Boolean(tc.is_boundary_test),
-      is_manual: false,
-      status: "draft",
-    }));
-
-    const { data: savedCases, error: tcError } = await supabase
-      .from("test_cases")
-      .insert(rows)
-      .select();
-
-    if (tcError || !savedCases) {
-      return NextResponse.json(
-        { error: "Failed to save test cases" },
-        { status: 500 },
-      );
-    }
-
-    await recordSuccessfulGeneration(user.id, savedCases.length).catch(
-      () => {},
-    );
-
-    const failedTypes = batchResults
-      .filter((r) => r.error || r.cases.length === 0)
-      .map((r) => r.testType);
-
-    return NextResponse.json({
-      success: true,
-      generation_id: generation.id,
-      test_cases: savedCases,
-      count: savedCases.length,
-      requested_count: testCaseCount,
-      provider_used: providerUsed,
-      model_used: modelUsed,
-      ...(failedTypes.length > 0 && {
-        partial: true,
-        failed_types: failedTypes,
-      }),
-      statistics: {
-        total: savedCases.length,
-        negative: savedCases.filter((tc) => tc.is_negative_test).length,
-        security: savedCases.filter((tc) => tc.is_security_test).length,
-        boundary: savedCases.filter((tc) => tc.is_boundary_test).length,
-        edge: savedCases.filter((tc) => tc.is_edge_case).length,
-        by_type: Object.fromEntries(
-          batchResults.map((r) => [r.testType, r.cases.length]),
-        ),
-      },
-    });
-  } catch (error) {
-    console.error("Unexpected error:", error);
     return NextResponse.json(
-      { error: "Unexpected error. Please try again." },
+      { error: "Usage check failed", upgradeRequired: true },
+      { status: 429 },
+    );
+  }
+
+  const batchPlan = buildBatchPlan(testCaseCount);
+  const allAreaNames = [...new Set(batchPlan.map((b) => b.area.name))];
+
+  // Run all batches in parallel — each is capped at BATCH_SIZE=5 cases
+  // so max_tokens per call is 5000, well within timeout limits
+  const batchResults = await Promise.allSettled(
+    batchPlan.map(({ batchIndex, count, area }) =>
+      callLLM(
+        modelKey,
+        buildPrompt({
+          requirements,
+          count,
+          area,
+          batchIndex,
+          totalBatches: batchPlan.length,
+          allAreaNames,
+          application_url: application_url || undefined,
+          template: template || undefined,
+        }),
+        count,
+      )
+        .then((cases) => ({ batchIndex, area: area.name, cases }))
+        .catch((err) => {
+          console.error(
+            `[gen] Batch ${batchIndex + 1} (${area.name}) failed:`,
+            err,
+          );
+          return {
+            batchIndex,
+            area: area.name,
+            cases: [] as GeneratedTestCase[],
+          };
+        }),
+    ),
+  );
+
+  // Flatten all cases from successful batches
+  const allCases: GeneratedTestCase[] = [];
+  for (const result of batchResults) {
+    if (result.status === "fulfilled") {
+      allCases.push(...result.value.cases);
+    }
+  }
+
+  if (allCases.length === 0) {
+    return NextResponse.json(
+      { error: "Generation temporarily unavailable. Please try again." },
+      { status: 503 },
+    );
+  }
+
+  // Create generation record and save all cases using the same cookie client
+  const { data: generation, error: genError } = await supabase
+    .from("test_case_generations")
+    .insert({
+      user_id: user.id,
+      title,
+      description,
+      ai_provider: isAnthropicModel(modelKey) ? "anthropic" : "openai",
+      ai_model: getModelId(modelKey),
+      prompt_used: `${testCaseCount} cases across ${batchPlan.length} coverage areas`,
+    })
+    .select()
+    .single();
+
+  if (genError || !generation) {
+    return NextResponse.json(
+      { error: "Failed to save generation" },
       { status: 500 },
     );
   }
+
+  const rows = allCases.slice(0, testCaseCount).map((tc) => ({
+    generation_id: generation.id,
+    requirement_id,
+    project_id,
+    user_id: user.id,
+    title: tc.title,
+    description: tc.description,
+    test_type: tc.test_type || "functional",
+    priority: normalizePriority(tc.priority),
+    preconditions: tc.preconditions ?? null,
+    test_steps: tc.test_steps,
+    expected_result: tc.expected_result,
+    is_edge_case: Boolean(tc.is_edge_case),
+    is_negative_test: Boolean(tc.is_negative_test),
+    is_security_test: Boolean(tc.is_security_test),
+    is_boundary_test: Boolean(tc.is_boundary_test),
+    is_manual: false,
+    status: "draft",
+  }));
+
+  const { data: savedCases, error: tcError } = await supabase
+    .from("test_cases")
+    .insert(rows)
+    .select();
+
+  if (tcError || !savedCases) {
+    console.error("[gen] DB save failed:", tcError?.message);
+    return NextResponse.json(
+      { error: "Failed to save test cases" },
+      { status: 500 },
+    );
+  }
+
+  await recordSuccessfulGeneration(user.id, savedCases.length).catch(() => {});
+
+  return NextResponse.json({
+    success: true,
+    generation_id: generation.id,
+    test_cases: savedCases,
+    count: savedCases.length,
+    requested_count: testCaseCount,
+    statistics: {
+      total: savedCases.length,
+      negative: savedCases.filter((tc) => tc.is_negative_test).length,
+      security: savedCases.filter((tc) => tc.is_security_test).length,
+      boundary: savedCases.filter((tc) => tc.is_boundary_test).length,
+      edge: savedCases.filter((tc) => tc.is_edge_case).length,
+    },
+  });
 }
 
 export async function GET() {

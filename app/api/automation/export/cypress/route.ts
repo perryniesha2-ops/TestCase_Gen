@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       .eq("id", user.id)
       .single();
 
-    // Fetch suite
+    // Fetch suite detai;s
     const { data: suite, error: suiteErr } = await supabase
       .from("suites")
       .select(
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Suite not found" }, { status: 404 });
     }
 
-    // Fetch test cases
+    // Fetch suite test cases
     const { data: suiteItems } = await supabase
       .from("suite_items")
       .select(
@@ -157,7 +157,7 @@ export default defineConfig({
     );
 
     // ── .env ────────────────────────────────────────────────────────────────────
-    // Mirrors the Playwright export pattern — user fills in BASE_URL,
+    // user fills in BASE_URL,
     // credentials pre-populated where we have them.
     zip.file(
       `${root}/.env.example`,
@@ -492,75 +492,32 @@ cypress/downloads
   }
 }
 
-// ============================================================================
 // HELPERS
 // ============================================================================
 
-/**
- * Safely encode a value for embedding inside a Cypress JS string.
- *
- * We use JSON.stringify() which handles ALL edge cases correctly:
- *   - Accented / non-ASCII chars: é ñ ô ü → kept as-is (valid in JS strings)
- *   - Single quotes inside single-quoted strings → no longer an issue
- *     because we emit double-quoted strings from JSON.stringify
- *   - Backslashes, newlines, carriage returns, null bytes → escaped
- *   - < > & characters → kept as-is (safe inside JS strings)
- *
- * Returns the value wrapped in double quotes, ready to drop into generated code.
- * e.g.  escapeForJs("O'Brien")  →  '"O\'Brien"'  ... actually just '"O'Brien"'
- *        escapeForJs("José")     →  '"José"'
- */
+// JSON.stringify gives us a properly double-quoted, fully escaped JS string literal.
+
 function escapeForJs(str: string): string {
-  // JSON.stringify gives us a properly double-quoted, fully escaped JS string literal.
-  // We return it as-is so call sites can use it directly: cy.type(${escapeForJs(val)})
   return JSON.stringify(String(str ?? ""));
 }
 
-/**
- * Prepare a CSS selector for safe embedding inside a template literal.
- *
- * CSS attribute selectors contain quoted values, e.g.:
- *   [data-testid="foo"]   or   input[name="email"]
- *
- * These inner quotes must be removed or replaced so they don't clash with
- * the surrounding JS string. The cleanest solution: strip quotes from simple
- * alphanumeric attribute values (valid unquoted CSS), and escape any remaining
- * quotes as needed. For complex values we escape single-quotes with \'.
- *
- * Examples:
- *   [data-testid="foo"]   → [data-testid=foo]       (unquoted, valid CSS)
- *   input[name="email"]   → input[name=email]
- *   [class="foo bar"]     → [class='foo bar']        (space needs quotes → escape)
- */
+//convert double quotes to single quotes in the generated code
+
 function escapeForCss(str: string): string {
-  return (
-    str
-      .replace(/\\/g, "\\\\")
-      // For attribute values that are simple identifiers (no spaces/special chars),
-      // drop the quotes entirely — unquoted attribute selectors are valid CSS.
-      .replace(/="([a-zA-Z0-9_-]+)"/g, "=$1")
-      .replace(/='([a-zA-Z0-9_-]+)'/g, "=$1")
-      // For anything remaining that still has double quotes, convert to escaped single
-      .replace(/"/g, "\\'")
-  );
+  return str
+    .replace(/\\/g, "\\\\")
+
+    .replace(/="([a-zA-Z0-9_-]+)"/g, "=$1")
+    .replace(/='([a-zA-Z0-9_-]+)'/g, "=$1")
+    .replace(/"/g, "\\'");
 }
 
-/**
- * Detects "N characters" patterns in a step's action description and returns
- * a JS expression that generates that string rather than embedding it literally.
- *
- * Examples matched:
- *   "exactly 5001 characters"
- *   "a string of 256 characters"
- *   "exceeding 100-character limit"
- *
- * Returns null if no pattern found (use literal value instead).
- */
+//Match patterns(charaters or numbers/repeated values in data input fields)
+
 function detectGeneratedString(
   action: string,
   inputValue: string | undefined,
 ): string | null {
-  // Match patterns like "exactly N characters", "N-character", "N chars"
   const exactMatch = action.match(/exactly\s+(\d+)\s+char/i);
   const genericMatch = action.match(/(\d+)[- ]char/i);
   const countMatch = action.match(/string of\s+(\d+)\s+char/i);
@@ -571,12 +528,8 @@ function detectGeneratedString(
   const count = parseInt(match[1], 10);
   if (!Number.isFinite(count) || count <= 0 || count > 100_000) return null;
 
-  // Try to figure out what character to repeat.
-  // If the input_value already contains a repeated character pattern, use that.
-  // Otherwise default to 'a'.
   let fillChar = "a";
   if (inputValue && inputValue.length > 0) {
-    // If the value is mostly one char (e.g. "aaaaa...X"), use the dominant one
     const firstChar = inputValue[0];
     const dominated =
       inputValue.split("").filter((c) => c === firstChar).length >
@@ -584,7 +537,6 @@ function detectGeneratedString(
     if (dominated) fillChar = firstChar.replace(/'/g, "\\'");
   }
 
-  // Emit a JS expression: 'a'.repeat(5001)
   return `'${fillChar}'.repeat(${count})`;
 }
 
@@ -592,21 +544,8 @@ function detectGeneratedString(
 // STEP CODE GENERATOR
 // ============================================================================
 
-/**
- * Converts Playwright :has-text() pseudo-selectors to valid Cypress equivalents.
- * Cypress uses jQuery/Sizzle which does not support :has-text().
- *
- * Handles two patterns:
- *
- * A) Single :has-text() selector:
- *   button:has-text('Save')   → { type: "contains", tag: "button", text: "Save" }
- *   :has-text('Generate')     → { type: "contains", tag: "*", text: "Generate" }
- *
- * B) Comma-separated list where some parts have :has-text():
- *   [data-testid=x], button:has-text('Save')
- *   → strips :has-text() parts, returns { type: "get", selector: "[data-testid=x]" }
- *   If ALL parts had :has-text(), uses the first as a contains() call.
- */
+//converts any "hastext" that generates as playwright code instead of cypress
+
 function convertHasText(
   sel: string,
 ):
@@ -622,7 +561,6 @@ function convertHasText(
     const m = part.match(/^([^:]*):has-text\(['"]?(.*?)['"]?\)/);
     if (m) {
       if (!firstHasText) firstHasText = { tag: m[1].trim() || "*", text: m[2] };
-      // Drop :has-text() parts — Sizzle crashes on them
     } else {
       cleanParts.push(part);
     }

@@ -80,3 +80,24 @@ export interface RequirementListResponse {
   totalPages: number;
   hasNextPage: boolean;
 }
+
+export type RequirementRow = {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  priority: string;
+  status?: string;
+  project_id?: string | null;
+};
+
+export type RequirementOption = {
+  id: string;
+  label: string;
+  title: string;
+  description: string;
+  type: string;
+  priority: string;
+  value: string;
+  project_id?: string | null;
+};

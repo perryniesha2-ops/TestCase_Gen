@@ -26,14 +26,13 @@ import { UnifiedExportButton } from "@/components/testcase-management/test_suite
 import { ExecutionHistory } from "@/components/testcase-management/test_suites/executionhistory";
 import { SuiteReports } from "@/components/testcase-management/test_suites/suitesreport";
 import type { PlatformType } from "@/lib/exports/export-strategy";
+import { SuiteKind } from "@/lib/suites/resolve-suite";
 
 type ExportCounts = {
   apiCasesFound: number;
   apiCasesMissingMetadata: number;
   suiteKind?: string;
 };
-
-type SuiteKind = "regular" | "cross-platform";
 
 export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
   const router = useRouter();

@@ -67,11 +67,6 @@ import {
   MODEL_GROUPS,
 } from "@/lib/ai-models/config";
 
-import {
-  CanonicalTestType,
-  TestTypeMultiselect,
-} from "../generator/testtype-multiselect";
-
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -88,7 +83,6 @@ type Preferences = {
   test_case_defaults: {
     model: ModelKey;
     count: number;
-    test_types: string[];
   };
 };
 
@@ -110,7 +104,6 @@ const DEFAULT_PREFERENCES: Preferences = {
   notifications: { email: true, push: true, marketing: false },
   test_case_defaults: {
     model: getDefaultModel(),
-    test_types: ["happy-path", "negative", "boundary"],
     count: 10,
   },
 };
@@ -132,24 +125,6 @@ function normalizeModel(raw: unknown): ModelKey {
   return migrateModelKey(s);
 }
 
-function toCanonicalTestTypes(types: string[]): CanonicalTestType[] {
-  const validTypes: CanonicalTestType[] = [
-    "happy-path",
-    "negative",
-    "security",
-    "boundary",
-    "edge-case",
-    "performance",
-    "integration",
-    "regression",
-    "smoke",
-  ];
-
-  return types.filter((t): t is CanonicalTestType =>
-    validTypes.includes(t as CanonicalTestType),
-  );
-}
-
 function safePreferences(input: unknown): Preferences {
   const p = (input ?? {}) as Partial<Preferences>;
 
@@ -169,10 +144,6 @@ function safePreferences(input: unknown): Preferences {
   );
 
   const rawTypes = (p.test_case_defaults as any)?.test_types;
-  const test_types =
-    Array.isArray(rawTypes) && rawTypes.every((x) => typeof x === "string")
-      ? rawTypes
-      : DEFAULT_PREFERENCES.test_case_defaults.test_types;
 
   const countRaw = p.test_case_defaults?.count;
   const count =
@@ -185,7 +156,7 @@ function safePreferences(input: unknown): Preferences {
   return {
     theme,
     notifications: { email, push, marketing },
-    test_case_defaults: { model, count, test_types },
+    test_case_defaults: { model, count },
   };
 }
 
@@ -221,9 +192,6 @@ export default function SettingsPage() {
   const [marketingEmails, setMarketingEmails] = useState(false);
   const [defaultModel, setDefaultModel] = useState<ModelKey>(getDefaultModel);
   const [defaultCount, setDefaultCount] = useState(10);
-  const [defaultTestTypes, setDefaultTestTypes] = useState<CanonicalTestType[]>(
-    ["happy-path", "negative", "boundary"],
-  );
 
   // API key
   const [apiKeyPlain, setApiKeyPlain] = useState<string | null>(null); // only set immediately after generation
@@ -325,9 +293,6 @@ export default function SettingsPage() {
       setMarketingEmails(prefs.notifications.marketing);
       setDefaultModel(prefs.test_case_defaults.model);
       setDefaultCount(prefs.test_case_defaults.count);
-      setDefaultTestTypes(
-        toCanonicalTestTypes(prefs.test_case_defaults.test_types),
-      );
 
       setNextTheme(prefs.theme);
 
@@ -460,7 +425,6 @@ export default function SettingsPage() {
         test_case_defaults: {
           model: defaultModel,
           count: defaultCount,
-          test_types: defaultTestTypes,
         },
       };
 
@@ -506,7 +470,6 @@ export default function SettingsPage() {
     marketingEmails,
     defaultModel,
     defaultCount,
-    defaultTestTypes,
     fullName,
     email,
     supabase,
@@ -854,23 +817,8 @@ export default function SettingsPage() {
                       <SelectItem value="10">10 test cases</SelectItem>
                       <SelectItem value="15">15 test cases</SelectItem>
                       <SelectItem value="20">20 test cases</SelectItem>
-                      <SelectItem value="30">30 test cases</SelectItem>
-                      <SelectItem value="50">50 test cases</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-
-                <div className="space-y-2 md:col-span-3">
-                  <Label>Default Test Types</Label>
-                  <TestTypeMultiselect
-                    value={defaultTestTypes}
-                    onChange={setDefaultTestTypes}
-                    placeholder="Select default test types..."
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    These will be preselected in the generator. You can still
-                    override per run.
-                  </p>
                 </div>
               </div>
 

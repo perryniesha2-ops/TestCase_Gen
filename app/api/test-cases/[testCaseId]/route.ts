@@ -198,3 +198,69 @@ export async function DELETE(
 
   return NextResponse.json({ success: true });
 }
+
+export async function PATCH(
+  request: Request,
+  ctx: { params: Promise<{ testCaseId: string }> },
+) {
+  const { testCaseId } = await ctx.params;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
+  if (authErr || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Verify ownership
+  const { data: existing } = await supabase
+    .from("test_cases")
+    .select("id")
+    .eq("id", testCaseId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!existing) {
+    return NextResponse.json({ error: "Test case not found" }, { status: 404 });
+  }
+
+  const body = await request.json();
+
+  // Only allow editable content fields
+  const allowed = [
+    "title",
+    "description",
+    "preconditions",
+    "test_steps",
+    "expected_result",
+    "priority",
+    "status",
+    "is_edge_case",
+    "is_negative_test",
+    "is_security_test",
+    "is_boundary_test",
+  ] as const;
+
+  const updates: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  for (const key of allowed) {
+    if (key in body) updates[key] = body[key];
+  }
+
+  const { data, error } = await supabase
+    .from("test_cases")
+    .update(updates)
+    .eq("id", testCaseId)
+    .eq("user_id", user.id)
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ testCase: data });
+}

@@ -38,10 +38,9 @@ import {
 import { toastSuccess, toastError } from "@/lib/utils/toast-utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Requirement } from "@/types/requirements";
+import { TestCaseType } from "@/types/test-cases";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type TestCaseType = "regular" | "cross-platform";
 
 const platformIcons = {
   web: Monitor,

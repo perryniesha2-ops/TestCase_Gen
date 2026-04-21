@@ -13,12 +13,6 @@ import { CreateSuiteDialog } from "./dialogs/CreateSuiteDialog";
 import { Badge } from "@/components/ui/badge";
 import { Clock, CheckCircle2, AlertTriangle } from "lucide-react";
 
-interface SuiteEditForm {
-  name: string;
-  status: string;
-  suite_type: SuiteType;
-}
-
 export function TestSuitesPage() {
   const { user } = useAuth();
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);

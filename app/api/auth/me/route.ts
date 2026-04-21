@@ -17,7 +17,6 @@ export async function GET() {
     return NextResponse.json({ user: null });
   }
 
-  // Single joined query — fetch profile alongside auth user
   const { data: profile } = await supabase
     .from("user_profiles")
     .select("subscription_tier, subscription_status, full_name, avatar_url")

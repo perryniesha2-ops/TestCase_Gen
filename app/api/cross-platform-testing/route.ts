@@ -20,6 +20,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,7 +44,6 @@ type ApiAuth =
   | "mTLS"
   | "OAuth2 client_credentials";
 type ApiFormat = "JSON" | "XML";
-type CoverageKey = keyof typeof COVERAGE_PROMPTS;
 
 type ApiAuthOut =
   | { type: "none" }
@@ -62,6 +62,7 @@ type ApiSpecOut = {
   expectedStatus?: number;
 };
 
+// test_types removed — coverage is AI-determined via area batching
 type PlatformConfig =
   | { platform: Exclude<PlatformId, "api">; framework: string }
   | {
@@ -79,7 +80,6 @@ type RequestBody = {
   platforms?: PlatformConfig[];
   model?: string;
   testCaseCount?: number | string;
-  coverage?: string;
   template?: string;
   title?: string;
   description?: string | null;
@@ -97,9 +97,121 @@ interface PlatformTestCase {
   api?: ApiSpecOut;
 }
 
-// ─── Structured output schema ─────────────────────────────────────────────────
+// ─── Coverage areas ───────────────────────────────────────────────────────────
+//
+// Mirrors generate-test-cases/route.ts — each batch gets a focus area so
+// coverage is balanced without the user selecting test types.
+// Areas are platform-aware: the prompt adds platform-specific guidance on top.
 
-// Base schema shared by all platforms
+const COVERAGE_AREAS = [
+  {
+    name: "happy-path",
+    label: "Core Flows",
+    instruction: `Focus on HAPPY PATH and CORE FLOW scenarios:
+- Valid inputs producing expected outputs
+- Standard user journeys from start to finish
+- Successful operations with correct data
+- Normal workflow completion including confirmation/success states`,
+  },
+  {
+    name: "negative",
+    label: "Error Handling",
+    instruction: `Focus on NEGATIVE and ERROR HANDLING scenarios:
+- Missing or empty required fields
+- Invalid data formats and wrong types
+- Data exceeding limits (too long, too large)
+- Attempting actions without required permissions or in wrong state
+- Meaningful error messages shown to the user`,
+  },
+  {
+    name: "boundary",
+    label: "Boundary Values",
+    instruction: `Focus on BOUNDARY VALUE scenarios:
+- Numeric limits: min valid, min-1 (invalid), max valid, max+1 (invalid)
+- String lengths: empty, single character, exactly at max, one over max
+- Date edges: today, yesterday, far future, invalid dates (Feb 30, Feb 29 non-leap)
+- File sizes: 0 bytes, just under limit, at limit, one byte over
+- Collection limits: empty list, single item, exactly at max, one over`,
+  },
+  {
+    name: "edge-case",
+    label: "Edge Cases",
+    instruction: `Focus on EDGE CASE and UNUSUAL SCENARIO testing:
+- Special characters: apostrophes, quotes, ampersands, unicode (José O'Brien-Smith)
+- Whitespace: leading/trailing spaces, multiple spaces, tabs, newlines
+- Concurrent or rapid repeated actions (double-click, rapid navigation)
+- Unexpected sequences: skip steps, go backwards, refresh mid-flow
+- Empty states: no data in lists, first-time user experience`,
+  },
+  {
+    name: "security",
+    label: "Security",
+    instruction: `Focus on SECURITY scenarios:
+- SQL injection: ' OR '1'='1, '; DROP TABLE users;--
+- XSS: <script>alert('XSS')</script>, <img onerror="alert(1)" src=x>
+- Accessing resources without authentication (direct URL navigation)
+- Horizontal privilege escalation: changing IDs in URLs to access other users' data
+- Session management: session after logout, concurrent sessions`,
+  },
+  {
+    name: "integration",
+    label: "Integration & State",
+    instruction: `Focus on INTEGRATION and STATE MANAGEMENT scenarios:
+- Data persisting correctly after save and page refresh
+- Changes in one area reflected correctly in related areas
+- Multi-step workflows maintaining state between steps
+- Actions triggering correct downstream effects (emails sent, counts updated)
+- Undo/cancel operations correctly reverting state`,
+  },
+];
+
+// Platform-specific guidance injected into every prompt for that platform
+const PLATFORM_GUIDANCE: Record<PlatformId, string> = {
+  web: `Platform context — WEB APPLICATION:
+Generate browser-based test steps. Include:
+- URL navigation and page load verification
+- DOM interactions (clicks, form fills, selects)
+- Cross-browser considerations where relevant
+- Responsive/viewport behaviour where relevant`,
+
+  mobile: `Platform context — MOBILE APP:
+Generate mobile-specific test steps. Include:
+- Touch interactions (tap, swipe, pinch)
+- Device orientation changes where relevant
+- OS-level permissions (camera, location, notifications)
+- Network state changes (online/offline, slow connection)
+- Background/foreground app lifecycle where relevant`,
+
+  api: `Platform context — API / BACKEND:
+Generate API-level test cases. Every case MUST include the "api" object with method and path.
+Cover:
+- Correct HTTP status codes for success and error conditions
+- Request/response schema validation
+- Authentication and authorization checks
+- Idempotency and replay safety
+- Rate limiting and pagination where relevant`,
+
+  accessibility: `Platform context — ACCESSIBILITY (WCAG):
+Generate accessibility test cases. Include:
+- Keyboard navigation (Tab, Enter, Escape, arrow keys)
+- Focus management and focus trapping in modals/dialogs
+- Screen reader compatibility (ARIA roles, labels, live regions)
+- Colour contrast ratios (4.5:1 for normal text, 3:1 for large)
+- Form labels, error messages, and field associations
+- Zoom and reflow at 400% magnification`,
+
+  performance: `Platform context — PERFORMANCE:
+Generate performance and load test cases. Include:
+- Response time SLAs (e.g. page loads < 2s, API calls < 500ms)
+- Load testing: expected concurrent user counts
+- Stress testing: behaviour at 150% of expected load
+- Spike testing: sudden traffic surges
+- Resource usage: memory, CPU, connection pool limits
+- Graceful degradation under load`,
+};
+
+// ─── Schema ───────────────────────────────────────────────────────────────────
+
 const BASE_TEST_CASE_SCHEMA = {
   type: "object",
   required: [
@@ -123,7 +235,6 @@ const BASE_TEST_CASE_SCHEMA = {
   },
 };
 
-// Extended schema for API platform — includes required "api" field
 const API_TEST_CASE_SCHEMA = {
   ...BASE_TEST_CASE_SCHEMA,
   required: [...BASE_TEST_CASE_SCHEMA.required, "api"],
@@ -183,7 +294,7 @@ function buildResponseSchema(isApi: boolean): Anthropic.Tool["input_schema"] {
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 const ALLOWED_METHODS = new Set<ApiMethod>([
   "GET",
@@ -200,17 +311,6 @@ const ALLOWED_PRIORITIES = new Set<Priority>([
   "high",
   "critical",
 ]);
-
-const COVERAGE_PROMPTS = {
-  standard:
-    "Generate standard test cases covering the main functionality and common scenarios.",
-  comprehensive:
-    "Generate comprehensive test cases covering main functionality, edge cases, error handling, and validation scenarios.",
-  exhaustive:
-    "Generate exhaustive test cases covering all possible scenarios including main functionality, all edge cases, boundary conditions, error handling, security considerations, performance scenarios, and negative test cases.",
-} as const;
-
-// ─── Utilities ────────────────────────────────────────────────────────────────
 
 function clampCount(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.floor(Number(n) || 0)));
@@ -254,7 +354,6 @@ function normalizeAuthOut(raw: unknown): ApiAuthOut | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const o = raw as Record<string, unknown>;
   const t = String(o.type ?? "bearer").toLowerCase();
-
   if (t === "none") return { type: "none" };
   if (t === "apikey")
     return {
@@ -282,11 +381,9 @@ function normalizeAuthOut(raw: unknown): ApiAuthOut | undefined {
 function normalizeApiSpec(v: unknown): ApiSpecOut | undefined {
   if (!v || typeof v !== "object") return undefined;
   const o = v as Record<string, unknown>;
-
   const method = normalizeMethod(o.method);
   const path = normalizePath(o.path);
   if (!path) return undefined;
-
   return {
     method,
     path,
@@ -342,7 +439,6 @@ async function resolveTemplateText(
 ): Promise<string> {
   const trimmed = (templateMaybeId ?? "").trim();
   if (!trimmed) return "";
-
   if (looksLikeUuid(trimmed)) {
     const { data, error } = await supabase
       .from("test_case_templates")
@@ -350,15 +446,32 @@ async function resolveTemplateText(
       .eq("id", trimmed)
       .eq("user_id", userId)
       .single();
-
     if (error) throw new Error(`Template lookup failed: ${error.message}`);
     return JSON.stringify(data?.template_content ?? {}, null, 2);
   }
-
   return trimmed;
 }
 
-// ─── Prompt building ──────────────────────────────────────────────────────────
+// ─── Batch plan ───────────────────────────────────────────────────────────────
+//
+// Same pattern as generate-test-cases: split the per-platform count into
+// batches of ≤5, each assigned a coverage area. All batches across ALL
+// platforms fire in parallel — Promise.allSettled.
+
+const BATCH_SIZE = 5;
+
+interface BatchPlan {
+  platformId: PlatformId;
+  framework: string;
+  batchIndex: number;
+  totalBatches: number;
+  count: number;
+  area: (typeof COVERAGE_AREAS)[number];
+  allAreaNames: string[];
+  apiContext?: string;
+  templateText: string;
+  isApi: boolean;
+}
 
 function buildApiContextBlock(
   cfg: Extract<PlatformConfig, { platform: "api" }>,
@@ -369,7 +482,6 @@ function buildApiContextBlock(
   const checks = Array.isArray(cfg.required_checks)
     ? cfg.required_checks.map((c) => String(c).trim()).filter(Boolean)
     : [];
-
   const lines = [
     "API CONTEXT:",
     `- Protocol: ${protocol}`,
@@ -382,63 +494,114 @@ function buildApiContextBlock(
   return lines.join("\n");
 }
 
-function buildPlatformPrompt(params: {
+function buildBatchPlan(
+  platforms: PlatformConfig[],
+  testCaseCount: number,
+  templateText: string,
+): BatchPlan[] {
+  const plans: BatchPlan[] = [];
+
+  for (const platformData of platforms) {
+    const platformId = platformData.platform as PlatformId;
+    const framework = String(platformData.framework ?? "").trim();
+    const isApi = platformId === "api";
+    const apiContext = isApi
+      ? buildApiContextBlock(
+          platformData as Extract<PlatformConfig, { platform: "api" }>,
+        )
+      : undefined;
+
+    const numBatches = Math.ceil(testCaseCount / BATCH_SIZE);
+    const areaNames = COVERAGE_AREAS.slice(0, numBatches).map((a) => a.name);
+
+    let remaining = testCaseCount;
+    for (let i = 0; i < numBatches; i++) {
+      const count = Math.min(BATCH_SIZE, remaining);
+      plans.push({
+        platformId,
+        framework,
+        batchIndex: i,
+        totalBatches: numBatches,
+        count,
+        area: COVERAGE_AREAS[i % COVERAGE_AREAS.length],
+        allAreaNames: areaNames,
+        apiContext,
+        templateText,
+        isApi,
+      });
+      remaining -= count;
+    }
+  }
+
+  return plans;
+}
+
+// ─── Prompt builder ───────────────────────────────────────────────────────────
+
+function buildBatchPrompt(params: {
   requirement: string;
-  platformId: PlatformId;
-  framework: string;
-  testCaseCount: number;
-  coverage: CoverageKey;
-  apiContext?: string;
-  templateText?: string;
+  batch: BatchPlan;
 }): string {
+  const { requirement, batch } = params;
   const {
-    requirement,
     platformId,
     framework,
-    testCaseCount,
-    coverage,
+    count,
+    area,
+    allAreaNames,
+    batchIndex,
+    totalBatches,
     apiContext,
     templateText,
-  } = params;
-  const coverageInstruction = COVERAGE_PROMPTS[coverage];
+    isApi,
+  } = batch;
+
+  const platformGuidance = PLATFORM_GUIDANCE[platformId] ?? "";
   const apiCtx = apiContext ? `\n\n${apiContext}` : "";
   const tmplCtx = templateText
     ? `\n\nTemplate structure:\n${templateText}`
     : "";
+  const otherAreas = allAreaNames.filter((n) => n !== area.name);
+  const dedupeCtx =
+    otherAreas.length > 0
+      ? `\nOther batches for this platform cover: ${otherAreas.join(", ")}. Do NOT duplicate — stay focused on ${area.label}.`
+      : "";
 
-  return `${coverageInstruction}
+  return `You are a senior QA engineer creating production-ready cross-platform test cases.
 
-You are a QA expert specialising in cross-platform testing.
-Generate EXACTLY ${testCaseCount} test case${testCaseCount !== 1 ? "s" : ""} for the "${platformId}" platform using "${framework}".
-
-Requirement:
+Requirement to test:
 ${requirement}${apiCtx}${tmplCtx}
 
-Call the generate_test_cases tool with a test_cases array containing EXACTLY ${testCaseCount} objects.
-Each object must have: title, description, preconditions (array), steps (array), expected_results (array), automation_hints (array), priority.${platformId === "api" ? '\nEach object MUST also include a valid "api" object with at minimum "method" and "path".' : ""}`;
+${platformGuidance}
+
+YOUR TASK — generate EXACTLY ${count} test case${count !== 1 ? "s" : ""} for the ${platformId.toUpperCase()} platform (${framework}) covering: ${area.label.toUpperCase()}
+
+${area.instruction}
+${dedupeCtx}
+
+QUALITY RULES (apply to every case):
+  ✓ Title is unique, specific, and self-explanatory
+  ✓ Steps are sequential and complete — a tester can execute them without guessing
+  ✓ Expected results clearly state what a PASS looks like
+  ✓ Preconditions state any required setup
+  ✓ Automation hints give framework-specific implementation guidance for ${framework}
+  ✓ Use realistic, specific test data — not "valid input" or placeholder text${isApi ? '\n  ✓ Every case MUST include a valid "api" object with method and path' : ""}
+
+Call the generate_test_cases tool with a test_cases array containing EXACTLY ${count} objects.`;
 }
 
-// ─── Structured LLM calls ─────────────────────────────────────────────────────
-
-interface PlatformBatchResult {
-  platformId: PlatformId;
-  framework: string;
-  cases: PlatformTestCase[];
-  provider: "anthropic" | "openai";
-  model: string;
-  error?: string;
-}
+// ─── LLM callers ─────────────────────────────────────────────────────────────
 
 async function callAnthropic(
   modelId: string,
   prompt: string,
   isApi: boolean,
-  expectedCount: number,
+  count: number,
 ): Promise<PlatformTestCase[]> {
   const schema = buildResponseSchema(isApi);
   const res = await anthropic.messages.create({
     model: modelId,
-    max_tokens: Math.min(32000, Math.max(4000, expectedCount * 600)),
+    max_tokens: Math.min(16000, Math.max(4000, count * 1000)),
     tools: [
       {
         name: "generate_test_cases",
@@ -449,12 +612,13 @@ async function callAnthropic(
     tool_choice: { type: "any" },
     messages: [{ role: "user", content: prompt }],
   });
-
   const toolUse = res.content.find(
     (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
   );
-  if (!toolUse) throw new Error("Anthropic did not call the tool");
-
+  if (!toolUse)
+    throw new Error(
+      `Anthropic returned no tool call (stop_reason: ${res.stop_reason})`,
+    );
   const input = toolUse.input as { test_cases?: PlatformTestCase[] };
   return input.test_cases ?? [];
 }
@@ -463,12 +627,12 @@ async function callOpenAI(
   modelId: string,
   prompt: string,
   isApi: boolean,
-  expectedCount: number,
+  count: number,
 ): Promise<PlatformTestCase[]> {
   const schema = buildResponseSchema(isApi);
   const res = await openai.chat.completions.create({
     model: modelId,
-    max_tokens: Math.min(16384, Math.max(4000, expectedCount * 600)),
+    max_tokens: Math.min(16000, Math.max(4000, count * 1000)),
     response_format: {
       type: "json_schema",
       json_schema: {
@@ -479,172 +643,33 @@ async function callOpenAI(
     },
     messages: [{ role: "user", content: prompt }],
   });
-
   const raw = res.choices?.[0]?.message?.content ?? "{}";
   const parsed = JSON.parse(raw) as { test_cases?: PlatformTestCase[] };
   return parsed.test_cases ?? [];
 }
 
-async function callWithFallback(params: {
-  modelKey: ModelKey;
-  prompt: string;
-  isApi: boolean;
-  expectedCount: number;
-  label: string;
-}): Promise<{
-  cases: PlatformTestCase[];
-  provider: "anthropic" | "openai";
-  model: string;
-}> {
-  const { modelKey, prompt, isApi, expectedCount, label } = params;
+async function callLLM(
+  modelKey: ModelKey,
+  prompt: string,
+  isApi: boolean,
+  count: number,
+): Promise<PlatformTestCase[]> {
   const primaryIsAnthropic = isAnthropicModel(modelKey);
-  const primaryModelId = getModelId(modelKey);
+  const primaryId = getModelId(modelKey);
   const fallbackKey = getFallbackModel(
     primaryIsAnthropic ? "openai" : "anthropic",
   );
-  const fallbackModelId = getModelId(fallbackKey);
-
-  // Primary
-  try {
-    if (primaryIsAnthropic) {
-      const cases = await callAnthropic(
-        primaryModelId,
-        prompt,
-        isApi,
-        expectedCount,
-      );
-      console.log(`[LLM] ${label}: anthropic OK, ${cases.length} cases`);
-      return { cases, provider: "anthropic", model: primaryModelId };
-    } else {
-      const cases = await callOpenAI(
-        primaryModelId,
-        prompt,
-        isApi,
-        expectedCount,
-      );
-      console.log(`[LLM] ${label}: openai OK, ${cases.length} cases`);
-      return { cases, provider: "openai", model: primaryModelId };
-    }
-  } catch (err) {
-    console.error(`[LLM] ${label}: primary (${primaryModelId}) failed:`, err);
-  }
-
-  // Fallback
-  try {
-    if (primaryIsAnthropic) {
-      const cases = await callOpenAI(
-        fallbackModelId,
-        prompt,
-        isApi,
-        expectedCount,
-      );
-      console.log(`[LLM] ${label}: openai fallback OK, ${cases.length} cases`);
-      return { cases, provider: "openai", model: fallbackModelId };
-    } else {
-      const cases = await callAnthropic(
-        fallbackModelId,
-        prompt,
-        isApi,
-        expectedCount,
-      );
-      console.log(
-        `[LLM] ${label}: anthropic fallback OK, ${cases.length} cases`,
-      );
-      return { cases, provider: "anthropic", model: fallbackModelId };
-    }
-  } catch (err) {
-    console.error(
-      `[LLM] ${label}: fallback (${fallbackModelId}) also failed:`,
-      err,
-    );
-    throw new Error(`All LLM providers failed for ${label}`);
-  }
-}
-
-// ─── Per-platform batch ───────────────────────────────────────────────────────
-
-async function generateForPlatform(params: {
-  platformData: PlatformConfig;
-  requirement: string;
-  testCaseCount: number;
-  coverage: CoverageKey;
-  modelKey: ModelKey;
-  templateText: string;
-}): Promise<PlatformBatchResult> {
-  const {
-    platformData,
-    requirement,
-    testCaseCount,
-    coverage,
-    modelKey,
-    templateText,
-  } = params;
-  const platformId = platformData.platform as PlatformId;
-  const framework = String(platformData.framework ?? "").trim();
-  const isApi = platformId === "api";
-  const label = `${platformId}/${framework}`;
-
-  const apiContext = isApi
-    ? buildApiContextBlock(
-        platformData as Extract<PlatformConfig, { platform: "api" }>,
-      )
-    : undefined;
-
-  const prompt = buildPlatformPrompt({
-    requirement,
-    platformId,
-    framework,
-    testCaseCount,
-    coverage,
-    apiContext,
-    templateText: templateText || undefined,
-  });
+  const fallbackId = getModelId(fallbackKey);
 
   try {
-    const result = await callWithFallback({
-      modelKey,
-      prompt,
-      isApi,
-      expectedCount: testCaseCount,
-      label,
-    });
-
-    // For API cases, run normalizeApiSpec so method/path are always clean
-    let cases = result.cases;
-    if (isApi) {
-      cases = cases
-        .map((tc) => ({
-          ...tc,
-          api: normalizeApiSpec(
-            (tc as PlatformTestCase & { api?: unknown }).api,
-          ),
-        }))
-        .filter((tc) => tc.api?.method && tc.api?.path) as PlatformTestCase[];
-
-      if (cases.length < result.cases.length) {
-        console.warn(
-          `[${label}] Filtered ${result.cases.length - cases.length} invalid API cases`,
-        );
-      }
-    }
-
-    const { cases: _raw, ...resultMeta } = result;
-    return {
-      platformId,
-      framework,
-      cases: cases.slice(0, testCaseCount),
-      ...resultMeta,
-    };
+    return primaryIsAnthropic
+      ? await callAnthropic(primaryId, prompt, isApi, count)
+      : await callOpenAI(primaryId, prompt, isApi, count);
   } catch (err) {
-    console.error(`[${label}] Failed:`, err);
-    return {
-      platformId,
-      framework,
-      cases: [],
-      provider: "anthropic",
-      model: getModelId(modelKey),
-      error: err instanceof Error ? err.message : String(err),
-    };
+    console.error(`[LLM] Primary ${primaryId} failed:`, err);
+    return primaryIsAnthropic
+      ? await callOpenAI(fallbackId, prompt, isApi, count)
+      : await callAnthropic(fallbackId, prompt, isApi, count);
   }
 }
 
@@ -690,7 +715,6 @@ function buildInsertRow(args: {
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
-
     const {
       data: { user },
       error: authError,
@@ -700,19 +724,13 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as RequestBody;
-
     const requirement = (body.requirement ?? "").trim();
     const platforms = Array.isArray(body.platforms) ? body.platforms : [];
     const rawModelKey = String(body.model ?? "").trim();
     const modelKey: ModelKey = rawModelKey
       ? migrateModelKey(rawModelKey)
       : getDefaultModel();
-    const testCaseCount = clampCount(Number(body.testCaseCount ?? 10), 1, 100);
-    const coverage = (
-      (body.coverage ?? "comprehensive") in COVERAGE_PROMPTS
-        ? body.coverage
-        : "comprehensive"
-    ) as CoverageKey;
+    const testCaseCount = clampCount(Number(body.testCaseCount ?? 10), 1, 20);
     const project_id = body.project_id || null;
     const templateText = await resolveTemplateText(
       supabase,
@@ -720,19 +738,17 @@ export async function POST(request: Request) {
       String(body.template ?? ""),
     );
 
-    // ── Validation ────────────────────────────────────────────────────────────
-    if (!requirement) {
+    // Validation
+    if (!requirement)
       return NextResponse.json(
         { error: "Requirement is required", field: "requirement" },
         { status: 400 },
       );
-    }
-    if (!platforms.length) {
+    if (!platforms.length)
       return NextResponse.json(
         { error: "At least one platform is required", field: "platforms" },
         { status: 400 },
       );
-    }
     for (const p of platforms) {
       if (!p?.platform || !p?.framework) {
         return NextResponse.json(
@@ -744,14 +760,13 @@ export async function POST(request: Request) {
         );
       }
     }
-    if (!isModelAllowed(modelKey)) {
+    if (!isModelAllowed(modelKey))
       return NextResponse.json(
         { error: "Unsupported AI model", field: "model" },
         { status: 400 },
       );
-    }
 
-    // ── Usage quota ───────────────────────────────────────────────────────────
+    // Quota check
     const requestedTotal = testCaseCount * platforms.length;
     try {
       await checkUsageQuota(user.id, requestedTotal);
@@ -771,7 +786,7 @@ export async function POST(request: Request) {
       }
       return NextResponse.json(
         {
-          error: e instanceof Error ? e.message : "Usage limit exceeded",
+          error: "Usage limit exceeded",
           upgradeRequired: true,
           remaining: 0,
           requested: requestedTotal,
@@ -780,53 +795,59 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── Generate all platforms in parallel ────────────────────────────────────
-    const firstWave = await Promise.allSettled(
-      platforms.map((platformData) =>
-        generateForPlatform({
-          platformData,
-          requirement,
-          testCaseCount,
-          coverage,
-          modelKey,
-          templateText,
-        }),
-      ),
+    // Build the flat batch plan across all platforms
+    const batchPlan = buildBatchPlan(platforms, testCaseCount, templateText);
+
+    // Fire all batches in parallel — same pattern as generate-test-cases route
+    const batchResults = await Promise.allSettled(
+      batchPlan.map(async (batch) => {
+        const prompt = buildBatchPrompt({ requirement, batch });
+        const cases = await callLLM(modelKey, prompt, batch.isApi, batch.count);
+
+        // For API cases, normalize and filter invalid entries
+        const normalized = batch.isApi
+          ? cases
+              .map((tc) => ({ ...tc, api: normalizeApiSpec((tc as any).api) }))
+              .filter((tc) => tc.api?.method && tc.api?.path)
+          : cases;
+
+        return {
+          batch,
+          cases: normalized.slice(0, batch.count) as PlatformTestCase[],
+        };
+      }),
     );
 
-    // Collect results; retry any platform that hard-failed or came back empty
-    const batchResults: PlatformBatchResult[] = [];
-    const retryPlatforms: PlatformConfig[] = [];
+    // Group by platform — collect cases per platform then insert once per platform
+    const byPlatform = new Map<
+      string,
+      { platformId: PlatformId; framework: string; cases: PlatformTestCase[] }
+    >();
 
-    for (let i = 0; i < firstWave.length; i++) {
-      const r = firstWave[i];
-      if (
-        r.status === "rejected" ||
-        (r.status === "fulfilled" && r.value.cases.length === 0)
-      ) {
-        retryPlatforms.push(platforms[i]);
-      } else if (r.status === "fulfilled") {
-        batchResults.push(r.value);
+    for (const result of batchResults) {
+      if (result.status === "rejected") {
+        console.error("[gen] Batch failed:", result.reason);
+        continue;
       }
+      const { batch, cases } = result.value;
+      const key = `${batch.platformId}/${batch.framework}`;
+      if (!byPlatform.has(key)) {
+        byPlatform.set(key, {
+          platformId: batch.platformId,
+          framework: batch.framework,
+          cases: [],
+        });
+      }
+      byPlatform.get(key)!.cases.push(...cases);
     }
 
-    // Sequential retry for failed platforms
-    for (const platformData of retryPlatforms) {
-      console.warn(
-        `[retry] ${platformData.platform}/${platformData.framework}`,
-      );
-      const retried = await generateForPlatform({
-        platformData,
-        requirement,
-        testCaseCount,
-        coverage,
-        modelKey,
-        templateText,
-      });
-      batchResults.push(retried);
-    }
-
-    // ── Save ──────────────────────────────────────────────────────────────────
+    // Save all platforms
+    const generationResults: Array<{
+      platform: string;
+      framework: string;
+      count: number;
+      error?: string;
+    }> = [];
     const apiCaseDetails: Array<{
       id?: string;
       title: string;
@@ -834,33 +855,47 @@ export async function POST(request: Request) {
     }> = [];
     let totalInserted = 0;
     const allInsertedCases: unknown[] = [];
-    const generationResults: Array<{
-      platform: string;
-      framework: string;
-      count: number;
-      error?: string;
-    }> = [];
 
-    for (const batch of batchResults) {
-      if (batch.cases.length === 0) {
+    for (const { platformId, framework, cases } of byPlatform.values()) {
+      if (cases.length === 0) {
         generationResults.push({
-          platform: batch.platformId,
-          framework: batch.framework,
+          platform: platformId,
+          framework,
           count: 0,
-          error: batch.error ?? "No cases generated",
+          error: "No cases generated",
         });
         continue;
       }
 
-      const rows = batch.cases.map((tc) =>
-        buildInsertRow({
-          platformId: batch.platformId,
-          framework: batch.framework,
-          tc,
-          userId: user.id,
-          projectId: project_id,
-        }),
-      );
+      // Trim to exact requested count per platform
+      const trimmed = cases.slice(0, testCaseCount);
+
+      const rows: ReturnType<typeof buildInsertRow>[] = [];
+      for (const tc of trimmed) {
+        try {
+          rows.push(
+            buildInsertRow({
+              platformId,
+              framework,
+              tc,
+              userId: user.id,
+              projectId: project_id,
+            }),
+          );
+        } catch (err) {
+          console.warn(`[gen] Skipping case "${tc.title}":`, err);
+        }
+      }
+
+      if (!rows.length) {
+        generationResults.push({
+          platform: platformId,
+          framework,
+          count: 0,
+          error: "All cases failed validation",
+        });
+        continue;
+      }
 
       const { data: inserted, error: insertError } = await supabase
         .from("platform_test_cases")
@@ -869,19 +904,19 @@ export async function POST(request: Request) {
 
       if (insertError || !inserted) {
         console.error(
-          `[DB] Insert failed for ${batch.platformId}/${batch.framework}:`,
+          `[DB] Insert failed for ${platformId}/${framework}:`,
           insertError,
         );
         generationResults.push({
-          platform: batch.platformId,
-          framework: batch.framework,
+          platform: platformId,
+          framework,
           count: 0,
           error: insertError?.message ?? "Insert failed",
         });
         continue;
       }
 
-      if (batch.platformId === "api") {
+      if (platformId === "api") {
         for (const row of inserted as Array<{
           id?: string;
           title: string;
@@ -895,8 +930,8 @@ export async function POST(request: Request) {
       totalInserted += inserted.length;
       allInsertedCases.push(...inserted);
       generationResults.push({
-        platform: batch.platformId,
-        framework: batch.framework,
+        platform: platformId,
+        framework,
         count: inserted.length,
       });
     }
