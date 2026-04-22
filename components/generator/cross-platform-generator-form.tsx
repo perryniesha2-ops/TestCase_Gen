@@ -243,7 +243,6 @@ export function CrossPlatformGeneratorForm() {
   }>({ jobId: null, casesSaved: 0, casesRequested: 0, phase: "idle" });
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Core inputs
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [requirement, setRequirement] = useState("");
