@@ -167,7 +167,6 @@ export function TestManagementDashboard() {
     ].filter((item) => item.value > 0);
   }, [metrics.test_cases]);
 
-  // Split recent activity into manual and automation
   const manualActivity = useMemo(
     () =>
       metrics.recent_activity.filter((a) => a.type === "execution").slice(0, 5),
@@ -239,7 +238,10 @@ export function TestManagementDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div
+        data-testid="dashboard-loading"
+        className="flex items-center justify-center py-12"
+      >
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
           <p className="text-muted-foreground">Loading dashboard...</p>
@@ -252,11 +254,15 @@ export function TestManagementDashboard() {
   const hasPriorityFailures = (metrics.priority_failures?.length ?? 0) > 0;
 
   return (
-    <div className="space-y-8 px-1 md:px-2">
+    <div data-testid="dashboard" className="space-y-8 px-1 md:px-2">
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div
+        data-testid="quick-actions"
+        className="grid grid-cols-2 md:grid-cols-4 gap-3"
+      >
         <Link href="/generate">
           <Button
+            data-testid="quick-action-generate-tests"
             variant="outline"
             className="w-full h-auto py-3 flex flex-col items-center gap-1.5 hover:bg-primary hover:text-primary-foreground transition-colors"
           >
@@ -266,6 +272,7 @@ export function TestManagementDashboard() {
         </Link>
         <Link href="/automation">
           <Button
+            data-testid="quick-action-automation"
             variant="outline"
             className="w-full h-auto py-3 flex flex-col items-center gap-1.5 hover:bg-primary hover:text-primary-foreground transition-colors"
           >
@@ -275,6 +282,7 @@ export function TestManagementDashboard() {
         </Link>
         <Link href="/test-cases?runStatus=failed">
           <Button
+            data-testid="quick-action-view-failures"
             variant="outline"
             className="w-full h-auto py-3 flex flex-col items-center gap-1.5 hover:bg-destructive hover:text-destructive-foreground transition-colors"
           >
@@ -284,6 +292,7 @@ export function TestManagementDashboard() {
         </Link>
         <Link href="/test-cases">
           <Button
+            data-testid="quick-action-run-tests"
             variant="outline"
             className="w-full h-auto py-3 flex flex-col items-center gap-1.5 hover:bg-primary hover:text-primary-foreground transition-colors"
           >
@@ -294,35 +303,43 @@ export function TestManagementDashboard() {
       </div>
 
       {/* Key Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* Total Test Cases */}
-        <Card>
+      <div
+        data-testid="metrics-cards"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4"
+      >
+        <Card data-testid="metric-total-tests">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Tests</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{metrics.test_cases.total}</div>
+            <div
+              data-testid="metric-total-tests-value"
+              className="text-3xl font-bold"
+            >
+              {metrics.test_cases.total}
+            </div>
             <p className="text-xs text-muted-foreground mt-2">
               {metrics.test_cases.not_run} not yet executed
             </p>
           </CardContent>
         </Card>
 
-        {/* Pass Rate */}
-        <Card>
+        <Card data-testid="metric-pass-rate">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Pass Rate</CardTitle>
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div
+              data-testid="metric-pass-rate-value"
               className={`text-3xl font-bold ${getPassRateColor(metrics.test_cases.pass_rate)}`}
             >
               {metrics.test_cases.pass_rate}%
             </div>
             <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden mt-3">
               <div
+                data-testid="metric-pass-rate-bar"
                 className="bg-green-500 h-2 transition-all duration-500"
                 style={{ width: `${metrics.test_cases.pass_rate}%` }}
               />
@@ -333,20 +350,23 @@ export function TestManagementDashboard() {
           </CardContent>
         </Card>
 
-        {/* Requirements Coverage */}
-        <Card>
+        <Card data-testid="metric-coverage">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Coverage</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">
+            <div
+              data-testid="metric-coverage-value"
+              className="text-3xl font-bold"
+            >
               {metrics.requirements.coverage_percentage}%
             </div>
             <div className="flex items-center gap-2 mt-3">
               {getTrendIcon(metrics.requirements.trend)}
               <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
                 <div
+                  data-testid="metric-coverage-bar"
                   className="bg-blue-500 h-2 transition-all duration-500"
                   style={{
                     width: `${metrics.requirements.coverage_percentage}%`,
@@ -361,18 +381,24 @@ export function TestManagementDashboard() {
           </CardContent>
         </Card>
 
-        {/* Failed Tests */}
-        <Card className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800">
+        <Card
+          data-testid="metric-failed-tests"
+          className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800"
+        >
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Failed Tests</CardTitle>
             <XCircle className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-red-600">
+            <div
+              data-testid="metric-failed-tests-value"
+              className="text-3xl font-bold text-red-600"
+            >
               {metrics.test_cases.failed}
             </div>
             <Link href="/test-cases?runStatus=failed">
               <Button
+                data-testid="view-failures-link"
                 variant="link"
                 className="h-auto p-0 text-xs mt-2 text-red-600 hover:text-red-700"
               >
@@ -382,8 +408,7 @@ export function TestManagementDashboard() {
           </CardContent>
         </Card>
 
-        {/* Automation Runs */}
-        <Card>
+        <Card data-testid="metric-automation-runs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">
               Automation Runs
@@ -391,7 +416,10 @@ export function TestManagementDashboard() {
             <Zap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">
+            <div
+              data-testid="metric-automation-runs-value"
+              className="text-3xl font-bold"
+            >
               {metrics.automation_runs?.total ?? 0}
             </div>
             <p className="text-xs text-muted-foreground mt-2">
@@ -406,9 +434,9 @@ export function TestManagementDashboard() {
         </Card>
       </div>
 
-      {/* Execution Timeline - full width */}
+      {/* Execution Timeline */}
       {hasData && (
-        <Card>
+        <Card data-testid="execution-timeline-card">
           <CardHeader>
             <CardTitle>Execution Trend</CardTitle>
             <CardDescription>
@@ -418,52 +446,61 @@ export function TestManagementDashboard() {
           <CardContent>
             {metrics.execution_timeline &&
             metrics.execution_timeline.length > 0 ? (
-              <ResponsiveContainer width="100%" height={360}>
-                <LineChart data={metrics.execution_timeline}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                  <XAxis
-                    dataKey="date"
-                    style={{ fontSize: "12px" }}
-                    tickFormatter={(value) => {
-                      const date = new Date(value);
-                      return `${date.getMonth() + 1}/${date.getDate()}`;
-                    }}
-                  />
-                  <YAxis style={{ fontSize: "12px" }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "rgba(255, 255, 255, 0.95)",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                    }}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="passed"
-                    stroke="#10b981"
-                    strokeWidth={2}
-                    dot={{ fill: "#10b981", r: 4 }}
-                    name="Passed"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="failed"
-                    stroke="#ef4444"
-                    strokeWidth={2}
-                    dot={{ fill: "#ef4444", r: 4 }}
-                    name="Failed"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              <div data-testid="execution-timeline-chart">
+                <ResponsiveContainer width="100%" height={360}>
+                  <LineChart data={metrics.execution_timeline}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                    <XAxis
+                      dataKey="date"
+                      style={{ fontSize: "12px" }}
+                      tickFormatter={(value) => {
+                        const date = new Date(value);
+                        return `${date.getMonth() + 1}/${date.getDate()}`;
+                      }}
+                    />
+                    <YAxis style={{ fontSize: "12px" }} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "rgba(255, 255, 255, 0.95)",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                      }}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="passed"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      dot={{ fill: "#10b981", r: 4 }}
+                      name="Passed"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="failed"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      dot={{ fill: "#ef4444", r: 4 }}
+                      name="Failed"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
-              <div className="h-[360px] flex items-center justify-center text-muted-foreground">
+              <div
+                data-testid="execution-timeline-empty"
+                className="h-[360px] flex items-center justify-center text-muted-foreground"
+              >
                 <div className="text-center space-y-2">
                   <Activity className="h-8 w-8 mx-auto opacity-50" />
                   <p className="text-sm">No execution data yet</p>
                   <Link href="/test-cases">
-                    <Button variant="outline" size="sm">
+                    <Button
+                      data-testid="run-tests-from-timeline"
+                      variant="outline"
+                      size="sm"
+                    >
                       <Play className="h-4 w-4 mr-2" />
                       Run Tests
                     </Button>
@@ -475,41 +512,46 @@ export function TestManagementDashboard() {
         </Card>
       )}
 
-      {/* Status Distribution - full width */}
+      {/* Status Distribution */}
       {hasData && (
-        <Card>
+        <Card data-testid="status-distribution-card">
           <CardHeader>
             <CardTitle>Test Status Distribution</CardTitle>
             <CardDescription>Breakdown of current test states</CardDescription>
           </CardHeader>
           <CardContent>
             {pieChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={360}>
-                <PieChart>
-                  <Pie
-                    data={pieChartData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={true}
-                    label={({ name, percent }) =>
-                      `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
-                    }
-                    outerRadius={140}
-                    dataKey="value"
-                  >
-                    {pieChartData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={PIE_COLORS[index % PIE_COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+              <div data-testid="status-distribution-chart">
+                <ResponsiveContainer width="100%" height={360}>
+                  <PieChart>
+                    <Pie
+                      data={pieChartData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={true}
+                      label={({ name, percent }) =>
+                        `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
+                      }
+                      outerRadius={140}
+                      dataKey="value"
+                    >
+                      {pieChartData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={PIE_COLORS[index % PIE_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
-              <div className="h-[360px] flex items-center justify-center text-muted-foreground">
+              <div
+                data-testid="status-distribution-empty"
+                className="h-[360px] flex items-center justify-center text-muted-foreground"
+              >
                 <div className="text-center space-y-2">
                   <Target className="h-8 w-8 mx-auto opacity-50" />
                   <p className="text-sm">No test data available</p>
@@ -520,9 +562,9 @@ export function TestManagementDashboard() {
         </Card>
       )}
 
-      {/* Priority Failures — only render when there's data */}
+      {/* Priority Failures */}
       {hasPriorityFailures && (
-        <Card>
+        <Card data-testid="priority-failures-card">
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <div>
               <CardTitle className="flex items-center gap-2">
@@ -534,20 +576,27 @@ export function TestManagementDashboard() {
               </CardDescription>
             </div>
             <Link href="/test-cases?status=failed&priority=critical,high">
-              <Button variant="ghost" size="sm">
+              <Button
+                data-testid="priority-failures-view-all"
+                variant="ghost"
+                size="sm"
+              >
                 View All <ArrowUpRight className="h-4 w-4 ml-1" />
               </Button>
             </Link>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div data-testid="priority-failures-list" className="space-y-3">
               {metrics.priority_failures!.slice(0, 5).map((test) => (
                 <Link
                   key={test.id}
                   href={`/test-cases/${test.id}`}
                   className="block"
                 >
-                  <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent transition-colors">
+                  <div
+                    data-testid={`priority-failure-item-${test.id}`}
+                    className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent transition-colors"
+                  >
                     <XCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
@@ -573,10 +622,12 @@ export function TestManagementDashboard() {
         </Card>
       )}
 
-      {/* Recent Activity — split into two columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Manual Executions */}
-        <Card>
+      {/* Recent Activity */}
+      <div
+        data-testid="recent-activity"
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+      >
+        <Card data-testid="manual-executions-card">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
               <Activity className="h-5 w-5" />
@@ -586,23 +637,31 @@ export function TestManagementDashboard() {
           </CardHeader>
           <CardContent>
             {manualActivity.length === 0 ? (
-              <div className="text-center py-8 space-y-3">
+              <div
+                data-testid="manual-executions-empty"
+                className="text-center py-8 space-y-3"
+              >
                 <Activity className="h-8 w-8 mx-auto text-muted-foreground opacity-50" />
                 <p className="text-sm text-muted-foreground">
                   No manual executions yet
                 </p>
                 <Link href="/test-cases">
-                  <Button variant="outline" size="sm">
+                  <Button
+                    data-testid="run-tests-from-manual"
+                    variant="outline"
+                    size="sm"
+                  >
                     <Play className="h-4 w-4 mr-2" />
                     Run Tests
                   </Button>
                 </Link>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div data-testid="manual-executions-list" className="space-y-2">
                 {manualActivity.map((activity) => (
                   <div
                     key={activity.id}
+                    data-testid={`manual-execution-item-${activity.id}`}
                     className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent/50 transition-colors"
                   >
                     {getActivityIcon(activity)}
@@ -619,8 +678,7 @@ export function TestManagementDashboard() {
           </CardContent>
         </Card>
 
-        {/* Automation Runs Activity */}
-        <Card>
+        <Card data-testid="automation-activity-card">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5" />
@@ -630,23 +688,31 @@ export function TestManagementDashboard() {
           </CardHeader>
           <CardContent>
             {automationActivity.length === 0 ? (
-              <div className="text-center py-8 space-y-3">
+              <div
+                data-testid="automation-activity-empty"
+                className="text-center py-8 space-y-3"
+              >
                 <Zap className="h-8 w-8 mx-auto text-muted-foreground opacity-50" />
                 <p className="text-sm text-muted-foreground">
                   No automation runs yet
                 </p>
                 <Link href="/automation">
-                  <Button variant="outline" size="sm">
+                  <Button
+                    data-testid="go-to-automation"
+                    variant="outline"
+                    size="sm"
+                  >
                     <Plus className="h-4 w-4 mr-2" />
-                    Automation{" "}
+                    Automation
                   </Button>
                 </Link>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div data-testid="automation-activity-list" className="space-y-2">
                 {automationActivity.map((activity) => (
                   <div
                     key={activity.id}
+                    data-testid={`automation-activity-item-${activity.id}`}
                     className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent/50 transition-colors"
                   >
                     {getActivityIcon(activity)}
