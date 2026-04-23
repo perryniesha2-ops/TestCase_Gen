@@ -212,6 +212,7 @@ export function LoginForm() {
                   disabled={disabled}
                   defaultValue={userEmail}
                   placeholder="you@company.com"
+                  maxLength={254}
                   className={cn(
                     "h-10 rounded-xl border-gray-300 bg-white text-sm text-gray-900 placeholder:text-gray-400 dark:border-white/10 dark:bg-white/6 dark:text-white dark:placeholder:text-white/20",
                     "focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20 dark:focus-visible:border-blue-400/50 dark:focus-visible:ring-blue-400/20",
@@ -246,6 +247,7 @@ export function LoginForm() {
                     required
                     disabled={disabled}
                     placeholder="••••••••"
+                    minLength={6}
                     className={cn(
                       "h-10 rounded-xl border-gray-300 bg-white pr-10 text-sm text-gray-900 placeholder:text-gray-400 dark:border-white/10 dark:bg-white/6 dark:text-white dark:placeholder:text-white/20",
                       "focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20 dark:focus-visible:border-blue-400/50 dark:focus-visible:ring-blue-400/20",

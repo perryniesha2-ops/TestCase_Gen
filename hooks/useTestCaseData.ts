@@ -7,9 +7,10 @@ import type {
   Generation,
   TestSuite, // Changed from CrossPlatformSuite
   TestSession,
-  Project,
   ExecutionStatus,
 } from "@/types/test-cases";
+
+import { Project } from "@/types/projects";
 
 type UseTestCaseDataArgs = {
   generationId: string | null;

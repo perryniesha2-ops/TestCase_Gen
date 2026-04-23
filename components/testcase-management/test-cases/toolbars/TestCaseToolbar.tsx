@@ -19,7 +19,7 @@ import {
   Download,
   Filter,
 } from "lucide-react";
-import type { Project } from "@/types/test-cases";
+import type { Project } from "@/types/projects";
 
 export type RunStatusFilter = "passed" | "failed" | "skipped" | "blocked";
 

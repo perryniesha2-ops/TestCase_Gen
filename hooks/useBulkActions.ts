@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
 
@@ -29,6 +29,15 @@ export function useBulkActions(
 ) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const prevIdsRef = useRef<string>("");
+  useEffect(() => {
+    const key = testCases.map((tc) => tc.id).join(",");
+    if (key !== prevIdsRef.current) {
+      prevIdsRef.current = key;
+      setSelectedIds(new Set());
+    }
+  }, [testCases]);
 
   const selectedList = useMemo(() => Array.from(selectedIds), [selectedIds]);
 
@@ -170,7 +179,7 @@ export function useBulkActions(
 
   function bulkExport() {
     const ids = selectedList;
-    const selectedCases = testCases.filter((tc) => ids.includes(tc.id));
+    const selectedCases = testCases.filter((tc) => selectedIds.has(tc.id));
     if (selectedCases.length === 0) return;
 
     const headers = [

@@ -150,11 +150,6 @@ export function TabbedTestCaseTable() {
   );
 
   // Unified bulk actions for both types
-  const regularBulkActions = useBulkActions(regularCasesWithType, refresh);
-  const crossPlatformBulkActions = useBulkActions(
-    crossPlatformCasesWithType,
-    refresh,
-  );
 
   const getRelativeTime = useCallback((dateString: string) => {
     const date = new Date(dateString);
@@ -192,28 +187,44 @@ export function TabbedTestCaseTable() {
   const filteredTestCases = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return regularCasesWithType.filter((tc) => {
-      const matchesText =
-        tc.title.toLowerCase().includes(term) ||
-        tc.description.toLowerCase().includes(term);
-
-      if (!matchesText) return false;
-
+      if (
+        !tc.title.toLowerCase().includes(term) &&
+        !tc.description.toLowerCase().includes(term)
+      )
+        return false;
+      if (selectedProject && tc.project_id !== selectedProject) return false;
       return matchesRunStatusFilter(tc.id);
     });
-  }, [regularCasesWithType, searchTerm, matchesRunStatusFilter]);
+  }, [
+    regularCasesWithType,
+    searchTerm,
+    selectedProject,
+    matchesRunStatusFilter,
+  ]);
 
   const filteredCrossPlatformCases = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return crossPlatformCasesWithType.filter((tc) => {
-      const matchesText =
-        tc.title.toLowerCase().includes(term) ||
-        tc.description.toLowerCase().includes(term);
-
-      if (!matchesText) return false;
-
+      if (
+        !tc.title.toLowerCase().includes(term) &&
+        !tc.description.toLowerCase().includes(term)
+      )
+        return false;
+      if (selectedProject && tc.project_id !== selectedProject) return false;
       return matchesRunStatusFilter(tc.id);
     });
-  }, [crossPlatformCasesWithType, searchTerm, matchesRunStatusFilter]);
+  }, [
+    crossPlatformCasesWithType,
+    searchTerm,
+    selectedProject,
+    matchesRunStatusFilter,
+  ]);
+
+  const regularBulkActions = useBulkActions(filteredTestCases, refresh);
+  const crossPlatformBulkActions = useBulkActions(
+    filteredCrossPlatformCases,
+    refresh,
+  );
 
   const totalPages = Math.ceil(filteredTestCases.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -487,7 +498,7 @@ export function TabbedTestCaseTable() {
         <TabsContent value="regular" className="space-y-4 mt-6">
           <BulkActionsToolbar
             selectedIds={regularBulkActions.selectedIds}
-            allTestCases={regularCasesWithType}
+            allTestCases={filteredTestCases}
             type="regular"
             onSelectAll={regularBulkActions.selectAll}
             onDeselectAll={regularBulkActions.deselectAll}
@@ -528,7 +539,7 @@ export function TabbedTestCaseTable() {
         <TabsContent value="cross-platform" className="space-y-4 mt-6">
           <BulkActionsToolbar
             selectedIds={crossPlatformBulkActions.selectedIds}
-            allTestCases={crossPlatformCasesWithType}
+            allTestCases={filteredCrossPlatformCases}
             type="cross-platform"
             onSelectAll={crossPlatformBulkActions.selectAll}
             onDeselectAll={crossPlatformBulkActions.deselectAll}
@@ -537,7 +548,6 @@ export function TabbedTestCaseTable() {
             onBulkAddToSuite={crossPlatformBulkActions.bulkAddToSuite}
             onBulkExport={crossPlatformBulkActions.bulkExport}
           />
-
           <UnifiedTestCaseTable
             testCases={filteredCrossPlatformCases}
             paginated={paginatedCrossPlatformCases}

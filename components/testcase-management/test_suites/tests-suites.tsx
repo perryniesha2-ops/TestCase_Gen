@@ -7,7 +7,9 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Loader2, Plus } from "lucide-react";
 
-import type { TestSuite, SuiteType, Project } from "@/types/test-cases";
+import type { TestSuite, SuiteType } from "@/types/test-cases";
+import type { Project } from "@/types/projects";
+
 import { TestSuiteTable } from "./test-suite-table";
 import { CreateSuiteDialog } from "./dialogs/CreateSuiteDialog";
 import { Badge } from "@/components/ui/badge";

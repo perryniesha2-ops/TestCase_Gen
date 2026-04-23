@@ -42,11 +42,9 @@ import {
   Zap,
 } from "lucide-react";
 
-import type {
-  TestCase,
-  CrossPlatformTestCase,
-  Project,
-} from "@/types/test-cases";
+import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
+
+import type { Project } from "@/types/projects";
 
 type CombinedTestCase = TestCase | CrossPlatformTestCase;
 

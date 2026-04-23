@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
-import type { Project, TestSuite } from "@/types/test-cases";
+import type { TestSuite } from "@/types/test-cases";
+import type { Project } from "@/types/projects";
 
 interface BulkUpdateDialogProps {
   open: boolean;
