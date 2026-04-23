@@ -3,7 +3,6 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +27,6 @@ import { ExecutionHistory } from "@/components/testcase-management/test_suites/e
 import { SuiteReports } from "@/components/testcase-management/test_suites/suitesreport";
 import type { PlatformType } from "@/lib/exports/export-strategy";
 import { SuiteKind } from "@/lib/suites/resolve-suite";
-import { Project } from "@/types/projects";
 
 type ExportCounts = {
   apiCasesFound: number;
@@ -56,8 +54,6 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
   const [exportCountsError, setExportCountsError] = React.useState<
     string | null
   >(null);
-
-  const [projects, setProjects] = useState<Project[]>([]);
 
   const canAutomate = suiteKind === "regular";
 
@@ -88,7 +84,6 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
     if (metadataFetchedRef.current) return;
     metadataFetchedRef.current = true;
     void fetchSuiteMetadata();
-    fetchProjects();
   }, [user?.id, suiteId]);
 
   const fetchExportSummary = React.useCallback(async () => {
@@ -128,17 +123,6 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
   }, [user?.id, suiteId]);
 
   const [deleting, setDeleting] = React.useState(false);
-
-  async function fetchProjects() {
-    try {
-      const res = await fetch("/api/projects/list", { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to load projects");
-      const data = await res.json();
-      setProjects(data.projects ?? []);
-    } catch (error) {
-      console.error("[TestCaseFormDialog] fetchProjects error:", error);
-    }
-  }
 
   async function handleDeleteSuite() {
     if (!details.suite) return;
@@ -341,7 +325,7 @@ export function SuiteDetailsPageClient({ suiteId }: { suiteId: string }) {
                 suite={details.suite}
                 suiteTestCases={details.suiteTestCases}
                 availableTestCases={details.availableTestCases}
-                projects={projects}
+                projects={details.projects}
                 initialLoading={details.initialLoading}
                 busy={details.loading}
                 defaultTab="assigned"

@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import type { Project } from "@/types/test-cases";
+import type { Project } from "@/types/projects";
 import type { TestSuite } from "@/types/test-cases";
 
 // ✅ Extended TestCase to support both types
