@@ -1,6 +1,4 @@
 // lib/generation/test-case-generation.ts
-// Shared logic used by both the main route (job creation) and the
-// process route (actual LLM work). Extracted so neither route duplicates code.
 
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
@@ -68,7 +66,13 @@ export interface GeneratedTestCase {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+// Batch size intentionally kept at 5 — larger batches increase token usage and
+// truncation risk. Oversampling (requesting 6 when we need 5) handles partial returns.
 export const BATCH_SIZE = 5;
+
+// How many extra cases to request per batch to absorb partial returns.
+// Requesting 6 when we need 5 means we still hit the target even if one is dropped.
+const OVERSAMPLE = 1;
 
 export const PRIORITY_VALUES = new Set<Priority>([
   "low",
@@ -86,195 +90,71 @@ export const PRIORITY_ALIASES: Record<string, Priority> = {
 
 // ─── Coverage areas ───────────────────────────────────────────────────────────
 
-// ─── Coverage areas ───────────────────────────────────────────────────────────
-
 export const COVERAGE_AREAS = [
   {
     name: "happy-path",
     label: "Core Flows",
-    instruction: `Focus on HAPPY PATH and CORE FLOW scenarios that go BEYOND basic smoke tests:
-- Complete multi-step workflows including all intermediate states, not just start and end
-- Valid inputs at realistic complexity (long names, international characters, real-world data volumes)
-- Successful CRUD operations verifying the data actually persisted after a page refresh
-- Workflows that depend on prior state (e.g. create → edit → delete, not just create)
-- Confirmation flows, success states, and any downstream side effects (emails, counts, logs)
-- Role-based happy paths — the same action performed by different user roles
-- Re-doing an action that was previously completed (idempotency)
-
-DO NOT generate: trivial "fill form and submit" cases with no state verification.
+    instruction: `Focus on HAPPY PATH and CORE FLOW scenarios:
+- Valid inputs producing expected outputs
+- Standard user journeys from start to finish
+- Successful CRUD operations with correct data
+- Normal workflow completion including confirmation/success states
 Set is_negative_test, is_boundary_test, is_edge_case, is_security_test = false on all cases.
 Assign priority critical or high to the most important flows.`,
   },
   {
     name: "negative",
     label: "Error Handling",
-    instruction: `Focus on NEGATIVE and ERROR HANDLING scenarios that QA teams routinely miss:
-
-FORM VALIDATION (go beyond just "leave field empty"):
-- Submit with only whitespace in required fields (spaces, tabs, newlines)
-- Submit with valid format but logically invalid data (past date for future event, end date before start date)
-- Paste content instead of typing — verify validation still fires
-- Remove content after it was valid (re-empty a filled field and resubmit)
-- Submit the same unique value twice (duplicate email, duplicate name)
-- Fields that interact: password confirmation mismatch, dependent dropdowns in wrong combination
-
-HTTP / NETWORK layer:
-- Simulate slow network: verify loading states appear and don't allow double submission
-- What happens when an API call returns a 500 — is there a user-facing error or silent failure?
-- Expired session mid-form: fill a long form, session expires, submit — is data lost?
-
-STATE ERRORS:
-- Attempt an action on a resource that was deleted by another user/tab
-- Try to act on a resource you don't own (wrong user ID in URL)
-- Re-submitting a form after a failed submission without changing any data
-
+    instruction: `Focus on NEGATIVE and ERROR HANDLING scenarios:
+- Missing required fields (submit empty form, omit each required field individually)
+- Invalid data formats (wrong email format, non-numeric where numeric expected)
+- Data that exceeds limits (too long, too large, wrong type)
+- Attempting actions without required permissions or in wrong state
+- Meaningful error messages shown to the user
 Set is_negative_test = true on every case.`,
   },
   {
     name: "boundary",
     label: "Boundary Values",
-    instruction: `Focus on BOUNDARY VALUE scenarios — test the exact limits, not just "too long":
-
-NUMERIC:
-- Exactly at minimum (valid), minimum minus 1 (invalid), exactly at maximum (valid), maximum plus 1 (invalid)
-- Zero, negative numbers, and decimals where only integers are expected
-- Very large numbers (999999999) and scientific notation strings ("1e5") in numeric fields
-- Currency: $0.00, $0.01, maximum allowed amount, amounts with more than 2 decimal places
-
-STRING LENGTH:
-- Empty string, single character, exactly at max length (should pass), max+1 (should fail)
-- Max length filled with special chars only, max length with unicode multibyte chars (each char may count as 2-4 bytes)
-
-DATE / TIME:
-- Today, yesterday, far future (year 9999), epoch (1970-01-01)
-- Leap day Feb 29 on a leap year (valid) vs non-leap year (invalid)
-- Timezone boundary: midnight UTC vs midnight local time producing different dates
-- Daylight saving transition hours (2am on spring-forward day)
-
-FILES:
-- 0-byte file, 1-byte file, exactly at size limit, 1 byte over size limit
-- Correct extension but wrong MIME type (rename .exe to .jpg)
-- File with no extension
-- Very long filename (255 chars), filename with special characters and spaces
-
-COLLECTIONS:
-- Empty list, exactly 1 item, exactly at the documented maximum, one over maximum
-- Pagination: last page with exactly 1 item, requesting a page number beyond the last page
-
+    instruction: `Focus on BOUNDARY VALUE scenarios:
+- Numeric limits: minimum valid, minimum-1 (invalid), maximum valid, maximum+1 (invalid)
+- String lengths: empty string, single character, exactly at max length, one over max length
+- Date edges: today, yesterday, far future, invalid dates (Feb 30, Feb 29 non-leap year)
+- File sizes: 0 bytes, just under limit, exactly at limit, one byte over limit
+- Collection limits: empty list, single item, exactly at maximum items, one over maximum
 Set is_boundary_test = true on every case.`,
   },
   {
     name: "edge-case",
     label: "Edge Cases",
-    instruction: `Focus on EDGE CASES that experienced QA engineers know to look for but junior testers miss:
-
-INPUT CONTENT:
-- Unicode and internationalization: Arabic/Hebrew RTL text in LTR fields, Chinese/Japanese characters, emoji (😀🔥), combined emoji (👨‍👩‍👧), zero-width spaces, null byte (%00)
-- Names that break assumptions: "O'Brien", "José", "李", single-character names ("X"), hyphenated names ("Smith-Jones"), all-caps ("JOHN DOE")
-- Numbers that look like other types: "007", "1.0", "1,000", " 42 " (with spaces), "+1"
-- Strings that look like code: "null", "undefined", "NaN", "true", "false", "0", "{}", "[]"
-- HTML-like content in plain text fields: "<b>bold</b>", "1 > 0", "a & b"
-- Email edge cases: "user+tag@domain.com", "user@subdomain.domain.co.uk", very long local part
-
-BROWSER / SESSION BEHAVIOR:
-- Back button after completing a form — can the form be resubmitted?
-- Duplicate tab: complete action in one tab, try same action in second tab
-- Browser refresh mid-upload or mid-multi-step form
-- Autofill: browser autofills wrong field or stale data, then user submits
-- Copy-paste a value with hidden formatting characters from Word/Slack
-
-CONCURRENCY:
-- Two users editing the same record simultaneously — last write wins? conflict shown?
-- Rapidly clicking submit multiple times before response returns
-- Opening the same modal/dialog twice via keyboard shortcut
-
-DISPLAY / RENDERING:
-- Very long unbroken strings with no spaces (should not break layout)
-- All fields at max length simultaneously (check for layout overflow)
-- Content in a language that is 30% longer than English (German, Finnish) breaking button widths
-
+    instruction: `Focus on EDGE CASE and UNUSUAL SCENARIO testing:
+- Special characters in inputs: apostrophes, quotes, ampersands, unicode (José O'Brien-Smith)
+- Whitespace: leading/trailing spaces, multiple spaces, tabs, newlines in fields
+- Concurrent or rapid repeated actions (double-click submit, rapid navigation)
+- Unexpected sequences: skip steps, go backwards, refresh mid-flow
+- Empty states: no data in lists, first-time user experience
 Set is_edge_case = true on every case.`,
   },
   {
     name: "security",
     label: "Security",
-    instruction: `Focus on SECURITY scenarios beyond basic XSS — these are the cases most QA teams never write:
-
-INJECTION ATTACKS:
-- SQL injection classics: ' OR '1'='1'--, '; DROP TABLE users;--, 1; SELECT * FROM users
-- SQL injection in search/filter fields, sort parameters, and pagination parameters
-- NoSQL injection (if applicable): {"$gt": ""}, {"$where": "1==1"}
-- Command injection: ; ls -la, | whoami, \`id\`
-- LDAP injection: *)(uid=*))(|(uid=*
-- Template injection: {{7*7}}, ${7 * 7}, <%= 7*7 %>
-- Path traversal: ../../etc/passwd, ..\\..\\windows\\system32
-
-XSS:
-- Stored XSS: save <script>alert(document.cookie)</script> in a text field, navigate away, return
-- DOM XSS via URL parameters: inject script into query string, hash fragment
-- XSS via file upload: SVG containing <script>, HTML file upload
-- XSS bypass attempts: <ScRiPt>, <img src=x onerror=alert(1)>, javascript:alert(1) in href fields
-- CSP bypass: data: URIs, inline event handlers
-
-AUTHENTICATION & SESSION:
-- Brute force login: 10+ rapid failed attempts — is there lockout or rate limiting?
-- Credential stuffing pattern: valid email with many different passwords in quick succession  
-- Password reset token reuse: use a reset link twice — second use should fail
-- Session fixation: manipulate session cookie before login, verify it rotates after login
-- Concurrent sessions: log in on device A, log in on device B, verify device A behavior
-- JWT manipulation: decode JWT, change role claim from "user" to "admin", re-encode and send
-- Remember me token: verify it expires, verify it's invalidated on password change
-
-AUTHORIZATION (IDOR & privilege escalation):
-- Change numeric ID in URL to another user's resource ID (/users/123/profile → /users/124/profile)
-- Change ID in request body or query param to access another user's data
-- Horizontal escalation: access /admin routes as a regular user
-- Vertical escalation: perform admin actions (delete user, change role) as non-admin via direct API call
-- Mass assignment: send extra fields in POST body (role: "admin", is_verified: true) and check if applied
-- API endpoint enumeration: call endpoints referenced in JS bundles that have no UI surface
-
-SENSITIVE DATA:
-- Verify passwords are not echoed back in API responses or page source
-- Verify tokens/secrets are not logged (check network response headers for Set-Cookie flags: Secure, HttpOnly, SameSite)
-- Autocomplete="off" on sensitive fields (password, card number, SSN)
-- Error messages must not leak stack traces, SQL queries, file paths, or internal IDs to the user
-
-RATE LIMITING & ABUSE:
-- Send 50+ requests in 10 seconds to a public endpoint — is there throttling?
-- Enumerate valid usernames via timing difference or different error messages between "user not found" vs "wrong password"
-- OTP/2FA brute force: try all 6-digit codes — is there lockout after N attempts?
-
+    instruction: `Focus on SECURITY scenarios:
+- SQL injection attempts: ' OR '1'='1, '; DROP TABLE users;--
+- XSS attempts: <script>alert('XSS')</script>, <img onerror="alert(1)" src=x>
+- Accessing pages/resources without authentication (direct URL navigation)
+- Horizontal privilege escalation: changing IDs in URLs to access other users' data
+- Session management: session after logout, concurrent sessions
 Set is_security_test = true on every case.`,
   },
   {
     name: "integration",
     label: "Integration & State",
-    instruction: `Focus on INTEGRATION and STATE MANAGEMENT scenarios — the bugs that only appear when features interact:
-
-DATA CONSISTENCY:
-- Create a record, verify it appears in: list view, detail view, search results, exported report, related entity counts
-- Update a record and verify all downstream references update (foreign keys, denormalized counts, cached values)
-- Delete a record and verify: it disappears from all views, related records are handled per spec (cascade vs restrict), audit log updated
-- Soft-delete if applicable: verify soft-deleted records don't appear in normal queries but do appear in admin/trash view
-
-MULTI-STEP STATE:
-- Abandon a multi-step form halfway and return — is draft state preserved or lost?
-- Complete step 2 of 3, navigate away, use browser back — are step 2 answers still filled?
-- Concurrent edit: open record in two tabs, save in tab 1, attempt save in tab 2 — is there a conflict warning?
-- Optimistic UI: action appears to succeed in UI, then API returns error — does UI correctly revert?
-
-CROSS-FEATURE INTERACTION:
-- Create entity A which is required by entity B, then delete A — what happens to B?
-- Change a setting that affects display of another feature — verify the other feature reflects the new setting
-- Notification/email triggered by an action — verify it fires exactly once, not on retries
-- Pagination + filter: apply filter, go to page 3, remove filter — does pagination reset to page 1?
-- Sort + search: apply sort, then search — does sort persist? Should it?
-
-ASYNC & BACKGROUND JOBS:
-- Trigger a long-running job, navigate away, return — does the UI correctly reflect the job status?
-- Trigger the same job twice in quick succession — are duplicates prevented?
-- Job failure: verify the user is notified and the system is left in a consistent state, not half-updated
-- Webhook/callback: trigger action, verify third-party callback is received and processed correctly`,
+    instruction: `Focus on INTEGRATION and STATE MANAGEMENT scenarios:
+- Data persisting correctly after save and page refresh
+- Changes in one area correctly reflected in related areas
+- Multi-step workflows maintaining state between steps
+- Actions triggering correct downstream effects (emails sent, counts updated)
+- Undo/cancel operations correctly reverting state`,
   },
 ];
 
@@ -403,7 +283,7 @@ SELECTOR PRIORITY (use the first that applies):
   2. input[name="email"]
   3. input[type="password"]
   4. [aria-label="Close dialog"]
-  5. button:has-text("Sign in")
+  5. button:has-text("Generate Test Cases")
   Never use: nth-child, positional selectors, or long class chains
 
 STEP EXAMPLES:
@@ -415,11 +295,8 @@ STEP EXAMPLES:
 
 RULES:
   - Use path-only input_value for navigate steps ("/dashboard" not "https://...")
-  - Use REALISTIC, SPECIFIC test data — not "test@test.com", "password123", "some text", or any placeholder
-  - For security tests use actual attack strings, not descriptions of them
-  - Every step that changes state MUST have an assertion verifying the outcome
-  - Steps must be granular enough for a junior tester to follow without guessing
-  - Include teardown steps if the test creates data that would affect other tests
+  - Use realistic data throughout — not placeholders like "valid email" or "some text"
+  - Every step that changes state should have an assertion verifying the outcome
 `;
 
 export function buildPrompt(params: {
@@ -450,36 +327,28 @@ export function buildPrompt(params: {
   const otherAreas = allAreaNames.filter((n) => n !== area.name);
   const dedupeCtx =
     otherAreas.length > 0
-      ? `\nOther batches cover: ${otherAreas.join(", ")}. Stay strictly within ${area.label} — do not bleed into those areas.`
+      ? `\nOther batches in this generation cover: ${otherAreas.join(", ")}. Do NOT duplicate those scenarios — stay focused on ${area.label}.`
       : "";
 
-  return `You are a principal QA engineer with 15 years of experience finding bugs that automated scanners and junior testers miss. You write test cases for high-stakes production systems where a missed bug causes data loss, security breaches, or revenue impact.
+  return `You are a senior QA engineer creating production-ready test cases that will be executed by testers and exported to Cypress, Playwright, and Selenium.
 
 Requirements to test:
 ${requirements}${urlCtx}${tmplCtx}
 
 ${STEP_GUIDELINES}
 
-YOUR TASK — generate EXACTLY ${count} test case${count !== 1 ? "s" : ""} for: ${area.label.toUpperCase()}
+YOUR TASK — generate EXACTLY ${count} test case${count !== 1 ? "s" : ""} covering: ${area.label.toUpperCase()}
 
 ${area.instruction}
 ${dedupeCtx}
 
-ANTI-PATTERNS — never generate these:
-  ✗ "Verify the page loads" — too trivial
-  ✗ "Enter valid data and click submit" with no state verification after
-  ✗ Variations of the same test that differ only in a field label
-  ✗ Tests that any non-technical user would think of in under 10 seconds
-  ✗ Security tests that describe an attack but use placeholder values (use real attack strings)
-  ✗ Two cases where the only difference is which required field is omitted — combine into one parameterized case or pick the most revealing one
-
-REQUIRED QUALITY BAR — every case must:
-  ✓ Expose a bug class that would realistically reach production if untested
-  ✓ Have a title specific enough that a developer can identify the exact scenario without reading the steps
-  ✓ Include realistic, specific test data (real attack strings, real unicode, real boundary numbers)
-  ✓ State what a PASS looks like AND what a FAIL looks like in expected_result
-  ✓ Include any required preconditions (account type, feature flag, existing data setup)
-  ✓ Cover the FULL scenario — setup, action, verification, and any teardown
+QUALITY RULES (apply to every case):
+  ✓ Title is unique, specific, and self-explanatory
+  ✓ Steps are sequential and complete — a tester can follow them without guessing
+  ✓ Expected result clearly states what a PASS looks like
+  ✓ Preconditions state any required setup (or null if none needed)
+  ✓ Use realistic, specific test data (not "test@test.com" or placeholder text)
+  ✓ Each case tests one distinct scenario — no duplicates
 
 Call the generate_test_cases tool with a test_cases array containing EXACTLY ${count} objects.`;
 }
@@ -496,7 +365,9 @@ async function callAnthropic(
 ): Promise<GeneratedTestCase[]> {
   const res = await anthropic.messages.create({
     model: modelId,
-    max_tokens: Math.min(16000, Math.max(8000, count * 1600)),
+    // Generous token budget — verbose steps with selectors and assertions
+    // consume more than the bare minimum. Truncation causes 0-case returns.
+    max_tokens: Math.min(16000, Math.max(8000, count * 2000)),
     tools: [
       {
         name: "generate_test_cases",
@@ -525,7 +396,7 @@ async function callOpenAI(
 ): Promise<GeneratedTestCase[]> {
   const res = await openai.chat.completions.create({
     model: modelId,
-    max_tokens: Math.min(16000, Math.max(8000, count * 1600)),
+    max_tokens: Math.min(16000, Math.max(8000, count * 2000)),
     response_format: {
       type: "json_schema",
       json_schema: {
@@ -541,6 +412,8 @@ async function callOpenAI(
   return parsed.test_cases ?? [];
 }
 
+// callLLM tries the primary provider. If it fails OR returns 0 cases, it
+// immediately tries the fallback. Both providers must fail for this to return [].
 export async function callLLM(
   modelKey: ModelKey,
   prompt: string,
@@ -553,14 +426,13 @@ export async function callLLM(
   );
   const fallbackId = getModelId(fallbackKey);
 
-  // Try primary — treat 0-case response same as error, fall through to fallback
   try {
     const cases = primaryIsAnthropic
       ? await callAnthropic(primaryId, prompt, count)
       : await callOpenAI(primaryId, prompt, count);
     if (cases.length > 0) return cases;
     console.warn(
-      `[LLM] Primary ${primaryId} returned 0 cases, trying fallback`,
+      `[LLM] Primary ${primaryId} returned 0 cases — trying fallback`,
     );
   } catch (err) {
     console.error(
@@ -569,7 +441,6 @@ export async function callLLM(
     );
   }
 
-  // Fallback
   try {
     const cases = primaryIsAnthropic
       ? await callOpenAI(fallbackId, prompt, count)
@@ -596,7 +467,8 @@ export function normalizePriority(p: unknown): Priority {
 
 export interface BatchPlan {
   batchIndex: number;
-  count: number;
+  count: number; // cases to request from LLM (includes oversample buffer)
+  targetCount: number; // cases we actually want to keep from this batch
   area: (typeof COVERAGE_AREAS)[number];
 }
 
@@ -604,13 +476,20 @@ export function buildBatchPlan(totalCount: number): BatchPlan[] {
   const numBatches = Math.ceil(totalCount / BATCH_SIZE);
   const plans: BatchPlan[] = [];
   let remaining = totalCount;
+
   for (let i = 0; i < numBatches; i++) {
+    const targetCount = Math.min(BATCH_SIZE, remaining);
+    // Request slightly more than needed — absorbs partial returns from the LLM
+    // without generating visible duplicates (we trim back to targetCount after)
+    const count = Math.min(BATCH_SIZE + OVERSAMPLE, targetCount + OVERSAMPLE);
     plans.push({
       batchIndex: i,
-      count: Math.min(BATCH_SIZE, remaining),
+      count,
+      targetCount,
       area: COVERAGE_AREAS[i % COVERAGE_AREAS.length],
     });
-    remaining -= Math.min(BATCH_SIZE, remaining);
+    remaining -= targetCount;
   }
+
   return plans;
 }

@@ -1,7 +1,11 @@
 // app/api/generate-test-cases/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { checkUsageQuota, UsageQuotaError } from "@/lib/usage-tracker";
+import {
+  checkUsageQuota,
+  recordSuccessfulGeneration,
+  UsageQuotaError,
+} from "@/lib/usage-tracker";
 import {
   getModelId,
   isAnthropicModel,
@@ -11,10 +15,17 @@ import {
   type ModelKey,
   AI_MODELS,
 } from "@/lib/ai-models/config";
-import { buildBatchPlan } from "@/lib/generation/test-case-generation";
+import {
+  buildBatchPlan,
+  buildPrompt,
+  callLLM,
+  normalizePriority,
+  type GeneratedTestCase,
+} from "@/lib/generation/test-case-generation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 interface RequestBody {
   requirements?: string;
@@ -22,7 +33,6 @@ interface RequestBody {
   project_id?: string | null;
   model?: string;
   testCaseCount?: number | string;
-  testTypes?: string[];
   template?: string;
   title?: string;
   description?: string | null;
@@ -52,7 +62,7 @@ export async function POST(request: Request) {
   const application_url = (body.application_url ?? "").trim();
   const template = body.template ?? "";
   const testCaseCount = Math.min(
-    30,
+    20,
     Math.max(1, Number(body.testCaseCount ?? 10)),
   );
 
@@ -72,7 +82,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });
   }
 
-  // Check quota before creating the job
   try {
     await checkUsageQuota(user.id, testCaseCount);
   } catch (e) {
@@ -95,8 +104,100 @@ export async function POST(request: Request) {
     );
   }
 
-  // Create the generation record upfront so we have an ID to reference
   const batchPlan = buildBatchPlan(testCaseCount);
+  const allAreaNames = [...new Set(batchPlan.map((b) => b.area.name))];
+
+  // ── Wave 1: all batches in parallel ───────────────────────────────────────
+  // Fastest path — all batches fire simultaneously. Each is capped at 6 cases
+  // with a generous token budget so truncation is extremely unlikely.
+  const wave1 = await Promise.allSettled(
+    batchPlan.map(async (batch) => {
+      const cases = await callLLM(
+        modelKey,
+        buildPrompt({
+          requirements,
+          count: batch.count, // oversampled count
+          area: batch.area,
+          batchIndex: batch.batchIndex,
+          totalBatches: batchPlan.length,
+          allAreaNames,
+          application_url: application_url || undefined,
+          template: template || undefined,
+        }),
+        batch.count,
+      );
+      return { batch, cases };
+    }),
+  );
+
+  // Collect results — separate successes from failures
+  const allCases: GeneratedTestCase[] = [];
+  const failedBatches: typeof batchPlan = [];
+
+  for (let i = 0; i < wave1.length; i++) {
+    const result = wave1[i];
+    const batch = batchPlan[i];
+
+    if (result.status === "fulfilled" && result.value.cases.length > 0) {
+      // Trim back to targetCount — we asked for extra, keep only what we need
+      allCases.push(...result.value.cases.slice(0, batch.targetCount));
+    } else {
+      console.warn(
+        `[gen] Wave 1 batch ${batch.batchIndex + 1} (${batch.area.name}) failed — scheduling retry`,
+      );
+      failedBatches.push(batch);
+    }
+  }
+
+  // ── Wave 2: sequential retry of only the batches that failed ──────────────
+  // By the time wave 1 finishes (~25s), any rate limiting has had time to
+  // recover. Retrying only failed batches keeps total time reasonable.
+  for (const batch of failedBatches) {
+    console.log(
+      `[gen] Retrying batch ${batch.batchIndex + 1} (${batch.area.name})…`,
+    );
+    try {
+      const cases = await callLLM(
+        modelKey,
+        buildPrompt({
+          requirements,
+          count: batch.count,
+          area: batch.area,
+          batchIndex: batch.batchIndex,
+          totalBatches: batchPlan.length,
+          allAreaNames,
+          application_url: application_url || undefined,
+          template: template || undefined,
+        }),
+        batch.count,
+      );
+      if (cases.length > 0) {
+        allCases.push(...cases.slice(0, batch.targetCount));
+        console.log(
+          `[gen] Retry succeeded for ${batch.area.name} — got ${cases.length} cases`,
+        );
+      } else {
+        console.error(`[gen] Retry also failed for ${batch.area.name}`);
+      }
+    } catch (err) {
+      console.error(
+        `[gen] Retry threw for ${batch.area.name}:`,
+        (err as Error)?.message,
+      );
+    }
+  }
+
+  if (allCases.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Generation failed — the AI provider may be busy. Please try again in a moment.",
+      },
+      { status: 503 },
+    );
+  }
+
+  // ── Save ──────────────────────────────────────────────────────────────────
   const { data: generation, error: genError } = await supabase
     .from("test_case_generations")
     .insert({
@@ -112,78 +213,59 @@ export async function POST(request: Request) {
 
   if (genError || !generation) {
     return NextResponse.json(
-      { error: "Failed to create generation record" },
+      { error: "Failed to save generation" },
       { status: 500 },
     );
   }
 
-  // Create the job row
-  const { data: job, error: jobError } = await supabase
-    .from("generation_jobs")
-    .insert({
-      user_id: user.id,
-      status: "pending",
-      title,
-      description,
-      requirements,
-      model: modelKey,
-      test_case_count: testCaseCount,
-      cases_requested: testCaseCount,
-      cases_saved: 0,
-      project_id: project_id || null,
-      requirement_id: requirement_id || null,
-      application_url: application_url || null,
-      template: template || null,
-      generation_id: generation.id,
-    })
-    .select()
-    .single();
+  const rows = allCases.slice(0, testCaseCount).map((tc) => ({
+    generation_id: generation.id,
+    requirement_id,
+    project_id,
+    user_id: user.id,
+    title: tc.title,
+    description: tc.description,
+    test_type: tc.test_type || "functional",
+    priority: normalizePriority(tc.priority),
+    preconditions: tc.preconditions ?? null,
+    test_steps: tc.test_steps,
+    expected_result: tc.expected_result,
+    is_edge_case: Boolean(tc.is_edge_case),
+    is_negative_test: Boolean(tc.is_negative_test),
+    is_security_test: Boolean(tc.is_security_test),
+    is_boundary_test: Boolean(tc.is_boundary_test),
+    is_manual: false,
+    status: "draft",
+  }));
 
-  if (jobError || !job) {
-    await supabase
-      .from("test_case_generations")
-      .delete()
-      .eq("id", generation.id);
+  const { data: savedCases, error: tcError } = await supabase
+    .from("test_cases")
+    .insert(rows)
+    .select();
+
+  if (tcError || !savedCases) {
+    console.error("[gen] DB save failed:", tcError?.message);
     return NextResponse.json(
-      { error: "Failed to create job" },
+      { error: "Failed to save test cases" },
       { status: 500 },
     );
   }
 
-  // Fire-and-forget: trigger the process route without awaiting.
-  // The job row tracks state independently so polling works regardless of whether
-  // the background fetch gets cut off by Vercel's function lifecycle.
-  const processUrl = new URL("/api/generate-test-cases/process", request.url);
-  fetch(processUrl.toString(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: request.headers.get("cookie") ?? "",
-      "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
-    },
-    body: JSON.stringify({ job_id: job.id }),
-  }).catch((err) => {
-    console.error("[gen] Failed to trigger process route:", err);
-    supabase
-      .from("generation_jobs")
-      .update({
-        status: "failed",
-        error: "Failed to start processing",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", job.id)
-      .then(() => {});
-  });
+  await recordSuccessfulGeneration(user.id, savedCases.length).catch(() => {});
 
-  return NextResponse.json(
-    {
-      job_id: job.id,
-      generation_id: generation.id,
-      status: "pending",
-      cases_requested: testCaseCount,
+  return NextResponse.json({
+    success: true,
+    generation_id: generation.id,
+    count: savedCases.length,
+    requested_count: testCaseCount,
+    statistics: {
+      total: savedCases.length,
+      negative: savedCases.filter((tc) => tc.is_negative_test).length,
+      security: savedCases.filter((tc) => tc.is_security_test).length,
+      boundary: savedCases.filter((tc) => tc.is_boundary_test).length,
+      edge: savedCases.filter((tc) => tc.is_edge_case).length,
     },
-    { status: 202 },
-  );
+  });
 }
 
 export async function GET() {

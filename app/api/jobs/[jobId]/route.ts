@@ -30,10 +30,10 @@ export async function GET(
   const { data: job, error } = await supabase
     .from("generation_jobs")
     .select(
-      "id, status, cases_saved, cases_requested, generation_id, partial, error, updated_at, created_at",
+      "id, status, cases_saved, cases_requested, generation_id, partial, error, updated_at, created_at, completed_areas, failed_areas, job_type",
     )
     .eq("id", jobId)
-    .eq("user_id", user.id) // ownership check
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (error) {
@@ -69,5 +69,8 @@ export async function GET(
     generation_id: job.generation_id,
     partial: job.partial ?? false,
     error: job.error ?? null,
+    completed_areas: job.completed_areas ?? [],
+    failed_areas: job.failed_areas ?? [],
+    job_type: job.job_type ?? "regular",
   });
 }
