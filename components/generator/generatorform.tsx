@@ -68,6 +68,7 @@ type RequirementRow = {
   id: string;
   title: string;
   description: string;
+  acceptance_criteria?: string | null;
   type: string;
   priority: string;
   status?: string;
@@ -175,6 +176,7 @@ function mapRequirementsToOptions(rows: RequirementRow[]): RequirementOption[] {
     label: `${req.title} (${req.type})`,
     title: req.title,
     description: req.description,
+    acceptance_criteria: req.acceptance_criteria,
     type: req.type,
     priority: req.priority,
     value: req.description,
