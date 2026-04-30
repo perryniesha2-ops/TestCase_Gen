@@ -116,7 +116,9 @@ export async function GET(req: Request) {
 
         supabase
           .from("requirements")
-          .select("id, title, description, type, priority, status, project_id")
+          .select(
+            "id, title, description, acceptance_criteria, type, priority, status, project_id",
+          )
           .eq("user_id", user.id)
           .neq("status", "archived")
           .order("title", { ascending: true })
