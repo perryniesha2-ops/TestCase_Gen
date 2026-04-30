@@ -39,6 +39,55 @@ interface RequestBody {
   application_url?: string;
 }
 
+// ─── Content quality validation ───────────────────────────────────────────────
+// Returns an error message string if the content looks like garbage, null if ok.
+
+function validateRequirementsContent(text: string): string | null {
+  const trimmed = text.trim();
+
+  // 1. Minimum word count — garbage strings rarely have meaningful words
+  const words = trimmed.split(/\s+/).filter((w) => w.length > 1);
+  if (words.length < 5) {
+    return "Requirements must contain at least 5 words. Please describe what you want to test.";
+  }
+
+  // 2. Repetition detection — catches "abcdabcdabcd..." and "aaaaaaa..."
+  const maxPatternLen = Math.min(20, Math.floor(trimmed.length / 3));
+  for (let len = 1; len <= maxPatternLen; len++) {
+    const pattern = trimmed.slice(0, len);
+    const repeated = pattern
+      .repeat(Math.ceil(trimmed.length / len))
+      .slice(0, trimmed.length);
+    const matches = [...trimmed].filter((c, i) => c === repeated[i]).length;
+    if (matches / trimmed.length > 0.9) {
+      return "Requirements appear to contain repeated or random characters. Please enter a meaningful description of what you want to test.";
+    }
+  }
+
+  // 3. Character diversity — real text uses varied characters
+  const uniqueChars = new Set(trimmed.toLowerCase().replace(/\s/g, "")).size;
+  const diversity = uniqueChars / Math.min(trimmed.length, 100);
+  if (trimmed.length > 50 && diversity < 0.08) {
+    return "Requirements appear to contain random or repeated characters. Please enter a meaningful description of what you want to test.";
+  }
+
+  // 4. Space ratio — real requirements have words separated by spaces
+  const alphaOnly = (trimmed.match(/[a-zA-Z]/g) ?? []).length;
+  const spaceCount = (trimmed.match(/\s/g) ?? []).length;
+  const spaceRatio = spaceCount / trimmed.length;
+  if (
+    trimmed.length > 100 &&
+    alphaOnly / trimmed.length > 0.97 &&
+    spaceRatio < 0.05
+  ) {
+    return "Requirements must contain actual sentences describing what to test. Random strings of letters are not valid input.";
+  }
+
+  return null;
+}
+
+// ─── Route handler ────────────────────────────────────────────────────────────
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const {
@@ -78,6 +127,16 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  // Reject garbage input before hitting the LLM
+  const reqError = validateRequirementsContent(requirements);
+  if (reqError) {
+    return NextResponse.json(
+      { error: reqError, field: "requirements" },
+      { status: 400 },
+    );
+  }
+
   if (!title) {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });
   }
@@ -108,15 +167,13 @@ export async function POST(request: Request) {
   const allAreaNames = [...new Set(batchPlan.map((b) => b.area.name))];
 
   // ── Wave 1: all batches in parallel ───────────────────────────────────────
-  // Fastest path — all batches fire simultaneously. Each is capped at 6 cases
-  // with a generous token budget so truncation is extremely unlikely.
   const wave1 = await Promise.allSettled(
     batchPlan.map(async (batch) => {
       const cases = await callLLM(
         modelKey,
         buildPrompt({
           requirements,
-          count: batch.count, // oversampled count
+          count: batch.count,
           area: batch.area,
           batchIndex: batch.batchIndex,
           totalBatches: batchPlan.length,
@@ -139,7 +196,6 @@ export async function POST(request: Request) {
     const batch = batchPlan[i];
 
     if (result.status === "fulfilled" && result.value.cases.length > 0) {
-      // Trim back to targetCount — we asked for extra, keep only what we need
       allCases.push(...result.value.cases.slice(0, batch.targetCount));
     } else {
       console.warn(
@@ -150,8 +206,6 @@ export async function POST(request: Request) {
   }
 
   // ── Wave 2: sequential retry of only the batches that failed ──────────────
-  // By the time wave 1 finishes (~25s), any rate limiting has had time to
-  // recover. Retrying only failed batches keeps total time reasonable.
   for (const batch of failedBatches) {
     console.log(
       `[gen] Retrying batch ${batch.batchIndex + 1} (${batch.area.name})…`,

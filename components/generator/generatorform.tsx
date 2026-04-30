@@ -105,6 +105,12 @@ type BootstrapResponse = {
   defaults: BootstrapDefaults;
 };
 
+const ALLOWED_TEST_COUNTS = new Set(["5", "10", "15", "20"]);
+
+function sanitizeTestCaseCount(value: string): string {
+  return ALLOWED_TEST_COUNTS.has(value) ? value : "10";
+}
+
 const MIN_REQUIREMENTS_LENGTH = 10;
 const MAX_REQUIREMENTS_LENGTH = 5000;
 
@@ -356,7 +362,9 @@ export function GeneratorForm() {
       setSelectedTemplate(template);
       if (!template) return;
       setModel(migrateModelKey(template.template_content.model));
-      setTestCaseCount(String(template.template_content.testCaseCount));
+      setTestCaseCount(
+        sanitizeTestCaseCount(String(template.template_content.testCaseCount)),
+      );
     },
     [],
   );
@@ -473,6 +481,14 @@ export function GeneratorForm() {
       }
 
       if (!response.ok) {
+        if (response.status === 400 && data?.field === "requirements") {
+          toast.error("Invalid requirements", {
+            description: data.error,
+            duration: 8000,
+          });
+          setSubmitting(false);
+          return;
+        }
         throw new Error(data?.error || "Generation failed");
       }
 
@@ -624,7 +640,17 @@ export function GeneratorForm() {
                       {customRequirements.trim().length <
                         MIN_REQUIREMENTS_LENGTH && customRequirements.length > 0
                         ? `${MIN_REQUIREMENTS_LENGTH - customRequirements.trim().length} more characters needed`
-                        : ""}
+                        : customRequirements.length > 10
+                          ? (() => {
+                              const words = customRequirements
+                                .trim()
+                                .split(/\s+/)
+                                .filter((w) => w.length > 1);
+                              return words.length < 5
+                                ? `${5 - words.length} more word${5 - words.length !== 1 ? "s" : ""} needed`
+                                : "";
+                            })()
+                          : ""}
                     </span>
                     <span
                       data-testid="requirements-char-count"
@@ -817,7 +843,9 @@ export function GeneratorForm() {
                   <Select
                     name="testCaseCount"
                     value={testCaseCount}
-                    onValueChange={setTestCaseCount}
+                    onValueChange={(v) =>
+                      setTestCaseCount(sanitizeTestCaseCount(v))
+                    }
                     disabled={pageBusy}
                   >
                     <SelectTrigger
