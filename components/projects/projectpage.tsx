@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,8 +32,9 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-
 import { NeedsRerunPanel } from "@/components/pagecomponents/needsrunpanel";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type ProjectRow = {
   id: string;
@@ -59,7 +59,6 @@ type ProjectDashboardRpc = {
     test_cases_total: number;
     suites: number;
   };
-
   executions: {
     regular: {
       total: number;
@@ -141,9 +140,11 @@ type Suite = {
   created_at: string;
 };
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function ProjectPageClient({ projectId }: { projectId: string }) {
-  const supabase = useMemo(() => createClient(), []);
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
 
   const [project, setProject] = useState<ProjectRow | null>(null);
   const [dashboard, setDashboard] = useState<ProjectDashboardRpc | null>(null);
@@ -151,62 +152,41 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
   const [problemTests, setProblemTests] = useState<ProblemTest[]>([]);
   const [suites, setSuites] = useState<Suite[]>([]);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
 
   const loadProject = useCallback(async () => {
     if (!user) return;
-
     setLoading(true);
     try {
-      const [
-        { data: dash, error: dashErr },
-        { data: proj, error: projErr },
-        { data: timelineData, error: timelineErr },
-        { data: problemsData, error: problemsErr },
-        { data: suitesData, error: suitesErr },
-      ] = await Promise.all([
-        supabase.rpc("project_dashboard", {
-          p_project_id: projectId,
-          p_days: 30,
-        }),
-        supabase
-          .from("projects")
-          .select(
-            "id,user_id,name,description,status,color,icon,created_at,updated_at",
-          )
-          .eq("id", projectId)
-          .single(),
-        supabase.rpc("project_execution_timeline", {
-          p_project_id: projectId,
-          p_days: 30,
-        }),
-        supabase.rpc("project_top_problem_tests", {
-          p_project_id: projectId,
-          p_days: 30,
-          p_limit: 10,
-        }),
-        supabase.rpc("project_suites_summary", {
-          p_project_id: projectId,
-        }),
-      ]);
+      const res = await fetch(`/api/projects/${projectId}?days=30`);
 
-      if (dashErr) throw dashErr;
-      if (projErr) throw projErr;
+      if (res.status === 401) {
+        router.replace("/login");
+        return;
+      }
+      if (res.status === 404) {
+        setProject(null);
+        setLoading(false);
+        return;
+      }
+      if (!res.ok) {
+        throw new Error(`Request failed (${res.status})`);
+      }
 
-      setDashboard(dash as ProjectDashboardRpc);
-      setProject(proj as ProjectRow);
-      setTimeline((timelineData as ExecutionTimeline) || []);
-      setProblemTests((problemsData as ProblemTest[]) || []);
-      setSuites((suitesData as Suite[]) || []);
+      const data = await res.json();
+      setProject(data.project ?? null);
+      setDashboard(data.dashboard ?? null);
+      setTimeline(data.timeline ?? []);
+      setProblemTests(data.problem_tests ?? []);
+      setSuites(data.suites ?? []);
     } catch (e: any) {
       console.error(e);
       toast.error(e?.message || "Failed to load project dashboard");
-      setDashboard(null);
       setProject(null);
+      setDashboard(null);
     } finally {
       setLoading(false);
     }
-  }, [projectId, supabase, user]);
+  }, [projectId, user, router]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -214,11 +194,12 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
     void loadProject();
   }, [authLoading, loadProject, user]);
 
-  // Derived values
+  // ─── Derived values ───────────────────────────────────────────────────────
+
   const c = dashboard?.counts;
   const reg = dashboard?.executions?.regular;
   const plat = dashboard?.executions?.platform;
-  const auto = dashboard?.executions?.automation; // ← NEW
+  const auto = dashboard?.executions?.automation;
 
   const totalExecutions =
     (reg?.total ?? 0) + (plat?.total ?? 0) + (auto?.total ?? 0);
@@ -226,15 +207,13 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
     (reg?.passed ?? 0) + (plat?.passed ?? 0) + (auto?.passed ?? 0);
   const failedExecutions =
     (reg?.failed ?? 0) + (plat?.failed ?? 0) + (auto?.failed ?? 0);
-  const blockedExecutions = (reg?.blocked ?? 0) + (plat?.blocked ?? 0); // automation has no blocked
+  const blockedExecutions = (reg?.blocked ?? 0) + (plat?.blocked ?? 0);
   const skippedExecutions =
     (reg?.skipped ?? 0) + (plat?.skipped ?? 0) + (auto?.skipped ?? 0);
-
   const combinedPassRate =
     totalExecutions > 0
       ? Math.round((100 * passedExecutions) / totalExecutions)
       : 0;
-
   const daysLabel = dashboard?.days ?? 30;
 
   function getPriorityBadgeClass(priority: string) {
@@ -251,6 +230,8 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
         return "bg-gray-500/10 text-gray-700 border-gray-200";
     }
   }
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="flex w-full">
@@ -290,7 +271,6 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                     Back
                   </Button>
                 </div>
-
                 <div className="flex flex-wrap gap-2">
                   <Button asChild variant="outline" className="gap-2">
                     <Link href={`/projects/${projectId}/settings/integrations`}>
@@ -298,7 +278,6 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                       Settings
                     </Link>
                   </Button>
-
                   <Button asChild className="gap-2">
                     <Link
                       href={`/requirements?project=${encodeURIComponent(projectId)}`}
@@ -306,7 +285,6 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                       Requirements <ArrowRight className="h-4 w-4" />
                     </Link>
                   </Button>
-
                   <Button asChild variant="outline" className="gap-2">
                     <Link
                       href={`/test-cases?project=${encodeURIComponent(projectId)}`}
@@ -314,13 +292,10 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                       Test cases <ArrowRight className="h-4 w-4" />
                     </Link>
                   </Button>
-
                   {failedExecutions > 0 && (
                     <Button asChild variant="outline" className="gap-2">
                       <Link
-                        href={`/test-cases?project=${encodeURIComponent(
-                          projectId,
-                        )}&runStatus=failed`}
+                        href={`/test-cases?project=${encodeURIComponent(projectId)}&runStatus=failed`}
                       >
                         View failures <XCircle className="h-4 w-4" />
                       </Link>
@@ -328,33 +303,36 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                   )}
                 </div>
               </div>
+
+              {/* Title */}
               <div className="flex items-center gap-3">
                 <FolderOpen className="h-6 w-6 text-muted-foreground" />
                 <div className="min-w-0">
                   <h1 className="text-2xl font-semibold leading-tight truncate">
                     {project.name}
                   </h1>
-                  {project.description ? (
+                  {project.description && (
                     <p className="text-sm text-muted-foreground line-clamp-2">
                       {project.description}
                     </p>
-                  ) : null}
+                  )}
                 </div>
               </div>
+
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{project.status ?? "—"}</Badge>
                 <Badge variant="secondary">{daysLabel}d view</Badge>
                 <Badge variant="secondary">{combinedPassRate}% pass rate</Badge>
-                {dashboard?.last_execution_at ? (
+                {dashboard?.last_execution_at && (
                   <Badge variant="secondary" className="truncate">
                     Last run:{" "}
                     {new Date(dashboard.last_execution_at).toLocaleString()}
                   </Badge>
-                ) : null}
+                )}
               </div>
 
               {/* KPI Cards */}
-              {dashboard ? (
+              {dashboard && (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <Card className="border-slate-200 dark:border-slate-800 hover:shadow-md transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -449,7 +427,7 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                     </CardContent>
                   </Card>
                 </div>
-              ) : null}
+              )}
 
               {/* Execution Trend Chart */}
               <Card>
@@ -460,16 +438,16 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {timeline && timeline.length > 0 ? (
+                  {timeline.length > 0 ? (
                     <ResponsiveContainer width="100%" height={300}>
                       <LineChart data={timeline}>
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                         <XAxis
                           dataKey="date"
                           style={{ fontSize: "12px" }}
-                          tickFormatter={(value) => {
-                            const date = new Date(value);
-                            return `${date.getMonth() + 1}/${date.getDate()}`;
+                          tickFormatter={(v) => {
+                            const d = new Date(v);
+                            return `${d.getMonth() + 1}/${d.getDate()}`;
                           }}
                         />
                         <YAxis style={{ fontSize: "12px" }} />
@@ -481,7 +459,6 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                           }}
                         />
                         <Legend />
-                        {/* Manual execution lines — solid */}
                         <Line
                           type="monotone"
                           dataKey="passed"
@@ -498,7 +475,6 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                           dot={{ fill: "#ef4444", r: 3 }}
                           name="Manual failed"
                         />
-                        {/* Automation lines — dashed */}
                         <Line
                           type="monotone"
                           dataKey="auto_passed"
@@ -531,7 +507,9 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                   )}
                 </CardContent>
               </Card>
+
               <NeedsRerunPanel projectId={projectId} />
+
               {/* Top Problem Tests */}
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
@@ -550,7 +528,7 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                   )}
                 </CardHeader>
                 <CardContent>
-                  {problemTests && problemTests.length > 0 ? (
+                  {problemTests.length > 0 ? (
                     <div className="space-y-3">
                       {problemTests.map((test) => (
                         <Link
@@ -612,7 +590,7 @@ export function ProjectPageClient({ projectId }: { projectId: string }) {
                   )}
                 </CardHeader>
                 <CardContent>
-                  {suites && suites.length > 0 ? (
+                  {suites.length > 0 ? (
                     <div className="space-y-3">
                       {suites.slice(0, 5).map((suite) => (
                         <div

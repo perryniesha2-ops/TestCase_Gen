@@ -48,22 +48,12 @@ import {
   getDefaultModel,
 } from "@/lib/ai-models/config";
 
-type TemplateCategory =
-  | "functional"
-  | "security"
-  | "performance"
-  | "integration"
-  | "regression"
-  | "accessibility"
-  | "other";
-
-interface TemplateContent {
-  model: string;
-  testCaseCount: number;
-  coverage: "standard" | "comprehensive" | "exhaustive";
-  includeEdgeCases?: boolean;
-  includeNegativeTests?: boolean;
-}
+import {
+  TemplateContent,
+  TemplateCategory,
+  TemplateFormData,
+  Coverage,
+} from "@/types/templates";
 
 export interface Template {
   id: string;
@@ -71,6 +61,7 @@ export interface Template {
   description?: string | null;
   category: TemplateCategory;
   template_content: TemplateContent;
+  template_coverage: Coverage;
   is_favorite: boolean;
   usage_count: number;
   project_id?: string | null;
@@ -117,7 +108,6 @@ export function TemplateSelect({
   );
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { user } = useAuth();
 
   useEffect(() => {
     if (templatesProp) setTemplates(templatesProp);
@@ -137,10 +127,8 @@ export function TemplateSelect({
   useEffect(() => {
     if (disableFetch) return;
     if (templatesProp) return;
-    if (user) {
-      void fetchTemplates();
-    }
-  }, [disableFetch, templatesProp, user]);
+    void fetchTemplates();
+  }, [disableFetch, templatesProp]);
 
   useEffect(() => {
     if (value) {
@@ -152,23 +140,14 @@ export function TemplateSelect({
   }, [value, visibleTemplates]);
 
   async function fetchTemplates() {
-    if (!user) return;
-
     setLoading(true);
     try {
-      const supabase = createClient();
-
-      const { data, error } = await supabase
-        .from("test_case_templates")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("is_favorite", { ascending: false })
-        .order("usage_count", { ascending: false });
-
-      if (error) throw error;
-      setTemplates((data || []) as Template[]);
+      const res = await fetch("/api/templates?scope=my", { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to load templates");
+      const data = await res.json();
+      setTemplates((data.templates ?? []) as Template[]);
     } catch (error) {
-      console.error("Error fetching templates:", error);
+      console.error("[TemplateSelect] fetch error:", error);
     } finally {
       setLoading(false);
     }
@@ -176,7 +155,6 @@ export function TemplateSelect({
 
   async function handleTemplateSelect(templateId: string) {
     if (!templateId) return;
-
     const template = visibleTemplates.find((t) => t.id === templateId) ?? null;
     if (!template) {
       onSelect(null);
@@ -187,16 +165,16 @@ export function TemplateSelect({
       if (onTemplateUsed) {
         await onTemplateUsed(templateId);
       } else if (!disableFetch) {
-        const supabase = createClient();
-        await supabase
-          .from("test_case_templates")
-          .update({
+        // Use PATCH route instead of direct Supabase
+        await fetch(`/api/templates/${templateId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
             usage_count: template.usage_count + 1,
             last_used_at: new Date().toISOString(),
-          })
-          .eq("id", templateId);
+          }),
+        });
       }
-      // optimistic UI update
       setTemplates((prev) =>
         prev.map((t) =>
           t.id === templateId
@@ -205,7 +183,7 @@ export function TemplateSelect({
         ),
       );
     } catch (e) {
-      console.error("Error recording template usage:", e);
+      console.error("[TemplateSelect] usage tracking error:", e);
     }
 
     setSelectedTemplate(template);
@@ -384,7 +362,7 @@ export function TemplateSelect({
                       Coverage Level:
                     </span>
                     <span className="font-medium capitalize">
-                      {selectedTemplate.template_content.coverage}
+                      {selectedTemplate.template_coverage}
                     </span>
                   </div>
                   <div className="flex justify-between py-2 border-b">

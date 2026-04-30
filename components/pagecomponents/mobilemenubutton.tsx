@@ -1,19 +1,11 @@
 "use client";
 
 // components/MobileMenuButton.tsx
-//
-// Drop this into any page header to get a mobile menu trigger.
-// Works independently — owns its own Sheet state.
-//
-// Usage:
-//   import { MobileMenuButton } from "@/components/MobileMenuButton";
-//   <MobileMenuButton />
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,7 +24,6 @@ import {
   HelpCircle,
   LogOut,
   Menu,
-  User,
   CircleDollarSign,
   Layout,
   Newspaper,
@@ -40,6 +31,7 @@ import {
   Zap,
   Lock,
   Library,
+  ChartNoAxesColumn,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Logo } from "../pagecomponents/brandlogo";
@@ -53,6 +45,7 @@ const PRO_ONLY_ROUTES = [
   "/analytics",
   "/integrations",
   "/test-runs",
+  "/reports",
 ];
 
 const navigation = [
@@ -65,6 +58,7 @@ const navigation = [
   { name: "Test Suites", href: "/test-library", icon: Library },
   { name: "Automation", href: "/automation", icon: Zap },
   { name: "Templates", href: "/template-manager", icon: Layout },
+  { name: "Reports", href: "/reports", icon: ChartNoAxesColumn },
 ];
 
 const secondaryNavigation = [
@@ -79,33 +73,13 @@ interface MobileMenuButtonProps {
 
 export function MobileMenuButton({ className }: MobileMenuButtonProps) {
   const [open, setOpen] = useState(false);
-  const [userTier, setUserTier] = useState<"free" | "pro">("free");
-  const [loading, setLoading] = useState(true);
+  const { user: authUser, loading, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const supabase = createClient();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("subscription_tier, subscription_status")
-          .eq("id", user.id)
-          .single();
-        const status = profile?.subscription_status ?? "inactive";
-        const tier = profile?.subscription_tier ?? "free";
-        const isActive = status === "active" || status === "trial";
-        setUserTier(isActive && tier !== "free" ? "pro" : "free");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  // Derive tier from auth context — no DB call needed
+  const userTier: "free" | "pro" =
+    authUser?.subscription_tier === "pro" ? "pro" : "free";
 
   const isActive = (href: string) =>
     href === "/dashboard"
@@ -128,9 +102,7 @@ export function MobileMenuButton({ className }: MobileMenuButtonProps) {
 
   async function handleSignOut() {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      router.push("/beta-login");
+      await signOut();
       toast.success("Signed out successfully");
     } catch {
       toast.error("Failed to sign out");
@@ -161,6 +133,7 @@ export function MobileMenuButton({ className }: MobileMenuButtonProps) {
           <div className="flex h-16 items-center px-4 border-b">
             <Logo size="lg" />
           </div>
+
           {/* Nav */}
           <div className="flex-1 px-4 py-6 overflow-y-auto">
             <nav className="space-y-1">
@@ -215,14 +188,27 @@ export function MobileMenuButton({ className }: MobileMenuButtonProps) {
 
           {/* Sign out */}
           <div className="border-t p-4">
-            <Button
-              variant="outline"
-              className="w-full justify-start gap-3"
-              onClick={handleSignOut}
-            >
-              <LogOut className="h-4 w-4" />
-              Sign out
-            </Button>
+            {authUser ? (
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-3"
+                onClick={handleSignOut}
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  router.push("/beta-login");
+                  setOpen(false);
+                }}
+              >
+                Sign In
+              </Button>
+            )}
           </div>
         </div>
       </SheetContent>

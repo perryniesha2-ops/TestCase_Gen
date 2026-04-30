@@ -8,7 +8,11 @@ import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FlaskConical, Layers, Loader2 } from "lucide-react";
 
-import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
+import type {
+  TestCase,
+  CrossPlatformTestCase,
+  TestCaseType,
+} from "@/types/test-cases";
 
 import { TestCaseToolbar } from "./toolbars/TestCaseToolbar";
 import type { RunStatusFilter } from "./toolbars/TestCaseToolbar";
@@ -26,7 +30,6 @@ import { ExportButton } from "@/components/testcase-management/export-button";
 import { Badge } from "@/components/ui/badge";
 import { Clock } from "lucide-react";
 
-type CaseType = "regular" | "cross-platform";
 type CombinedTestCase = (TestCase | CrossPlatformTestCase) & {
   _caseType?: "regular" | "cross-platform";
 };
@@ -60,7 +63,7 @@ export function TabbedTestCaseTable() {
   const [runnerCase, setRunnerCase] = useState<
     TestCase | CrossPlatformTestCase | null
   >(null);
-  const [runnerCaseType, setRunnerCaseType] = useState<CaseType>("regular");
+  const [runnerCaseType, setRunnerCaseType] = useState<TestCaseType>("regular");
   const [updating, setUpdating] = useState<string | null>(null);
 
   // Data
@@ -116,7 +119,6 @@ export function TabbedTestCaseTable() {
 
   useEffect(() => {
     if (loading) return;
-
     setExecution((prev) => {
       const next = { ...prev };
       for (const tc of [...testCases, ...crossPlatformCases]) {
@@ -130,7 +132,7 @@ export function TabbedTestCaseTable() {
       }
       return next;
     });
-  }, [loading, testCases, crossPlatformCases, executionByCaseId, setExecution]);
+  }, [loading, testCases, crossPlatformCases]);
 
   // Add _caseType to test cases
   const regularCasesWithType = useMemo(
@@ -148,11 +150,6 @@ export function TabbedTestCaseTable() {
   );
 
   // Unified bulk actions for both types
-  const regularBulkActions = useBulkActions(regularCasesWithType, refresh);
-  const crossPlatformBulkActions = useBulkActions(
-    crossPlatformCasesWithType,
-    refresh,
-  );
 
   const getRelativeTime = useCallback((dateString: string) => {
     const date = new Date(dateString);
@@ -190,28 +187,44 @@ export function TabbedTestCaseTable() {
   const filteredTestCases = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return regularCasesWithType.filter((tc) => {
-      const matchesText =
-        tc.title.toLowerCase().includes(term) ||
-        tc.description.toLowerCase().includes(term);
-
-      if (!matchesText) return false;
-
+      if (
+        !tc.title.toLowerCase().includes(term) &&
+        !tc.description.toLowerCase().includes(term)
+      )
+        return false;
+      if (selectedProject && tc.project_id !== selectedProject) return false;
       return matchesRunStatusFilter(tc.id);
     });
-  }, [regularCasesWithType, searchTerm, matchesRunStatusFilter]);
+  }, [
+    regularCasesWithType,
+    searchTerm,
+    selectedProject,
+    matchesRunStatusFilter,
+  ]);
 
   const filteredCrossPlatformCases = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return crossPlatformCasesWithType.filter((tc) => {
-      const matchesText =
-        tc.title.toLowerCase().includes(term) ||
-        tc.description.toLowerCase().includes(term);
-
-      if (!matchesText) return false;
-
+      if (
+        !tc.title.toLowerCase().includes(term) &&
+        !tc.description.toLowerCase().includes(term)
+      )
+        return false;
+      if (selectedProject && tc.project_id !== selectedProject) return false;
       return matchesRunStatusFilter(tc.id);
     });
-  }, [crossPlatformCasesWithType, searchTerm, matchesRunStatusFilter]);
+  }, [
+    crossPlatformCasesWithType,
+    searchTerm,
+    selectedProject,
+    matchesRunStatusFilter,
+  ]);
+
+  const regularBulkActions = useBulkActions(filteredTestCases, refresh);
+  const crossPlatformBulkActions = useBulkActions(
+    filteredCrossPlatformCases,
+    refresh,
+  );
 
   const totalPages = Math.ceil(filteredTestCases.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -307,7 +320,7 @@ export function TabbedTestCaseTable() {
 
   // CRUD handlers
   const openRunner = useCallback(
-    async (tc: TestCase | CrossPlatformTestCase, type: CaseType) => {
+    async (tc: TestCase | CrossPlatformTestCase, type: TestCaseType) => {
       setRunnerCase(tc);
       setRunnerCaseType(type);
       try {
@@ -485,7 +498,7 @@ export function TabbedTestCaseTable() {
         <TabsContent value="regular" className="space-y-4 mt-6">
           <BulkActionsToolbar
             selectedIds={regularBulkActions.selectedIds}
-            allTestCases={regularCasesWithType}
+            allTestCases={filteredTestCases}
             type="regular"
             onSelectAll={regularBulkActions.selectAll}
             onDeselectAll={regularBulkActions.deselectAll}
@@ -526,7 +539,7 @@ export function TabbedTestCaseTable() {
         <TabsContent value="cross-platform" className="space-y-4 mt-6">
           <BulkActionsToolbar
             selectedIds={crossPlatformBulkActions.selectedIds}
-            allTestCases={crossPlatformCasesWithType}
+            allTestCases={filteredCrossPlatformCases}
             type="cross-platform"
             onSelectAll={crossPlatformBulkActions.selectAll}
             onDeselectAll={crossPlatformBulkActions.deselectAll}
@@ -535,7 +548,6 @@ export function TabbedTestCaseTable() {
             onBulkAddToSuite={crossPlatformBulkActions.bulkAddToSuite}
             onBulkExport={crossPlatformBulkActions.bulkExport}
           />
-
           <UnifiedTestCaseTable
             testCases={filteredCrossPlatformCases}
             paginated={paginatedCrossPlatformCases}

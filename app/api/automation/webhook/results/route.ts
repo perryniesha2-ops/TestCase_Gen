@@ -62,12 +62,7 @@ export async function POST(req: Request) {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      },
+      { auth: { autoRefreshToken: false, persistSession: false } },
     );
 
     const { data: profile, error: profileError } = await supabase
@@ -79,6 +74,16 @@ export async function POST(req: Request) {
     if (profileError || !profile) {
       return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
     }
+
+    // ── Stamp last_used_at non-blocking — don't let this delay the response ──
+    void supabase
+      .from("user_profiles")
+      .update({ api_key_last_used_at: new Date().toISOString() })
+      .eq("id", profile.id)
+      .then(({ error }) => {
+        if (error)
+          console.error("[webhook] Failed to stamp last_used_at:", error);
+      });
 
     const payload: TestResultPayload = await req.json();
 
@@ -114,9 +119,7 @@ export async function POST(req: Request) {
       payload.test_results[0]?.cypress_version ||
       null;
 
-    // ============================================================================
-    // CREATE AUTOMATION RUN
-    // ============================================================================
+    // ── Create automation run ─────────────────────────────────────────────────
     const { data: automationRun, error: runError } = await supabase
       .from("automation_runs")
       .insert({
@@ -124,7 +127,7 @@ export async function POST(req: Request) {
         user_id: profile.id,
         run_number: runNumber,
         status: payload.metadata.overall_status,
-        framework: framework,
+        framework,
         environment: payload.test_results[0]?.test_environment || "local",
         browser: payload.test_results[0]?.browser || "chromium",
         os_version: payload.test_results[0]?.os_version || null,
@@ -145,29 +148,15 @@ export async function POST(req: Request) {
       .select()
       .single();
 
-    if (runError) {
-      console.error("❌ FAILED TO CREATE AUTOMATION RUN:", {
-        error: runError,
-        message: runError.message,
-        code: runError.code,
-      });
+    if (runError || !automationRun) {
+      console.error("❌ FAILED TO CREATE AUTOMATION RUN:", runError);
       return NextResponse.json(
-        { error: "Failed to save automation run", details: runError.message },
+        { error: "Failed to save automation run", details: runError?.message },
         { status: 500 },
       );
     }
 
-    if (!automationRun) {
-      console.error("❌ NO AUTOMATION RUN RETURNED");
-      return NextResponse.json(
-        { error: "No automation run data returned" },
-        { status: 500 },
-      );
-    }
-
-    // ============================================================================
-    // UPDATE SUITE PASS RATE
-    // ============================================================================
+    // ── Update suite pass rate ────────────────────────────────────────────────
     const { error: passRateError } = await supabase.rpc(
       "update_suite_pass_rate",
       {
@@ -176,7 +165,6 @@ export async function POST(req: Request) {
         p_total: payload.metadata.total_tests,
       },
     );
-
     if (passRateError) {
       console.error(
         "[webhook] Failed to update suite pass rate:",
@@ -184,11 +172,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // ============================================================================
-    // CREATE TEST EXECUTIONS
-    // ============================================================================
-
-    // Filter out any results with no test_case_id (e.g. auth setup steps)
+    // ── Create test executions ────────────────────────────────────────────────
     const validResults = payload.test_results.filter(
       (r) => r.test_case_id !== null,
     );
@@ -230,20 +214,13 @@ export async function POST(req: Request) {
       };
     });
 
-    // ── Insert executions ──
     const { data: insertedExecutions, error: executionsError } = await supabase
       .from("test_executions")
       .insert(executions)
       .select("id");
 
     if (executionsError) {
-      console.error("❌ FAILED TO INSERT EXECUTIONS:", {
-        error: executionsError,
-        message: executionsError.message,
-        code: executionsError.code,
-        details: executionsError.details,
-        hint: executionsError.hint,
-      });
+      console.error("❌ FAILED TO INSERT EXECUTIONS:", executionsError);
       return NextResponse.json({
         success: true,
         automation_run_id: automationRun.id,
@@ -254,20 +231,21 @@ export async function POST(req: Request) {
       });
     }
 
-    const passedOrFailedResults = validResults.filter(
+    // ── Resolve flaky/needs-rerun flags ───────────────────────────────────────
+    const passedOrFailed = validResults.filter(
       (r) =>
         r.test_case_id &&
         (r.execution_status === "passed" || r.execution_status === "failed"),
     );
-    if (passedOrFailedResults.length > 0) {
+    if (passedOrFailed.length > 0) {
       await Promise.allSettled(
-        passedOrFailedResults.map((r) =>
+        passedOrFailed.map((r) =>
           resolveNeedsRerun(supabase, r.test_case_id!, r.execution_status),
         ),
       );
     }
 
-    // ── Fire notifications after successful insert ──
+    // ── Notifications ─────────────────────────────────────────────────────────
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.synthqa.app";
     const durationStr = `${Math.round(durationMs / 1000)}s`;
     const passRate =

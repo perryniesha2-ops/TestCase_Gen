@@ -55,18 +55,17 @@ function getFirstName(fullName: string, email: string): string {
   return email.split("@")[0] ?? "there";
 }
 
-export function SiteHeader({
-  className,
-  title,
-  subtitle,
-  userTier = "free",
-}: SiteHeaderProps) {
+export function SiteHeader({ className, title, subtitle }: SiteHeaderProps) {
   const { theme, setTheme } = useTheme();
   const { user, loading } = useAuth();
 
-  const fullName = (user?.user_metadata?.full_name as string) || "";
-  const avatarUrl = (user?.user_metadata?.avatar_url as string) || "";
-  const email = user?.email || "";
+  const fullName =
+    user?.full_name ?? (user?.user_metadata?.full_name as string) ?? "";
+  const avatarUrl =
+    user?.avatar_url ?? (user?.user_metadata?.avatar_url as string) ?? "";
+  const email = user?.email ?? "";
+  const userTier: "free" | "pro" =
+    user?.subscription_tier === "pro" ? "pro" : "free";
 
   const avatarText = initials(fullName, email);
   const displayName = fullName || email || "User";

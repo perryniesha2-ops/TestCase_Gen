@@ -67,11 +67,6 @@ import {
   MODEL_GROUPS,
 } from "@/lib/ai-models/config";
 
-import {
-  CanonicalTestType,
-  TestTypeMultiselect,
-} from "../generator/testtype-multiselect";
-
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -88,7 +83,6 @@ type Preferences = {
   test_case_defaults: {
     model: ModelKey;
     count: number;
-    test_types: string[];
   };
 };
 
@@ -110,7 +104,6 @@ const DEFAULT_PREFERENCES: Preferences = {
   notifications: { email: true, push: true, marketing: false },
   test_case_defaults: {
     model: getDefaultModel(),
-    test_types: ["happy-path", "negative", "boundary"],
     count: 10,
   },
 };
@@ -123,12 +116,6 @@ function isModelKey(v: unknown): v is ModelKey {
   return isModelAllowed(v as string);
 }
 
-function randomHex(bytes = 32): string {
-  const arr = new Uint8Array(bytes);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 function getModelDisplayName(modelKey: string): string {
   return isModelAllowed(modelKey) ? AI_MODELS[modelKey].name : modelKey;
 }
@@ -136,24 +123,6 @@ function getModelDisplayName(modelKey: string): string {
 function normalizeModel(raw: unknown): ModelKey {
   const s = typeof raw === "string" ? raw : "";
   return migrateModelKey(s);
-}
-
-function toCanonicalTestTypes(types: string[]): CanonicalTestType[] {
-  const validTypes: CanonicalTestType[] = [
-    "happy-path",
-    "negative",
-    "security",
-    "boundary",
-    "edge-case",
-    "performance",
-    "integration",
-    "regression",
-    "smoke",
-  ];
-
-  return types.filter((t): t is CanonicalTestType =>
-    validTypes.includes(t as CanonicalTestType),
-  );
 }
 
 function safePreferences(input: unknown): Preferences {
@@ -175,10 +144,6 @@ function safePreferences(input: unknown): Preferences {
   );
 
   const rawTypes = (p.test_case_defaults as any)?.test_types;
-  const test_types =
-    Array.isArray(rawTypes) && rawTypes.every((x) => typeof x === "string")
-      ? rawTypes
-      : DEFAULT_PREFERENCES.test_case_defaults.test_types;
 
   const countRaw = p.test_case_defaults?.count;
   const count =
@@ -191,7 +156,7 @@ function safePreferences(input: unknown): Preferences {
   return {
     theme,
     notifications: { email, push, marketing },
-    test_case_defaults: { model, count, test_types },
+    test_case_defaults: { model, count },
   };
 }
 
@@ -227,14 +192,20 @@ export default function SettingsPage() {
   const [marketingEmails, setMarketingEmails] = useState(false);
   const [defaultModel, setDefaultModel] = useState<ModelKey>(getDefaultModel);
   const [defaultCount, setDefaultCount] = useState(10);
-  const [defaultTestTypes, setDefaultTestTypes] = useState<CanonicalTestType[]>(
-    ["happy-path", "negative", "boundary"],
-  );
 
   // API key
-  const [apiKeyPlain, setApiKeyPlain] = useState<string | null>(null);
+  const [apiKeyPlain, setApiKeyPlain] = useState<string | null>(null); // only set immediately after generation
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
+  const [apiKeyRevoking, setApiKeyRevoking] = useState(false);
+  const [apiKeyConfirmRotate, setApiKeyConfirmRotate] = useState(false);
+  const [apiKeyConfirmRevoke, setApiKeyConfirmRevoke] = useState(false);
+  const [apiKeyMeta, setApiKeyMeta] = useState<{
+    has_key: boolean;
+    prefix: string | null;
+    created_at: string | null;
+    last_used_at: string | null;
+  } | null>(null);
 
   // ============================================================================
   // DATA FETCHING
@@ -322,11 +293,16 @@ export default function SettingsPage() {
       setMarketingEmails(prefs.notifications.marketing);
       setDefaultModel(prefs.test_case_defaults.model);
       setDefaultCount(prefs.test_case_defaults.count);
-      setDefaultTestTypes(
-        toCanonicalTestTypes(prefs.test_case_defaults.test_types),
-      );
 
       setNextTheme(prefs.theme);
+
+      // Load API key metadata (masked prefix + timestamps, never the key itself)
+      void fetch("/api/automation/keys", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((meta) => setApiKeyMeta(meta))
+        .catch(() => {
+          /* non-fatal */
+        });
     } catch (err) {
       console.error("Error fetching user profile:", err);
       toastError("Failed to load user profile");
@@ -449,7 +425,6 @@ export default function SettingsPage() {
         test_case_defaults: {
           model: defaultModel,
           count: defaultCount,
-          test_types: defaultTestTypes,
         },
       };
 
@@ -480,7 +455,7 @@ export default function SettingsPage() {
       setNextTheme(themePref);
 
       toastSuccess("Profile updated successfully!", {
-        description: "Your preferences have been saved.",
+        description: "Your defaults will be used in the test case generator",
       });
     } catch (err) {
       toastError("Failed to update profile");
@@ -495,7 +470,6 @@ export default function SettingsPage() {
     marketingEmails,
     defaultModel,
     defaultCount,
-    defaultTestTypes,
     fullName,
     email,
     supabase,
@@ -504,28 +478,20 @@ export default function SettingsPage() {
 
   const generateApiKey = useCallback(async () => {
     setApiKeyLoading(true);
+    setApiKeyConfirmRotate(false);
     try {
-      const { data: auth } = await supabase.auth.getUser();
-      const authUser = auth.user;
-      if (!authUser) {
-        toastError("You must be signed in to generate an API key.");
-        return;
-      }
+      const res = await fetch("/api/automation/keys", { method: "POST" });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.error ?? "Failed to generate key");
 
-      const apiKey = `synthqa_${randomHex(32)}`;
-
-      const { error } = await supabase
-        .from("user_profiles")
-        .update({
-          api_key: apiKey,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", authUser.id);
-
-      if (error) throw error;
-
-      setApiKeyPlain(apiKey);
+      setApiKeyPlain(payload.key);
       setApiKeyVisible(true);
+      setApiKeyMeta({
+        has_key: true,
+        prefix: `${payload.key.slice(0, 14)}••••••••••••••••`,
+        created_at: payload.created_at,
+        last_used_at: null,
+      });
 
       toastSuccess("API key generated!", {
         description: "Copy this key now — you won't see it again.",
@@ -535,7 +501,31 @@ export default function SettingsPage() {
     } finally {
       setApiKeyLoading(false);
     }
-  }, [supabase]);
+  }, []);
+
+  const revokeApiKey = useCallback(async () => {
+    setApiKeyRevoking(true);
+    setApiKeyConfirmRevoke(false);
+    try {
+      const res = await fetch("/api/automation/keys", { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to revoke key");
+
+      setApiKeyPlain(null);
+      setApiKeyMeta({
+        has_key: false,
+        prefix: null,
+        created_at: null,
+        last_used_at: null,
+      });
+      toastSuccess("API key revoked", {
+        description: "API Key Successfully Revoked",
+      });
+    } catch (err) {
+      toastError("Failed to revoke API key");
+    } finally {
+      setApiKeyRevoking(false);
+    }
+  }, []);
 
   const copyApiKey = useCallback(async () => {
     if (!apiKeyPlain) return;
@@ -827,23 +817,8 @@ export default function SettingsPage() {
                       <SelectItem value="10">10 test cases</SelectItem>
                       <SelectItem value="15">15 test cases</SelectItem>
                       <SelectItem value="20">20 test cases</SelectItem>
-                      <SelectItem value="30">30 test cases</SelectItem>
-                      <SelectItem value="50">50 test cases</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-
-                <div className="space-y-2 md:col-span-3">
-                  <Label>Default Test Types</Label>
-                  <TestTypeMultiselect
-                    value={defaultTestTypes}
-                    onChange={setDefaultTestTypes}
-                    placeholder="Select default test types..."
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    These will be preselected in the generator. You can still
-                    override per run.
-                  </p>
                 </div>
               </div>
 
@@ -1038,40 +1013,171 @@ export default function SettingsPage() {
                   <div className="space-y-1">
                     <p className="text-sm font-medium">API Key</p>
                     <p className="text-xs text-muted-foreground">
-                      Generate a key to authenticate your test exports
+                      Used to authenticate CI/CD webhooks and automation exports
                     </p>
                   </div>
 
-                  <Button
-                    variant="outline"
-                    onClick={generateApiKey}
-                    disabled={apiKeyLoading}
-                  >
-                    {apiKeyLoading ? (
+                  <div className="flex gap-2 shrink-0">
+                    {/* Revoke button — only shown when a key exists and not just generated */}
+                    {apiKeyMeta?.has_key && !apiKeyPlain && (
                       <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Generate New Key
+                        {apiKeyConfirmRevoke ? (
+                          <div className="flex gap-2 items-center">
+                            <span className="text-xs text-destructive">
+                              Revoke key?
+                            </span>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={revokeApiKey}
+                              disabled={apiKeyRevoking}
+                            >
+                              {apiKeyRevoking ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                "Confirm"
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setApiKeyConfirmRevoke(false)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setApiKeyConfirmRevoke(true)}
+                            disabled={apiKeyRevoking}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                            Revoke
+                          </Button>
+                        )}
                       </>
                     )}
-                  </Button>
+
+                    {/* Generate / Rotate button */}
+                    {apiKeyMeta?.has_key &&
+                    !apiKeyPlain &&
+                    !apiKeyConfirmRevoke ? (
+                      <>
+                        {apiKeyConfirmRotate ? (
+                          <div className="flex gap-2 items-center">
+                            <span className="text-xs text-muted-foreground">
+                              This will invalidate the current key.
+                            </span>
+                            <Button
+                              size="sm"
+                              onClick={generateApiKey}
+                              disabled={apiKeyLoading}
+                            >
+                              {apiKeyLoading ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                "Rotate"
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setApiKeyConfirmRotate(false)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setApiKeyConfirmRotate(true)}
+                            disabled={apiKeyLoading}
+                          >
+                            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                            Rotate Key
+                          </Button>
+                        )}
+                      </>
+                    ) : !apiKeyMeta?.has_key || apiKeyPlain ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={generateApiKey}
+                        disabled={apiKeyLoading}
+                      >
+                        {apiKeyLoading ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                            Generating…
+                          </>
+                        ) : (
+                          <>
+                            <KeyRound className="h-3.5 w-3.5 mr-1.5" />
+                            Generate Key
+                          </>
+                        )}
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
 
-                {!apiKeyPlain ? (
+                {/* State: no key exists */}
+                {!apiKeyMeta?.has_key && !apiKeyPlain && (
                   <div className="rounded-lg border bg-muted/40 p-4">
                     <p className="text-sm text-muted-foreground">
-                      No key generated yet. Click{" "}
-                      <span className="font-medium">Generate New Key</span> to
-                      create one.
+                      No API key yet. Generate one to authenticate CI/CD
+                      webhooks and automation scripts.
                     </p>
                   </div>
-                ) : (
+                )}
+
+                {/* State: key exists but wasn't just generated — show masked prefix + metadata */}
+                {apiKeyMeta?.has_key && !apiKeyPlain && (
+                  <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="font-mono text-sm text-muted-foreground">
+                        {apiKeyMeta.prefix ??
+                          "synthqa_••••••••••••••••••••••••••••••••"}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                      {apiKeyMeta.created_at && (
+                        <span>
+                          Created{" "}
+                          <span className="font-medium text-foreground">
+                            {new Date(
+                              apiKeyMeta.created_at,
+                            ).toLocaleDateString()}
+                          </span>
+                        </span>
+                      )}
+                      {apiKeyMeta.last_used_at ? (
+                        <span>
+                          Last used{" "}
+                          <span className="font-medium text-foreground">
+                            {new Date(
+                              apiKeyMeta.last_used_at,
+                            ).toLocaleDateString()}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/60">
+                          Never used
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* State: key was just generated — show plaintext once */}
+                {apiKeyPlain && (
                   <div className="space-y-2">
-                    <Label htmlFor="apiKey">Your API Key</Label>
+                    <Label htmlFor="apiKey">Your New API Key</Label>
                     <div className="relative">
                       <Input
                         id="apiKey"
@@ -1096,7 +1202,6 @@ export default function SettingsPage() {
                             <Eye className="h-4 w-4" />
                           )}
                         </Button>
-
                         <Button
                           type="button"
                           variant="ghost"
@@ -1107,10 +1212,9 @@ export default function SettingsPage() {
                         </Button>
                       </div>
                     </div>
-
                     <p className="text-xs text-destructive font-medium">
-                      ⚠️ Save this key securely - you won't see it again after
-                      leaving this page
+                      ⚠️ Copy this key now — it won't be shown again after you
+                      leave this page
                     </p>
                   </div>
                 )}

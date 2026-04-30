@@ -51,7 +51,9 @@ import {
   FileCode,
 } from "lucide-react";
 
-import type { Project, TestSuite } from "@/types/test-cases";
+import type { TestSuite } from "@/types/test-cases";
+import type { Project } from "@/types/projects";
+
 import type { SuiteTestCase, TestCase } from "@/hooks/useSuiteDetails";
 
 // Drag + drop

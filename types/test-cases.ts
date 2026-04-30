@@ -86,10 +86,11 @@ export function isCrossPlatformTestCase(
   );
 }
 
+export type TestCaseType = "regular" | "cross-platform";
+
 export interface TestCaseForm {
   title: string;
   description: string;
-  test_type: string;
   priority: "low" | "medium" | "high" | "critical";
   preconditions: string;
   test_steps: TestStep[];
@@ -161,20 +162,6 @@ export const platformIcons = {
 } as const;
 
 export type PlatformType = keyof typeof platformIcons;
-
-export const testTypes = [
-  "functional",
-  "integration",
-  "unit",
-  "e2e",
-  "security",
-  "performance",
-  "accessibility",
-  "api",
-  "regression",
-  "smoke",
-  "user acceptance",
-] as const;
 
 export interface TestSuite {
   id: string;
@@ -258,9 +245,11 @@ export type SuiteType =
 export interface FormData {
   name: string;
   description: string;
+  kind: "regular" | "cross-platform";
   suite_type: SuiteType;
   planned_start_date: string;
   planned_end_date: string;
+  project_id: string;
 }
 
 export interface Attachment {

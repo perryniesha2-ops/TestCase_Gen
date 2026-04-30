@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -30,7 +29,6 @@ import {
   Pause,
   CheckCircle,
   XCircle,
-  Clock,
   AlertTriangle,
   SkipForward,
   ChevronLeft,
@@ -52,7 +50,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
-// Import your types
 import type {
   TestSuite,
   TestSession,
@@ -65,18 +62,14 @@ import {
   toastWarning,
 } from "@/lib/utils/toast-utils";
 
-import { resolveNeedsRerun } from "@/lib/utils/resolve-needs-rerun";
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface TestCase {
   id: string;
   title: string;
   description: string;
   test_type: string;
-  test_steps: Array<{
-    step_number: number;
-    action: string;
-    expected: string;
-  }>;
+  test_steps: Array<{ step_number: number; action: string; expected: string }>;
   expected_result: string;
 }
 
@@ -112,13 +105,25 @@ interface TestSessionExecutionProps {
   onSessionComplete: () => void;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function safeJson(res: Response) {
+  const text = await res.text().catch(() => "");
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function TestSessionExecution({
   suite,
   open,
   onOpenChange,
   onSessionComplete,
 }: TestSessionExecutionProps) {
-  // State
   const [suiteTestCases, setSuiteTestCases] = useState<SuiteTestCase[]>([]);
   const [currentTestIndex, setCurrentTestIndex] = useState(0);
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(
@@ -142,13 +147,11 @@ export function TestSessionExecution({
 
   const [currentExecutionStatus, setCurrentExecutionStatus] =
     useState<ExecutionStatus | null>(null);
-
   const [showExecutionDialog, setShowExecutionDialog] = useState(false);
   const [showPauseDialog, setShowPauseDialog] = useState(false);
   const [attachments, setAttachments] = useState<TestAttachment[]>([]);
   const [targetUrl, setTargetUrl] = useState<string>("");
 
-  // Refs
   const dialogRef = useRef<HTMLDivElement>(null);
   const sessionStartedRef = useRef(false);
 
@@ -163,24 +166,65 @@ export function TestSessionExecution({
     skipped: 0,
   };
 
-  // Fetch test cases when suite changes
-  useEffect(() => {
-    if (!suite.id) return;
-    void fetchSuiteTestCases();
-  }, [suite.id]);
+  // ── API helpers ───────────────────────────────────────────────────────────
 
-  // When parent sets open=true, start session
+  async function fetchSuiteTestCases(): Promise<SuiteTestCase[]> {
+    setTestsLoading(true);
+    try {
+      const res = await fetch(`/api/test-sessions/suite/${suite.id}/cases`, {
+        cache: "no-store",
+      });
+      const payload = await safeJson(res);
+      if (!res.ok)
+        throw new Error(payload?.error ?? "Failed to load test cases");
+      const cases = payload?.cases ?? [];
+      if (cases.length === 0)
+        toastWarning("No test cases linked to this suite");
+      setSuiteTestCases(cases);
+      return cases;
+    } catch (error: any) {
+      console.error("[TestSessionExecution] fetchSuiteTestCases error:", error);
+      toastError("Failed to load test cases for execution");
+      setSuiteTestCases([]);
+      return [];
+    } finally {
+      setTestsLoading(false);
+    }
+  }
+
+  // Both IDs passed explicitly — avoids state timing race
+  async function fetchAttachments(executionId: string, sid: string) {
+    try {
+      const res = await fetch(
+        `/api/test-sessions/${sid}/executions/${executionId}/attachments`,
+        { cache: "no-store" },
+      );
+      const payload = await safeJson(res);
+      if (res.ok) setAttachments(payload?.attachments ?? []);
+      else setAttachments([]);
+    } catch {
+      setAttachments([]);
+    }
+  }
+
+  // ── Effects ───────────────────────────────────────────────────────────────
+
+  // Start session when dialog opens.
+  // sessionId in deps makes this StrictMode-safe: second invocation sees sessionId
+  // already set and just shows the dialog instead of creating a duplicate session.
   useEffect(() => {
     if (!open) {
       sessionStartedRef.current = false;
       return;
     }
-
-    if (!sessionStartedRef.current) {
-      sessionStartedRef.current = true;
-      void startNewSession();
+    if (sessionId) {
+      setShowExecutionDialog(true);
+      return;
     }
-  }, [open]);
+    if (sessionStartedRef.current) return;
+    sessionStartedRef.current = true;
+    void startNewSession();
+  }, [open, sessionId]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -192,25 +236,17 @@ export function TestSessionExecution({
     };
   }, []);
 
-  useEffect(() => {
-    if (currentExecutionId) {
-      fetchAttachments(currentExecutionId);
-    }
-  }, [currentExecutionId]);
-
+  // Keyboard shortcuts
   useEffect(() => {
     function handleKeyPress(e: KeyboardEvent) {
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement
-      ) {
+      )
         return;
-      }
-
       if (!showExecutionDialog) return;
       if (!currentTest || !currentSession || !currentExecutionId) return;
       if (actionLoading) return;
-
       switch (e.key.toLowerCase()) {
         case "p":
           e.preventDefault();
@@ -232,11 +268,8 @@ export function TestSessionExecution({
           e.preventDefault();
           void completeTestExecution("skipped");
           break;
-        default:
-          break;
       }
     }
-
     document.addEventListener("keydown", handleKeyPress);
     return () => document.removeEventListener("keydown", handleKeyPress);
   }, [
@@ -249,174 +282,13 @@ export function TestSessionExecution({
   ]);
 
   useEffect(() => {
-    if (showExecutionDialog && dialogRef.current) {
-      dialogRef.current.focus();
-    }
+    if (showExecutionDialog && dialogRef.current) dialogRef.current.focus();
   }, [showExecutionDialog]);
 
-  async function fetchSuiteTestCases(): Promise<SuiteTestCase[]> {
-    setTestsLoading(true);
-    try {
-      const supabase = createClient();
-
-      const { data: suiteLinks, error: linksError } = await supabase
-        .from("suite_items")
-        .select(
-          "id, test_case_id, platform_test_case_id, sequence_order, priority, estimated_duration_minutes",
-        )
-        .eq("suite_id", suite.id)
-        .order("sequence_order");
-
-      if (linksError) {
-        console.error("❌ Error fetching suite links:", linksError);
-        throw linksError;
-      }
-
-      if (!suiteLinks || suiteLinks.length === 0) {
-        toastWarning("⚠️ No test cases linked to this suite");
-        setSuiteTestCases([]);
-        return [];
-      }
-
-      const regularTestCaseIds = suiteLinks
-        .filter((link) => link.test_case_id)
-        .map((link) => link.test_case_id);
-
-      const crossPlatformTestCaseIds = suiteLinks
-        .filter((link) => link.platform_test_case_id)
-        .map((link) => link.platform_test_case_id);
-
-      let regularTestCases: any[] = [];
-      if (regularTestCaseIds.length > 0) {
-        const { data, error } = await supabase
-          .from("test_cases")
-          .select(
-            "id, title, description, test_type, test_steps, expected_result",
-          )
-          .in("id", regularTestCaseIds);
-
-        if (error) {
-          console.error("❌ Error fetching test cases:", error);
-          throw error;
-        }
-        regularTestCases = data || [];
-      }
-
-      let crossPlatformTestCases: any[] = [];
-      if (crossPlatformTestCaseIds.length > 0) {
-        const { data, error } = await supabase
-          .from("platform_test_cases")
-          .select("id, title, description, platform, steps, expected_results")
-          .in("id", crossPlatformTestCaseIds);
-
-        if (error) {
-          console.error("❌ Error fetching cross-platform test cases:", error);
-          throw error;
-        }
-
-        crossPlatformTestCases = (data || []).map((tc) => {
-          const steps: string[] = tc.steps || [];
-          const expectedResults: string[] = Array.isArray(tc.expected_results)
-            ? tc.expected_results
-            : [];
-
-          return {
-            id: tc.id,
-            title: tc.title,
-            description: tc.description,
-            test_type: tc.platform || "cross-platform",
-            test_steps: steps.map((step, index) => ({
-              step_number: index + 1,
-              action: step,
-              expected: expectedResults[index] || "",
-            })),
-            expected_result: expectedResults.join("\n") || "",
-          };
-        });
-      }
-
-      const testCaseMap = new Map<string, any>();
-      regularTestCases.forEach((tc) => testCaseMap.set(tc.id, tc));
-      crossPlatformTestCases.forEach((tc) => testCaseMap.set(tc.id, tc));
-
-      const transformed: SuiteTestCase[] = suiteLinks
-        .map((link) => {
-          const actualTestCaseId =
-            link.test_case_id || link.platform_test_case_id;
-          const testCase = testCaseMap.get(actualTestCaseId);
-
-          if (!testCase) {
-            toastWarning(`⚠️ Test case ${actualTestCaseId} not found`);
-            return null;
-          }
-
-          let normalizedSteps: Array<{
-            step_number: number;
-            action: string;
-            expected: string;
-          }> = [];
-
-          if (testCase?.test_steps) {
-            if (typeof testCase.test_steps === "string") {
-              try {
-                normalizedSteps = JSON.parse(testCase.test_steps);
-              } catch (e) {
-                normalizedSteps = [];
-              }
-            } else if (Array.isArray(testCase.test_steps)) {
-              normalizedSteps = testCase.test_steps;
-            } else if (typeof testCase.test_steps === "object") {
-              normalizedSteps = Object.values(testCase.test_steps);
-            }
-          }
-
-          return {
-            id: link.id,
-            test_case_id: link.test_case_id,
-            platform_test_case_id: link.platform_test_case_id,
-            sequence_order: link.sequence_order,
-            priority: link.priority,
-            estimated_duration_minutes: link.estimated_duration_minutes,
-            test_cases: {
-              ...testCase,
-              test_steps: normalizedSteps,
-            },
-          };
-        })
-        .filter((item): item is SuiteTestCase => item !== null);
-
-      setSuiteTestCases(transformed);
-      return transformed;
-    } catch (error) {
-      console.error("Error fetching suite test cases:", error);
-      toastError("Failed to load test cases for execution");
-      setSuiteTestCases([]);
-      return [];
-    } finally {
-      setTestsLoading(false);
-    }
-  }
-
-  async function fetchAttachments(executionId: string) {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("test_attachments")
-      .select("*")
-      .eq("execution_id", executionId)
-      .order("created_at", { ascending: false });
-
-    if (!error && data) {
-      setAttachments(data as TestAttachment[]);
-    } else {
-      setAttachments([]);
-    }
-  }
+  // ── Session management ────────────────────────────────────────────────────
 
   async function startNewSession() {
-    if (isStartingSession) {
-      return;
-    }
-
+    if (isStartingSession) return;
     if (sessionId) {
       setShowExecutionDialog(true);
       return;
@@ -426,51 +298,26 @@ export function TestSessionExecution({
       setIsStartingSession(true);
       setLoading(true);
 
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        console.error("❌ No user found");
-        toastError("Please log in to start a test session");
-        return;
-      }
-
       const tests = await fetchSuiteTestCases();
-
       if (!tests || tests.length === 0) {
         onOpenChange(false);
         return;
       }
 
-      const { data, error } = await supabase
-        .from("test_run_sessions")
-        .insert({
-          user_id: user.id,
+      const res = await fetch("/api/test-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           suite_id: suite.id,
           name: `${suite.name} - ${new Date().toLocaleString()}`,
-          status: "in_progress",
-          environment: "staging",
-          actual_start: new Date().toISOString(),
           test_cases_total: tests.length,
-          test_cases_completed: 0,
-          progress_percentage: 0,
-          created_by: user.id,
-        })
-        .select()
-        .single();
+        }),
+      });
+      const payload = await safeJson(res);
+      if (!res.ok)
+        throw new Error(payload?.error ?? "Failed to create session");
 
-      if (error) {
-        console.error("❌ Error creating session:", error);
-        throw error;
-      }
-
-      const session: TestSession = {
-        ...data,
-        stats: { passed: 0, failed: 0, blocked: 0, skipped: 0 },
-      };
-
+      const session: TestSession = payload.session;
       setSessionId(session.id);
       setCurrentSession(session);
       setCurrentTestIndex(0);
@@ -481,10 +328,9 @@ export function TestSessionExecution({
       setShowExecutionDialog(true);
 
       await startTestExecutionWithTestCase(tests[0], session.id);
-
       toastSuccess("Test session started");
-    } catch (error) {
-      console.error("❌ Error in startNewSession:", error);
+    } catch (error: any) {
+      console.error("[TestSessionExecution] startNewSession error:", error);
       toastError("Failed to start test session");
       onOpenChange(false);
       sessionStartedRef.current = false;
@@ -499,16 +345,7 @@ export function TestSessionExecution({
     currentSessionId: string | null,
   ) {
     const testCase = suiteTestCases[index];
-    if (!testCase || !currentSessionId) {
-      console.error("❌ startTestExecution: Missing testCase or sessionId", {
-        index,
-        testCase: !!testCase,
-        currentSessionId,
-        suiteTestCasesLength: suiteTestCases.length,
-      });
-      return;
-    }
-
+    if (!testCase || !currentSessionId) return;
     await startTestExecutionWithTestCase(testCase, currentSessionId);
   }
 
@@ -517,45 +354,24 @@ export function TestSessionExecution({
     currentSessionId: string,
   ) {
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        return;
-      }
-
+      const isRegular = !!testCase.test_case_id;
       const actualTestCaseId =
         testCase.test_case_id || testCase.platform_test_case_id;
-      const isRegular = !!testCase.test_case_id;
 
-      let existingQuery = supabase
-        .from("test_executions")
-        .select(
-          "id, execution_status, execution_notes, failure_reason, completed_steps",
-        )
-        .eq("session_id", currentSessionId);
+      // Check for existing execution in this session
+      const qs = new URLSearchParams({
+        testCaseId: actualTestCaseId!,
+        isRegular: String(isRegular),
+      });
+      const getRes = await fetch(
+        `/api/test-sessions/${currentSessionId}/executions?${qs.toString()}`,
+        { cache: "no-store" },
+      );
+      const getPayload = await safeJson(getRes);
 
-      if (isRegular) {
-        existingQuery = existingQuery.eq("test_case_id", actualTestCaseId);
-      } else {
-        existingQuery = existingQuery.eq(
-          "platform_test_case_id",
-          actualTestCaseId,
-        );
-      }
-
-      const { data: existing, error: existingError } = await existingQuery
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (existingError) {
-        console.error("❌ Error checking existing execution:", existingError);
-        throw existingError;
-      }
-
-      if (existing) {
+      if (getRes.ok && getPayload?.execution) {
+        // Resume existing — call fetchAttachments directly with known IDs
+        const existing = getPayload.execution;
         setCurrentExecutionId(existing.id);
         setExecutionNotes(existing.execution_notes || "");
         setFailureReason(existing.failure_reason || "");
@@ -567,56 +383,48 @@ export function TestSessionExecution({
           ),
         );
         setCurrentExecutionStatus(existing.execution_status as ExecutionStatus);
+        void fetchAttachments(existing.id, currentSessionId);
         return;
       }
 
-      const { data: created, error: createError } = await supabase
-        .from("test_executions")
-        .insert({
-          test_case_id: isRegular ? actualTestCaseId : null,
-          platform_test_case_id: isRegular ? null : actualTestCaseId,
-          suite_id: suite.id,
-          session_id: currentSessionId,
-          executed_by: user.id,
-          execution_status: "in_progress",
-          started_at: new Date().toISOString(),
-          completed_steps: [],
-          failed_steps: [],
-          execution_notes: null,
-          failure_reason: null,
-        })
-        .select()
-        .single();
+      // Create new execution
+      const postRes = await fetch(
+        `/api/test-sessions/${currentSessionId}/executions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            test_case_id: isRegular ? actualTestCaseId : null,
+            platform_test_case_id: isRegular ? null : actualTestCaseId,
+            suite_id: suite.id,
+          }),
+        },
+      );
+      const postPayload = await safeJson(postRes);
+      if (!postRes.ok)
+        throw new Error(postPayload?.error ?? "Failed to create execution");
 
-      if (createError) {
-        console.error("❌ Error creating execution:", createError);
-        throw createError;
-      }
-
-      setCurrentExecutionId(created.id);
+      // Set state and fetch attachments with known IDs — no effect needed
+      const newExecutionId = postPayload.executionId;
+      setCurrentExecutionId(newExecutionId);
       setExecutionNotes("");
       setFailureReason("");
       setCompletedSteps(new Set());
       setCurrentExecutionStatus("in_progress");
-    } catch (error) {
-      console.error("❌ startTestExecutionWithTestCase error:", error);
+      void fetchAttachments(newExecutionId, currentSessionId);
+    } catch (error: any) {
+      console.error(
+        "[TestSessionExecution] startTestExecutionWithTestCase error:",
+        error,
+      );
       toastError("Failed to start test execution");
     }
   }
 
   async function completeTestExecution(status: ExecutionStatus) {
-    if (!currentExecutionId || !currentSession || !currentTest) {
-      return;
-    }
-
-    if (actionLoading) {
-      return;
-    }
-
-    if (!["passed", "failed", "skipped", "blocked"].includes(status)) {
-      return;
-    }
-
+    if (!currentExecutionId || !currentSession || !currentTest) return;
+    if (actionLoading) return;
+    if (!["passed", "failed", "skipped", "blocked"].includes(status)) return;
     if (status === "failed" && !failureReason.trim()) {
       toastError("Please provide a failure reason");
       return;
@@ -624,53 +432,58 @@ export function TestSessionExecution({
 
     setActionLoading(true);
     try {
-      const supabase = createClient();
-      const completedStepsArray = Array.from(completedSteps);
+      const execRes = await fetch(
+        `/api/test-sessions/${currentSession.id}/executions/${currentExecutionId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            execution_status: status,
+            execution_notes: executionNotes || null,
+            failure_reason: status === "failed" ? failureReason || null : null,
+            completed_steps: Array.from(completedSteps),
+            test_case_id: currentTest.test_case_id || null,
+            platform_test_case_id: currentTest.platform_test_case_id || null,
+          }),
+        },
+      );
+      const execPayload = await safeJson(execRes);
+      if (!execRes.ok)
+        throw new Error(execPayload?.error ?? "Failed to update execution");
 
-      const { error } = await supabase
-        .from("test_executions")
-        .update({
-          execution_status: status,
-          completed_at: new Date().toISOString(),
-          execution_notes: executionNotes || null,
-          failure_reason: status === "failed" ? failureReason || null : null,
-          completed_steps: completedStepsArray,
-        })
-        .eq("id", currentExecutionId);
-
-      if (error) throw error;
-
-      if (currentTest.test_case_id) {
-        await resolveNeedsRerun(
-          createClient(),
-          currentTest.test_case_id,
-          status,
-        );
-      }
       setCurrentExecutionStatus(status);
 
       const newCompleted = completedCount + 1;
       const newProgress = Math.round((newCompleted / totalTests) * 100);
-
       const newStats: SessionStats = { ...stats };
       if (status === "passed") newStats.passed++;
       if (status === "failed") newStats.failed++;
       if (status === "blocked") newStats.blocked++;
       if (status === "skipped") newStats.skipped++;
 
-      await supabase
-        .from("test_run_sessions")
-        .update({
-          test_cases_completed: newCompleted,
-          progress_percentage: newProgress,
-          status: newProgress === 100 ? "completed" : "in_progress",
-          actual_end: newProgress === 100 ? new Date().toISOString() : null,
-          passed_cases: newStats.passed,
-          failed_cases: newStats.failed,
-          blocked_cases: newStats.blocked,
-          skipped_cases: newStats.skipped,
-        })
-        .eq("id", currentSession.id);
+      const sessionRes = await fetch(
+        `/api/test-sessions/${currentSession.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            test_cases_completed: newCompleted,
+            progress_percentage: newProgress,
+            status: newProgress === 100 ? "completed" : "in_progress",
+            passed_cases: newStats.passed,
+            failed_cases: newStats.failed,
+            blocked_cases: newStats.blocked,
+            skipped_cases: newStats.skipped,
+            ...(newProgress === 100 && {
+              actual_end: new Date().toISOString(),
+            }),
+          }),
+        },
+      );
+      if (!sessionRes.ok) {
+        const p = await safeJson(sessionRes);
+        throw new Error(p?.error ?? "Failed to update session");
+      }
 
       const updatedSession: TestSession = {
         ...currentSession,
@@ -678,15 +491,8 @@ export function TestSessionExecution({
         progress_percentage: newProgress,
         stats: newStats,
       };
-
       setCurrentSession(updatedSession);
-
       toastSuccess(`Test ${status}`);
-
-      // ✅ Don't clear notes/reason anymore - let users edit
-      // setExecutionNotes("");
-      // setFailureReason("");
-      // setCompletedSteps(new Set());
 
       if (newProgress === 100) {
         await completeSession();
@@ -695,27 +501,41 @@ export function TestSessionExecution({
         setCurrentTestIndex(nextIndex);
         await startTestExecution(nextIndex, updatedSession.id);
       }
-    } catch (error) {
-      console.error("Error completing test execution:", error);
+    } catch (error: any) {
+      console.error(
+        "[TestSessionExecution] completeTestExecution error:",
+        error,
+      );
       toastError("Failed to complete test execution");
     } finally {
       setActionLoading(false);
     }
   }
 
+  // ── Session lifecycle ─────────────────────────────────────────────────────
+
+  async function updateSessionStatus(
+    status: "completed" | "aborted" | "paused",
+  ) {
+    if (!currentSession) return;
+    const res = await fetch(`/api/test-sessions/${currentSession.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status,
+        ...(status !== "paused" && { actual_end: new Date().toISOString() }),
+      }),
+    });
+    if (!res.ok) {
+      const p = await safeJson(res);
+      throw new Error(p?.error ?? `Failed to ${status} session`);
+    }
+  }
+
   async function completeSession() {
     if (!currentSession) return;
     try {
-      const supabase = createClient();
-
-      await supabase
-        .from("test_run_sessions")
-        .update({
-          status: "completed",
-          actual_end: new Date().toISOString(),
-        })
-        .eq("id", currentSession.id);
-
+      await updateSessionStatus("completed");
       toastSuccess("Test session completed!");
       setShowExecutionDialog(false);
       setSessionId(null);
@@ -723,8 +543,7 @@ export function TestSessionExecution({
       sessionStartedRef.current = false;
       onSessionComplete();
       onOpenChange(false);
-    } catch (error) {
-      console.error("Error completing session:", error);
+    } catch {
       toastError("Failed to complete session");
     }
   }
@@ -732,16 +551,7 @@ export function TestSessionExecution({
   async function abortSession() {
     if (!currentSession) return;
     try {
-      const supabase = createClient();
-
-      await supabase
-        .from("test_run_sessions")
-        .update({
-          status: "aborted",
-          actual_end: new Date().toISOString(),
-        })
-        .eq("id", currentSession.id);
-
+      await updateSessionStatus("aborted");
       toastSuccess("Test session aborted");
       setShowExecutionDialog(false);
       setSessionId(null);
@@ -749,8 +559,7 @@ export function TestSessionExecution({
       sessionStartedRef.current = false;
       onSessionComplete();
       onOpenChange(false);
-    } catch (error) {
-      console.error("Error aborting session:", error);
+    } catch {
       toastError("Failed to abort session");
     }
   }
@@ -758,46 +567,34 @@ export function TestSessionExecution({
   async function pauseSession() {
     if (!currentSession) return;
     try {
-      const supabase = createClient();
-      await supabase
-        .from("test_run_sessions")
-        .update({ status: "paused" })
-        .eq("id", currentSession.id);
-
+      await updateSessionStatus("paused");
       toastSuccess("Session paused");
       setShowExecutionDialog(false);
       sessionStartedRef.current = false;
       onOpenChange(false);
-    } catch (error) {
-      console.error("Error pausing session:", error);
+    } catch {
       toastError("Failed to pause session");
     }
   }
 
   async function endSession() {
     if (!currentSession) return;
-
-    if (currentSession.progress_percentage === 100) {
-      await completeSession();
-    } else {
-      await abortSession();
-    }
+    if (currentSession.progress_percentage === 100) await completeSession();
+    else await abortSession();
   }
 
   function toggleStep(stepIndex: number) {
     setCompletedSteps((prev) => {
       const next = new Set(prev);
-      if (next.has(stepIndex)) {
-        next.delete(stepIndex);
-      } else {
-        next.add(stepIndex);
-      }
+      next.has(stepIndex) ? next.delete(stepIndex) : next.add(stepIndex);
       return next;
     });
   }
 
   const isResultActionDisabled =
     !currentSession || !currentExecutionId || actionLoading || testsLoading;
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -815,17 +612,7 @@ export function TestSessionExecution({
         <DialogContent
           ref={dialogRef}
           tabIndex={-1}
-          className="
-            w-[95vw]
-            sm:max-w-[95vw]
-            lg:max-w-5xl
-            h-[95vh]
-            max-h-[95vh]
-            flex
-            flex-col
-            p-0
-            overflow-hidden
-          "
+          className="w-[95vw] sm:max-w-[95vw] lg:max-w-5xl h-[95vh] max-h-[95vh] flex flex-col p-0 overflow-hidden"
         >
           <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
             <DialogTitle className="flex items-center gap-2 text-xl">
@@ -902,7 +689,6 @@ export function TestSessionExecution({
 
                 {/* Action Buttons Row */}
                 <div className="flex gap-2 justify-end">
-                  {/* Test Queue Popover */}
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className="gap-2">
@@ -917,7 +703,6 @@ export function TestSessionExecution({
                           {suiteTestCases.map((testCase, index) => {
                             const isCurrent = index === currentTestIndex;
                             const isCompleted = index < completedCount;
-
                             return (
                               <button
                                 key={testCase.id}
@@ -934,16 +719,13 @@ export function TestSessionExecution({
                                     currentSession.id,
                                   );
                                 }}
-                                className={`
-                                  w-full text-left p-3 rounded-lg border transition-colors text-sm
-                                  ${
-                                    isCurrent
-                                      ? "bg-primary/10 border-primary/70 font-medium"
-                                      : isCompleted
-                                        ? "bg-emerald-500/10 border-emerald-500/60"
-                                        : "bg-muted/40 border-border/60 hover:bg-muted/60"
-                                  }
-                                `}
+                                className={`w-full text-left p-3 rounded-lg border transition-colors text-sm ${
+                                  isCurrent
+                                    ? "bg-primary/10 border-primary/70 font-medium"
+                                    : isCompleted
+                                      ? "bg-emerald-500/10 border-emerald-500/60"
+                                      : "bg-muted/40 border-border/60 hover:bg-muted/60"
+                                }`}
                               >
                                 <div className="flex items-center gap-2">
                                   <span className="font-mono text-xs text-muted-foreground">
@@ -966,7 +748,6 @@ export function TestSessionExecution({
                     </PopoverContent>
                   </Popover>
 
-                  {/* Evidence Drawer Button */}
                   <Button
                     variant="outline"
                     className="gap-2"
@@ -982,7 +763,7 @@ export function TestSessionExecution({
                   </Button>
                 </div>
 
-                {/* Current Test - Full Width */}
+                {/* Current Test */}
                 {currentTest && currentSession ? (
                   <Card>
                     <CardHeader>
@@ -992,7 +773,7 @@ export function TestSessionExecution({
                             {currentTest.test_cases.title}
                           </CardTitle>
                           <CardDescription className="text-sm mt-1">
-                            Test {currentTestIndex + 1} of {totalTests} •{" "}
+                            Test {currentTestIndex + 1} of {totalTests} ·{" "}
                             {currentTest.test_cases.test_type}
                           </CardDescription>
                         </div>
@@ -1002,8 +783,6 @@ export function TestSessionExecution({
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                      {/* ✅ Removed the "Result Locked" alert */}
-
                       <div>
                         <h4 className="font-medium mb-2">Description</h4>
                         <p className="text-sm text-muted-foreground break-words">
@@ -1020,19 +799,17 @@ export function TestSessionExecution({
                             onClick={() => {
                               const allSteps =
                                 currentTest.test_cases.test_steps || [];
-                              if (completedSteps.size === allSteps.length) {
+                              if (completedSteps.size === allSteps.length)
                                 setCompletedSteps(new Set());
-                              } else {
+                              else
                                 setCompletedSteps(
                                   new Set(allSteps.map((_, idx) => idx)),
                                 );
-                              }
                             }}
                           >
                             Toggle All
                           </Button>
                         </div>
-
                         {!currentTest.test_cases.test_steps ||
                         currentTest.test_cases.test_steps.length === 0 ? (
                           <div className="text-sm text-muted-foreground border border-dashed rounded-lg p-4">
@@ -1041,49 +818,39 @@ export function TestSessionExecution({
                         ) : (
                           <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
                             {currentTest.test_cases.test_steps.map(
-                              (step, index) => {
-                                return (
-                                  <div
-                                    key={index}
-                                    className="flex items-start gap-3 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                                  >
-                                    <Checkbox
-                                      checked={completedSteps.has(index)}
-                                      onCheckedChange={() => toggleStep(index)}
-                                      className="mt-1"
-                                    />
-                                    <div className="flex-1 min-w-0 space-y-2">
-                                      <div className="flex items-start gap-2">
-                                        <Badge
-                                          variant="outline"
-                                          className="text-xs font-mono shrink-0"
-                                        >
-                                          Step {step.step_number || index + 1}
-                                        </Badge>
-                                        <div className="flex-1 min-w-0">
-                                          <p
-                                            className={`text-sm font-medium break-words ${
-                                              completedSteps.has(index)
-                                                ? "line-through text-muted-foreground"
-                                                : ""
-                                            }`}
-                                          >
-                                            {step.action}
-                                          </p>
-                                        </div>
-                                      </div>
-                                      <div className="pl-0">
-                                        <p className="text-xs text-muted-foreground break-words">
-                                          <span className="font-semibold">
-                                            Expected:{" "}
-                                          </span>
-                                          {step.expected}
-                                        </p>
-                                      </div>
+                              (step, index) => (
+                                <div
+                                  key={index}
+                                  className="flex items-start gap-3 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                                >
+                                  <Checkbox
+                                    checked={completedSteps.has(index)}
+                                    onCheckedChange={() => toggleStep(index)}
+                                    className="mt-1"
+                                  />
+                                  <div className="flex-1 min-w-0 space-y-2">
+                                    <div className="flex items-start gap-2">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-xs font-mono shrink-0"
+                                      >
+                                        Step {step.step_number || index + 1}
+                                      </Badge>
+                                      <p
+                                        className={`text-sm font-medium break-words ${completedSteps.has(index) ? "line-through text-muted-foreground" : ""}`}
+                                      >
+                                        {step.action}
+                                      </p>
                                     </div>
+                                    <p className="text-xs text-muted-foreground break-words">
+                                      <span className="font-semibold">
+                                        Expected:{" "}
+                                      </span>
+                                      {step.expected}
+                                    </p>
                                   </div>
-                                );
-                              },
+                                </div>
+                              ),
                             )}
                           </div>
                         )}
@@ -1201,15 +968,15 @@ export function TestSessionExecution({
                           <kbd className="px-1.5 py-0.5 bg-muted rounded">
                             P
                           </kbd>{" "}
-                          Pass •{" "}
+                          Pass ·{" "}
                           <kbd className="px-1.5 py-0.5 bg-muted rounded">
                             F
                           </kbd>{" "}
-                          Fail •{" "}
+                          Fail ·{" "}
                           <kbd className="px-1.5 py-0.5 bg-muted rounded">
                             B
                           </kbd>{" "}
-                          Block •{" "}
+                          Block ·{" "}
                           <kbd className="px-1.5 py-0.5 bg-muted rounded">
                             S
                           </kbd>{" "}
@@ -1277,7 +1044,7 @@ export function TestSessionExecution({
         </DialogContent>
       </Dialog>
 
-      {/* Evidence Drawer - keeping as is */}
+      {/* Evidence Drawer */}
       <Sheet open={showEvidenceDrawer} onOpenChange={setShowEvidenceDrawer}>
         <SheetContent
           side="right"
@@ -1293,8 +1060,7 @@ export function TestSessionExecution({
                 Capture or upload screenshots as evidence for the current test
               </SheetDescription>
             </SheetHeader>
-            <div className="mt-8 space-y-6"></div>
-
+            <div className="mt-8 space-y-6" />
             {currentTest && (
               <div className="pt-6">
                 <p className="text-sm font-medium">Current Test</p>
@@ -1307,7 +1073,6 @@ export function TestSessionExecution({
               </div>
             )}
             <div className="h-4" />
-
             <div className="space-y-2">
               <Label
                 htmlFor="target-url-drawer"
@@ -1315,12 +1080,11 @@ export function TestSessionExecution({
               >
                 Target URL
               </Label>
-              <p className="text-xs text-muted-foreground right">
+              <p className="text-xs text-muted-foreground">
                 Enter the site you are testing. Use the extension to capture
                 evidence from that page.
               </p>
             </div>
-
             <div className="flex gap-2">
               <Input
                 id="target-url-drawer"
@@ -1331,7 +1095,6 @@ export function TestSessionExecution({
               />
             </div>
           </div>
-
           {currentExecutionId && currentTest && (
             <div className="pt-2">
               <ScreenshotUpload
@@ -1356,7 +1119,7 @@ export function TestSessionExecution({
         </SheetContent>
       </Sheet>
 
-      {/* Pause Dialog - keeping as is */}
+      {/* Pause Dialog */}
       <Dialog open={showPauseDialog} onOpenChange={setShowPauseDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>

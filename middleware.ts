@@ -7,23 +7,6 @@ export async function middleware(request: NextRequest) {
 
   const response = NextResponse.next();
 
-  // ─── Beta Gate ──────────────────────────────────────────────────────────────
-  // Block all pages except /beta and /api/beta/* unless beta_auth cookie is set
-
-  const isBetaPage = pathname === "/beta-login";
-  const isBetaApi = pathname.startsWith("/api/beta-login");
-  const hasBetaAuth = request.cookies.get("beta_auth")?.value === "true";
-
-  if (!hasBetaAuth && !isBetaPage && !isBetaApi) {
-    return NextResponse.redirect(new URL("/beta-login", request.url));
-  }
-
-  // ─── Skip full auth logic for beta page and beta API ────────────────────────
-
-  if (isBetaPage || isBetaApi) {
-    return response;
-  }
-
   // ─── Supabase Client ────────────────────────────────────────────────────────
 
   const supabase = createServerClient(

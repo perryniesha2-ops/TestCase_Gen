@@ -1,15 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import type {
   TestCase,
   CrossPlatformTestCase,
   Generation,
   TestSuite, // Changed from CrossPlatformSuite
   TestSession,
-  Project,
   ExecutionStatus,
 } from "@/types/test-cases";
+
+import { Project } from "@/types/projects";
 
 type UseTestCaseDataArgs = {
   generationId: string | null;
@@ -100,7 +101,10 @@ export function useTestCaseData({
     }
   }, [generationId, sessionId, selectedProject]);
 
+  const didFetch = useRef(false);
   useEffect(() => {
+    if (didFetch.current) return;
+    didFetch.current = true;
     void refresh();
   }, [refresh]);
 

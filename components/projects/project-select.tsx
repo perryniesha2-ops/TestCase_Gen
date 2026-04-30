@@ -1,12 +1,9 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/lib/auth/auth-context";
-import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -41,31 +38,9 @@ import {
   X,
 } from "lucide-react";
 
-type ProjectStatus = "active" | "archived" | "completed" | "on_hold";
-type ProjectColor =
-  | "blue"
-  | "green"
-  | "purple"
-  | "orange"
-  | "red"
-  | "pink"
-  | "indigo"
-  | "yellow"
-  | "gray";
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface Project {
-  id: string;
-  name: string;
-  description?: string | null;
-  status: ProjectStatus;
-  color: ProjectColor;
-  icon: string;
-
-  // Optional counts (but do NOT fetch them per project)
-  test_suites_count?: number;
-  requirements_count?: number;
-  templates_count?: number;
-}
+import { Project, ProjectColor, ProjectStatus } from "@/types/projects";
 
 interface ProjectSelectProps {
   value?: string;
@@ -73,12 +48,13 @@ interface ProjectSelectProps {
   disabled?: boolean;
   placeholder?: string;
   allowEmpty?: boolean;
-
-  /** NEW: provide projects from bootstrap to avoid any fetch */
+  /** Provide projects from a parent bootstrap to skip the internal fetch */
   projects?: Project[];
-  /** NEW: if true, never fetch internally */
+  /** If true, never fetch internally — use only what's in the projects prop */
   disableFetch?: boolean;
 }
+
+// ─── Icon / color maps ────────────────────────────────────────────────────────
 
 const projectIcons: Record<
   string,
@@ -108,6 +84,8 @@ const colorDotClass: Record<ProjectColor, string> = {
   gray: "bg-gray-500",
 };
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function ProjectSelect({
   value,
   onSelect,
@@ -115,53 +93,47 @@ export function ProjectSelect({
   projects: projectsProp,
   disableFetch,
 }: ProjectSelectProps) {
-  const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>(projectsProp ?? []);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // keep state in sync when provided by bootstrap
+  // ── Sync internal list when parent provides/updates projects ───────────────
+  // useState(projectsProp ?? []) only runs once at mount. The parent typically
+  // resolves projectsProp after an async bootstrap, so without this effect the
+  // dropdown stays empty even after the parent has data.
   useEffect(() => {
-    if (projectsProp) setProjects(projectsProp);
+    if (projectsProp !== undefined) {
+      setProjects(projectsProp);
+    }
   }, [projectsProp]);
 
-  // legacy fetch only if needed
+  // ── Fetch from API when not using parent-provided list ─────────────────────
+  // Only runs when disableFetch=false AND projectsProp is not provided.
   useEffect(() => {
     if (disableFetch) return;
-    if (projectsProp) return;
-    if (user) {
-      void fetchProjects();
-    }
-  }, [disableFetch, projectsProp, user]);
+    if (projectsProp !== undefined) return;
+    void fetchProjects();
+  }, [disableFetch, projectsProp]);
 
+  // ── Keep selectedProject in sync with value + current list ────────────────
   useEffect(() => {
     if (value) {
-      const p = projects.find((x) => x.id === value) ?? null;
-      setSelectedProject(p);
+      setSelectedProject(projects.find((p) => p.id === value) ?? null);
     } else {
       setSelectedProject(null);
     }
   }, [value, projects]);
 
   async function fetchProjects() {
-    if (!user) return;
-
     setLoading(true);
     try {
-      const supabase = createClient();
-
-      const { data, error } = await supabase
-        .from("projects")
-        .select("id, name, description, status, color, icon")
-        .eq("user_id", user.id)
-        .eq("status", "active")
-        .order("name");
-
-      if (error) throw error;
-      setProjects((data || []) as Project[]);
-    } catch (error) {
-      console.error("Error fetching projects:", error);
+      const res = await fetch("/api/projects/list", { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to load projects");
+      const data = await res.json();
+      setProjects(data.projects ?? []);
+    } catch (err) {
+      console.error("[ProjectSelect] fetch error:", err);
     } finally {
       setLoading(false);
     }
@@ -171,7 +143,6 @@ export function ProjectSelect({
     const project = projects.find((p) => p.id === projectId) ?? null;
     setSelectedProject(project);
     onSelect(project);
-    if (project) toast.success(`Assigned to project "${project.name}"`);
   }
 
   function clearProject() {
@@ -181,7 +152,7 @@ export function ProjectSelect({
 
   const emptyState = useMemo(
     () => projects.length === 0 && !loading,
-    [projects.length, loading]
+    [projects.length, loading],
   );
 
   return (
@@ -209,7 +180,7 @@ export function ProjectSelect({
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               {(() => {
-                const Icon = projectIcons[selectedProject.icon] || Folder;
+                const Icon = projectIcons[selectedProject.icon] ?? Folder;
                 return <Icon className="h-4 w-4 text-primary" />;
               })()}
               <CardTitle className="text-base">
@@ -242,7 +213,7 @@ export function ProjectSelect({
             </SelectTrigger>
             <SelectContent>
               {projects.map((project) => {
-                const Icon = projectIcons[project.icon] || Folder;
+                const Icon = projectIcons[project.icon] ?? Folder;
                 return (
                   <SelectItem key={project.id} value={project.id}>
                     <div className="flex items-center gap-2">
@@ -277,13 +248,13 @@ export function ProjectSelect({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 {(() => {
-                  const Icon = projectIcons[selectedProject.icon] || Folder;
+                  const Icon = projectIcons[selectedProject.icon] ?? Folder;
                   return <Icon className="h-5 w-5" />;
                 })()}
                 {selectedProject.name}
               </DialogTitle>
               <DialogDescription>
-                {selectedProject.description || "No description provided"}
+                {selectedProject.description ?? "No description provided"}
               </DialogDescription>
             </DialogHeader>
 
@@ -297,7 +268,6 @@ export function ProjectSelect({
                 />
               </div>
 
-              {/* Counts are optional — display only if provided */}
               {(selectedProject.test_suites_count != null ||
                 selectedProject.requirements_count != null ||
                 selectedProject.templates_count != null) && (

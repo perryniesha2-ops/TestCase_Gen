@@ -29,17 +29,7 @@ import {
 } from "lucide-react";
 import { extensionRequest } from "@/lib/extensions/extensionRequest";
 import { detectExtensionInstalled } from "@/lib/extensions/detectExtension";
-
-interface TestAttachment {
-  id: string;
-  file_name: string;
-  file_path: string;
-  file_type: string;
-  file_size: number | null;
-  description?: string | null;
-  step_number?: number | null;
-  created_at: string;
-}
+import type { TestAttachment } from "@/types/test-cases";
 
 interface ScreenshotUploadProps {
   executionId: string;

@@ -30,10 +30,9 @@ import {
   Zap,
 } from "lucide-react";
 import { toastError, toastInfo, toastSuccess } from "@/lib/utils/toast-utils";
+import { ExecutionHistoryRow, AllowedStatus } from "@/types/executions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type AllowedStatus = "passed" | "failed" | "skipped" | "blocked";
 
 type ExecutionRow = {
   execution_id: string;

@@ -1,8 +1,15 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -390,6 +397,8 @@ export function ExecutionHistory({
 }: { suiteId?: string } = {}) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
+  // useAuth reads from in-memory cache — zero network calls for user identity
+  const { user } = useAuth();
 
   const [availableSuites, setAvailableSuites] = useState<
     Array<{ id: string; name: string }>
@@ -435,15 +444,24 @@ export function ExecutionHistory({
   useEffect(() => {
     if (propSuiteId) setSuiteId(propSuiteId);
   }, [propSuiteId]);
+
+  // All three effects gated on user?.id — fires once when auth resolves,
+  // never before, never redundantly on re-renders.
   useEffect(() => {
+    if (!user?.id) return;
     void fetchSuites();
-  }, []);
+  }, [user?.id]);
+
   useEffect(() => {
+    if (!user?.id) return;
     void fetchRuns();
-  }, [suiteId, dateFilter, debouncedRunsSearch, showAborted]);
+  }, [user?.id, suiteId, dateFilter, debouncedRunsSearch, showAborted]);
+
   useEffect(() => {
+    if (!user?.id) return;
     void fetchHistory();
   }, [
+    user?.id,
     status,
     hasEvidence,
     debouncedSearch,
@@ -452,32 +470,43 @@ export function ExecutionHistory({
     currentPage,
     pageSize,
   ]);
+
   useEffect(() => {
+    if (!user?.id) return;
     setCurrentPage(1);
-  }, [status, hasEvidence, debouncedSearch, suiteId, dateFilter, pageSize]);
+  }, [
+    user?.id,
+    status,
+    hasEvidence,
+    debouncedSearch,
+    suiteId,
+    dateFilter,
+    pageSize,
+  ]);
 
   // ─── Data fetching ──────────────────────────────────────────────────────────
 
+  // Uses /api/suites/list — no auth call, no direct Supabase query
   async function fetchSuites() {
     try {
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) return;
-      const { data } = await supabase
-        .from("suites")
-        .select("id, name")
-        .eq("user_id", auth.user.id)
-        .order("name");
-      setAvailableSuites(data ?? []);
+      const res = await fetch("/api/suites/list", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setAvailableSuites(data.suites ?? []);
     } catch (err) {
       console.error(err);
     }
   }
 
+  const runsFetchingRef = useRef(false);
+  const historyFetchingRef = useRef(false);
+
   async function fetchRuns() {
+    if (runsFetchingRef.current) return;
+    runsFetchingRef.current = true;
     setRunsLoading(true);
     try {
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) {
+      if (!user?.id) {
         setRuns([]);
         return;
       }
@@ -490,7 +519,7 @@ export function ExecutionHistory({
         .select(
           "id, user_id, suite_id, name, description, status, planned_start, actual_start, actual_end, environment, test_cases_total, test_cases_completed, progress_percentage, passed_cases, failed_cases, skipped_cases, blocked_cases, created_at, updated_at, paused_at, auto_advance",
         )
-        .eq("user_id", auth.user.id)
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(200);
 
@@ -507,7 +536,7 @@ export function ExecutionHistory({
         .select(
           "id, user_id, suite_id, run_number, status, framework, environment, browser, total_tests, passed_tests, failed_tests, skipped_tests, started_at, completed_at, created_at",
         )
-        .eq("user_id", auth.user.id)
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(200);
 
@@ -624,18 +653,12 @@ export function ExecutionHistory({
         );
       }
 
-      // ── Resolve evidence + review + issue counts for ALL runs (manual + automation) ──
-      //
-      // Manual runs: group executions by session_id
       const sessionIds = manualRuns.map((r) => r.id);
-      // Automation runs: group executions by automation_run_id
       const automationRunIds = automationRuns.map((r) => r.id);
-
       const evidenceByRunId = new Map<string, number>();
       const reviewedByRunId = new Map<string, boolean>();
       const issuesByRunId = new Map<string, number>();
 
-      // Fetch manual-linked executions
       if (sessionIds.length > 0) {
         const { data: manualExecStats } = await supabase
           .from("test_executions")
@@ -664,7 +687,6 @@ export function ExecutionHistory({
         }
       }
 
-      // Fetch automation-linked executions
       if (automationRunIds.length > 0) {
         const { data: autoExecStats } = await supabase
           .from("test_executions")
@@ -680,18 +702,16 @@ export function ExecutionHistory({
           const key = e.automation_run_id;
           if (!key) continue;
           if (e.reviewed_at) reviewedByRunId.set(key, true);
-          autoEvidence &&
-            evidenceByRunId.set(
-              key,
-              (evidenceByRunId.get(key) ?? 0) + (autoEvidence.get(e.id) ?? 0),
-            );
+          evidenceByRunId.set(
+            key,
+            (evidenceByRunId.get(key) ?? 0) + (autoEvidence.get(e.id) ?? 0),
+          );
           if (e.jira_issue_key || e.testrail_defect_id) {
             issuesByRunId.set(key, (issuesByRunId.get(key) ?? 0) + 1);
           }
         }
       }
 
-      // Patch stats back onto every run
       allRuns = allRuns.map((r) => ({
         ...r,
         evidence_total: evidenceByRunId.get(r.id) ?? 0,
@@ -706,14 +726,16 @@ export function ExecutionHistory({
       setRuns([]);
     } finally {
       setRunsLoading(false);
+      runsFetchingRef.current = false;
     }
   }
 
   async function fetchHistory() {
+    if (historyFetchingRef.current) return;
+    historyFetchingRef.current = true;
     setLoading(true);
     try {
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) {
+      if (!user?.id) {
         setRows([]);
         return;
       }
@@ -723,13 +745,13 @@ export function ExecutionHistory({
       let countQuery = supabase
         .from("test_executions")
         .select("id", { count: "exact", head: true })
-        .eq("executed_by", auth.user.id)
+        .eq("executed_by", user.id)
         .in("execution_status", INCLUDED_STATUSES);
 
       let dataQuery = supabase
         .from("test_executions")
         .select(EXECUTION_SELECT)
-        .eq("executed_by", auth.user.id)
+        .eq("executed_by", user.id)
         .in("execution_status", INCLUDED_STATUSES)
         .order("created_at", { ascending: false });
 
@@ -821,6 +843,7 @@ export function ExecutionHistory({
       setRows([]);
     } finally {
       setLoading(false);
+      historyFetchingRef.current = false;
     }
   }
 
@@ -846,8 +869,6 @@ export function ExecutionHistory({
       setIntegrationLoading(false);
     }
   }
-
-  // ─── Run review — navigate to the dedicated page for both run types ───────────
 
   function openRunReview(run: RunWithStats) {
     const params = run.is_automation ? "?type=automation" : "";
@@ -1192,7 +1213,6 @@ export function ExecutionHistory({
                         className="hover:bg-muted/50 transition-colors"
                       >
                         <CardContent className="p-3 sm:p-4">
-                          {/* ── Row 1: date · status badges · review button ── */}
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
                               <Calendar className="h-3.5 w-3.5 shrink-0" />
@@ -1225,8 +1245,6 @@ export function ExecutionHistory({
                               </Button>
                             </div>
                           </div>
-
-                          {/* ── Row 2: suite name + run name ── */}
                           <div className="mb-2.5">
                             <div className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">
                               {r.suite_name}
@@ -1235,17 +1253,12 @@ export function ExecutionHistory({
                               {r.name || `Run ${r.id.slice(0, 8)}…`}
                             </div>
                           </div>
-
-                          {/* ── Row 3: progress + result badges + meta ── */}
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                            {/* Progress */}
                             <span className="text-xs text-muted-foreground">
                               {r.test_cases_completed}/{r.test_cases_total}
                               {" · "}
                               {passRate}% pass
                             </span>
-
-                            {/* Result badges */}
                             <div className="flex gap-1 flex-wrap">
                               <Badge
                                 variant="secondary"
@@ -1280,8 +1293,6 @@ export function ExecutionHistory({
                                 </Badge>
                               )}
                             </div>
-
-                            {/* Evidence + issues */}
                             {r.evidence_total > 0 && (
                               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <ImageIcon className="h-3.5 w-3.5" />

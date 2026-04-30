@@ -1,5 +1,4 @@
 // types/templates.ts
-// Type definitions for test case templates
 
 export type TemplateCategory =
   | "functional"
@@ -10,26 +9,13 @@ export type TemplateCategory =
   | "accessibility"
   | "other";
 
-export interface TemplateContent {
-  // Core generation settings
-  testCaseCount: number;
-  coverage: "standard" | "comprehensive" | "exhaustive";
+export type Coverage = "standard" | "comprehensive" | "exhaustive";
 
-  // Optional advanced settings
-  defaultSections?: string[];
-  customPrompt?: string;
+export interface TemplateContent {
+  model: string;
+  testCaseCount: number;
   includeEdgeCases?: boolean;
   includeNegativeTests?: boolean;
-  priorityLevel?: "high" | "medium" | "low";
-
-  // Cross-platform specific
-  platforms?: Array<{
-    platform: string;
-    framework: string;
-  }>;
-
-  // Custom fields for extensibility
-  customFields?: Record<string, any>;
 }
 
 export interface Template {
@@ -45,6 +31,7 @@ export interface Template {
   last_used_at?: string | null;
   created_at: string;
   updated_at: string;
+  project_id: string | null;
 }
 
 export interface CreateTemplateInput {
@@ -68,7 +55,6 @@ export interface TemplateFormData {
   testCaseCount: number;
   includeEdgeCases: boolean;
   includeNegativeTests: boolean;
-  test_types: CanonicalTestType[];
   project_id: string | null;
 }
 
@@ -78,13 +64,3 @@ export interface TemplateStats {
   mostUsedTemplate?: Template;
   recentTemplates: Template[];
 }
-export type CanonicalTestType =
-  | "happy-path"
-  | "negative"
-  | "security"
-  | "boundary"
-  | "edge-case"
-  | "performance"
-  | "integration"
-  | "regression"
-  | "smoke";

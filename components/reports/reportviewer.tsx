@@ -1,8 +1,7 @@
 // components/reports/ReportViewer.tsx
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
 import {
   Card,
@@ -56,7 +55,6 @@ import type { ReportConfig, MetricType } from "./reportbuilder";
 type ReportData = {
   filters: ReportConfig["filters"];
   days: number;
-  // Execution
   total_tests: number;
   passed: number;
   failed: number;
@@ -64,21 +62,17 @@ type ReportData = {
   skipped: number;
   not_run: number;
   pass_rate: number;
-  // Coverage
   requirements_total: number;
   requirements_tested: number;
   coverage_percentage: number;
-  // Automation
   automation_runs: number;
   automation_pass_rate: number;
-  // Trend
   execution_trend: Array<{
     date: string;
     passed: number;
     failed: number;
     total: number;
   }>;
-  // Tables
   suite_performance: Array<{
     suite_id: string;
     suite_name: string;
@@ -99,167 +93,10 @@ type ReportData = {
     flakiness_score: number;
     total_executions: number;
   }>;
-  // Test type breakdown
   test_type_breakdown: Array<{ name: string; count: number }>;
 };
 
 const PIE_COLORS = ["#10b981", "#ef4444", "#f59e0b", "#9ca3af", "#6366f1"];
-
-// ─── Data fetcher ─────────────────────────────────────────────────────────────
-
-async function fetchReportData(
-  userId: string,
-  config: ReportConfig,
-): Promise<ReportData> {
-  const supabase = createClient();
-  const days = parseInt(config.filters.date_range, 10);
-  const suiteFilter = config.filters.suite_id ?? null;
-
-  const [statsRes, perfRes, trendsRes, reqRes, tcRes] = await Promise.all([
-    supabase.rpc("get_suite_execution_stats", {
-      p_user_id: userId,
-      p_days: days,
-      p_suite_id: suiteFilter,
-    }),
-    supabase.rpc("get_test_case_performance", {
-      p_user_id: userId,
-      p_days: days,
-      p_suite_id: suiteFilter,
-      p_limit: 10,
-    }),
-    supabase.rpc("get_execution_trends_daily", {
-      p_user_id: userId,
-      p_days: days,
-      p_suite_id: suiteFilter,
-    }),
-    supabase.from("requirements").select("id").eq("user_id", userId),
-    supabase
-      .from("test_cases")
-      .select(
-        "id, execution_status, is_boundary_test, is_negative_test, is_security_test, is_edge_case",
-      )
-      .eq("user_id", userId),
-  ]);
-
-  // Aggregate execution stats across suites
-  const suiteStats = (statsRes.data ?? []) as any[];
-  const totalExecutions = suiteStats.reduce(
-    (s, r) => s + (r.execution_count ?? 0),
-    0,
-  );
-  const totalTests = suiteStats.reduce((s, r) => s + (r.total_tests ?? 0), 0);
-  const weightedPassRate =
-    totalExecutions > 0
-      ? Math.round(
-          suiteStats.reduce(
-            (s, r) => s + (r.avg_pass_rate ?? 0) * (r.execution_count ?? 0),
-            0,
-          ) / totalExecutions,
-        )
-      : 0;
-
-  // Trend
-  const trend = (trendsRes.data ?? []) as any[];
-  const totalPassed = trend.reduce(
-    (s: number, r: any) => s + (r.passed ?? 0),
-    0,
-  );
-  const totalFailed = trend.reduce(
-    (s: number, r: any) => s + (r.failed ?? 0),
-    0,
-  );
-  const totalBlocked = trend.reduce(
-    (s: number, r: any) => s + (r.blocked ?? 0),
-    0,
-  );
-  const totalSkipped = trend.reduce(
-    (s: number, r: any) => s + (r.skipped ?? 0),
-    0,
-  );
-  const totalNotRun = (tcRes.data ?? []).filter(
-    (t: any) => !t.execution_status || t.execution_status === "not_run",
-  ).length;
-
-  // Coverage
-  const reqCount = (reqRes.data ?? []).length;
-  const tc = (tcRes.data ?? []) as any[];
-  const testedReqIds = new Set<string>();
-  // Simplified: count test cases as coverage proxy when no direct join available
-  const testedCount = Math.min(reqCount, Math.floor(tc.length * 0.7));
-  const coveragePct =
-    reqCount > 0 ? Math.round((testedCount / reqCount) * 100) : 0;
-
-  // Test type breakdown
-  const boundary = tc.filter((t) => t.is_boundary_test).length;
-  const negative = tc.filter((t) => t.is_negative_test).length;
-  const security = tc.filter((t) => t.is_security_test).length;
-  const edge = tc.filter((t) => t.is_edge_case).length;
-  const functional = tc.length - boundary - negative - security - edge;
-
-  // Performance table
-  const perfData = (perfRes.data ?? []) as any[];
-  const topFailures = perfData
-    .filter((r) => r.failure_frequency > 0)
-    .sort((a, b) => b.failure_frequency - a.failure_frequency)
-    .slice(0, 10)
-    .map((r) => ({
-      test_case_id: r.test_case_id,
-      test_title: r.test_title,
-      failure_count: r.failure_frequency,
-      pass_rate: r.pass_rate,
-      priority: r.priority ?? "medium",
-    }));
-
-  const flakyTests = perfData
-    .filter((r) => (r.flakiness_score ?? 0) > 0)
-    .sort((a, b) => b.flakiness_score - a.flakiness_score)
-    .slice(0, 10)
-    .map((r) => ({
-      test_case_id: r.test_case_id,
-      test_title: r.test_title,
-      flakiness_score: r.flakiness_score,
-      total_executions: r.total_executions,
-    }));
-
-  return {
-    filters: config.filters,
-    days,
-    total_tests: tc.length,
-    passed: totalPassed,
-    failed: totalFailed,
-    blocked: totalBlocked,
-    skipped: totalSkipped,
-    not_run: totalNotRun,
-    pass_rate: weightedPassRate,
-    requirements_total: reqCount,
-    requirements_tested: testedCount,
-    coverage_percentage: coveragePct,
-    automation_runs: totalExecutions,
-    automation_pass_rate: weightedPassRate,
-    execution_trend: trend.map((r: any) => ({
-      date: r.date,
-      passed: r.passed ?? 0,
-      failed: r.failed ?? 0,
-      total: r.total ?? 0,
-    })),
-    suite_performance: suiteStats.slice(0, 10).map((r) => ({
-      suite_id: r.suite_id,
-      suite_name: r.suite_name,
-      execution_count: r.execution_count,
-      avg_pass_rate: r.avg_pass_rate,
-      last_execution: r.last_execution ?? "",
-    })),
-    top_failures: topFailures,
-    flaky_tests: flakyTests,
-    test_type_breakdown: [
-      { name: "Functional", count: functional },
-      { name: "Boundary", count: boundary },
-      { name: "Negative", count: negative },
-      { name: "Security", count: security },
-      { name: "Edge Case", count: edge },
-    ].filter((t) => t.count > 0),
-  };
-}
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
@@ -281,7 +118,7 @@ function PassRateCard({ data }: { data: ReportData }) {
         <div className={`text-4xl font-bold ${color}`}>{data.pass_rate}%</div>
         <div className="h-2 bg-muted rounded-full mt-3 overflow-hidden">
           <div
-            className="h-2 bg-green-500 rounded-full transition-all"
+            className="h-2 bg-green-500 rounded-full"
             style={{ width: `${data.pass_rate}%` }}
           />
         </div>
@@ -331,7 +168,7 @@ function CoverageCard({ data }: { data: ReportData }) {
         </div>
         <div className="h-2 bg-muted rounded-full mt-3 overflow-hidden">
           <div
-            className="h-2 bg-blue-500 rounded-full transition-all"
+            className="h-2 bg-blue-500 rounded-full"
             style={{ width: `${data.coverage_percentage}%` }}
           />
         </div>
@@ -435,8 +272,7 @@ function StatusDistributionPie({ data }: { data: ReportData }) {
     { name: "Skipped", value: data.skipped },
     { name: "Not Run", value: data.not_run },
   ].filter((d) => d.value > 0);
-
-  if (pieData.length === 0) {
+  if (pieData.length === 0)
     return (
       <Card>
         <CardHeader>
@@ -447,8 +283,6 @@ function StatusDistributionPie({ data }: { data: ReportData }) {
         </CardContent>
       </Card>
     );
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -483,7 +317,7 @@ function StatusDistributionPie({ data }: { data: ReportData }) {
 }
 
 function TestTypeBreakdownBar({ data }: { data: ReportData }) {
-  if (data.test_type_breakdown.length === 0) {
+  if (data.test_type_breakdown.length === 0)
     return (
       <Card>
         <CardHeader>
@@ -494,7 +328,6 @@ function TestTypeBreakdownBar({ data }: { data: ReportData }) {
         </CardContent>
       </Card>
     );
-  }
   return (
     <Card>
       <CardHeader>
@@ -687,8 +520,6 @@ function FlakinessTable({ data }: { data: ReportData }) {
   );
 }
 
-// ─── Section dispatcher ───────────────────────────────────────────────────────
-
 function ReportSection({
   metric,
   data,
@@ -732,9 +563,7 @@ const DATE_RANGE_LABELS: Record<string, string> = {
 };
 
 interface ReportViewerProps {
-  // Pass reportId alone to have the component fetch the report itself
   reportId?: string;
-  // Or pass config + reportName directly (e.g. from builder preview)
   config?: ReportConfig;
   reportName?: string;
   showExport?: boolean;
@@ -751,54 +580,74 @@ export function ReportViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  // Resolved from props or fetched from Supabase when only reportId is passed
   const [resolvedConfig, setResolvedConfig] = useState<ReportConfig | null>(
     configProp ?? null,
   );
   const [resolvedName, setResolvedName] = useState<string>(
     reportNameProp ?? "Report",
   );
+  const fetchedRef = useRef(false);
 
-  // Fetch report config from Supabase when only reportId is provided
+  // Fetch report config from API when only reportId provided
   useEffect(() => {
-    if (configProp || !reportId) return;
-    const supabase = createClient();
-    supabase
-      .from("reports")
-      .select("name, config")
-      .eq("id", reportId)
-      .single()
-      .then(({ data: report, error: fetchErr }) => {
-        if (fetchErr || !report) {
+    if (configProp || !reportId || !user?.id) return;
+    fetch(`/api/reports/${reportId}`, { cache: "no-store" })
+      .then((res) => res.json())
+      .then((payload) => {
+        if (payload.error) {
           setError("Report not found");
           setLoading(false);
           return;
         }
-        setResolvedConfig(report.config as ReportConfig);
-        setResolvedName(report.name);
+        setResolvedConfig(payload.report.config as ReportConfig);
+        setResolvedName(payload.report.name);
+      })
+      .catch(() => {
+        setError("Failed to load report");
+        setLoading(false);
       });
-  }, [reportId, configProp]);
+  }, [reportId, configProp, user?.id]);
 
   const load = useCallback(async () => {
-    if (!user || !resolvedConfig) return;
+    if (!user?.id || !resolvedConfig) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchReportData(user.id, resolvedConfig);
-      setData(result);
+      const days = parseInt(resolvedConfig.filters.date_range, 10);
+      const suiteId = resolvedConfig.filters.suite_id ?? null;
+      const id = reportId ?? "preview";
+      const qs = new URLSearchParams({ days: String(days) });
+      if (suiteId) qs.set("suiteId", suiteId);
+
+      const res = await fetch(`/api/reports/${id}/data?${qs.toString()}`, {
+        cache: "no-store",
+      });
+      const payload = await res.json();
+      if (!res.ok)
+        throw new Error(payload?.error ?? "Failed to load report data");
+
+      setData({ ...payload, filters: resolvedConfig.filters });
     } catch (e: any) {
       console.error(e);
       setError("Failed to load report data");
     } finally {
       setLoading(false);
     }
-  }, [user, resolvedConfig]);
+  }, [user?.id, resolvedConfig, reportId]);
 
+  // Gate on user?.id + resolvedConfig — ref prevents double-fetch
   useEffect(() => {
+    if (!user?.id || !resolvedConfig) return;
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     void load();
-  }, [load]);
+  }, [user?.id, resolvedConfig]);
 
-  // Use resolved values throughout the render
+  // Reset ref when config changes (filter change should re-fetch)
+  useEffect(() => {
+    fetchedRef.current = false;
+  }, [resolvedConfig]);
+
   const config = resolvedConfig;
   const reportName = resolvedName;
 
@@ -809,15 +658,12 @@ export function ReportViewer({
         import("html2canvas-pro"),
         import("jspdf"),
       ]);
-
       const reportEl = document.getElementById("report-content");
       if (!reportEl) {
         toast.error("Report content not found");
         return;
       }
 
-      // Create a wrapper with explicit light-mode hex colors
-      // html2canvas does NOT support oklch/lab color functions — use hex only
       const wrapper = document.createElement("div");
       Object.assign(wrapper.style, {
         position: "fixed",
@@ -831,42 +677,26 @@ export function ReportViewer({
         fontFamily: "system-ui, -apple-system, sans-serif",
         zIndex: "-1",
       });
-
-      // Override all CSS vars with plain hex equivalents (no oklch)
-      const lightVars = [
+      const lightVars: [string, string][] = [
         ["--background", "#ffffff"],
         ["--foreground", "#0f172a"],
         ["--card", "#ffffff"],
         ["--card-foreground", "#0f172a"],
-        ["--popover", "#ffffff"],
-        ["--popover-foreground", "#0f172a"],
-        ["--primary", "#1e293b"],
-        ["--primary-foreground", "#f8fafc"],
-        ["--secondary", "#f1f5f9"],
-        ["--secondary-foreground", "#1e293b"],
         ["--muted", "#f1f5f9"],
         ["--muted-foreground", "#64748b"],
-        ["--accent", "#f1f5f9"],
-        ["--accent-foreground", "#1e293b"],
-        ["--destructive", "#ef4444"],
         ["--border", "#e2e8f0"],
-        ["--input", "#e2e8f0"],
-        ["--ring", "#94a3b8"],
+        ["--primary", "#1e293b"],
+        ["--primary-foreground", "#f8fafc"],
       ];
       lightVars.forEach(([k, v]) => wrapper.style.setProperty(k, v));
-
       const clone = reportEl.cloneNode(true) as HTMLElement;
       clone.classList.remove("dark");
       wrapper.appendChild(clone);
       document.body.appendChild(wrapper);
 
-      // Walk every element and replace any computed color that html2canvas
-      // can't handle (oklch, lab, lch) with plain hex equivalents
       wrapper.querySelectorAll("*").forEach((el) => {
         const htmlEl = el as HTMLElement;
         const cs = window.getComputedStyle(htmlEl);
-
-        // Background
         const bg = cs.backgroundColor;
         if (bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") {
           const nums = bg.match(/[\d.]+/g)?.map(Number) ?? [];
@@ -877,8 +707,6 @@ export function ReportViewer({
         } else {
           htmlEl.style.backgroundColor = "transparent";
         }
-
-        // Text color
         const fg = cs.color;
         if (fg) {
           const nums = fg.match(/[\d.]+/g)?.map(Number) ?? [];
@@ -887,21 +715,14 @@ export function ReportViewer({
             htmlEl.style.color = lum > 200 ? "#0f172a" : fg;
           }
         }
-
-        // Border
         const border = cs.borderColor;
-        if (border && border.includes("oklch")) {
-          htmlEl.style.borderColor = "#e2e8f0";
-        }
+        if (border?.includes("oklch")) htmlEl.style.borderColor = "#e2e8f0";
       });
 
-      // Disable all CSS animations and transitions so charts are fully rendered
       const styleTag = document.createElement("style");
       styleTag.textContent =
-        "* { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; }";
+        "* { animation-duration: 0s !important; transition-duration: 0s !important; }";
       wrapper.appendChild(styleTag);
-
-      // Short settle time for DOM to fully paint
       await new Promise((resolve) => setTimeout(resolve, 300));
 
       const canvas = await html2canvas(wrapper, {
@@ -911,13 +732,10 @@ export function ReportViewer({
         width: 1200,
         logging: false,
         onclone: (_doc, el) => {
-          // Disable animations in the cloned document too
           const s = _doc.createElement("style");
           s.textContent =
-            "* { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; }";
+            "* { animation-duration: 0s !important; transition-duration: 0s !important; }";
           _doc.head.appendChild(s);
-
-          // Replace any remaining oklch/lab in inline styles
           el.querySelectorAll("[style]").forEach((node) => {
             const htmlNode = node as HTMLElement;
             if (
@@ -931,10 +749,8 @@ export function ReportViewer({
           });
         },
       });
-
       document.body.removeChild(wrapper);
 
-      // A4 dimensions in mm
       const pdf = new jsPDF({
         orientation: "portrait",
         unit: "mm",
@@ -944,60 +760,44 @@ export function ReportViewer({
       const pageHeight = pdf.internal.pageSize.getHeight();
       const margin = 12;
       const contentWidth = pageWidth - margin * 2;
-
-      // Image starts at the top margin — no duplicate header
-      const imgData = canvas.toDataURL("image/png");
-      const imgWidth = contentWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      const startY = margin;
-      const availableHeight = pageHeight - startY - margin;
-
-      // Scale factor: how many canvas pixels per mm on the PDF
-      const scale = canvas.width / imgWidth;
-
-      // How tall (in canvas px) fits on each PDF page
+      const scale = canvas.width / contentWidth;
       const pageSlicePx = Math.floor((pageHeight - margin * 2) * scale);
-
-      // Slice the canvas using a temp canvas — one slice per PDF page
       const sliceCanvas = document.createElement("canvas");
       sliceCanvas.width = canvas.width;
       const sliceCtx = sliceCanvas.getContext("2d")!;
-
-      let offsetY = 0;
-      let pageNum = 0;
-
+      let offsetY = 0,
+        pageNum = 0;
       while (offsetY < canvas.height) {
-        const remainingPx = canvas.height - offsetY;
-        const slicePx = Math.min(pageSlicePx, remainingPx);
-
+        const slicePx = Math.min(pageSlicePx, canvas.height - offsetY);
         sliceCanvas.height = slicePx;
         sliceCtx.fillStyle = "#ffffff";
         sliceCtx.fillRect(0, 0, sliceCanvas.width, slicePx);
         sliceCtx.drawImage(
           canvas,
           0,
-          offsetY, // source x, y
+          offsetY,
           canvas.width,
-          slicePx, // source width, height
+          slicePx,
           0,
-          0, // dest x, y
+          0,
           canvas.width,
-          slicePx, // dest width, height
+          slicePx,
         );
-
-        const sliceImg = sliceCanvas.toDataURL("image/png");
-        const sliceHeightMm = slicePx / scale;
-
         if (pageNum > 0) pdf.addPage();
-
-        pdf.addImage(sliceImg, "PNG", margin, margin, imgWidth, sliceHeightMm);
-
+        pdf.addImage(
+          sliceCanvas.toDataURL("image/png"),
+          "PNG",
+          margin,
+          margin,
+          contentWidth,
+          slicePx / scale,
+        );
         offsetY += slicePx;
         pageNum++;
       }
-
-      const fileName = `${reportName.replace(/\s+/g, "-")}-${new Date().toISOString().split("T")[0]}.pdf`;
-      pdf.save(fileName);
+      pdf.save(
+        `${reportName.replace(/\s+/g, "-")}-${new Date().toISOString().split("T")[0]}.pdf`,
+      );
       toast.success("PDF downloaded");
     } catch (e: any) {
       console.error("[PDF export]", e);
@@ -1036,7 +836,6 @@ export function ReportViewer({
       ["Automation Runs", String(data.automation_runs)],
       ["Automation Pass Rate", `${data.automation_pass_rate}%`],
     ];
-
     const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -1063,14 +862,21 @@ export function ReportViewer({
     return (
       <div className="text-center py-12 text-muted-foreground">
         <p>{error ?? "No data"}</p>
-        <Button variant="outline" size="sm" className="mt-4" onClick={load}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          onClick={() => {
+            fetchedRef.current = false;
+            void load();
+          }}
+        >
           Retry
         </Button>
       </div>
     );
   }
 
-  // Separate card metrics from chart/table metrics for grid layout
   const cardMetrics: MetricType[] = [
     "pass_rate_card",
     "total_tests_card",
@@ -1086,7 +892,6 @@ export function ReportViewer({
 
   return (
     <div className="space-y-6" id="report-content">
-      {/* Report header */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold">{reportName}</h2>
@@ -1123,7 +928,6 @@ export function ReportViewer({
         )}
       </div>
 
-      {/* Card metrics — responsive grid */}
       {cardSections.length > 0 && (
         <div
           className={`grid gap-4 ${
@@ -1141,8 +945,6 @@ export function ReportViewer({
           ))}
         </div>
       )}
-
-      {/* Charts and tables — full width stacked */}
       {otherSections.length > 0 && (
         <div className="space-y-6">
           {otherSections.map((s) => (

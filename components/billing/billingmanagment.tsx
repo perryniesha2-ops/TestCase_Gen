@@ -406,7 +406,7 @@ export default function BillingPage() {
     "team",
   );
   const router = useRouter();
-  const { user: authUser } = useAuth();
+  const { user: authUser, refreshAuth } = useAuth();
 
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -493,23 +493,28 @@ export default function BillingPage() {
     }
   }, [fetchUserData, authUser]);
 
-  // ⭐ NEW: Check for successful checkout and handle redirect back to feature
   React.useEffect(() => {
     const success = searchParams.get("success");
     const sessionId = searchParams.get("session_id");
-    const redirect = searchParams.get("redirect"); // ⭐ Get redirect param
+    const redirect = searchParams.get("redirect");
 
     if (success === "true" && sessionId) {
-      // Clear tier cache so middleware fetches fresh subscription status
+      // Clear middleware tier cache cookies immediately
       document.cookie = "user_tier=; Max-Age=0; path=/";
       document.cookie = "tier_cache_time=; Max-Age=0; path=/";
 
-      // Show success message
       toastSuccess("🎉 Subscription activated! Updating your account...");
 
-      // Refetch data after a short delay to allow webhook to process
       const refetchTimer = setTimeout(async () => {
         setRefetching(true);
+
+        // Option 3 — refresh the middleware cookie server-side
+        await fetch("/api/billing/refresh-tier", { method: "POST" });
+
+        // Option 4 — clear the in-memory auth context cache
+        await refreshAuth();
+
+        // Reload billing data
         const userData = await fetchUserData();
         setUser(userData);
         setRefetching(false);
@@ -520,20 +525,16 @@ export default function BillingPage() {
           );
         }
 
-        // ⭐ NEW: Redirect back to the feature they wanted after upgrade
         if (redirect) {
-          setTimeout(() => {
-            router.push(redirect);
-          }, 1000);
+          setTimeout(() => router.push(redirect), 1000);
         } else {
-          // Clean up URL if no redirect
           router.replace("/billing", { scroll: false });
         }
-      }, 2000); // 2 second delay
+      }, 3000); // 3s to allow webhook to process
 
       return () => clearTimeout(refetchTimer);
     }
-  }, [searchParams, fetchUserData, router]);
+  }, [searchParams, fetchUserData, router, refreshAuth]);
 
   // Manual refresh function
   const handleRefresh = async () => {
@@ -566,7 +567,7 @@ export default function BillingPage() {
       const res = await fetch("/api/billing/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId, isYearly, userId: user.id }),
+        body: JSON.stringify({ planId, isYearly }),
       });
       if (!res.ok) throw new Error("Failed to start subscription");
       const { checkoutUrl } = await res.json();

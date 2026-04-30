@@ -4,7 +4,6 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/auth-context";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,7 +13,6 @@ import {
   Play,
   Edit3,
   Trash2,
-  CheckCircle2,
   Monitor,
   Smartphone,
   Globe,
@@ -26,13 +24,9 @@ import type { TestCase, CrossPlatformTestCase } from "@/types/test-cases";
 import { TestCaseFormDialog } from "@/components/testcase-management/test-cases/dialogs/test-case-form-dialog";
 import { TestRunnerDialog } from "@/components/testcase-management/test-cases/dialogs/test-runner-dialog";
 import { ExecutionHistoryTab } from "@/components/testcase-management/test-cases/executionhistory";
+import { VersionHistoryPanel } from "@/components/testcase-management/test-cases/versionhistorypanel";
 import { useExecutions } from "@/hooks/useExecutions";
-import {
-  toastError,
-  toastInfo,
-  toastSuccess,
-  toastWarning,
-} from "@/lib/utils/toast-utils";
+import { toastError, toastSuccess } from "@/lib/utils/toast-utils";
 
 const platformIcons = {
   web: Monitor,
@@ -61,19 +55,18 @@ export function TestCaseDetailsPageClient({
 }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+
   const [testCase, setTestCase] = React.useState<
     TestCase | CrossPlatformTestCase | null
   >(null);
+  const [caseType, setCaseType] = React.useState<"regular" | "cross-platform">(
+    "regular",
+  );
   const [loading, setLoading] = React.useState(true);
   const [deleting, setDeleting] = React.useState(false);
-
-  // Edit dialog state
   const [showEditDialog, setShowEditDialog] = React.useState(false);
-
-  // Test runner state
   const [showRunnerDialog, setShowRunnerDialog] = React.useState(false);
 
-  // Executions hook
   const {
     execution,
     setExecution,
@@ -85,246 +78,78 @@ export function TestCaseDetailsPageClient({
   } = useExecutions({ sessionId: null });
 
   const fetchTestCase = React.useCallback(async () => {
-    if (!user?.id) return;
-
     setLoading(true);
     try {
-      const supabase = createClient();
-
-      // Try regular test cases first
-      const { data: regularCase, error: regularError } = await supabase
-        .from("test_cases")
-        .select(
-          `
-          id,
-          generation_id,
-          title,
-          description,
-          test_type,
-          priority,
-          status,
-          preconditions,
-          test_steps,
-          expected_result,
-          created_at,
-          updated_at,
-          execution_status,
-          is_edge_case,
-          is_negative_test,
-          is_security_test,
-          is_boundary_test,
-          project_id,
-          projects (id, name, color, icon)
-        `,
-        )
-        .eq("id", testCaseId)
-        .eq("user_id", user.id)
-        .single();
-
-      if (!regularError && regularCase) {
-        setTestCase({
-          ...regularCase,
-          projects: Array.isArray(regularCase.projects)
-            ? regularCase.projects[0]
-            : regularCase.projects,
-        } as TestCase);
-        setLoading(false);
+      const res = await fetch(`/api/test-cases/${testCaseId}`, {
+        cache: "no-store",
+      });
+      if (res.status === 404) {
+        toast.error("Test case not found");
+        router.push("/test-library");
         return;
       }
-
-      // Try cross-platform test cases
-      const { data: platformCase, error: platformError } = await supabase
-        .from("platform_test_cases")
-        .select(
-          `
-      id,
-      suite_id,
-      platform,
-      framework,
-      title,
-      description,
-      preconditions,
-      steps,
-      expected_results,
-      automation_hints,
-      priority,
-      execution_status,
-      created_at,
-      updated_at,
-      approved_at,
-      approved_by,
-      automation_metadata,
-      status, 
-      project_id, 
-      projects(id, name, color, icon)
-    `,
-        )
-        .eq("id", testCaseId)
-        .eq("user_id", user.id)
-        .single();
-
-      if (!platformError && platformCase) {
-        const transformedCase: CrossPlatformTestCase = {
-          ...platformCase,
-          projects: platformCase.projects?.[0] || null,
-        };
-
-        setTestCase(transformedCase);
-        setLoading(false);
-        return;
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.error ?? `Failed (${res.status})`);
       }
-
-      // Not found in either table
-      console.error("Test case not found:", { regularError, platformError });
-      toast.error("Test case not found");
-      router.push("/test-library");
-    } catch (error) {
-      console.error("Error fetching test case:", error);
+      const payload = await res.json();
+      setTestCase(payload.testCase);
+      setCaseType(payload.caseType ?? "regular");
+    } catch {
       toast.error("Failed to load test case");
       router.push("/test-library");
     } finally {
       setLoading(false);
     }
-  }, [testCaseId, user?.id, router]);
+  }, [testCaseId, router]);
 
   React.useEffect(() => {
+    if (!user?.id) return;
     void fetchTestCase();
-  }, [fetchTestCase]);
+  }, [user?.id, fetchTestCase]);
 
-  // Seed execution status when test case loads
   React.useEffect(() => {
-    if (testCase) {
-      setExecution((prev) => ({
-        ...prev,
-        [testCase.id]: {
-          ...(prev[testCase.id] ?? { completedSteps: [], failedSteps: [] }),
-          status: testCase.execution_status || "not_run",
-          completedSteps: prev[testCase.id]?.completedSteps ?? [],
-          failedSteps: prev[testCase.id]?.failedSteps ?? [],
-        },
-      }));
-    }
-  }, [testCase, setExecution]);
+    if (!testCase) return;
+    setExecution((prev) => ({
+      ...prev,
+      [testCaseId]: {
+        ...(prev[testCaseId] ?? { completedSteps: [], failedSteps: [] }),
+        status: testCase.execution_status || "not_run",
+        completedSteps: prev[testCaseId]?.completedSteps ?? [],
+        failedSteps: prev[testCaseId]?.failedSteps ?? [],
+      },
+    }));
+  }, [testCase, setExecution, testCaseId]);
 
   const handleDelete = async () => {
     if (!testCase) return;
-
     const confirmed = window.confirm(
-      `Delete test case "${testCase.title}"?\n\nThis will also delete:\n• All linked suite assignments\n• All execution history\n• All requirement links\n• All attachments\n\nThis cannot be undone.`,
+      `Delete test case "${testCase.title}"?\n\nThis will also delete:\n• All linked suite assignments\n• All execution history\n• All requirement links\n• All attachments\n• All saved versions\n\nThis cannot be undone.`,
     );
     if (!confirmed) return;
 
     setDeleting(true);
     try {
-      const supabase = createClient();
-      const isRegular = isRegularTestCase(testCase);
-      const table = isRegular ? "test_cases" : "platform_test_cases";
-      const idColumn = isRegular ? "test_case_id" : "platform_test_case_id";
-
-      // Delete in order to respect foreign key constraints
-
-      // 1. Delete test attachments
-      const { error: attachmentsError } = await supabase
-        .from("test_attachments")
-        .delete()
-        .eq(idColumn, testCase.id);
-
-      if (attachmentsError) {
-        toastError("⚠️ Failed to delete attachments");
-      } else {
-      }
-
-      // 2. Delete requirement links
-      if (isRegular) {
-        const { error: reqLinksError } = await supabase
-          .from("requirement_test_cases")
-          .delete()
-          .eq("test_case_id", testCase.id);
-
-        if (reqLinksError) {
-          toastWarning("⚠️ Failed to delete requirement links");
-        } else {
-          toastInfo("✅ Requirement links deleted");
-        }
-      } else {
-        const { error: reqLinksError } = await supabase
-          .from("requirement_platform_test_cases")
-          .delete()
-          .eq("test_case_id", testCase.id);
-
-        if (reqLinksError) {
-          toastWarning("⚠️ Failed to delete platform requirement links:");
-        } else {
-          toastInfo("✅ Platform requirement links deleted");
-        }
-      }
-
-      // 3. Delete test executions
-      const { error: executionsError } = await supabase
-        .from("test_executions")
-        .delete()
-        .eq(idColumn, testCase.id);
-
-      if (executionsError) {
-        toastWarning("⚠️ Failed to delete executions");
-      } else {
-        toastInfo("✅ Executions deleted");
-      }
-
-      // 4. Delete suite assignments
-      const { error: suiteItemsError } = await supabase
-        .from("suite_items")
-        .delete()
-        .eq(idColumn, testCase.id);
-
-      if (suiteItemsError) {
-        toastWarning("⚠️ Failed to delete suite items");
-      } else {
-        toastInfo("✅ Suite items deleted");
-      }
-
-      // 5. Finally, delete the test case itself
-      const { error: deleteError } = await supabase
-        .from(table)
-        .delete()
-        .eq("id", testCase.id);
-
-      if (deleteError) {
-        throw deleteError;
-      }
-
+      const res = await fetch(`/api/test-cases/${testCaseId}`, {
+        method: "DELETE",
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error ?? "Failed to delete");
       toastSuccess("Test case deleted successfully");
       router.push("/test-cases");
     } catch (error: any) {
-      toastError(
-        error?.message ||
-          "Failed to delete test case. It may be linked to other records.",
-      );
+      toastError(error?.message ?? "Failed to delete test case.");
     } finally {
       setDeleting(false);
     }
   };
 
-  const handleEdit = () => {
-    if (!testCase) return;
-    setShowEditDialog(true);
-  };
-
   const handleRun = async () => {
     if (!testCase) return;
-
-    const type = isCrossPlatform ? "cross-platform" : "regular";
-
     try {
-      await hydrateOne(testCase.id, type);
-    } catch (e) {}
-
+      await hydrateOne(testCaseId, caseType);
+    } catch {}
     setShowRunnerDialog(true);
-  };
-
-  const handleEditSuccess = () => {
-    void fetchTestCase(); // Refresh the test case data
-    setShowEditDialog(false);
   };
 
   const getPriorityColor = (priority: string) => {
@@ -373,9 +198,6 @@ export function TestCaseDetailsPageClient({
 
   const isRegular = isRegularTestCase(testCase);
   const isCrossPlatform = isCrossPlatformTestCase(testCase);
-  const caseType: "regular" | "cross-platform" = isCrossPlatform
-    ? "cross-platform"
-    : "regular";
 
   return (
     <>
@@ -392,23 +214,20 @@ export function TestCaseDetailsPageClient({
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
-
             <div className="flex items-center gap-2">
               <Button size="sm" className="gap-2" onClick={handleRun}>
                 <Play className="h-4 w-4" />
                 Run Test
               </Button>
-
               <Button
                 size="sm"
                 variant="outline"
                 className="gap-2"
-                onClick={handleEdit}
+                onClick={() => setShowEditDialog(true)}
               >
                 <Edit3 className="h-4 w-4" />
                 Edit
               </Button>
-
               <Button
                 size="sm"
                 variant="destructive"
@@ -426,18 +245,15 @@ export function TestCaseDetailsPageClient({
             </div>
           </div>
 
-          {/* Title and Badges */}
           <div className="space-y-2">
             <h1 className="text-2xl font-bold">{testCase.title}</h1>
             <div className="flex flex-wrap items-center gap-2">
               <Badge className={getPriorityColor(testCase.priority)}>
                 {testCase.priority}
               </Badge>
-
               {isRegular && (
                 <Badge variant="secondary">{testCase.test_type}</Badge>
               )}
-
               {isCrossPlatform && (
                 <>
                   <Badge variant="default" className="gap-1">
@@ -453,7 +269,6 @@ export function TestCaseDetailsPageClient({
                   <Badge variant="outline">{testCase.framework}</Badge>
                 </>
               )}
-
               <Badge variant="outline" className="capitalize">
                 {testCase.status}
               </Badge>
@@ -461,54 +276,60 @@ export function TestCaseDetailsPageClient({
           </div>
         </div>
 
-        {/* Content Tabs */}
+        {/* Tabs */}
         <Tabs defaultValue="details" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList
+            className={`grid w-full ${isRegular ? "grid-cols-3" : "grid-cols-2"}`}
+          >
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="execution">Execution History</TabsTrigger>
+            {isRegular && (
+              <TabsTrigger value="versions">Version History</TabsTrigger>
+            )}
           </TabsList>
 
+          {/* Details */}
           <TabsContent value="details" className="space-y-6 mt-6">
-            {/* Description */}
-            <div className="rounded-lg border bg-card p-6 shadow-sm">
+            <div className="rounded-lg border bg-card p-6 shadow-sm overflow-hidden">
               <h3 className="text-lg font-semibold mb-3">Description</h3>
-              <p className="text-muted-foreground">
+              <p className="text-muted-foreground break-words">
                 {testCase.description || "No description provided"}
               </p>
             </div>
 
-            {/* Preconditions */}
             {testCase.preconditions && (
-              <div className="rounded-lg border bg-card p-6 shadow-sm">
+              <div className="rounded-lg border bg-card p-6 shadow-sm overflow-hidden">
                 <h3 className="text-lg font-semibold mb-3">Preconditions</h3>
                 {Array.isArray(testCase.preconditions) ? (
                   <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                    {testCase.preconditions.map(
-                      (precond: string, idx: number) => (
-                        <li key={idx}>{precond}</li>
-                      ),
-                    )}
+                    {testCase.preconditions.map((p: string, i: number) => (
+                      <li key={i} className="break-words">
+                        {p}
+                      </li>
+                    ))}
                   </ul>
                 ) : (
-                  <p className="text-muted-foreground">
+                  <p className="text-muted-foreground break-words">
                     {testCase.preconditions}
                   </p>
                 )}
               </div>
             )}
 
-            {/* Test Steps - Regular */}
             {isRegular && (
-              <div className="rounded-lg border bg-card p-6 shadow-sm">
+              <div className="rounded-lg border bg-card p-6 shadow-sm overflow-hidden">
                 <h3 className="text-lg font-semibold mb-4">Test Steps</h3>
                 {testCase.test_steps?.length ? (
                   <div className="space-y-3">
                     {testCase.test_steps.map((step, idx) => (
-                      <div key={idx} className="border rounded-lg p-4">
-                        <div className="font-medium mb-2">
+                      <div
+                        key={idx}
+                        className="border rounded-lg p-4 overflow-hidden"
+                      >
+                        <div className="font-medium mb-2 break-words">
                           Step {step.step_number}: {step.action}
                         </div>
-                        <div className="text-sm text-muted-foreground">
+                        <div className="text-sm text-muted-foreground break-words">
                           Expected: {step.expected}
                         </div>
                       </div>
@@ -520,7 +341,6 @@ export function TestCaseDetailsPageClient({
               </div>
             )}
 
-            {/* Test Steps - Cross-Platform */}
             {isCrossPlatform && (
               <div className="rounded-lg border bg-card p-6 shadow-sm">
                 <h3 className="text-lg font-semibold mb-4">Test Steps</h3>
@@ -532,7 +352,7 @@ export function TestCaseDetailsPageClient({
                           Step {idx + 1}: {step}
                         </div>
                         {testCase.expected_results?.[idx] && (
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-sm text-muted-foreground break-words">
                             Expected: {testCase.expected_results[idx]}
                           </div>
                         )}
@@ -545,29 +365,28 @@ export function TestCaseDetailsPageClient({
               </div>
             )}
 
-            {/* Expected Result - Regular */}
             {isRegular && testCase.expected_result && (
-              <div className="rounded-lg border bg-card p-6 shadow-sm">
+              <div className="rounded-lg border bg-card p-6 shadow-sm overflow-hidden">
                 <h3 className="text-lg font-semibold mb-3">Expected Result</h3>
-                <p className="text-muted-foreground">
+                <p className="text-muted-foreground break-words">
                   {testCase.expected_result}
                 </p>
               </div>
             )}
 
-            {/* Automation Hints - Cross-Platform */}
             {isCrossPlatform && testCase.automation_hints?.length ? (
-              <div className="rounded-lg border bg-card p-6 shadow-sm">
+              <div className="rounded-lg border bg-card p-6 shadow-sm overflow-hidden">
                 <h3 className="text-lg font-semibold mb-3">Automation Hints</h3>
                 <ul className="list-disc list-inside text-muted-foreground space-y-1">
                   {testCase.automation_hints.map((hint, idx) => (
-                    <li key={idx}>{hint}</li>
+                    <li key={idx} className="break-words">
+                      {hint}
+                    </li>
                   ))}
                 </ul>
               </div>
             ) : null}
 
-            {/* Metadata */}
             <div className="rounded-lg border bg-card p-6 shadow-sm">
               <h3 className="text-lg font-semibold mb-4">Details</h3>
               <div className="grid grid-cols-2 gap-4">
@@ -610,14 +429,25 @@ export function TestCaseDetailsPageClient({
             <div className="h-2" />
           </TabsContent>
 
+          {/* Execution History */}
           <TabsContent value="execution" className="mt-6">
             <ExecutionHistoryTab testCaseId={testCase.id} caseType={caseType} />
           </TabsContent>
+
+          {/* Version History — regular cases only */}
+          {isRegular && (
+            <TabsContent value="versions" className="mt-6">
+              <VersionHistoryPanel
+                testCaseId={testCase.id}
+                currentTestCase={testCase as TestCase}
+                onRestored={() => void fetchTestCase()}
+              />
+            </TabsContent>
+          )}
         </Tabs>
         <div className="h-4" />
       </div>
 
-      {/* Edit Dialog - Only for regular test cases */}
       <TestCaseFormDialog
         open={showEditDialog}
         mode="edit"
@@ -627,10 +457,12 @@ export function TestCaseDetailsPageClient({
           isRegular && testCase.generation_id ? testCase.generation_id : null
         }
         onClose={() => setShowEditDialog(false)}
-        onSuccess={handleEditSuccess}
+        onSuccess={() => {
+          void fetchTestCase();
+          setShowEditDialog(false);
+        }}
       />
 
-      {/* Test Runner Dialog */}
       <TestRunnerDialog
         open={showRunnerDialog}
         onOpenChange={setShowRunnerDialog}

@@ -35,17 +35,17 @@ interface TestExecutionDialogProps {
 export function TestExecutionDialog({
   open,
   initialData,
+  status,
   onClose,
   onSave,
 }: TestExecutionDialogProps) {
-  // Simple initial state - will be reset by key prop
-  const [formData, setFormData] = useState<ExecutionDetails>({
-    notes: "",
-    failure_reason: "",
-    environment: "staging",
-    browser: "",
-    os_version: "",
-  });
+  const [formData, setFormData] = useState<ExecutionDetails>(() => ({
+    notes: initialData?.notes ?? "",
+    failure_reason: initialData?.failure_reason ?? "",
+    environment: initialData?.environment ?? "staging",
+    browser: initialData?.browser ?? "",
+    os_version: initialData?.os_version ?? "",
+  }));
 
   function handleSave() {
     onSave(formData);
@@ -71,19 +71,19 @@ export function TestExecutionDialog({
     status === "failed"
       ? "Failure Reason"
       : status === "blocked"
-      ? "Blocked Reason"
-      : status === "skipped"
-      ? "Skipped Reason"
-      : "Reason";
+        ? "Blocked Reason"
+        : status === "skipped"
+          ? "Skipped Reason"
+          : "Reason";
 
   const reasonPlaceholder =
     status === "failed"
       ? "Describe what went wrong..."
       : status === "blocked"
-      ? "Why is this blocked? (dependency, env issue, missing access, etc.)"
-      : status === "skipped"
-      ? "Why was this skipped? (out of scope, not applicable, etc.)"
-      : "Add a reason...";
+        ? "Why is this blocked? (dependency, env issue, missing access, etc.)"
+        : status === "skipped"
+          ? "Why was this skipped? (out of scope, not applicable, etc.)"
+          : "Add a reason...";
 
   return (
     <Dialog
@@ -100,8 +100,8 @@ export function TestExecutionDialog({
             {status === "failed"
               ? "Mark as Failed"
               : status === "blocked"
-              ? "Mark as Blocked"
-              : "Mark as Skipped"}
+                ? "Mark as Blocked"
+                : "Mark as Skipped"}
           </DialogTitle>
           <DialogDescription>
             Add context for this result. This will be saved to the execution
@@ -195,10 +195,10 @@ export function TestExecutionDialog({
               status === "failed"
                 ? "bg-red-600 hover:bg-red-700"
                 : status === "blocked"
-                ? "bg-orange-600 hover:bg-orange-700"
-                : status === "skipped"
-                ? "bg-slate-600 hover:bg-slate-700"
-                : ""
+                  ? "bg-orange-600 hover:bg-orange-700"
+                  : status === "skipped"
+                    ? "bg-slate-600 hover:bg-slate-700"
+                    : ""
             }
           >
             Save Result

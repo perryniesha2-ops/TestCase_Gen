@@ -1,5 +1,6 @@
-// app/(authenticated)/requirements/[requirementId]/page-client.tsx
 "use client";
+
+// app/(authenticated)/requirements/[requirementId]/page-client.tsx
 
 import React from "react";
 import Link from "next/link";
@@ -10,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-
 import {
   ArrowLeft,
   ExternalLink,
@@ -26,43 +26,16 @@ import {
   getProjectColor,
   getPriorityColor,
   getTypeColor,
+  getStatusBadge,
 } from "@/lib/utils/requirement-helpers";
 
-// Import the dialogs
+// ── Shared type — no local redeclaration ──────────────────────────────────────
+import type { Requirement } from "@/types/requirements";
+
 import { LinkTestCasesDialog } from "@/components/requirements/link-test-cases-dialog";
 import { EditRequirementModal } from "@/components/requirements/edit-requirement-modal";
 
-type Project = {
-  id: string;
-  name: string;
-  color: string | null;
-  icon: string | null;
-} | null;
-
-type RequirementDetails = {
-  id: string;
-  title: string;
-  description: string | null;
-  type: string | null;
-  priority: string | null;
-  status: string | null;
-  source: string | null;
-  external_id: string | null;
-  project_id: string | null;
-  projects: Project;
-  acceptance_criteria: unknown | null;
-  created_at: string;
-  updated_at: string;
-
-  // from links table aggregation
-  test_case_count: number;
-  regular_test_case_count: number;
-  platform_test_case_count: number;
-};
-
-type RequirementDetailsResponse = {
-  requirement: RequirementDetails;
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function safeJson(res: Response) {
   const raw = await res.text().catch(() => "");
@@ -73,20 +46,14 @@ async function safeJson(res: Response) {
   }
 }
 
-function normalizeCriteria(value: unknown | null): string[] {
+function normalizeCriteria(value: unknown): string[] {
   if (!value) return [];
   if (Array.isArray(value)) return value.map(String).filter(Boolean);
-
-  // Sometimes older data can be a string or object
   if (typeof value === "string") {
-    // Try to parse as JSON first
     try {
       const parsed = JSON.parse(value);
-      if (Array.isArray(parsed)) {
-        return parsed.map(String).filter(Boolean);
-      }
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
     } catch {
-      // Not JSON, try splitting
       const parts = value
         .split(/\r?\n|;/g)
         .map((s) => s.trim())
@@ -94,9 +61,10 @@ function normalizeCriteria(value: unknown | null): string[] {
       return parts.length ? parts : [value];
     }
   }
-
   return [];
 }
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function RequirementDetailsPageClient({
   requirementId,
@@ -107,10 +75,9 @@ export default function RequirementDetailsPageClient({
 
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
-  const [requirement, setRequirement] =
-    React.useState<RequirementDetails | null>(null);
-
-  // Dialog states
+  const [requirement, setRequirement] = React.useState<Requirement | null>(
+    null,
+  );
   const [showLinkDialog, setShowLinkDialog] = React.useState(false);
   const [showEditDialog, setShowEditDialog] = React.useState(false);
 
@@ -118,20 +85,14 @@ export default function RequirementDetailsPageClient({
     async (opts?: { silent?: boolean }) => {
       if (!opts?.silent) setLoading(true);
       else setRefreshing(true);
-
       try {
         const res = await fetch(`/api/requirements/${requirementId}`, {
           cache: "no-store",
         });
-        const payload = (await safeJson(res)) as
-          | RequirementDetailsResponse
-          | any;
-
-        if (!res.ok) {
-          throw new Error(payload?.error ?? "Requirement not found");
-        }
-
-        setRequirement(payload?.requirement ?? null);
+        const payload = await safeJson(res);
+        if (!res.ok) throw new Error(payload?.error ?? "Requirement not found");
+        // API may return { requirement } or the requirement directly
+        setRequirement(payload?.requirement ?? payload ?? null);
       } catch (e: any) {
         toastError(e?.message ?? "Failed to load requirement");
         setRequirement(null);
@@ -151,15 +112,12 @@ export default function RequirementDetailsPageClient({
     if (!requirement) return;
     const ok = window.confirm(`Delete requirement "${requirement.title}"?`);
     if (!ok) return;
-
     try {
       const res = await fetch(`/api/requirements/${requirement.id}`, {
         method: "DELETE",
       });
       const payload = await safeJson(res);
-
       if (!res.ok) throw new Error(payload?.error ?? "Delete failed");
-
       toastSuccess("Requirement deleted");
       router.push("/requirements");
       router.refresh();
@@ -169,99 +127,12 @@ export default function RequirementDetailsPageClient({
   }, [requirement, router]);
 
   const handleLinkSuccess = React.useCallback(() => {
-    // Refresh to get updated test case counts
     fetchDetails({ silent: true });
   }, [fetchDetails]);
 
   const handleEditSuccess = React.useCallback(() => {
-    // Refresh to get updated requirement data
     fetchDetails({ silent: true });
   }, [fetchDetails]);
-
-  const header = (
-    <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/requirements">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Link>
-        </Button>
-        <div className="h-4" />
-        <h1 className="text-xl font-semibold leading-snug break-words line-clamp-2">
-          {requirement?.title ?? "Requirement"}
-        </h1>
-
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {requirement?.type ? (
-            <Badge className={getTypeColor(requirement.type)}>
-              {requirement.type.replaceAll("_", " ")}
-            </Badge>
-          ) : (
-            <Badge variant="outline">No type</Badge>
-          )}
-
-          {requirement?.priority ? (
-            <Badge className={getPriorityColor(requirement.priority)}>
-              {requirement.priority}
-            </Badge>
-          ) : (
-            <Badge variant="outline">No priority</Badge>
-          )}
-
-          {requirement?.status ? (
-            <Badge variant="outline">{requirement.status}</Badge>
-          ) : (
-            <Badge variant="outline">No status</Badge>
-          )}
-        </div>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-2 flex-wrap">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => fetchDetails({ silent: true })}
-          disabled={refreshing || loading}
-        >
-          <RefreshCw
-            className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`}
-          />
-          Refresh
-        </Button>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowLinkDialog(true)}
-          disabled={!requirement}
-        >
-          <LinkIcon className="h-4 w-4 mr-2" />
-          Link Cases
-        </Button>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowEditDialog(true)}
-          disabled={!requirement}
-        >
-          <Pencil className="h-4 w-4 mr-2" />
-          Edit
-        </Button>
-
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={handleDelete}
-          disabled={!requirement}
-        >
-          <Trash2 className="h-4 w-4 mr-2" />
-          Delete
-        </Button>
-      </div>
-    </div>
-  );
 
   if (loading) {
     return (
@@ -308,15 +179,82 @@ export default function RequirementDetailsPageClient({
   return (
     <>
       <div className="space-y-6">
-        {header}
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/requirements">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Link>
+            </Button>
+            <div className="h-4" />
+            <h1 className="text-xl font-semibold leading-snug break-words line-clamp-2">
+              {requirement.title}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {requirement.type ? (
+                <Badge className={getTypeColor(requirement.type)}>
+                  {requirement.type.replaceAll("_", " ")}
+                </Badge>
+              ) : (
+                <Badge variant="outline">No type</Badge>
+              )}
+              {requirement.priority ? (
+                <Badge className={getPriorityColor(requirement.priority)}>
+                  {requirement.priority}
+                </Badge>
+              ) : (
+                <Badge variant="outline">No priority</Badge>
+              )}
+              {requirement.status ? (
+                getStatusBadge(requirement.status)
+              ) : (
+                <Badge variant="outline">No status</Badge>
+              )}
+            </div>
+          </div>
 
-        {/* Stacked layout - Details first, then Meta */}
+          <div className="flex shrink-0 items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchDetails({ silent: true })}
+              disabled={refreshing || loading}
+            >
+              <RefreshCw
+                className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`}
+              />
+              Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowLinkDialog(true)}
+            >
+              <LinkIcon className="h-4 w-4 mr-2" />
+              Link Cases
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEditDialog(true)}
+            >
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleDelete}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </Button>
+          </div>
+        </div>
+
         <div className="space-y-4">
           {/* Details Card */}
           <Card>
             <CardHeader>
               <CardTitle>
-                {" "}
                 {requirement.description?.trim()
                   ? requirement.description
                   : "—"}
@@ -324,12 +262,10 @@ export default function RequirementDetailsPageClient({
             </CardHeader>
             <CardContent className="space-y-4">
               <Separator />
-
               <div>
                 <div className="text-sm font-medium mb-2">
                   Acceptance Criteria
                 </div>
-
                 {criteria.length === 0 ? (
                   <p className="text-sm text-muted-foreground">—</p>
                 ) : (
@@ -358,7 +294,7 @@ export default function RequirementDetailsPageClient({
                 <div className="space-y-1">
                   <span className="text-sm text-muted-foreground">
                     Project:
-                  </span>{" "}
+                  </span>
                   {requirement.projects ? (
                     <div className="flex items-center gap-2">
                       <FolderOpen
@@ -376,7 +312,7 @@ export default function RequirementDetailsPageClient({
                 <div className="space-y-1">
                   <span className="text-sm text-muted-foreground">
                     External ID:
-                  </span>{" "}
+                  </span>
                   {requirement.external_id ? (
                     <div className="flex items-center gap-1">
                       <ExternalLink className="h-3 w-3" />
@@ -419,7 +355,7 @@ export default function RequirementDetailsPageClient({
 
                 <div className="space-y-1">
                   <span className="text-sm text-muted-foreground">
-                    Cross-Platform:{" "}
+                    Cross-Platform:
                   </span>
                   <span className="text-sm font-medium">
                     {" "}
@@ -453,25 +389,19 @@ export default function RequirementDetailsPageClient({
         </div>
       </div>
 
-      {/* Link Test Cases Dialog */}
-      {requirement && (
-        <LinkTestCasesDialog
-          requirement={requirement as any}
-          open={showLinkDialog}
-          onOpenChange={setShowLinkDialog}
-          onLinked={handleLinkSuccess}
-        />
-      )}
+      <LinkTestCasesDialog
+        requirement={requirement}
+        open={showLinkDialog}
+        onOpenChange={setShowLinkDialog}
+        onLinked={handleLinkSuccess}
+      />
 
-      {/* Edit Requirement Dialog */}
-      {requirement && (
-        <EditRequirementModal
-          requirement={requirement as any}
-          open={showEditDialog}
-          onOpenChange={setShowEditDialog}
-          onSuccess={handleEditSuccess}
-        />
-      )}
+      <EditRequirementModal
+        requirement={requirement}
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        onSuccess={handleEditSuccess}
+      />
     </>
   );
 }

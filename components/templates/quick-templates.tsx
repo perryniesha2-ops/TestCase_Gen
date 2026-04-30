@@ -25,15 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Save, Loader2 } from "lucide-react";
-
-type TemplateCategory =
-  | "functional"
-  | "security"
-  | "performance"
-  | "integration"
-  | "regression"
-  | "accessibility"
-  | "other";
+import { TemplateCategory } from "@/types/templates";
 
 interface QuickTemplateSaveProps {
   currentSettings: {

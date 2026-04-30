@@ -1,6 +1,6 @@
+// app/api/generate-test-cases/bootstrap/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { requireAuth } from "@/lib/auth/api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,9 +25,9 @@ function toInt(
   return Math.min(Math.floor(n), max);
 }
 
-function jsonError(message: string, status = 500, details?: unknown) {
+function jsonError(message: string, status = 500) {
   return NextResponse.json(
-    { error: message, details: details ?? null },
+    { error: message },
     { status, headers: { "Cache-Control": "no-store" } },
   );
 }
@@ -35,12 +35,28 @@ function jsonError(message: string, status = 500, details?: unknown) {
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function GET(req: Request) {
-  const { user, response } = await requireAuth();
-  if (response) return response;
+  // Single auth call via createClient — no separate requireAuth needed
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
+
+  if (authErr || !user) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 
   try {
-    const supabase = await createClient();
     const url = new URL(req.url);
+
+    // ── Short-circuit: requirements-only mode ─────────────────────────────────
+    // Used by pages that only need the requirements list (e.g. cross-platform
+    // generator). Skips the projects, templates, and preferences queries entirely.
+    const requirementsOnly =
+      url.searchParams.get("requirementsOnly") === "true";
 
     const requirementsLimit = toInt(
       url.searchParams.get("requirementsLimit"),
@@ -48,6 +64,31 @@ export async function GET(req: Request) {
       LIMITS.requirements.min,
       LIMITS.requirements.max,
     );
+
+    if (requirementsOnly) {
+      const { data, error } = await supabase
+        .from("requirements")
+        .select(
+          "id, title, description, acceptance_criteria, type, priority, status, project_id",
+        )
+        .eq("user_id", user.id)
+        .neq("status", "archived")
+        .order("title", { ascending: true })
+        .limit(requirementsLimit);
+
+      if (error) return jsonError(error.message);
+
+      return NextResponse.json(
+        {
+          projects: [],
+          requirements: data ?? [],
+          templates: [],
+          defaults: null,
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     const templatesLimit = toInt(
       url.searchParams.get("templatesLimit"),
       LIMITS.templates.default,
@@ -57,8 +98,8 @@ export async function GET(req: Request) {
     const includeArchivedProjects =
       url.searchParams.get("projectsIncludeArchived") === "true";
 
-    // All four queries run in parallel
-    const [projectsRes, requirementsRes, profileRes, templatesRes] =
+    // ── All queries run in parallel ───────────────────────────────────────────
+    const [projectsRes, requirementsRes, templatesRes, profileRes] =
       await Promise.all([
         includeArchivedProjects
           ? supabase
@@ -75,17 +116,13 @@ export async function GET(req: Request) {
 
         supabase
           .from("requirements")
-          .select("id, title, description, type, priority, status, project_id")
+          .select(
+            "id, title, description, acceptance_criteria, type, priority, status, project_id",
+          )
           .eq("user_id", user.id)
           .neq("status", "archived")
           .order("title", { ascending: true })
           .limit(requirementsLimit),
-
-        supabase
-          .from("user_profiles")
-          .select("preferences")
-          .eq("id", user.id)
-          .maybeSingle(),
 
         supabase
           .from("test_case_templates")
@@ -96,13 +133,18 @@ export async function GET(req: Request) {
           .order("is_favorite", { ascending: false })
           .order("usage_count", { ascending: false })
           .limit(templatesLimit),
+
+        supabase
+          .from("user_profiles")
+          .select("preferences")
+          .eq("id", user.id)
+          .maybeSingle(),
       ]);
 
-    if (projectsRes.error) return jsonError(projectsRes.error.message, 500);
-    if (requirementsRes.error)
-      return jsonError(requirementsRes.error.message, 500);
-    if (profileRes.error) return jsonError(profileRes.error.message, 500);
-    if (templatesRes.error) return jsonError(templatesRes.error.message, 500);
+    if (projectsRes.error) return jsonError(projectsRes.error.message);
+    if (requirementsRes.error) return jsonError(requirementsRes.error.message);
+    if (templatesRes.error) return jsonError(templatesRes.error.message);
+    // profileRes failure is non-fatal — defaults gracefully to null
 
     const defaults = profileRes.data?.preferences?.test_case_defaults ?? null;
 

@@ -40,17 +40,8 @@ import {
   X,
 } from "lucide-react";
 
-import type { SuiteType, Project } from "@/types/test-cases";
-
-interface FormData {
-  name: string;
-  description: string;
-  kind: "regular" | "cross-platform";
-  suite_type: SuiteType;
-  planned_start_date: string;
-  planned_end_date: string;
-  project_id: string;
-}
+import type { SuiteType, FormData } from "@/types/test-cases";
+import type { Project } from "@/types/projects";
 
 interface CreateSuiteDialogProps {
   open: boolean;
@@ -87,21 +78,14 @@ export function CreateSuiteDialog({
   async function fetchProjects() {
     try {
       setLoading(true);
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const response = await fetch("/api/projects/list");
 
-      if (!user) return;
+      if (!response.ok) {
+        throw new Error("Failed to fetch projects");
+      }
 
-      const { data, error } = await supabase
-        .from("projects")
-        .select("id, name, color, icon")
-        .eq("user_id", user.id)
-        .order("name");
-
-      if (error) throw error;
-      setProjects(data || []);
+      const { projects } = await response.json();
+      setProjects(projects);
     } catch (error) {
       console.error("Error fetching projects:", error);
       toast.error("Failed to load projects");

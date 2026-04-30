@@ -1,13 +1,6 @@
 "use client";
 
 // components/NeedsRerunPanel.tsx
-//
-// Surfaces test cases flagged needs_rerun (Jira bug was fixed) and lets the
-// user launch a verification run directly. Drop this anywhere — dashboard,
-// test-cases page, or as a sidebar widget.
-//
-// Usage:
-//   <NeedsRerunPanel projectId={currentProject.id} suiteId={defaultSuite.id} />
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
@@ -46,7 +39,6 @@ import {
   Bug,
 } from "lucide-react";
 import { toastSuccess, toastError } from "@/lib/utils/toast-utils";
-import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,8 +64,6 @@ interface Suite {
 
 interface NeedsRerunPanelProps {
   projectId?: string | null;
-  // If provided, used as the default suite for the re-run session.
-  // If not provided, user must pick a suite from the selector.
   suiteId?: string | null;
 }
 
@@ -108,7 +98,7 @@ export function NeedsRerunPanel({
   const [isOpen, setIsOpen] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
-  // ── Fetch cases ─────────────────────────────────────────────────────────────
+  // ── Fetch cases via API route ─────────────────────────────────────────────
 
   const fetchCases = useCallback(async () => {
     setLoading(true);
@@ -121,7 +111,6 @@ export function NeedsRerunPanel({
       if (!res.ok) throw new Error(json?.error ?? "Failed to load");
       const fetched: RerunCase[] = json.cases ?? [];
       setCases(fetched);
-      // Auto-select all by default
       setSelectedIds(new Set(fetched.map((c) => c.id)));
       setLastRefreshed(new Date());
     } catch (err) {
@@ -132,37 +121,38 @@ export function NeedsRerunPanel({
     }
   }, [projectId]);
 
-  // ── Fetch suites (for the selector) ────────────────────────────────────────
+  // ── Fetch suites via API route (no direct Supabase call) ──────────────────
+  // Uses the existing /api/projects/[id] endpoint which already returns suites.
+  // Memoized with useCallback so the useEffect dependency array stays stable.
 
-  async function fetchSuites() {
+  const fetchSuites = useCallback(async () => {
+    if (!projectId) return;
     try {
-      const supabase = createClient();
-      let q = supabase
-        .from("suites")
-        .select("id, name, project_id")
-        .eq("user_id", user!.id)
-        .order("name");
-      if (projectId) q = q.eq("project_id", projectId);
-
-      const { data, error } = await q;
-      if (error) throw error;
-
-      setSuites(data ?? []);
-      if (!defaultSuiteId && data && data.length > 0) {
-        setSelectedSuiteId(data[0].id);
+      const res = await fetch(`/api/projects/${projectId}?days=1`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const suiteList: Suite[] = (data.suites ?? []).map((s: any) => ({
+        id: s.suite_id ?? s.id,
+        name: s.name,
+      }));
+      setSuites(suiteList);
+      if (!defaultSuiteId && suiteList.length > 0) {
+        setSelectedSuiteId(suiteList[0].id);
       }
     } catch (err) {
       console.error("[NeedsRerunPanel] suites fetch error:", err);
     }
-  }
+  }, [projectId, defaultSuiteId]);
 
+  // Both fetchCases and fetchSuites are now stable useCallback references
+  // so this effect fires exactly once when the user is available
   useEffect(() => {
     if (authLoading || !user) return;
     void fetchCases();
     void fetchSuites();
-  }, [authLoading, user, fetchCases]);
+  }, [authLoading, user, fetchCases, fetchSuites]);
 
-  // ── Selection ───────────────────────────────────────────────────────────────
+  // ── Selection ─────────────────────────────────────────────────────────────
 
   function toggleCase(id: string) {
     setSelectedIds((prev) => {
@@ -180,7 +170,7 @@ export function NeedsRerunPanel({
     }
   }
 
-  // ── Create re-run session ───────────────────────────────────────────────────
+  // ── Create re-run session ─────────────────────────────────────────────────
 
   async function createRerunSession() {
     if (!selectedSuiteId) {
@@ -211,7 +201,6 @@ export function NeedsRerunPanel({
         `Re-run session created — ${json.case_count} case${json.case_count !== 1 ? "s" : ""} queued`,
       );
 
-      // Navigate to the suite page with the session pre-selected
       router.push(
         `/test-library/${selectedSuiteId}?session=${json.session_id}`,
       );
@@ -225,7 +214,7 @@ export function NeedsRerunPanel({
     }
   }
 
-  // ── Empty state ─────────────────────────────────────────────────────────────
+  // ── Empty state ───────────────────────────────────────────────────────────
 
   if (!loading && cases.length === 0) {
     return (
@@ -256,7 +245,7 @@ export function NeedsRerunPanel({
     );
   }
 
-  // ── Main panel ──────────────────────────────────────────────────────────────
+  // ── Main panel ────────────────────────────────────────────────────────────
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -400,7 +389,6 @@ export function NeedsRerunPanel({
           </CardContent>
 
           <CardFooter className="pt-0 pb-4 flex items-center gap-2 border-t mt-1">
-            {/* Suite selector — shown when no default suite is provided */}
             {!defaultSuiteId && suites.length > 0 && (
               <Select
                 value={selectedSuiteId}

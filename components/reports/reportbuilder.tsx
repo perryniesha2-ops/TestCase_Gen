@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,11 +50,7 @@ export type MetricType =
   | "top_failures_table"
   | "total_tests_card";
 
-export type ChartSection = {
-  id: string;
-  metric: MetricType;
-  title?: string;
-};
+export type ChartSection = { id: string; metric: MetricType; title?: string };
 
 export type ReportFilters = {
   date_range: "7d" | "14d" | "30d" | "90d";
@@ -64,10 +59,7 @@ export type ReportFilters = {
   status: string[];
 };
 
-export type ReportConfig = {
-  filters: ReportFilters;
-  sections: ChartSection[];
-};
+export type ReportConfig = { filters: ReportFilters; sections: ChartSection[] };
 
 export type SavedReport = {
   id: string;
@@ -189,8 +181,6 @@ const TYPE_COLORS: Record<string, string> = {
   table: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
 };
 
-// ─── Default config ───────────────────────────────────────────────────────────
-
 function defaultConfig(): ReportConfig {
   return {
     filters: {
@@ -227,46 +217,42 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
   );
   const [activeCategory, setActiveCategory] = useState<string>("execution");
 
+  // Load report config via API — gated on user?.id to prevent double-fetch
   useEffect(() => {
-    if (!reportId || !user) return;
-    const supabase = createClient();
-    supabase
-      .from("reports")
-      .select("*")
-      .eq("id", reportId)
-      .eq("user_id", user.id)
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) {
+    if (!reportId || !user?.id) return;
+    fetch(`/api/reports/${reportId}`, { cache: "no-store" })
+      .then((res) => res.json())
+      .then((payload) => {
+        if (payload.error) {
           toast.error("Report not found");
           router.push("/reports");
           return;
         }
-        setName(data.name);
-        setConfig(data.config as ReportConfig);
+        setName(payload.report.name);
+        setConfig(payload.report.config as ReportConfig);
         setLoading(false);
+      })
+      .catch(() => {
+        toast.error("Failed to load report");
+        router.push("/reports");
       });
-  }, [reportId, user, router]);
+  }, [reportId, user?.id, router]);
 
+  // Load suites + projects via existing API routes in parallel
   useEffect(() => {
-    if (!user) return;
-    const supabase = createClient();
+    if (!user?.id) return;
     Promise.all([
-      supabase
-        .from("suites")
-        .select("id, name")
-        .eq("user_id", user.id)
-        .order("name"),
-      supabase
-        .from("projects")
-        .select("id, name")
-        .eq("user_id", user.id)
-        .order("name"),
-    ]).then(([suitesRes, projectsRes]) => {
-      setSuites(suitesRes.data ?? []);
-      setProjects(projectsRes.data ?? []);
-    });
-  }, [user]);
+      fetch("/api/suites/list", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/projects/list", { cache: "no-store" }).then((r) => r.json()),
+    ])
+      .then(([suitesData, projectsData]) => {
+        setSuites(suitesData.suites ?? []);
+        setProjects(projectsData.projects ?? []);
+      })
+      .catch(() =>
+        console.error("[ReportBuilder] Failed to load suites/projects"),
+      );
+  }, [user?.id]);
 
   const updateFilters = useCallback((patch: Partial<ReportFilters>) => {
     setConfig((prev) => ({ ...prev, filters: { ...prev.filters, ...patch } }));
@@ -306,8 +292,9 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
     });
   }, []);
 
+  // Save via API routes — POST for new, PATCH for existing
   const handleSave = async () => {
-    if (!user) return;
+    if (!user?.id) return;
     if (!name.trim()) {
       toast.error("Please enter a report name");
       return;
@@ -319,31 +306,26 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
 
     setSaving(true);
     try {
-      const supabase = createClient();
-      const payload = {
-        user_id: user.id,
-        name: name.trim(),
-        config,
-        updated_at: new Date().toISOString(),
-      };
-
       if (reportId) {
-        const { error } = await supabase
-          .from("reports")
-          .update(payload)
-          .eq("id", reportId)
-          .eq("user_id", user.id);
-        if (error) throw error;
+        const res = await fetch(`/api/reports/${reportId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim(), config }),
+        });
+        const payload = await res.json();
+        if (!res.ok)
+          throw new Error(payload?.error ?? "Failed to update report");
         toast.success("Report updated");
       } else {
-        const { data, error } = await supabase
-          .from("reports")
-          .insert({ ...payload, created_at: new Date().toISOString() })
-          .select("id")
-          .single();
-        if (error) throw error;
+        const res = await fetch("/api/reports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim(), config }),
+        });
+        const payload = await res.json();
+        if (!res.ok) throw new Error(payload?.error ?? "Failed to save report");
         toast.success("Report saved");
-        router.push(`/reports/${data.id}`);
+        router.push(`/reports/${payload.id}`);
       }
     } catch (e: any) {
       toast.error(e?.message || "Failed to save report");
@@ -366,7 +348,7 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
 
   return (
     <div className="space-y-0">
-      {/* ── Top bar ──────────────────────────────────────────────────────── */}
+      {/* ── Top bar ── */}
       <div className="flex items-center justify-between gap-4 pb-5 border-b">
         <div className="flex items-center gap-3 min-w-0">
           <button
@@ -384,15 +366,10 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
             placeholder="Report name..."
           />
         </div>
-
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setPreview(!preview)}
-            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border transition-colors ${
-              preview
-                ? "bg-muted border-border text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
+            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border transition-colors ${preview ? "bg-muted border-border text-foreground" : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}
           >
             {preview ? (
               <EyeOff className="h-3.5 w-3.5" />
@@ -423,9 +400,8 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
         </div>
       ) : (
         <div className="pt-5 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
-          {/* ── Left column ────────────────────────────────────────────── */}
+          {/* ── Left column ── */}
           <div className="space-y-5">
-            {/* Filters */}
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
@@ -458,7 +434,6 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">
                     Project
@@ -482,7 +457,6 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Suite</Label>
                   <Select
@@ -509,7 +483,6 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
 
             <div className="border-t" />
 
-            {/* Metric picker */}
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <LayoutTemplate className="h-3.5 w-3.5 text-muted-foreground" />
@@ -517,25 +490,17 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
                   Add Sections
                 </span>
               </div>
-
-              {/* Category tabs */}
               <div className="flex gap-1 mb-3 p-1 bg-muted/50 rounded-lg">
                 {CATEGORIES.map((cat) => (
                   <button
                     key={cat.key}
                     onClick={() => setActiveCategory(cat.key)}
-                    className={`flex-1 text-xs py-1 px-1.5 rounded-md font-medium transition-colors ${
-                      activeCategory === cat.key
-                        ? "bg-background shadow-sm text-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
+                    className={`flex-1 text-xs py-1 px-1.5 rounded-md font-medium transition-colors ${activeCategory === cat.key ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                   >
                     {cat.label}
                   </button>
                 ))}
               </div>
-
-              {/* Metric buttons */}
               <div className="space-y-1">
                 {visibleMetrics.map((m) => {
                   const alreadyAdded = config.sections.some(
@@ -561,11 +526,7 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
                         </span>
                       </span>
                       <span
-                        className={`shrink-0 transition-opacity ${
-                          alreadyAdded
-                            ? "opacity-20"
-                            : "opacity-0 group-hover:opacity-50"
-                        }`}
+                        className={`shrink-0 transition-opacity ${alreadyAdded ? "opacity-20" : "opacity-0 group-hover:opacity-50"}`}
                       >
                         <Plus className="h-3.5 w-3.5" />
                       </span>
@@ -576,7 +537,7 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
             </div>
           </div>
 
-          {/* ── Right column — canvas ───────────────────────────────────── */}
+          {/* ── Right column ── */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
@@ -613,7 +574,6 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
                       key={section.id}
                       className="flex items-center gap-3 p-3 rounded-xl border bg-card hover:shadow-sm transition-all group"
                     >
-                      {/* Order controls */}
                       <div className="flex flex-col gap-0.5 shrink-0">
                         <button
                           onClick={() => moveSectionUp(section.id)}
@@ -630,20 +590,14 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
                           <ChevronDown className="h-3.5 w-3.5" />
                         </button>
                       </div>
-
-                      {/* Position number */}
                       <span className="text-xs text-muted-foreground/40 w-4 shrink-0 font-mono tabular-nums">
                         {idx + 1}
                       </span>
-
-                      {/* Icon */}
                       <span
                         className={`p-1.5 rounded-md shrink-0 ${TYPE_COLORS[meta?.type ?? "card"]}`}
                       >
                         {meta?.icon}
                       </span>
-
-                      {/* Label */}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium leading-tight">
                           {meta?.label}
@@ -652,13 +606,9 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
                           {meta?.description}
                         </p>
                       </div>
-
-                      {/* Type label */}
                       <span className="text-xs text-muted-foreground capitalize hidden sm:block shrink-0">
                         {meta?.type}
                       </span>
-
-                      {/* Remove */}
                       <button
                         onClick={() => removeSection(section.id)}
                         className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all shrink-0"
@@ -668,7 +618,6 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
                     </div>
                   );
                 })}
-
                 <p className="text-xs text-muted-foreground/60 text-center pt-2 pb-1">
                   Use ↑↓ to reorder · hover a section to remove · Preview to
                   check layout

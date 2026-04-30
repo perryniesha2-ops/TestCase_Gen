@@ -27,18 +27,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  toastSuccess,
-  toastError,
-  toastInfo,
-  toastWarning,
-} from "@/lib/utils/toast-utils";
+import { toastSuccess, toastError, toastInfo } from "@/lib/utils/toast-utils";
 import {
   ChevronDown,
   FileDown,
   FolderOpen,
   Loader2,
-  Plus,
   Search,
   Upload,
 } from "lucide-react";
@@ -46,6 +40,8 @@ import {
 import { RequirementsTable } from "./requirements-table";
 import { getProjectColor } from "@/lib/utils/requirement-helpers";
 import type { Project, Requirement } from "@/types/requirements";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface RequirementsListProps {
   onRequirementSelected?: (requirement: Requirement) => void;
@@ -60,14 +56,14 @@ type RequirementListResponse = {
   pageSize: number;
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debounced, setDebounced] = useState(value);
-
   useEffect(() => {
     const t = window.setTimeout(() => setDebounced(value), delayMs);
     return () => window.clearTimeout(t);
   }, [value, delayMs]);
-
   return debounced;
 }
 
@@ -82,14 +78,12 @@ function buildQueryParams(input: {
   const params = new URLSearchParams();
   params.set("page", String(input.page));
   params.set("pageSize", String(input.pageSize));
-
   if (input.projectId) params.set("projectId", input.projectId);
   if (input.q) params.set("q", input.q);
   if (input.status && input.status !== "all")
     params.set("status", input.status);
   if (input.priority && input.priority !== "all")
     params.set("priority", input.priority);
-
   return params;
 }
 
@@ -102,65 +96,56 @@ async function safeJson(res: Response) {
   }
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function RequirementsList({
   onRequirementSelected,
   selectable = false,
 }: RequirementsListProps) {
   const router = useRouter();
 
-  // ----- Filters -----
+  // ── Filters ───────────────────────────────────────────────────────────────
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
-
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
-
-  // Server pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  // ----- Data -----
+  // ── Data ──────────────────────────────────────────────────────────────────
   const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
-  // ----- UI state -----
+  // ── UI state ──────────────────────────────────────────────────────────────
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Prevent race conditions when multiple fetches overlap
+  // Sequence counter prevents stale responses from racing fetches
   const reqFetchSeq = useRef(0);
+  // Track whether initial load has run
+  const didInitialLoad = useRef(false);
 
-  const selectedProjectName = useMemo(() => {
-    if (!selectedProject) return null;
-    return projects.find((p) => p.id === selectedProject)?.name ?? null;
-  }, [projects, selectedProject]);
+  const selectedProjectName = useMemo(
+    () => projects.find((p) => p.id === selectedProject)?.name ?? null,
+    [projects, selectedProject],
+  );
 
-  const fetchProjects = useCallback(async () => {
-    const res = await fetch("/api/projects/list", { cache: "no-store" });
-    const payload = await safeJson(res);
-
-    if (!res.ok) {
-      throw new Error(
-        payload?.error ?? `Failed to load projects (${res.status})`,
-      );
-    }
-
-    setProjects(payload?.projects ?? []);
-  }, []);
+  // ── Fetch requirements ────────────────────────────────────────────────────
 
   const fetchRequirementsList = useCallback(
-    async (opts?: { initial?: boolean }) => {
+    async (opts?: { initial?: boolean; page?: number }) => {
       const seq = ++reqFetchSeq.current;
+      const targetPage = opts?.page ?? currentPage;
 
       if (opts?.initial) setInitialLoading(true);
       else setRefreshing(true);
 
       try {
         const params = buildQueryParams({
-          page: currentPage,
+          page: targetPage,
           pageSize,
           projectId: selectedProject || undefined,
           q: debouncedSearch?.trim() || undefined,
@@ -171,23 +156,17 @@ export function RequirementsList({
         const res = await fetch(`/api/requirements/list?${params.toString()}`, {
           cache: "no-store",
         });
-
-        const payload = (await safeJson(res)) as RequirementListResponse | any;
+        const payload = (await safeJson(res)) as RequirementListResponse | null;
 
         if (!res.ok) {
-          throw new Error(
-            payload?.error ?? `Failed to load requirements (${res.status})`,
-          );
+          throw new Error((payload as any)?.error ?? `Failed (${res.status})`);
         }
 
-        // If a newer request started after this one, ignore this response
         if (seq !== reqFetchSeq.current) return;
 
         setRequirements(payload?.requirements ?? []);
         setTotalPages(payload?.totalPages ?? 1);
         setTotalCount(payload?.totalCount ?? 0);
-
-        // If backend echoes page/pageSize, you can optionally sync them here.
       } catch (err: any) {
         if (seq !== reqFetchSeq.current) return;
         console.error("fetchRequirementsList error:", err);
@@ -198,42 +177,62 @@ export function RequirementsList({
         setRefreshing(false);
       }
     },
-    [
-      currentPage,
-      pageSize,
-      selectedProject,
-      debouncedSearch,
-      statusFilter,
-      priorityFilter,
-    ],
+    // Note: currentPage intentionally excluded — passed via opts.page
+    // to avoid the double-fetch that happens when page resets to 1
+    [selectedProject, debouncedSearch, statusFilter, priorityFilter, pageSize],
   );
 
+  // ── Initial load — runs once, fetches projects + requirements together ────
+
   useEffect(() => {
-    // Initial load: projects + requirements
+    if (didInitialLoad.current) return;
+    didInitialLoad.current = true;
+
     (async () => {
       try {
         setInitialLoading(true);
-        await fetchProjects();
-        await fetchRequirementsList({ initial: true });
-      } catch (err: any) {
-        console.error("Initial load error:", err);
-        toastError(err?.message ?? "Failed to load requirements");
-        setInitialLoading(false);
+        const [projectsRes] = await Promise.all([
+          fetch("/api/projects/list", { cache: "no-store" }),
+          // requirements fetch handled by fetchRequirementsList below
+        ]);
+        const projectsPayload = await safeJson(projectsRes);
+        if (projectsRes.ok) setProjects(projectsPayload?.projects ?? []);
+      } catch (err) {
+        console.error("fetchProjects error:", err);
       }
+      // Fetch requirements after projects so filters are ready
+      await fetchRequirementsList({ initial: true, page: 1 });
     })();
-  }, [fetchProjects, fetchRequirementsList]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // ← empty deps: run once on mount only
 
+  // ── Re-fetch when filters change (not on mount — initial load handles that)
+
+  const isFirstFilterRun = useRef(true);
   useEffect(() => {
+    if (isFirstFilterRun.current) {
+      isFirstFilterRun.current = false;
+      return;
+    }
+    // Reset to page 1 and re-fetch
     setCurrentPage(1);
+    void fetchRequirementsList({ page: 1 });
   }, [selectedProject, debouncedSearch, statusFilter, priorityFilter]);
 
+  // ── Re-fetch when page changes (not on mount or filter change) ────────────
+
+  const prevPage = useRef(currentPage);
   useEffect(() => {
-    fetchRequirementsList();
+    if (prevPage.current === currentPage) return;
+    prevPage.current = currentPage;
+    void fetchRequirementsList({ page: currentPage });
   }, [currentPage, fetchRequirementsList]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleRequirementAdded = useCallback(async () => {
     setCurrentPage(1);
-    await fetchRequirementsList();
+    await fetchRequirementsList({ page: 1 });
     router.refresh();
   }, [fetchRequirementsList, router]);
 
@@ -248,17 +247,6 @@ export function RequirementsList({
     [selectable, onRequirementSelected, router],
   );
 
-  const deleteRequirement = useCallback(async (requirementId: string) => {
-    const res = await fetch(`/api/requirements/${requirementId}/delete`, {
-      method: "DELETE",
-    });
-    const payload = await safeJson(res);
-
-    if (!res.ok) {
-      throw new Error(payload?.error ?? `Delete failed (${res.status})`);
-    }
-  }, []);
-
   const handleDelete = useCallback(
     async (requirement: Requirement) => {
       const ok = window.confirm(
@@ -266,49 +254,33 @@ export function RequirementsList({
       );
       if (!ok) return;
 
+      // Optimistic removal
+      setRequirements((prev) => prev.filter((r) => r.id !== requirement.id));
+      setTotalCount((prev) => Math.max(0, prev - 1));
+
       try {
-        // Optimistic removal first
-        setRequirements((prev) => prev.filter((r) => r.id !== requirement.id));
-        setTotalCount((prev) => Math.max(0, prev - 1));
-
-        await deleteRequirement(requirement.id);
-
+        const res = await fetch(`/api/requirements/${requirement.id}/delete`, {
+          method: "DELETE",
+        });
+        const payload = await safeJson(res);
+        if (!res.ok)
+          throw new Error(payload?.error ?? `Delete failed (${res.status})`);
         toastSuccess("Requirement deleted");
-
-        // Refresh to keep counts/pages correct (especially if page becomes empty)
-        await fetchRequirementsList();
+        await fetchRequirementsList({ page: currentPage });
       } catch (err: any) {
         console.error("deleteRequirement error:", err);
         toastError(err?.message ?? "Failed to delete requirement");
-        await fetchRequirementsList();
+        await fetchRequirementsList({ page: currentPage });
       }
     },
-    [deleteRequirement, fetchRequirementsList],
+    [fetchRequirementsList, currentPage],
   );
 
   const handleExport = useCallback(() => {
     toastInfo("Export functionality coming soon");
   }, []);
 
-  const onProjectChange = useCallback((projectId: string) => {
-    setSelectedProject(projectId);
-    setCurrentPage(1);
-  }, []);
-
-  const onStatusChange = useCallback((status: string) => {
-    setStatusFilter(status);
-    setCurrentPage(1);
-  }, []);
-
-  const onPriorityChange = useCallback((priority: string) => {
-    setPriorityFilter(priority);
-    setCurrentPage(1);
-  }, []);
-
-  const onSearchChange = useCallback((value: string) => {
-    setSearchTerm(value);
-    setCurrentPage(1);
-  }, []);
+  // ── Render ────────────────────────────────────────────────────────────────
 
   if (initialLoading) {
     return (
@@ -326,7 +298,7 @@ export function RequirementsList({
           projectId={selectedProject}
           onImportComplete={async () => {
             setCurrentPage(1);
-            await fetchRequirementsList();
+            await fetchRequirementsList({ page: 1 });
             router.refresh();
           }}
         >
@@ -335,28 +307,27 @@ export function RequirementsList({
             Import
           </Button>
         </ImportRequirementsDialog>
-        {/* Create (single) */}
+
         <AddRequirementModal
           onRequirementAdded={(newReq) => {
             setRequirements((prev) => [newReq, ...prev]);
           }}
-        />{" "}
+        />
       </div>
 
       {/* Filters */}
       <div className="flex items-center gap-4">
-        {/* Search */}
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search requirements..."
             value={searchTerm}
-            onChange={(e) => onSearchChange(e.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
           />
         </div>
 
-        {/* Project dropdown */}
+        {/* Project filter */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="min-w-[180px] justify-between">
@@ -374,17 +345,14 @@ export function RequirementsList({
           <DropdownMenuContent align="end" className="w-[220px]">
             <DropdownMenuLabel>Filter by Project</DropdownMenuLabel>
             <DropdownMenuSeparator />
-
-            <DropdownMenuItem onClick={() => onProjectChange("")}>
+            <DropdownMenuItem onClick={() => setSelectedProject("")}>
               All Projects
             </DropdownMenuItem>
-
             {projects.length > 0 && <DropdownMenuSeparator />}
-
             {projects.map((project) => (
               <DropdownMenuItem
                 key={project.id}
-                onClick={() => onProjectChange(project.id)}
+                onClick={() => setSelectedProject(project.id)}
               >
                 <FolderOpen
                   className={`h-4 w-4 mr-2 ${getProjectColor(project.color)}`}
@@ -392,7 +360,6 @@ export function RequirementsList({
                 <span className="truncate">{project.name}</span>
               </DropdownMenuItem>
             ))}
-
             {projects.length === 0 && (
               <div className="px-2 py-6 text-center text-sm text-muted-foreground">
                 No projects yet
@@ -402,7 +369,7 @@ export function RequirementsList({
         </DropdownMenu>
 
         {/* Status */}
-        <Select value={statusFilter} onValueChange={onStatusChange}>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -417,7 +384,7 @@ export function RequirementsList({
         </Select>
 
         {/* Priority */}
-        <Select value={priorityFilter} onValueChange={onPriorityChange}>
+        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Priority" />
           </SelectTrigger>
@@ -430,14 +397,12 @@ export function RequirementsList({
           </SelectContent>
         </Select>
 
-        {/* Export */}
         <Button variant="outline" onClick={handleExport} className="gap-2">
           <FileDown className="h-4 w-4" />
           Export
         </Button>
       </div>
 
-      {/* Inline refresh indicator (does not block UI) */}
       {refreshing && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />

@@ -86,7 +86,10 @@ export function LoginForm() {
   }
 
   return (
-    <div className="landing-bg relative flex min-h-screen items-center justify-center px-4">
+    <div
+      data-testid="login-page"
+      className="landing-bg relative flex min-h-screen items-center justify-center px-4"
+    >
       {/* Atmospheric glows */}
       <div
         aria-hidden="true"
@@ -106,7 +109,6 @@ export function LoginForm() {
             filter: "blur(80px)",
           }}
         />
-        {/* Subtle grid */}
         <div
           className="absolute inset-0 opacity-[0.025]"
           style={{
@@ -123,7 +125,6 @@ export function LoginForm() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       >
-        {/* Card glow halo */}
         <div
           aria-hidden="true"
           className="absolute inset-0 -z-10 scale-110 rounded-3xl opacity-30"
@@ -134,9 +135,10 @@ export function LoginForm() {
           }}
         />
 
-        {/* Card */}
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl shadow-gray-200 backdrop-blur-xl dark:border-white/10 dark:bg-white/5 dark:shadow-black/50">
-          {/* Top accent line */}
+        <div
+          data-testid="login-card"
+          className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl shadow-gray-200 backdrop-blur-xl dark:border-white/10 dark:bg-white/5 dark:shadow-black/50"
+        >
           <div
             className="h-px w-full"
             style={{
@@ -147,7 +149,10 @@ export function LoginForm() {
 
           <div className="px-8 pb-8 pt-7">
             {/* Header */}
-            <div className="mb-8 flex flex-col items-center text-center">
+            <div
+              data-testid="login-header"
+              className="mb-8 flex flex-col items-center text-center"
+            >
               <Logo size="lg" />
               <p className="mt-1 text-sm text-gray-500 dark:text-white/35">
                 Welcome back
@@ -157,6 +162,7 @@ export function LoginForm() {
             {/* Email not confirmed alert */}
             {emailNotConfirmed && (
               <motion.div
+                data-testid="email-not-confirmed-alert"
                 className="mb-5 overflow-hidden rounded-xl border border-red-300 bg-red-50 p-4 dark:border-red-500/20 dark:bg-red-500/10"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
@@ -172,6 +178,7 @@ export function LoginForm() {
                       Check your inbox for the confirmation email.
                     </p>
                     <Link
+                      data-testid="resend-confirmation-link"
                       href={`/resend-confirmation?email=${encodeURIComponent(userEmail)}`}
                       className="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 underline-offset-2 hover:underline dark:text-red-300"
                     >
@@ -183,7 +190,11 @@ export function LoginForm() {
               </motion.div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form
+              data-testid="login-form"
+              onSubmit={handleSubmit}
+              className="space-y-4"
+            >
               {/* Email field */}
               <div className="space-y-1.5">
                 <label
@@ -193,6 +204,7 @@ export function LoginForm() {
                   Email
                 </label>
                 <Input
+                  data-testid="login-email-input"
                   id="email"
                   name="email"
                   type="email"
@@ -200,6 +212,7 @@ export function LoginForm() {
                   disabled={disabled}
                   defaultValue={userEmail}
                   placeholder="you@company.com"
+                  maxLength={254}
                   className={cn(
                     "h-10 rounded-xl border-gray-300 bg-white text-sm text-gray-900 placeholder:text-gray-400 dark:border-white/10 dark:bg-white/6 dark:text-white dark:placeholder:text-white/20",
                     "focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20 dark:focus-visible:border-blue-400/50 dark:focus-visible:ring-blue-400/20",
@@ -218,6 +231,7 @@ export function LoginForm() {
                     Password
                   </label>
                   <Link
+                    data-testid="forgot-password-link"
                     href="/forgot-password"
                     className="text-xs text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/60"
                   >
@@ -226,12 +240,14 @@ export function LoginForm() {
                 </div>
                 <div className="relative">
                   <Input
+                    data-testid="login-password-input"
                     id="password"
                     name="password"
                     type={showPassword ? "text" : "password"}
                     required
                     disabled={disabled}
                     placeholder="••••••••"
+                    minLength={6}
                     className={cn(
                       "h-10 rounded-xl border-gray-300 bg-white pr-10 text-sm text-gray-900 placeholder:text-gray-400 dark:border-white/10 dark:bg-white/6 dark:text-white dark:placeholder:text-white/20",
                       "focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20 dark:focus-visible:border-blue-400/50 dark:focus-visible:ring-blue-400/20",
@@ -239,6 +255,7 @@ export function LoginForm() {
                     )}
                   />
                   <button
+                    data-testid="toggle-password-visibility"
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600 dark:text-white/25 dark:hover:text-white/50"
@@ -259,6 +276,7 @@ export function LoginForm() {
               {/* Submit */}
               <div className="pt-1">
                 <button
+                  data-testid="login-submit-button"
                   type="submit"
                   disabled={disabled}
                   aria-busy={loading}
@@ -305,9 +323,13 @@ export function LoginForm() {
             </form>
 
             {/* Sign up link */}
-            <p className="mt-6 text-center text-xs text-gray-400 dark:text-white/25">
+            <p
+              data-testid="signup-prompt"
+              className="mt-6 text-center text-xs text-gray-400 dark:text-white/25"
+            >
               Don&apos;t have an account?{" "}
               <Link
+                data-testid="signup-link"
                 href="/signup"
                 className="text-gray-600 transition-colors hover:text-gray-900 dark:text-white/50 dark:hover:text-white/80"
               >
