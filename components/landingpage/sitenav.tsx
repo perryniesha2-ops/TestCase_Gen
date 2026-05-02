@@ -124,7 +124,7 @@ export function SiteNav() {
               transition={{ type: "spring", stiffness: 420, damping: 26 }}
             >
               <Button
-                variant="ghost"
+                variant="outline"
                 asChild
                 size="sm"
                 className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/8"
@@ -138,19 +138,18 @@ export function SiteNav() {
               transition={{ type: "spring", stiffness: 420, damping: 26 }}
             >
               <Button
+                variant="secondary"
                 asChild
                 size="sm"
-                className="gap-1 rounded-full bg-blue-600 text-white shadow-md shadow-blue-600/20 hover:bg-blue-500 dark:bg-cyan-500 dark:shadow-cyan-900/40 dark:hover:bg-cyan-400"
+                className="gap-1 bg-cyan-600 text-white shadow-md shadow-blue-600/20 hover:bg-blue-500 dark:bg-cyan-500 dark:shadow-cyan-900/40 dark:hover:bg-cyan-400"
               >
                 <Link href="/signup">
-                  Start free
+                  Sign Up
                   <motion.span
                     className="inline-flex"
                     whileHover={reduce ? undefined : { x: 2 }}
                     transition={{ type: "spring", stiffness: 500, damping: 28 }}
-                  >
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </motion.span>
+                  ></motion.span>
                 </Link>
               </Button>
             </motion.div>

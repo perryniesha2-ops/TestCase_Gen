@@ -3,17 +3,17 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { Mail, AlertCircle, CheckCircle2, ArrowRight, ArrowLeft } from "lucide-react";
+import { AlertCircle, CheckCircle2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { resendConfirmationEmail } from "@/app/auth/actions/auth";
 import { motion } from "framer-motion";
 import { Logo } from "../pagecomponents/brandlogo";
 
 const inputCn = cn(
-  "h-10 rounded-xl border-gray-300 bg-white text-sm text-gray-900 placeholder:text-gray-400",
-  "dark:border-white/10 dark:bg-white/6 dark:text-white dark:placeholder:text-white/20",
-  "focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20",
-  "dark:focus-visible:border-blue-400/50 dark:focus-visible:ring-blue-400/20",
+  "h-10 rounded-xl border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder:text-gray-400",
+  "dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/20",
+  "focus-visible:border-cyan-400/50 focus-visible:ring-cyan-400/20",
+  "dark:focus-visible:border-cyan-400/50 dark:focus-visible:ring-cyan-400/10",
   "disabled:opacity-40",
 );
 
@@ -30,41 +30,96 @@ export function ResendConfirmationPage() {
     e.preventDefault();
     setLoading(true);
     setResult(null);
-
     const formData = new FormData();
     formData.append("email", email);
-
     const response = await resendConfirmationEmail(formData);
     setResult(response);
     setLoading(false);
   }
 
   return (
-    <div className="landing-bg relative flex min-h-screen items-center justify-center px-4">
-      {/* Atmospheric glows */}
+    <div className="relative flex min-h-screen items-center justify-center px-4">
+      {/* ── Light mode background ── */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 overflow-hidden"
+        className="pointer-events-none fixed inset-0 -z-10 block dark:hidden"
       >
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-white to-sky-50" />
         <div
-          className="absolute -right-40 -top-40 h-125 w-125 rounded-full opacity-20"
+          className="absolute -right-40 -top-40 h-[600px] w-[600px] rounded-full opacity-20"
           style={{
-            background: "radial-gradient(circle, #3b82f6, transparent 65%)",
+            background:
+              "radial-gradient(circle, #38bdf8 0%, #0ea5e9 50%, transparent 70%)",
             filter: "blur(80px)",
           }}
         />
         <div
-          className="absolute -bottom-20 -left-20 h-100 w-100 rounded-full opacity-15"
+          className="absolute -left-20 bottom-1/3 h-[400px] w-[400px] rounded-full opacity-10"
           style={{
-            background: "radial-gradient(circle, #a78bfa, transparent 65%)",
+            background:
+              "radial-gradient(circle, #06b6d4 0%, #0284c7 50%, transparent 70%)",
+            filter: "blur(100px)",
+          }}
+        />
+      </div>
+
+      {/* ── Dark mode aurora ── */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 -z-10 hidden dark:block"
+      >
+        <div className="absolute inset-0 bg-[#020810]" />
+        <div
+          className="absolute -left-[10%] -top-[10%] h-[70vh] w-[65vw] rounded-full"
+          style={{
+            background:
+              "radial-gradient(ellipse at 30% 20%, #0d2a4a 0%, #0a1f3d 20%, #061428 45%, transparent 75%)",
+            filter: "blur(70px)",
+            animation: "auroraShift 8s ease-in-out infinite",
+          }}
+        />
+        <div
+          className="absolute -right-[15%] -top-[5%] h-[60vh] w-[55vw] rounded-full"
+          style={{
+            background:
+              "radial-gradient(ellipse at 70% 20%, #0a1f3d 0%, #07152e 30%, transparent 70%)",
             filter: "blur(80px)",
+            animation: "auroraShift2 10s ease-in-out infinite",
+          }}
+        />
+        <div
+          className="absolute left-[15%] -top-[5%] h-[55vh] w-[70vw] rounded-full"
+          style={{
+            background:
+              "radial-gradient(ellipse at 50% 0%, #06b6d4 0%, #0284c7 18%, #034d8a 40%, transparent 68%)",
+            filter: "blur(80px)",
+            opacity: 0.35,
+            animation: "auroraShift 6s ease-in-out infinite",
+          }}
+        />
+        <div
+          className="absolute left-[40%] bottom-0 h-[50vh] w-[50vw] rounded-full"
+          style={{
+            background:
+              "radial-gradient(ellipse at 50% 100%, #0d2a4a 0%, #061428 50%, transparent 75%)",
+            filter: "blur(80px)",
+            opacity: 0.6,
+            animation: "auroraShift2 9s ease-in-out infinite",
+          }}
+        />
+        <div
+          className="absolute top-0 left-0 right-0 h-[2px]"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent 0%, #06b6d4 25%, #38bdf8 50%, #06b6d4 75%, transparent 100%)",
+            opacity: 0.5,
           }}
         />
         <div
           className="absolute inset-0 opacity-[0.025]"
           style={{
             backgroundImage:
-              "linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)",
+              "linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px)",
             backgroundSize: "60px 60px",
           }}
         />
@@ -76,25 +131,39 @@ export function ResendConfirmationPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       >
-        {/* Card glow halo */}
+        {/* Gradient border */}
         <div
           aria-hidden="true"
-          className="absolute inset-0 -z-10 scale-110 rounded-3xl opacity-30"
+          className="absolute -inset-[1px] rounded-2xl"
           style={{
             background:
-              "radial-gradient(ellipse at 50% 80%, #3b82f6, transparent 65%)",
-            filter: "blur(40px)",
+              "linear-gradient(160deg, #22d3ee 0%, #0ea5e9 30%, #1d4ed8 70%, #0a0f1e 100%)",
+            opacity: 0.7,
+          }}
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -inset-[3px] rounded-2xl"
+          style={{
+            background:
+              "linear-gradient(160deg, #22d3ee 0%, #0ea5e9 40%, transparent 70%)",
+            filter: "blur(10px)",
+            opacity: 0.15,
           }}
         />
 
         {/* Card */}
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl shadow-gray-200 backdrop-blur-xl dark:border-white/10 dark:bg-white/5 dark:shadow-black/50">
-          {/* Top accent line */}
+        <div
+          className="relative overflow-hidden rounded-[15px] border border-gray-200 bg-white shadow-2xl shadow-gray-200/50 backdrop-blur-xl dark:border-white/10 dark:bg-[#080f1e] dark:shadow-black/50"
+          style={{ margin: "1px" }}
+        >
+          {/* Top rim light */}
           <div
             className="h-px w-full"
             style={{
               background:
-                "linear-gradient(90deg, transparent, rgba(96,165,250,0.6) 40%, rgba(167,139,250,0.6) 60%, transparent)",
+                "linear-gradient(90deg, transparent, #06b6d4 40%, #38bdf8 50%, #06b6d4 60%, transparent)",
+              opacity: 0.5,
             }}
           />
 
@@ -108,13 +177,12 @@ export function ResendConfirmationPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Email field */}
               <div className="space-y-1.5">
                 <label
                   htmlFor="email"
                   className="text-xs font-medium text-gray-600 dark:text-white/50"
                 >
-                  Email Address
+                  Email address
                 </label>
                 <Input
                   id="email"
@@ -128,10 +196,10 @@ export function ResendConfirmationPage() {
                 />
               </div>
 
-              {/* Error alert */}
+              {/* Error */}
               {result?.error && (
                 <motion.div
-                  className="rounded-xl border border-red-300 bg-red-50 p-4 dark:border-red-500/20 dark:bg-red-500/10"
+                  className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-500/20 dark:bg-red-500/10"
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   transition={{ duration: 0.3 }}
@@ -145,7 +213,7 @@ export function ResendConfirmationPage() {
                 </motion.div>
               )}
 
-              {/* Success alert */}
+              {/* Success */}
               {result?.success && (
                 <motion.div
                   className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10"
@@ -169,8 +237,10 @@ export function ResendConfirmationPage() {
                   disabled={loading}
                   aria-busy={loading}
                   className={cn(
-                    "group relative w-full overflow-hidden rounded-xl bg-gray-900 py-2.5 text-sm font-semibold text-white dark:bg-white dark:text-gray-900",
-                    "transition-all duration-200 hover:bg-gray-800 hover:shadow-lg hover:shadow-gray-900/10 dark:hover:bg-white/90 dark:hover:shadow-white/10",
+                    "group relative w-full overflow-hidden rounded-xl py-2.5 text-sm font-semibold text-white",
+                    "bg-cyan-700 hover:bg-cyan-500 shadow-lg shadow-cyan-600/20",
+                    "dark:bg-cyan-700 dark:hover:bg-cyan-400 dark:shadow-cyan-900/40",
+                    "transition-all duration-200",
                     "disabled:cursor-not-allowed disabled:opacity-50",
                     "flex items-center justify-center gap-2",
                   )}
@@ -200,7 +270,7 @@ export function ResendConfirmationPage() {
                     </>
                   ) : (
                     <>
-                      Send Confirmation Email
+                      Send confirmation email
                       <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
                     </>
                   )}
@@ -214,7 +284,7 @@ export function ResendConfirmationPage() {
                 Already confirmed?{" "}
                 <Link
                   href="/login"
-                  className="text-gray-600 transition-colors hover:text-gray-900 dark:text-white/50 dark:hover:text-white/80"
+                  className="text-cyan-700 transition-colors hover:text-cyan-500 dark:text-cyan-400 dark:hover:text-cyan-300"
                 >
                   Sign in
                 </Link>
@@ -223,7 +293,7 @@ export function ResendConfirmationPage() {
                 Don&apos;t have an account?{" "}
                 <Link
                   href="/signup"
-                  className="text-gray-600 transition-colors hover:text-gray-900 dark:text-white/50 dark:hover:text-white/80"
+                  className="text-cyan-700 transition-colors hover:text-cyan-500 dark:text-cyan-400 dark:hover:text-cyan-300"
                 >
                   Sign up
                 </Link>
