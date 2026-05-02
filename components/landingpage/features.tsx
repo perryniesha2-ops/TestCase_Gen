@@ -13,25 +13,25 @@ import {
 const items = [
   {
     icon: Zap,
-    accent: "#60a5fa",
+    accent: "#38bdf8",
     title: "Instant structured generation",
     desc: "Turn user stories and specs into mapped test suites with steps, inputs, and assertions.",
   },
   {
     icon: Layers,
-    accent: "#a78bfa",
+    accent: "#22d3ee",
     title: "Cross-platform by design",
     desc: "Generate web, mobile, API/backend, accessibility, and performance cases from one workflow.",
   },
   {
     icon: Shield,
-    accent: "#34d399",
+    accent: "#60a5fa",
     title: "Guardrails & negatives",
     desc: "Dial coverage, add negative and edge-case paths, and keep tests aligned to real risk.",
   },
   {
     icon: BarChart3,
-    accent: "#fb923c",
+    accent: "#818cf8",
     title: "Traceability & reporting",
     desc: "Link tests to requirements, suites, and runs—then track health over time.",
   },
@@ -51,7 +51,7 @@ export function Features() {
     >
       {/* Section label */}
       <div className="mx-auto mb-16 max-w-7xl px-6 text-center">
-        <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-100 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-white/40">
+        <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 backdrop-blur-sm dark:border-white/10 dark:bg-white/5 dark:text-white/40">
           <span className="h-1 w-4 rounded-full bg-gray-300 dark:bg-white/20" />
           Our workflow
           <span className="h-1 w-4 rounded-full bg-gray-300 dark:bg-white/20" />
@@ -63,7 +63,7 @@ export function Features() {
             className="bg-clip-text text-transparent"
             style={{
               backgroundImage:
-                "linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%)",
+                "linear-gradient(135deg, #60a5fa 0%, #38bdf8 50%, #22d3ee 100%)",
             }}
           >
             workflow easier
@@ -86,13 +86,21 @@ export function Features() {
           const Icon = f.icon;
           return (
             <MotionDiv key={f.title} variants={itemFadeUp}>
-              <div className="group relative h-full overflow-hidden rounded-2xl border border-gray-200 bg-white p-6 backdrop-blur-sm transition-all duration-300 hover:border-gray-300 hover:bg-gray-50 dark:border-white/8 dark:bg-white/4 dark:hover:border-white/15 dark:hover:bg-white/[0.07]">
+              <div className="group relative h-full overflow-hidden rounded-2xl border border-gray-200 bg-white/80 p-6 backdrop-blur-sm transition-all duration-300 hover:border-gray-300 hover:bg-white dark:border-white/8 dark:bg-white/4 dark:hover:border-white/15 dark:hover:bg-white/[0.07]">
                 {/* Hover corner glow */}
                 <div
-                  className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full opacity-0 transition-opacity duration-500 group-hover:opacity-30"
+                  className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full opacity-0 transition-opacity duration-500 group-hover:opacity-30 dark:group-hover:opacity-40"
                   style={{
                     background: `radial-gradient(circle, ${f.accent}, transparent 70%)`,
                     filter: "blur(20px)",
+                  }}
+                />
+
+                {/* Top-edge accent line on hover */}
+                <div
+                  className="pointer-events-none absolute top-0 left-6 right-6 h-[1px] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  style={{
+                    background: `linear-gradient(90deg, transparent, ${f.accent}80, transparent)`,
                   }}
                 />
 
@@ -100,7 +108,7 @@ export function Features() {
                 <div
                   className="mb-5 flex h-10 w-10 items-center justify-center rounded-xl"
                   style={{
-                    background: `${f.accent}18`,
+                    background: `${f.accent}15`,
                     border: `1px solid ${f.accent}30`,
                   }}
                 >

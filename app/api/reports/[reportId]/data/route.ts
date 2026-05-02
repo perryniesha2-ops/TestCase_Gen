@@ -6,12 +6,6 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// ─── GET /api/reports/[reportId]/data ────────────────────────────────────────
-// Executes all RPCs and queries needed to render a report server-side.
-// Also accepts config inline via query params for builder preview mode:
-//   ?days=30&suiteId=<uuid>
-// When reportId is "preview", config must be passed via query params.
-
 export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ reportId: string }> },
@@ -32,11 +26,9 @@ export async function GET(
   let suiteFilter: string | null;
 
   if (reportId === "preview") {
-    // Builder preview — config passed via query params
     days = parseInt(url.searchParams.get("days") ?? "30", 10);
     suiteFilter = url.searchParams.get("suiteId") || null;
   } else {
-    // Load config from DB
     const { data: report, error: reportErr } = await supabase
       .from("reports")
       .select("config")
@@ -73,32 +65,20 @@ export async function GET(
       p_suite_id: suiteFilter,
     }),
     supabase.from("requirements").select("id").eq("user_id", user.id),
+    // Fetch test cases — used for library size, type breakdown, and coverage
     supabase
       .from("test_cases")
       .select(
-        "id, execution_status, is_boundary_test, is_negative_test, is_security_test, is_edge_case",
+        "id, is_boundary_test, is_negative_test, is_security_test, is_edge_case",
       )
       .eq("user_id", user.id),
   ]);
 
-  // ── Aggregate ─────────────────────────────────────────────────────────────
-
-  const suiteStats = (statsRes.data ?? []) as any[];
-  const totalExecutions = suiteStats.reduce(
-    (s, r) => s + (r.execution_count ?? 0),
-    0,
-  );
-  const weightedPassRate =
-    totalExecutions > 0
-      ? Math.round(
-          suiteStats.reduce(
-            (s, r) => s + (r.avg_pass_rate ?? 0) * (r.execution_count ?? 0),
-            0,
-          ) / totalExecutions,
-        )
-      : 0;
+  // ── Aggregate execution counts from the trend (period-scoped) ────────────
 
   const trend = (trendsRes.data ?? []) as any[];
+
+  // These are all period-scoped — sum across daily trend rows
   const totalPassed = trend.reduce(
     (s: number, r: any) => s + (r.passed ?? 0),
     0,
@@ -116,23 +96,61 @@ export async function GET(
     0,
   );
 
+  // Total executions in the period (what was actually run)
+  const totalExecuted = totalPassed + totalFailed + totalBlocked + totalSkipped;
+
+  // ── Suite stats ───────────────────────────────────────────────────────────
+
+  const suiteStats = (statsRes.data ?? []) as any[];
+  const totalExecutions = suiteStats.reduce(
+    (s, r) => s + (r.execution_count ?? 0),
+    0,
+  );
+  const weightedPassRate =
+    totalExecutions > 0
+      ? Math.round(
+          suiteStats.reduce(
+            (s, r) => s + (r.avg_pass_rate ?? 0) * (r.execution_count ?? 0),
+            0,
+          ) / totalExecutions,
+        )
+      : 0;
+
+  // ── Test case library ─────────────────────────────────────────────────────
+
   const tc = (tcRes.data ?? []) as any[];
-  const totalNotRun = tc.filter(
-    (t) => !t.execution_status || t.execution_status === "not_run",
-  ).length;
+  const librarySize = tc.length;
+
+  // not_run = test cases in the library that had zero executions in the period.
+  // We approximate this as library size minus unique tests executed.
+  // Since we don't have a unique-test count from the trend, we use:
+  //   not_run = max(0, librarySize - totalExecuted)
+  // clamped so it never goes negative (executions can exceed library if re-run).
+  const totalNotRun = Math.max(0, librarySize - totalExecuted);
+
+  // total_tests = full library size (how many test cases exist),
+  // which gives context for the not_run count.
+  const totalTests = librarySize;
+
+  // ── Requirements coverage ─────────────────────────────────────────────────
 
   const reqCount = (reqRes.data ?? []).length;
   const testedCount = Math.min(reqCount, Math.floor(tc.length * 0.7));
   const coveragePct =
     reqCount > 0 ? Math.round((testedCount / reqCount) * 100) : 0;
 
+  // ── Test type breakdown ───────────────────────────────────────────────────
+
   const boundary = tc.filter((t) => t.is_boundary_test).length;
   const negative = tc.filter((t) => t.is_negative_test).length;
   const security = tc.filter((t) => t.is_security_test).length;
   const edge = tc.filter((t) => t.is_edge_case).length;
-  const functional = tc.length - boundary - negative - security - edge;
+  const functional = librarySize - boundary - negative - security - edge;
+
+  // ── Performance data ──────────────────────────────────────────────────────
 
   const perfData = (perfRes.data ?? []) as any[];
+
   const topFailures = perfData
     .filter((r) => r.failure_frequency > 0)
     .sort((a, b) => b.failure_frequency - a.failure_frequency)
@@ -158,7 +176,7 @@ export async function GET(
 
   return NextResponse.json({
     days,
-    total_tests: tc.length,
+    total_tests: totalTests,
     passed: totalPassed,
     failed: totalFailed,
     blocked: totalBlocked,

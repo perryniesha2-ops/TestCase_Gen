@@ -13,45 +13,35 @@ import {
   useMotionValueEvent,
   useMotionValue,
 } from "framer-motion";
-import { useEffect, useState } from "react";
-import { Separator } from "../ui/separator";
+import { useState } from "react";
 
 export function SiteNav() {
   const reduce = useReducedMotion();
   const { scrollY } = useScroll();
 
-  // visual tightening on scroll
   const scale = useTransform(scrollY, [0, 80], [1, 0.985]);
   const backdrop = useTransform(scrollY, [0, 80], [0, 1]);
 
-  // hide on down, show on up
   const [hidden, setHidden] = useState(false);
   const lastY = useMotionValue(0);
 
   useMotionValueEvent(scrollY, "change", (latest) => {
     const prev = lastY.get();
     lastY.set(latest);
-
-    // Ignore tiny scroll jitter
     const delta = latest - prev;
     if (Math.abs(delta) < 6) return;
-
-    // Always show at top
     if (latest < 24) {
       setHidden(false);
       return;
     }
-
-    // Down hides, up shows
     if (delta > 0) setHidden(true);
     else setHidden(false);
   });
 
-  // If the user prefers reduced motion, don't do hide/show animation
   const navAnimate = reduce
     ? undefined
     : hidden
-      ? { y: -92, opacity: 0 } // ~header height
+      ? { y: -92, opacity: 0 }
       : { y: 0, opacity: 1 };
 
   return (
@@ -61,15 +51,33 @@ export function SiteNav() {
       animate={reduce ? undefined : { opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
     >
-      {/* Background layer that activates on scroll */}
+      {/* Scroll-activated background */}
       <motion.div
         className="absolute inset-0 -z-10"
         style={{ opacity: backdrop }}
       >
-        <div className="h-full w-full border-b bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/55 shadow-sm" />
+        {/* Light mode nav bg */}
+        <div className="h-full w-full border-b border-gray-200 bg-white/80 shadow-sm backdrop-blur-xl dark:hidden" />
+        {/* Dark mode nav bg */}
+        <div className="hidden h-full w-full border-b border-white/8 bg-[#020810]/80 shadow-sm backdrop-blur-xl dark:block" />
       </motion.div>
 
-      {/* The actual bar that hides/shows */}
+      {/* Aqua rim light along bottom of nav — dark mode only */}
+      <motion.div
+        className="absolute bottom-0 left-[5%] right-[5%] h-[1px] hidden dark:block"
+        style={{ opacity: backdrop }}
+      >
+        <div
+          className="h-full w-full"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent, #06b6d4 30%, #38bdf8 50%, #06b6d4 70%, transparent)",
+            opacity: 0.3,
+          }}
+        />
+      </motion.div>
+
+      {/* Nav content */}
       <motion.div
         className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8"
         animate={navAnimate}
@@ -115,7 +123,12 @@ export function SiteNav() {
               whileHover={reduce ? undefined : { y: -1 }}
               transition={{ type: "spring", stiffness: 420, damping: 26 }}
             >
-              <Button variant="ghost" asChild size="sm">
+              <Button
+                variant="ghost"
+                asChild
+                size="sm"
+                className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/8"
+              >
                 <Link href="/login">Log in</Link>
               </Button>
             </motion.div>
@@ -124,7 +137,11 @@ export function SiteNav() {
               whileHover={reduce ? undefined : { y: -1 }}
               transition={{ type: "spring", stiffness: 420, damping: 26 }}
             >
-              <Button asChild size="sm" className="gap-1">
+              <Button
+                asChild
+                size="sm"
+                className="gap-1 rounded-full bg-blue-600 text-white shadow-md shadow-blue-600/20 hover:bg-blue-500 dark:bg-cyan-500 dark:shadow-cyan-900/40 dark:hover:bg-cyan-400"
+              >
                 <Link href="/signup">
                   Start free
                   <motion.span
@@ -161,11 +178,13 @@ function NavLink({
     >
       <Link
         href={href}
-        className={cn("relative transition-colors hover:text-foreground")}
+        className={cn(
+          "relative text-gray-500 transition-colors hover:text-gray-900 dark:text-white/50 dark:hover:text-white",
+        )}
       >
         {children}
         <motion.span
-          className="pointer-events-none absolute -bottom-1 left-0 h-px w-full origin-left bg-foreground/60"
+          className="pointer-events-none absolute -bottom-1 left-0 h-px w-full origin-left bg-gray-900/60 dark:bg-white/60"
           initial={{ scaleX: 0 }}
           whileHover={reduce ? undefined : { scaleX: 1 }}
           transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}

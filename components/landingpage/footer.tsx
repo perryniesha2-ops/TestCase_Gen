@@ -26,19 +26,35 @@ export function Footer() {
 
   return (
     <motion.footer
-      className="relative border-t border-gray-200 dark:border-white/8"
+      className="relative"
       initial={reduce ? false : "hidden"}
       whileInView={reduce ? undefined : "show"}
       viewport={{ once: true, margin: "-60px" }}
       variants={container}
     >
-      {/* Subtle top glow line */}
+      {/* Top border — light mode */}
+      <div className="absolute inset-x-0 top-0 h-px bg-gray-200 dark:hidden" />
+
+      {/* Top border + aqua glow — dark mode */}
+      <div className="absolute inset-x-0 top-0 hidden dark:block">
+        <div className="h-px w-full bg-white/8" />
+        <div
+          className="pointer-events-none h-px w-full"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent 0%, #06b6d4 25%, #38bdf8 50%, #06b6d4 75%, transparent 100%)",
+            opacity: 0.3,
+          }}
+        />
+      </div>
+
+      {/* Subtle background glow — dark mode only */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-px"
+        className="pointer-events-none absolute inset-0 hidden dark:block"
         style={{
           background:
-            "linear-gradient(90deg, transparent 0%, rgba(96,165,250,0.4) 30%, rgba(167,139,250,0.4) 70%, transparent 100%)",
+            "radial-gradient(ellipse 60% 80% at 50% 100%, rgba(6,182,212,0.05), transparent 70%)",
         }}
       />
 
@@ -73,7 +89,7 @@ export function Footer() {
           ))}
           <motion.div
             variants={item}
-            className="text-gray-500 hover:text-gray-800 transition-colors duration-200 dark:text-white/30 dark:hover:text-white/70"
+            className="text-gray-500 transition-colors duration-200 hover:text-gray-800 dark:text-white/30 dark:hover:text-white/70"
           >
             <ContactSheet />
           </motion.div>
