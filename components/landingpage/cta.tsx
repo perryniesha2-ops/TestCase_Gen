@@ -9,16 +9,18 @@ export function CTA() {
   const reduceMotion = useReducedMotion();
 
   return (
-    <section id="pricing" className="relative overflow-hidden py-24 sm:py-32">
+    <section
+      id="pricing"
+      className="relative h-full w-full flex items-center justify-center overflow-hidden px-6"
+    >
       <motion.div
-        className="mx-auto max-w-7xl px-6"
+        className="w-full max-w-3xl"
         initial={reduceMotion ? false : { opacity: 0, y: 20 }}
-        whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.25 }}
+        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       >
-        <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white/80 p-12 text-center backdrop-blur-sm sm:p-16 dark:border-white/10 dark:bg-white/4">
-          {/* Inner glow — aqua in dark, soft blue in light */}
+        <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white/80 p-10 text-center backdrop-blur-sm dark:border-white/10 dark:bg-white/4">
+          {/* Inner glow */}
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 -z-10"
@@ -28,7 +30,7 @@ export function CTA() {
             }}
           />
 
-          {/* Rim light along top of card */}
+          {/* Rim light */}
           <div
             className="absolute top-0 left-[10%] right-[10%] h-[1px]"
             style={{
@@ -39,7 +41,7 @@ export function CTA() {
           />
 
           {/* Top rule */}
-          <div className="mx-auto mb-8 flex items-center justify-center gap-4">
+          <div className="mx-auto mb-6 flex items-center justify-center gap-4">
             <div
               className="h-px w-16 block dark:hidden"
               style={{
@@ -73,8 +75,8 @@ export function CTA() {
             />
           </div>
 
-          <div className="mx-auto max-w-2xl space-y-5">
-            <h3 className="text-balance text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl dark:text-white">
+          <div className="mx-auto max-w-2xl space-y-4">
+            <h3 className="text-balance text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl dark:text-white">
               Start free. Upgrade when your{" "}
               <span
                 className="bg-clip-text text-transparent"
@@ -86,13 +88,14 @@ export function CTA() {
                 team is ready.
               </span>
             </h3>
-            <p className="text-base text-gray-500 sm:text-lg dark:text-white/40">
-              Generate up to 50 test cases on the free tier. Move to paid when
-              you need higher volume, team workspaces, and advanced reporting.
+            <p className="text-base text-gray-500 dark:text-white/40">
+              Generate up to 20 test cases monthly on the free tier. Move to
+              paid when you need higher volume, team workspaces, and advanced
+              reporting.
             </p>
           </div>
 
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <div className="mt-7 flex flex-wrap justify-center gap-3">
             <Button
               asChild
               size="lg"
@@ -114,7 +117,7 @@ export function CTA() {
             </Button>
           </div>
 
-          <p className="mt-6 text-xs text-gray-400 dark:text-white/25">
+          <p className="mt-5 text-xs text-gray-400 dark:text-white/25">
             Monthly & annual plans available · Cancel anytime
           </p>
         </div>

@@ -4,15 +4,14 @@ import { Features } from "@/components/landingpage/features";
 import { CTA } from "@/components/landingpage/cta";
 import { Footer } from "@/components/landingpage/footer";
 import { SiteNav } from "@/components/landingpage/sitenav";
+import { Carousel } from "@/components/landingpage/carousel";
 import { NavSeparator } from "@/components/landingpage/nav-separator";
 
-export const metadata = {
-  title: "SynthQA",
-};
+export const metadata = { title: "SynthQA" };
 
 export default function LandingPage() {
   return (
-    <div className="relative min-h-screen">
+    <div className="relative">
       {/* ── Light mode background ── */}
       <div
         aria-hidden="true"
@@ -43,7 +42,6 @@ export default function LandingPage() {
         className="pointer-events-none fixed inset-0 -z-10 hidden dark:block"
       >
         <div className="absolute inset-0 bg-[#020810]" />
-
         <div
           className="absolute -left-[10%] -top-[10%] h-[70vh] w-[65vw] rounded-full"
           style={{
@@ -53,7 +51,6 @@ export default function LandingPage() {
             animation: "auroraShift 8s ease-in-out infinite",
           }}
         />
-
         <div
           className="absolute -right-[15%] -top-[5%] h-[60vh] w-[55vw] rounded-full"
           style={{
@@ -63,7 +60,6 @@ export default function LandingPage() {
             animation: "auroraShift2 10s ease-in-out infinite",
           }}
         />
-
         <div
           className="absolute left-[15%] -top-[5%] h-[55vh] w-[70vw] rounded-full"
           style={{
@@ -74,7 +70,6 @@ export default function LandingPage() {
             animation: "auroraShift 6s ease-in-out infinite",
           }}
         />
-
         <div
           className="absolute left-[40%] -top-[15%] h-[40vh] w-[40vw] rounded-full"
           style={{
@@ -85,7 +80,6 @@ export default function LandingPage() {
             animation: "auroraShift2 7s ease-in-out infinite",
           }}
         />
-
         <div
           className="absolute left-[20%] top-[55vh] h-[60vh] w-[60vw] rounded-full"
           style={{
@@ -96,7 +90,6 @@ export default function LandingPage() {
             animation: "auroraShift2 9s ease-in-out infinite",
           }}
         />
-
         <div
           className="absolute left-[10%] top-[100vh] h-[60vh] w-[70vw] rounded-full"
           style={{
@@ -107,7 +100,6 @@ export default function LandingPage() {
             animation: "auroraShift 11s ease-in-out infinite",
           }}
         />
-
         <div
           className="absolute top-0 left-0 right-0 h-[2px]"
           style={{
@@ -116,7 +108,6 @@ export default function LandingPage() {
             opacity: 0.5,
           }}
         />
-
         <div
           className="absolute inset-0 opacity-[0.025]"
           style={{
@@ -127,12 +118,14 @@ export default function LandingPage() {
         />
       </div>
 
+      {/* Nav is fixed outside the scroll container */}
       <SiteNav />
       <NavSeparator />
-      <Hero />
-      <LogosStrip />
-      <Features />
-      <CTA />
+
+      {/* Snap scroll container — takes full remaining height */}
+      <div className="h-[calc(100vh-5rem)] w-full">
+        <Carousel slides={[<Hero />, <Features />, <CTA />]} />
+      </div>
       <Footer />
     </div>
   );

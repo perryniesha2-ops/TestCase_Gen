@@ -402,15 +402,6 @@ export function TestManagementDashboard() {
             >
               {metrics.test_cases.failed}
             </div>
-            <Link href="/test-cases?runStatus=failed">
-              <Button
-                data-testid="view-failures-link"
-                variant="link"
-                className="h-auto p-0 text-xs mt-2 text-red-600 hover:text-red-700"
-              >
-                View failures
-              </Button>
-            </Link>
           </CardContent>
         </Card>
 
