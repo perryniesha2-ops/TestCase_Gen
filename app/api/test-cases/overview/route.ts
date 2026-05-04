@@ -23,36 +23,24 @@ export async function GET(req: Request) {
     const sessionId = url.searchParams.get("session");
     const projectId = url.searchParams.get("project");
 
-    // 1) Projects (toolbar)
+    // ── 1. Projects ───────────────────────────────────────────────────────────
     const { data: projects, error: projErr } = await supabase
       .from("projects")
       .select("id, name, color, icon")
       .eq("user_id", user.id)
       .order("name");
 
-    if (projErr) {
+    if (projErr)
       return NextResponse.json({ error: projErr.message }, { status: 500 });
-    }
 
-    // 2) Regular test cases (return full fields needed by runner)
+    // ── 2. Regular test cases ─────────────────────────────────────────────────
     let tcQuery = supabase
       .from("test_cases")
       .select(
         `
-        id,
-        generation_id,
-        title,
-        description,
-        test_type,
-        priority,
-        preconditions,
-        test_steps,
-        expected_result,
-        is_edge_case,
-        status,
-        created_at,
-        updated_at,
-        project_id,
+        id, generation_id, title, description, test_type, priority,
+        preconditions, test_steps, expected_result, is_edge_case,
+        status, created_at, updated_at, project_id,
         projects:project_id(id, name, color, icon)
       `,
       )
@@ -63,103 +51,105 @@ export async function GET(req: Request) {
     if (projectId) tcQuery = tcQuery.eq("project_id", projectId);
 
     const { data: testCases, error: tcErr } = await tcQuery;
-    if (tcErr) {
+    if (tcErr)
       return NextResponse.json({ error: tcErr.message }, { status: 500 });
-    }
 
-    // 3) Cross-platform test cases - FIXED: Removed trailing comma and extra whitespace
+    // ── 3. Cross-platform test cases ──────────────────────────────────────────
     let crossPlatformQuery = supabase
       .from("platform_test_cases")
       .select(
         `
-        id,
-        suite_id,
-        platform,
-        framework,
-        title,
-        description,
-        preconditions,
-        steps,
-        expected_results,
-        automation_hints,
-        priority,
-        status,
-        project_id,
-        created_at,
-        projects (id, name, color, icon)
+        id, suite_id, platform, framework, title, description,
+        preconditions, steps, expected_results, automation_hints,
+        priority, status, project_id, created_at,
+        projects(id, name, color, icon)
       `,
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
-    if (projectId) {
+    if (projectId)
       crossPlatformQuery = crossPlatformQuery.eq("project_id", projectId);
-    }
 
     const { data: rawCrossPlatformCases, error: cpErr } =
       await crossPlatformQuery;
-
-    if (cpErr) {
+    if (cpErr)
       return NextResponse.json({ error: cpErr.message }, { status: 500 });
-    }
 
-    // 4) Session header (optional)
+    // ── 4. Session header ─────────────────────────────────────────────────────
     let currentSession: any = null;
     if (sessionId) {
-      const { data: s, error: sErr } = await supabase
+      const { data: s } = await supabase
         .from("test_run_sessions")
         .select("id, name, environment, status")
         .eq("id", sessionId)
         .single();
-
-      if (!sErr) currentSession = s;
+      if (s) currentSession = s;
     }
 
-    // 5) Generations (optional, but keeps old UI compatible)
+    // ── 5. Generations ────────────────────────────────────────────────────────
     const { data: generations, error: genErr } = await supabase
       .from("test_case_generations")
       .select("id, title")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
-    if (genErr) {
+    if (genErr)
       return NextResponse.json({ error: genErr.message }, { status: 500 });
-    }
 
-    // 6) Latest execution status map (single query via view)
+    // ── 6. Latest execution status — separate queries per view ────────────────
+    // v_test_case_latest_execution  → regular test cases (includes automation runs
+    //   since test_executions rows are created for both manual + automated runs)
+    // v_platform_test_case_latest_execution → cross-platform test cases
+
     const regularIds = (testCases ?? []).map((t: any) => t.id);
     const crossIds = (rawCrossPlatformCases ?? []).map((t: any) => t.id);
-    const ids = [...regularIds, ...crossIds];
 
     const executionByCaseId: Record<
       string,
       { status: string; executed_at?: string | null }
     > = {};
 
-    if (ids.length > 0) {
-      let exQuery = supabase
-        .from("v_test_case_latest_execution")
-        .select("test_case_id, execution_status, executed_at")
-        .in("test_case_id", ids);
+    await Promise.all([
+      // Regular test cases
+      regularIds.length > 0
+        ? supabase
+            .from("v_test_case_latest_execution")
+            .select("test_case_id, execution_status, executed_at")
+            .in("test_case_id", regularIds)
+            .then(({ data, error }) => {
+              if (error)
+                console.error("v_test_case_latest_execution error:", error);
+              for (const r of data ?? []) {
+                executionByCaseId[r.test_case_id] = {
+                  status: r.execution_status,
+                  executed_at: r.executed_at,
+                };
+              }
+            })
+        : Promise.resolve(),
 
-      if (sessionId) {
-        // If your view contains session_id, you can filter here.
-        // exQuery = exQuery.eq("session_id", sessionId);
-      }
-
-      const { data: rows, error: exErr } = await exQuery;
-
-      if (exErr) {
-        return NextResponse.json({ error: exErr.message }, { status: 500 });
-      }
-
-      for (const r of rows ?? []) {
-        executionByCaseId[r.test_case_id] = {
-          status: r.execution_status,
-          executed_at: r.executed_at,
-        };
-      }
-    }
+      // Cross-platform test cases — use their own view
+      crossIds.length > 0
+        ? supabase
+            .from("v_platform_test_case_latest_execution")
+            .select("test_case_id, execution_status, created_at")
+            .in("test_case_id", crossIds)
+            .then(({ data, error }) => {
+              if (error)
+                console.error(
+                  "v_platform_test_case_latest_execution error:",
+                  error,
+                );
+              for (const r of data ?? []) {
+                executionByCaseId[r.test_case_id] = {
+                  status: r.execution_status,
+                  executed_at: r.created_at,
+                };
+              }
+            })
+        : Promise.resolve(),
+    ]);
 
     return NextResponse.json({
       testCases: testCases ?? [],

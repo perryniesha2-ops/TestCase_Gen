@@ -236,6 +236,16 @@ export function TestManagementDashboard() {
     return <Activity className="h-4 w-4 text-blue-600 flex-shrink-0" />;
   }
 
+  function formatDate(value: string) {
+    const date = new Date(value);
+    return date.toLocaleDateString("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "2-digit",
+      timeZone: "UTC",
+    });
+  }
+
   if (loading) {
     return (
       <div
@@ -310,7 +320,6 @@ export function TestManagementDashboard() {
         <Card data-testid="metric-total-tests">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Tests</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div
@@ -328,7 +337,6 @@ export function TestManagementDashboard() {
         <Card data-testid="metric-pass-rate">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Pass Rate</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div
@@ -353,7 +361,6 @@ export function TestManagementDashboard() {
         <Card data-testid="metric-coverage">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Coverage</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div
@@ -387,7 +394,6 @@ export function TestManagementDashboard() {
         >
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Failed Tests</CardTitle>
-            <XCircle className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
             <div
@@ -396,15 +402,6 @@ export function TestManagementDashboard() {
             >
               {metrics.test_cases.failed}
             </div>
-            <Link href="/test-cases?runStatus=failed">
-              <Button
-                data-testid="view-failures-link"
-                variant="link"
-                className="h-auto p-0 text-xs mt-2 text-red-600 hover:text-red-700"
-              >
-                View failures
-              </Button>
-            </Link>
           </CardContent>
         </Card>
 
@@ -413,7 +410,6 @@ export function TestManagementDashboard() {
             <CardTitle className="text-sm font-medium">
               Automation Runs
             </CardTitle>
-            <Zap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div
@@ -453,15 +449,14 @@ export function TestManagementDashboard() {
                     <XAxis
                       dataKey="date"
                       style={{ fontSize: "12px" }}
-                      tickFormatter={(value) => {
-                        const date = new Date(value);
-                        return `${date.getMonth() + 1}/${date.getDate()}`;
-                      }}
+                      tickFormatter={formatDate}
                     />
                     <YAxis style={{ fontSize: "12px" }} />
                     <Tooltip
+                      labelFormatter={(value) => formatDate(value)}
                       contentStyle={{
                         backgroundColor: "rgba(255, 255, 255, 0.95)",
+                        color: "#111827",
                         border: "1px solid #e5e7eb",
                         borderRadius: "8px",
                         fontSize: "12px",
@@ -532,7 +527,7 @@ export function TestManagementDashboard() {
                       label={({ name, percent }) =>
                         `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
                       }
-                      outerRadius={140}
+                      outerRadius={130}
                       dataKey="value"
                     >
                       {pieChartData.map((entry, index) => (
@@ -542,7 +537,15 @@ export function TestManagementDashboard() {
                         />
                       ))}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "rgba(255, 255, 255, 0.95)",
+                        color: "#111827",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                      }}
+                    />{" "}
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>

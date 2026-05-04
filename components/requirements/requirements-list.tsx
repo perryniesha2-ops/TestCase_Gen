@@ -276,10 +276,6 @@ export function RequirementsList({
     [fetchRequirementsList, currentPage],
   );
 
-  const handleExport = useCallback(() => {
-    toastInfo("Export functionality coming soon");
-  }, []);
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (initialLoading) {
@@ -396,11 +392,6 @@ export function RequirementsList({
             <SelectItem value="low">Low</SelectItem>
           </SelectContent>
         </Select>
-
-        <Button variant="outline" onClick={handleExport} className="gap-2">
-          <FileDown className="h-4 w-4" />
-          Export
-        </Button>
       </div>
 
       {refreshing && (

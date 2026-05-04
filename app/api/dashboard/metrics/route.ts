@@ -5,16 +5,6 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type ExecutionStatus =
-  | "passed"
-  | "failed"
-  | "blocked"
-  | "skipped"
-  | "not_run"
-  | "in_progress";
-
-// ─── Helper functions ─────────────────────────────────────────────────────────
-
 function calculateTrend(
   current: number,
   previous: number,
@@ -33,7 +23,6 @@ function groupExecutionsByDay(
   executions: Array<{ created_at: string; execution_status: string }>,
 ) {
   const groups = new Map<string, { passed: number; failed: number }>();
-
   executions.forEach((exec) => {
     const date = new Date(exec.created_at).toISOString().split("T")[0];
     if (!groups.has(date)) groups.set(date, { passed: 0, failed: 0 });
@@ -41,7 +30,6 @@ function groupExecutionsByDay(
     if (exec.execution_status === "passed") group.passed++;
     else if (exec.execution_status === "failed") group.failed++;
   });
-
   const result: Array<{
     date: string;
     passed: number;
@@ -71,58 +59,48 @@ function calculateFlakyTests(
     title?: string | null;
   }>,
 ): Array<{ id: string; title: string; flakiness_score: number }> {
-  const testResults = new Map<
+  const map = new Map<
     string,
     { title: string; passed: number; failed: number; total: number }
   >();
-
   executions.forEach((exec) => {
-    if (!testResults.has(exec.test_case_id)) {
-      testResults.set(exec.test_case_id, {
+    if (!map.has(exec.test_case_id)) {
+      map.set(exec.test_case_id, {
         title: exec.title ?? "Unknown Test",
         passed: 0,
         failed: 0,
         total: 0,
       });
     }
-    const result = testResults.get(exec.test_case_id)!;
-    result.total++;
-    if (exec.execution_status === "passed") result.passed++;
-    else if (exec.execution_status === "failed") result.failed++;
+    const row = map.get(exec.test_case_id)!;
+    if (exec.title) row.title = exec.title;
+    row.total++;
+    if (exec.execution_status === "passed") row.passed++;
+    else if (exec.execution_status === "failed") row.failed++;
   });
-
-  const flakyTests: Array<{
-    id: string;
-    title: string;
-    flakiness_score: number;
-  }> = [];
-
-  testResults.forEach((result, testId) => {
-    if (result.passed > 0 && result.failed > 0 && result.total >= 3) {
-      flakyTests.push({
-        id: testId,
-        title: result.title,
-        flakiness_score: Math.round((result.failed / result.total) * 100),
+  const result: Array<{ id: string; title: string; flakiness_score: number }> =
+    [];
+  map.forEach((row, id) => {
+    if (row.passed > 0 && row.failed > 0 && row.total >= 3) {
+      result.push({
+        id,
+        title: row.title,
+        flakiness_score: Math.round((row.failed / row.total) * 100),
       });
     }
   });
-
-  return flakyTests
+  return result
     .sort((a, b) => b.flakiness_score - a.flakiness_score)
     .slice(0, 5);
 }
 
-// ─── Route handler ────────────────────────────────────────────────────────────
-
 export async function GET() {
   try {
     const supabase = await createClient();
-
     const {
       data: { user },
       error: authErr,
     } = await supabase.auth.getUser();
-
     if (authErr || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -131,12 +109,13 @@ export async function GET() {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const sevenDaysAgoIso = sevenDaysAgo.toISOString();
 
-    // ─── Batch 1: Independent queries — all fire in parallel ─────────────────
+    // ── Batch 1: all independent queries ─────────────────────────────────────
     const [
       regularTCRes,
       platformTCRes,
       requirementsRes,
-      automationRunsRes,
+      automationRunsStatsRes,
+      automationRunsRecentRes,
       recentRegularRes,
       recentPlatformRes,
       regularHistoryRes,
@@ -145,26 +124,29 @@ export async function GET() {
       platformPrevCountRes,
       reqPrevCountRes,
     ] = await Promise.all([
-      // Test cases
       supabase
         .from("test_cases")
         .select("id")
         .eq("user_id", user.id)
         .neq("status", "archived"),
-
       supabase
         .from("platform_test_cases")
         .select("id")
         .eq("user_id", user.id)
         .neq("status", "archived"),
-
-      // Requirements
       supabase
         .from("requirements")
         .select("id, priority")
         .eq("user_id", user.id),
 
-      // Automation runs — used for both activity feed and stats
+      // All automation runs for accurate pass rate + total (no .limit())
+      supabase
+        .from("automation_runs")
+        .select("id, status, started_at")
+        .eq("user_id", user.id)
+        .order("started_at", { ascending: false }),
+
+      // Recent 10 for activity feed (needs suite name join)
       supabase
         .from("automation_runs")
         .select("id, status, started_at, framework, suite_id, suites(name)")
@@ -172,7 +154,6 @@ export async function GET() {
         .order("started_at", { ascending: false })
         .limit(10),
 
-      // Recent manual executions (regular)
       supabase
         .from("test_executions")
         .select(
@@ -182,8 +163,6 @@ export async function GET() {
         .is("automation_run_id", null)
         .order("created_at", { ascending: false })
         .limit(5),
-
-      // Recent manual executions (platform)
       supabase
         .from("platform_test_executions")
         .select(
@@ -194,14 +173,12 @@ export async function GET() {
         .order("created_at", { ascending: false })
         .limit(5),
 
-      // Execution timeline (7 days)
       supabase
         .from("test_executions")
         .select("created_at, execution_status")
         .eq("executed_by", user.id)
         .gte("created_at", sevenDaysAgoIso)
         .order("created_at", { ascending: true }),
-
       supabase
         .from("platform_test_executions")
         .select("created_at, execution_status")
@@ -209,21 +186,18 @@ export async function GET() {
         .gte("created_at", sevenDaysAgoIso)
         .order("created_at", { ascending: true }),
 
-      // Trend counts — head:true returns count only, no row data
       supabase
         .from("test_cases")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
         .neq("status", "archived")
         .lt("created_at", sevenDaysAgoIso),
-
       supabase
         .from("platform_test_cases")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
         .neq("status", "archived")
         .lt("created_at", sevenDaysAgoIso),
-
       supabase
         .from("requirements")
         .select("*", { count: "exact", head: true })
@@ -231,33 +205,33 @@ export async function GET() {
         .lt("created_at", sevenDaysAgoIso),
     ]);
 
-    // Extract IDs for dependent queries
     const regularIds = (regularTCRes.data ?? []).map((t) => t.id);
     const platformIds = (platformTCRes.data ?? []).map((t) => t.id);
     const requirementIds = (requirementsRes.data ?? []).map((r) => r.id);
 
-    // ─── Batch 2: Queries that depend on IDs from batch 1 ────────────────────
+    // ── Batch 2: queries that depend on IDs ───────────────────────────────────
     const [regularExecsRes, platformExecsRes, reqLinksRes, priorityFailedRes] =
       await Promise.all([
-        // All executions for regular test cases (for status + flakiness)
         regularIds.length > 0
           ? supabase
               .from("test_executions")
-              .select("test_case_id, execution_status, created_at")
+              .select(
+                "test_case_id, execution_status, created_at, test_cases(title)",
+              )
               .in("test_case_id", regularIds)
               .order("created_at", { ascending: false })
           : Promise.resolve({ data: [], error: null }),
 
-        // All executions for platform test cases (for status + flakiness)
         platformIds.length > 0
           ? supabase
               .from("platform_test_executions")
-              .select("test_case_id, execution_status, created_at")
+              .select(
+                "test_case_id, execution_status, created_at, platform_test_cases(title)",
+              )
               .in("test_case_id", platformIds)
               .order("created_at", { ascending: false })
           : Promise.resolve({ data: [], error: null }),
 
-        // Requirement coverage links
         requirementIds.length > 0
           ? supabase
               .from("requirement_test_cases")
@@ -265,7 +239,6 @@ export async function GET() {
               .in("requirement_id", requirementIds)
           : Promise.resolve({ data: [], error: null }),
 
-        // Priority failures — both tables in parallel
         Promise.all([
           supabase
             .from("test_cases")
@@ -284,75 +257,78 @@ export async function GET() {
         ]),
       ]);
 
-    // ─── Compute test case status counts ─────────────────────────────────────
+    const regularExecs = (regularExecsRes.data ?? []) as any[];
+    const platformExecs = (platformExecsRes.data ?? []) as any[];
 
-    // Build latest-status map for regular test cases
-    const latestMap = new Map<string, ExecutionStatus>();
-    const seenRegular = new Set<string>();
-    for (const exec of (regularExecsRes.data ?? []) as any[]) {
-      if (!seenRegular.has(exec.test_case_id)) {
-        latestMap.set(exec.test_case_id, exec.execution_status);
-        seenRegular.add(exec.test_case_id);
-      }
+    // ── Pass rate: all-time executions (passed / total executed) ─────────────
+    // Uses every execution row — not latest-per-test — for true all-time rate.
+    let allTimePassed = 0,
+      allTimeFailed = 0,
+      allTimeBlocked = 0,
+      allTimeSkipped = 0;
+    for (const e of regularExecs) {
+      if (e.execution_status === "passed") allTimePassed++;
+      else if (e.execution_status === "failed") allTimeFailed++;
+      else if (e.execution_status === "blocked") allTimeBlocked++;
+      else if (e.execution_status === "skipped") allTimeSkipped++;
     }
-    const seenPlatform = new Set<string>();
-    for (const exec of (platformExecsRes.data ?? []) as any[]) {
-      if (!seenPlatform.has(exec.test_case_id)) {
-        latestMap.set(exec.test_case_id, exec.execution_status);
-        seenPlatform.add(exec.test_case_id);
-      }
+    for (const e of platformExecs) {
+      if (e.execution_status === "passed") allTimePassed++;
+      else if (e.execution_status === "failed") allTimeFailed++;
+      else if (e.execution_status === "blocked") allTimeBlocked++;
+      else if (e.execution_status === "skipped") allTimeSkipped++;
     }
-
+    const allTimeTotal =
+      allTimePassed + allTimeFailed + allTimeBlocked + allTimeSkipped;
     const allTestIds = [...regularIds, ...platformIds];
-    const counts = { passed: 0, failed: 0, blocked: 0, skipped: 0, not_run: 0 };
-    for (const id of allTestIds) {
-      const s = latestMap.get(id) ?? "not_run";
-      if (s === "passed") counts.passed++;
-      else if (s === "failed") counts.failed++;
-      else if (s === "blocked") counts.blocked++;
-      else if (s === "skipped") counts.skipped++;
-      else counts.not_run++;
-    }
-    const total = allTestIds.length;
-    const pass_rate = total > 0 ? Math.round((counts.passed / total) * 100) : 0;
+    const libraryTotal = allTestIds.length;
 
-    // ─── Flaky tests — reuse already-fetched execution data ──────────────────
-    const flakiness_input = [
-      ...(regularExecsRes.data ?? []).map((e: any) => ({
+    // not_run = tests in library with zero executions ever
+    const executedIds = new Set([
+      ...regularExecs.map((e: any) => e.test_case_id),
+      ...platformExecs.map((e: any) => e.test_case_id),
+    ]);
+    const notRunCount = allTestIds.filter((id) => !executedIds.has(id)).length;
+    const pass_rate =
+      allTimeTotal > 0 ? Math.round((allTimePassed / allTimeTotal) * 100) : 0;
+
+    // ── Flaky tests — with real titles ────────────────────────────────────────
+    const flakinessInput = [
+      ...regularExecs.map((e: any) => ({
         test_case_id: e.test_case_id,
         execution_status: e.execution_status,
-        title: null,
+        title: (e.test_cases as any)?.title ?? null,
       })),
-      ...(platformExecsRes.data ?? []).map((e: any) => ({
+      ...platformExecs.map((e: any) => ({
         test_case_id: e.test_case_id,
         execution_status: e.execution_status,
-        title: null,
+        title: (e.platform_test_cases as any)?.title ?? null,
       })),
     ];
-    const flaky_tests = calculateFlakyTests(flakiness_input);
+    const flaky_tests = calculateFlakyTests(flakinessInput);
 
-    // ─── Requirements ─────────────────────────────────────────────────────────
+    // ── Requirements ──────────────────────────────────────────────────────────
     const requirements = requirementsRes.data ?? [];
     const testedSet = new Set(
       (reqLinksRes.data ?? []).map((x: any) => x.requirement_id),
     );
+    const reqTotal = requirements.length;
+    const reqTested = testedSet.size;
     const by_priority = requirements.reduce(
       (acc, r) => {
-        const key = String(r.priority ?? "medium").toLowerCase();
+        const key = String((r as any).priority ?? "medium").toLowerCase();
         acc[key] = (acc[key] ?? 0) + 1;
         return acc;
       },
       {} as Record<string, number>,
     );
-    const reqTotal = requirements.length;
-    const reqTested = testedSet.size;
     const coverage_percentage =
       reqTotal > 0 ? Math.round((reqTested / reqTotal) * 100) : 0;
 
-    // ─── Automation runs ──────────────────────────────────────────────────────
-    const automationRuns = automationRunsRes.data ?? [];
-    const automationTotal = automationRuns.length;
-    const automationPassed = automationRuns.filter(
+    // ── Automation — from ALL runs (no limit distortion) ──────────────────────
+    const allAutomationRuns = automationRunsStatsRes.data ?? [];
+    const automationTotal = allAutomationRuns.length;
+    const automationPassed = allAutomationRuns.filter(
       (r: any) => r.status === "passed",
     ).length;
     const automation_runs = {
@@ -361,44 +337,33 @@ export async function GET() {
         automationTotal > 0
           ? Math.round((automationPassed / automationTotal) * 100)
           : 0,
-      last_run: (automationRuns[0] as any)?.started_at ?? null,
+      last_run: (allAutomationRuns[0] as any)?.started_at ?? null,
     };
 
-    // ─── Recent activity ──────────────────────────────────────────────────────
-    const recentRegularMapped = (recentRegularRes.data ?? []).map(
-      (exec: any) => ({
-        id: exec.id,
-        type: "execution" as const,
-        description: `Test "${exec.test_cases?.title ?? "Unknown"}" ${exec.execution_status}`,
-        timestamp: exec.created_at,
-        status: exec.execution_status,
-      }),
-    );
-
-    const recentPlatformMapped = (recentPlatformRes.data ?? []).map(
-      (exec: any) => ({
-        id: exec.id,
-        type: "execution" as const,
-        description: `Cross-Platform Test "${exec.platform_test_cases?.title ?? "Unknown"}" ${exec.execution_status}`,
-        timestamp: exec.created_at,
-        status: exec.execution_status,
-      }),
-    );
-
-    const recentAutomationMapped = automationRuns
-      .slice(0, 5)
-      .map((run: any) => ({
-        id: run.id,
-        type: "suite_started" as const,
-        description: `${run.framework} run for "${run.suites?.name ?? "Unknown Suite"}" ${run.status}`,
-        timestamp: run.started_at,
-        status: run.status,
-      }));
-
+    // ── Recent activity ───────────────────────────────────────────────────────
+    const recentAutomation = automationRunsRecentRes.data ?? [];
     const recent_activity = [
-      ...recentRegularMapped,
-      ...recentPlatformMapped,
-      ...recentAutomationMapped,
+      ...(recentRegularRes.data ?? []).map((e: any) => ({
+        id: e.id,
+        type: "execution" as const,
+        description: `Test "${e.test_cases?.title ?? "Unknown"}" ${e.execution_status}`,
+        timestamp: e.created_at,
+        status: e.execution_status,
+      })),
+      ...(recentPlatformRes.data ?? []).map((e: any) => ({
+        id: e.id,
+        type: "execution" as const,
+        description: `Cross-Platform Test "${e.platform_test_cases?.title ?? "Unknown"}" ${e.execution_status}`,
+        timestamp: e.created_at,
+        status: e.execution_status,
+      })),
+      ...recentAutomation.slice(0, 5).map((r: any) => ({
+        id: r.id,
+        type: "suite_started" as const,
+        description: `${r.framework} run for "${r.suites?.name ?? "Unknown Suite"}" ${r.status}`,
+        timestamp: r.started_at,
+        status: r.status,
+      })),
     ]
       .sort(
         (a, b) =>
@@ -406,65 +371,66 @@ export async function GET() {
       )
       .slice(0, 10);
 
-    // ─── Execution timeline ───────────────────────────────────────────────────
+    // ── Execution timeline (7-day chart) ──────────────────────────────────────
     const execution_timeline = groupExecutionsByDay([
       ...(regularHistoryRes.data ?? []),
       ...(platformHistoryRes.data ?? []),
     ]);
 
-    // ─── Priority failures ────────────────────────────────────────────────────
-    const [regularPriorityFailed, platformPriorityFailed] = priorityFailedRes;
+    // ── Priority failures ─────────────────────────────────────────────────────
+    const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1 };
+    const [regularPF, platformPF] = priorityFailedRes;
     const priority_failures = [
-      ...(regularPriorityFailed.data ?? []).map((t: any) => ({
+      ...(regularPF.data ?? []).map((t: any) => ({
         id: t.id,
         title: t.title,
         priority: t.priority,
         failed_count: 1,
       })),
-      ...(platformPriorityFailed.data ?? []).map((t: any) => ({
+      ...(platformPF.data ?? []).map((t: any) => ({
         id: t.id,
         title: t.title,
         priority: t.priority,
         failed_count: 1,
       })),
     ]
-      .sort((a, b) => {
-        const order: Record<string, number> = { critical: 0, high: 1 };
-        return (order[a.priority] ?? 99) - (order[b.priority] ?? 99);
-      })
+      .sort(
+        (a, b) =>
+          (PRIORITY_ORDER[a.priority] ?? 99) -
+          (PRIORITY_ORDER[b.priority] ?? 99),
+      )
       .slice(0, 5);
 
-    // ─── Trends ───────────────────────────────────────────────────────────────
+    // ── Trend arrows ──────────────────────────────────────────────────────────
     const previousTotal =
       (regularPrevCountRes.count ?? 0) + (platformPrevCountRes.count ?? 0);
     const previousReqTotal = reqPrevCountRes.count ?? 0;
 
-    const trend = calculateTrend(total, previousTotal);
-    const trend_value = calculateTrendPercentage(total, previousTotal);
-    const reqTrend = calculateTrend(reqTotal, previousReqTotal);
-
-    // ─── Response ─────────────────────────────────────────────────────────────
     return NextResponse.json({
       test_cases: {
-        total,
+        total: libraryTotal,
         regular: regularIds.length,
         cross_platform: platformIds.length,
-        ...counts,
+        passed: allTimePassed,
+        failed: allTimeFailed,
+        blocked: allTimeBlocked,
+        skipped: allTimeSkipped,
+        not_run: notRunCount,
         pass_rate,
-        trend,
-        trend_value,
+        trend: calculateTrend(libraryTotal, previousTotal),
+        trend_value: calculateTrendPercentage(libraryTotal, previousTotal),
       },
       requirements: {
         total: reqTotal,
         tested: reqTested,
         coverage_percentage,
         by_priority,
-        trend: reqTrend,
+        trend: calculateTrend(reqTotal, previousReqTotal),
       },
-      recent_activity,
       automation_runs,
-      execution_timeline,
       flaky_tests,
+      recent_activity,
+      execution_timeline,
       priority_failures,
       coverage_gaps: [],
     });

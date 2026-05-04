@@ -14,14 +14,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
 import { Mail } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 type Props = {
   action?: string;
-
   className?: string;
 };
 
@@ -66,7 +64,7 @@ export function ContactSheet({
 
       if (!res.ok) {
         toast.error(
-          json?.error || "We couldn’t send your message. Please try again."
+          json?.error || "We couldn't send your message. Please try again.",
         );
       } else {
         toast.success("Thanks! Your message has been sent.");
@@ -86,32 +84,51 @@ export function ContactSheet({
         <button
           type="button"
           className={cn(
-            "text-sm font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-2",
-            className
+            "inline-flex items-center gap-2 text-sm font-medium text-gray-500 transition-colors duration-200 hover:text-gray-800 dark:text-white/30 dark:hover:text-white/70",
+            className,
           )}
         >
           <Mail className="h-4 w-4" />
         </button>
       </SheetTrigger>
 
-      {/* Make the sheet content a flex column and the middle area a ScrollArea */}
       <SheetContent
         side="right"
-        className="flex h-full flex-col p-0 sm:max-w-[560px]"
+        className="flex h-full flex-col p-0 sm:max-w-[560px] border-l border-gray-200 bg-white dark:border-white/10 dark:bg-[#080f1e]"
       >
-        <div className="border-b px-6 py-4">
+        {/* Header */}
+        <div className="relative border-b border-gray-200 px-6 py-5 dark:border-white/8">
+          {/* Aqua rim light — dark mode */}
+          <div
+            className="pointer-events-none absolute bottom-0 left-[5%] right-[5%] h-[1px] hidden dark:block"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent, #06b6d4 30%, #38bdf8 50%, #06b6d4 70%, transparent)",
+              opacity: 0.35,
+            }}
+          />
+          {/* Top glow — dark mode */}
+          <div
+            className="pointer-events-none absolute inset-0 hidden dark:block"
+            style={{
+              background:
+                "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(6,182,212,0.06), transparent 70%)",
+            }}
+          />
           <SheetHeader>
-            <SheetTitle>Contact Support</SheetTitle>
-            <p className="text-sm text-muted-foreground">
-              Tell us a bit about the issue and we’ll reply to your email.
+            <SheetTitle className="text-lg font-semibold text-gray-900 dark:text-white">
+              Contact Support
+            </SheetTitle>
+            <p className="text-sm text-gray-500 dark:text-white/40">
+              Tell us a bit about the issue and we'll reply to your email.
             </p>
           </SheetHeader>
         </div>
 
         <ScrollArea className="flex-1 px-6 py-5">
           <form
-            id="contact-form"
-            className="space-y-4"
+            id="contact-support-form"
+            className="space-y-5"
             onSubmit={(e) => {
               e.preventDefault();
               onSubmit(e.currentTarget);
@@ -120,54 +137,77 @@ export function ContactSheet({
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="name">Your Name</Label>
+                <Label
+                  htmlFor="name"
+                  className="text-sm font-medium text-gray-700 dark:text-white/60"
+                >
+                  Your Name <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="name"
                   name="name"
-                  placeholder="example: Ada Lovelace"
+                  placeholder="Ada Lovelace"
                   autoComplete="name"
                   required
+                  className="border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:ring-blue-400/20 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/25 dark:focus:border-cyan-400/50 dark:focus:ring-cyan-400/10"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">Your Email</Label>
+                <Label
+                  htmlFor="email"
+                  className="text-sm font-medium text-gray-700 dark:text-white/60"
+                >
+                  Your Email <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="email"
                   name="email"
                   type="email"
-                  placeholder="example: you@example.com"
+                  placeholder="you@example.com"
                   autoComplete="email"
                   required
+                  className="border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:ring-blue-400/20 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/25 dark:focus:border-cyan-400/50 dark:focus:ring-cyan-400/10"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="subject">Subject</Label>
+              <Label
+                htmlFor="subject"
+                className="text-sm font-medium text-gray-700 dark:text-white/60"
+              >
+                Subject <span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="subject"
                 name="subject"
                 placeholder="Issue summary"
                 required
+                className="border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:ring-blue-400/20 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/25 dark:focus:border-cyan-400/50 dark:focus:ring-cyan-400/10"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="message">Message</Label>
+              <Label
+                htmlFor="message"
+                className="text-sm font-medium text-gray-700 dark:text-white/60"
+              >
+                Message <span className="text-red-500">*</span>
+              </Label>
               <Textarea
                 id="message"
                 name="message"
                 placeholder="Describe what you need help with..."
-                className="min-h-[160px]"
+                className="min-h-[160px] border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:ring-blue-400/20 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/25 dark:focus:border-cyan-400/50 dark:focus:ring-cyan-400/10"
                 required
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-gray-400 dark:text-white/25">
                 Include steps to reproduce, screenshots, and your browser/device
                 if relevant.
               </p>
             </div>
 
-            {/* Honeypot (keep empty) */}
+            {/* Honeypot */}
             <input
               type="text"
               name="company"
@@ -180,7 +220,18 @@ export function ContactSheet({
           </form>
         </ScrollArea>
 
-        <Separator />
+        {/* Footer divider with aqua glow */}
+        <div className="relative">
+          <div className="h-px w-full bg-gray-200 dark:bg-white/8" />
+          <div
+            className="pointer-events-none absolute inset-0 hidden dark:block"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent, #06b6d4 30%, #38bdf8 50%, #06b6d4 70%, transparent)",
+              opacity: 0.25,
+            }}
+          />
+        </div>
 
         <SheetFooter className="px-6 py-4">
           <div className="ml-auto flex gap-2">
@@ -188,10 +239,16 @@ export function ContactSheet({
               variant="ghost"
               onClick={() => setOpen(false)}
               disabled={loading}
+              className="text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-white/50 dark:hover:bg-white/8 dark:hover:text-white"
             >
               Cancel
             </Button>
-            <Button form="contact-form" type="submit" disabled={loading}>
+            <Button
+              form="contact-support-form"
+              type="submit"
+              disabled={loading}
+              className="rounded-full bg-blue-600 px-6 text-white shadow-md shadow-blue-600/20 hover:bg-blue-500 disabled:opacity-50 dark:bg-cyan-500 dark:shadow-cyan-900/40 dark:hover:bg-cyan-400"
+            >
               {loading ? "Sending..." : "Send to Support"}
             </Button>
           </div>

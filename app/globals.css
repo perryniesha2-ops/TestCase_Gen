@@ -109,13 +109,6 @@
   }
 }
 
-.landing-bg {
-  background: linear-gradient(180deg, #f0f6ff 0%, #f5f8ff 40%, #ffffff 100%);
-}
-.dark .landing-bg {
-  background: linear-gradient(180deg, #070b14 0%, #080d18 40%, #06090f 100%);
-}
-
 .test-type-scroll {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
@@ -146,4 +139,54 @@
 
 .dark .test-type-scroll::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.6);
+}
+
+@keyframes glowShift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.55;
+  }
+  25% {
+    transform: translate(12px, -8px) scale(1.08);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate(-8px, 10px) scale(0.95);
+    opacity: 0.5;
+  }
+  75% {
+    transform: translate(6px, -12px) scale(1.05);
+    opacity: 0.65;
+  }
+}
+
+@keyframes auroraShift {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(1) translateY(0px);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.05) translateY(-12px);
+  }
+}
+
+@keyframes auroraShift2 {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1) translateX(0px);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.04) translateX(10px);
+  }
+}
+
+@theme inline {
+  --animate-glow-shift: glowShift 5s ease-in-out infinite;
+  --animate-glow-shift-slow: glowShift 7s ease-in-out infinite;
+  --animate-glow-shift-slower: glowShift 9s ease-in-out infinite reverse;
 }

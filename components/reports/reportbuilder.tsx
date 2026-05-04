@@ -31,7 +31,6 @@ import {
   ChevronDown,
   SlidersHorizontal,
   LayoutTemplate,
-  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ReportViewer } from "./reportviewer";
@@ -540,7 +539,6 @@ export function ReportBuilder({ reportId }: ReportBuilderProps) {
           {/* ── Right column ── */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Report Layout
               </span>

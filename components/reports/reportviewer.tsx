@@ -97,6 +97,66 @@ type ReportData = {
 };
 
 const PIE_COLORS = ["#10b981", "#ef4444", "#f59e0b", "#9ca3af", "#6366f1"];
+const RADIAN = Math.PI / 180;
+
+// ─── Chart theme hook ─────────────────────────────────────────────────────────
+// Resolves CSS variables to actual hex/rgb values at runtime so they work
+// in both HTML tooltip styles AND SVG stroke/fill attributes (which don't
+// support CSS custom properties).
+function useChartTheme() {
+  const [theme, setTheme] = useState(() => getChartTheme());
+
+  useEffect(() => {
+    // Re-resolve whenever the document class changes (dark/light toggle)
+    const observer = new MutationObserver(() => setTheme(getChartTheme()));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  return theme;
+}
+
+function resolveCssVar(variable: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue(variable)
+    .trim();
+  if (!raw) return fallback;
+  // shadcn/ui stores vars as raw HSL channels: "214.3 31.8% 91.4%"
+  // Other setups may store full values: "#e2e8f0" or "hsl(...)"
+  // Only wrap in hsl() if it looks like raw channels (no letters at start)
+  if (/^[\d.]+\s/.test(raw)) return `hsl(${raw})`;
+  return raw;
+}
+
+function getChartTheme() {
+  const isDark = document.documentElement.classList.contains("dark");
+  return {
+    border: resolveCssVar("--border", isDark ? "#334155" : "#e2e8f0"),
+    mutedForeground: resolveCssVar(
+      "--muted-foreground",
+      isDark ? "#94a3b8" : "#64748b",
+    ),
+    card: resolveCssVar("--card", isDark ? "#1e293b" : "#ffffff"),
+    cardForeground: resolveCssVar(
+      "--card-foreground",
+      isDark ? "#f1f5f9" : "#0f172a",
+    ),
+    muted: resolveCssVar("--muted", isDark ? "#1e293b" : "#f1f5f9"),
+  };
+}
+function formatDate(value: string) {
+  const date = new Date(value);
+  return date.toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "2-digit",
+    timeZone: "UTC",
+  });
+}
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
@@ -111,7 +171,7 @@ function PassRateCard({ data }: { data: ReportData }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Target className="h-4 w-4" /> Pass Rate
+          Pass Rate
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -135,11 +195,13 @@ function TotalTestsCard({ data }: { data: ReportData }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Hash className="h-4 w-4" /> Total Tests
+          Total Tests
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="text-4xl font-bold">{data.total_tests}</div>
+        <div className="h-2 bg-muted rounded-full mt-3 overflow-hidden"></div>
+
         <p className="text-xs text-muted-foreground mt-2">
           {data.not_run} not yet executed
         </p>
@@ -159,7 +221,7 @@ function CoverageCard({ data }: { data: ReportData }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <BarChart3 className="h-4 w-4" /> Requirement Coverage
+          Requirement Coverage
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -182,17 +244,28 @@ function CoverageCard({ data }: { data: ReportData }) {
 }
 
 function AutomationRunsCard({ data }: { data: ReportData }) {
+  const passed = Math.round(
+    (data.automation_runs * data.automation_pass_rate) / 100,
+  );
+  const failed = data.automation_runs - passed;
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Zap className="h-4 w-4" /> Automation Runs
+          Automation Runs
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="text-4xl font-bold">{data.automation_runs}</div>
+        <div className="h-2 bg-muted rounded-full mt-3 overflow-hidden">
+          <div
+            className="h-2 bg-green-500 rounded-full"
+            style={{ width: `${data.automation_pass_rate}%` }}
+          />
+        </div>
         <p className="text-xs text-muted-foreground mt-2">
-          {data.automation_pass_rate}% pass rate · last {data.days} days
+          {passed} passed · {failed} failed · {data.automation_pass_rate}% pass
+          rate
         </p>
       </CardContent>
     </Card>
@@ -200,6 +273,18 @@ function AutomationRunsCard({ data }: { data: ReportData }) {
 }
 
 function ExecutionTrendLine({ data }: { data: ReportData }) {
+  const ct = useChartTheme();
+  const tooltipStyle: React.CSSProperties = {
+    fontSize: "12px",
+    borderRadius: "8px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    padding: "8px 12px",
+    backgroundColor: ct.card,
+    borderColor: ct.border,
+    color: ct.cardForeground,
+  };
+  const tooltipTextStyle: React.CSSProperties = { color: ct.cardForeground };
+
   if (data.execution_trend.length === 0) {
     return (
       <Card>
@@ -225,26 +310,50 @@ function ExecutionTrendLine({ data }: { data: ReportData }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={data.execution_trend}>
-            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+        <ResponsiveContainer width="100%" height={320}>
+          <LineChart
+            data={data.execution_trend}
+            margin={{ top: 8, right: 24, left: 8, bottom: 4 }}
+          >
+            <CartesianGrid
+              strokeDasharray="1 0"
+              stroke={ct.border}
+              strokeWidth={1}
+            />
             <XAxis
               dataKey="date"
               style={{ fontSize: "12px" }}
-              tickFormatter={(v) => {
-                const d = new Date(v);
-                return `${d.getMonth() + 1}/${d.getDate()}`;
-              }}
+              tick={{ fill: ct.mutedForeground }}
+              axisLine={{ stroke: ct.border }}
+              tickLine={false}
+              tickFormatter={formatDate}
             />
-            <YAxis style={{ fontSize: "12px" }} />
-            <Tooltip contentStyle={{ fontSize: "12px", borderRadius: "8px" }} />
-            <Legend />
+            <YAxis
+              style={{ fontSize: "12px" }}
+              tick={{ fill: ct.mutedForeground }}
+              axisLine={false}
+              tickLine={false}
+              width={36}
+            />
+            <Tooltip
+              labelFormatter={(value) => formatDate(value)}
+              contentStyle={tooltipStyle}
+              labelStyle={tooltipTextStyle}
+              itemStyle={tooltipTextStyle}
+              cursor={{ stroke: ct.border, strokeWidth: 1 }}
+            />
+            <Legend
+              iconType="circle"
+              iconSize={8}
+              wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
+            />
             <Line
               type="monotone"
               dataKey="passed"
               stroke="#10b981"
               strokeWidth={2}
-              dot={{ r: 3 }}
+              dot={{ r: 3, fill: "#10b981", strokeWidth: 0 }}
+              activeDot={{ r: 5 }}
               name="Passed"
               isAnimationActive={false}
             />
@@ -253,7 +362,8 @@ function ExecutionTrendLine({ data }: { data: ReportData }) {
               dataKey="failed"
               stroke="#ef4444"
               strokeWidth={2}
-              dot={{ r: 3 }}
+              dot={{ r: 3, fill: "#ef4444", strokeWidth: 0 }}
+              activeDot={{ r: 5 }}
               name="Failed"
               isAnimationActive={false}
             />
@@ -264,7 +374,59 @@ function ExecutionTrendLine({ data }: { data: ReportData }) {
   );
 }
 
+// ─── Custom pie label ─────────────────────────────────────────────────────────
+// Renders outside the slice with enough offset that labels never clip against
+// the top/bottom edges of the chart, and anchors left/right based on midAngle.
+
+function PieLabel({
+  cx,
+  cy,
+  midAngle,
+  outerRadius,
+  name,
+  percent,
+}: {
+  cx?: number;
+  cy?: number;
+  midAngle?: number;
+  outerRadius?: number;
+  name?: string;
+  percent?: number;
+}) {
+  if (cx == null || cy == null || midAngle == null || outerRadius == null)
+    return null;
+  const radius = outerRadius + 28;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text
+      x={x}
+      y={y}
+      textAnchor={x > cx ? "start" : "end"}
+      dominantBaseline="central"
+      fontSize={12}
+      fill="currentColor"
+    >
+      {`${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+    </text>
+  );
+}
+
 function StatusDistributionPie({ data }: { data: ReportData }) {
+  const ct = useChartTheme();
+  const tooltipStyle: React.CSSProperties = {
+    fontSize: "12px",
+    borderRadius: "8px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    padding: "8px 12px",
+    backgroundColor: ct.card,
+    borderColor: ct.border,
+    color: ct.cardForeground,
+  };
+  const tooltipLabelStyle: React.CSSProperties = { color: ct.cardForeground };
+  const tooltipItemStyle: React.CSSProperties = { color: ct.cardForeground };
+  const tooltipTextStyle: React.CSSProperties = { color: ct.cardForeground };
+
   const pieData = [
     { name: "Passed", value: data.passed },
     { name: "Failed", value: data.failed },
@@ -272,6 +434,7 @@ function StatusDistributionPie({ data }: { data: ReportData }) {
     { name: "Skipped", value: data.skipped },
     { name: "Not Run", value: data.not_run },
   ].filter((d) => d.value > 0);
+
   if (pieData.length === 0)
     return (
       <Card>
@@ -283,6 +446,7 @@ function StatusDistributionPie({ data }: { data: ReportData }) {
         </CardContent>
       </Card>
     );
+
   return (
     <Card>
       <CardHeader>
@@ -290,24 +454,38 @@ function StatusDistributionPie({ data }: { data: ReportData }) {
         <CardDescription>Breakdown of test states</CardDescription>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
+        {/*
+          Extra height (360) + generous margins give the custom labels room to
+          breathe above and below the pie without being clipped by the SVG
+          viewport. outerRadius is reduced to 100 so the label offset (28px)
+          fits comfortably within the margins.
+        */}
+        <ResponsiveContainer width="100%" height={360}>
           <PieChart>
             <Pie
               data={pieData}
               cx="50%"
               cy="50%"
-              outerRadius={110}
-              dataKey="value"
-              isAnimationActive={false}
+              labelLine={true}
               label={({ name, percent }) =>
                 `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
               }
+              outerRadius={130}
+              dataKey="value"
             >
-              {pieData.map((_, idx) => (
-                <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+              {pieData.map((entry, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={PIE_COLORS[index % PIE_COLORS.length]}
+                />
               ))}
             </Pie>
-            <Tooltip />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              labelStyle={tooltipTextStyle}
+              itemStyle={tooltipTextStyle}
+              cursor={{ stroke: ct.border, strokeWidth: 1 }}
+            />
             <Legend />
           </PieChart>
         </ResponsiveContainer>
@@ -317,6 +495,18 @@ function StatusDistributionPie({ data }: { data: ReportData }) {
 }
 
 function TestTypeBreakdownBar({ data }: { data: ReportData }) {
+  const ct = useChartTheme();
+  const tooltipStyle: React.CSSProperties = {
+    fontSize: "12px",
+    borderRadius: "8px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    padding: "8px 12px",
+    backgroundColor: ct.card,
+    borderColor: ct.border,
+    color: ct.cardForeground,
+  };
+  const tooltipTextStyle: React.CSSProperties = { color: ct.cardForeground };
+
   if (data.test_type_breakdown.length === 0)
     return (
       <Card>
@@ -336,11 +526,36 @@ function TestTypeBreakdownBar({ data }: { data: ReportData }) {
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={data.test_type_breakdown}>
-            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-            <XAxis dataKey="name" style={{ fontSize: "12px" }} />
-            <YAxis style={{ fontSize: "12px" }} />
-            <Tooltip contentStyle={{ fontSize: "12px", borderRadius: "8px" }} />
+          <BarChart
+            data={data.test_type_breakdown}
+            margin={{ top: 8, right: 24, left: 8, bottom: 4 }}
+          >
+            <CartesianGrid
+              strokeDasharray="1 0"
+              stroke={ct.border}
+              strokeWidth={1}
+              vertical={false}
+            />
+            <XAxis
+              dataKey="name"
+              style={{ fontSize: "12px" }}
+              tick={{ fill: ct.mutedForeground }}
+              axisLine={{ stroke: ct.border }}
+              tickLine={false}
+            />
+            <YAxis
+              style={{ fontSize: "12px" }}
+              tick={{ fill: ct.mutedForeground }}
+              axisLine={false}
+              tickLine={false}
+              width={36}
+            />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              labelStyle={tooltipTextStyle}
+              itemStyle={tooltipTextStyle}
+              cursor={{ fill: ct.muted, opacity: 0.4 }}
+            />
             <Bar
               dataKey="count"
               fill="#6366f1"
@@ -588,7 +803,6 @@ export function ReportViewer({
   );
   const fetchedRef = useRef(false);
 
-  // Fetch report config from API when only reportId provided
   useEffect(() => {
     if (configProp || !reportId || !user?.id) return;
     fetch(`/api/reports/${reportId}`, { cache: "no-store" })
@@ -635,7 +849,6 @@ export function ReportViewer({
     }
   }, [user?.id, resolvedConfig, reportId]);
 
-  // Gate on user?.id + resolvedConfig — ref prevents double-fetch
   useEffect(() => {
     if (!user?.id || !resolvedConfig) return;
     if (fetchedRef.current) return;
@@ -643,7 +856,6 @@ export function ReportViewer({
     void load();
   }, [user?.id, resolvedConfig]);
 
-  // Reset ref when config changes (filter change should re-fetch)
   useEffect(() => {
     fetchedRef.current = false;
   }, [resolvedConfig]);
@@ -652,156 +864,72 @@ export function ReportViewer({
   const reportName = resolvedName;
 
   const handleExport = async () => {
+    if (!data || !config) return;
     setExporting(true);
     try {
-      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-        import("html2canvas-pro"),
-        import("jspdf"),
-      ]);
-      const reportEl = document.getElementById("report-content");
-      if (!reportEl) {
-        toast.error("Report content not found");
-        return;
-      }
+      const periodLabel =
+        DATE_RANGE_LABELS[config.filters.date_range] ??
+        config.filters.date_range;
 
-      const wrapper = document.createElement("div");
-      Object.assign(wrapper.style, {
-        position: "fixed",
-        top: "-99999px",
-        left: "0",
-        width: "1200px",
-        backgroundColor: "#ffffff",
-        color: "#0f172a",
-        padding: "40px",
-        boxSizing: "border-box",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        zIndex: "-1",
-      });
-      const lightVars: [string, string][] = [
-        ["--background", "#ffffff"],
-        ["--foreground", "#0f172a"],
-        ["--card", "#ffffff"],
-        ["--card-foreground", "#0f172a"],
-        ["--muted", "#f1f5f9"],
-        ["--muted-foreground", "#64748b"],
-        ["--border", "#e2e8f0"],
-        ["--primary", "#1e293b"],
-        ["--primary-foreground", "#f8fafc"],
-      ];
-      lightVars.forEach(([k, v]) => wrapper.style.setProperty(k, v));
-      const clone = reportEl.cloneNode(true) as HTMLElement;
-      clone.classList.remove("dark");
-      wrapper.appendChild(clone);
-      document.body.appendChild(wrapper);
+      const filename = `${reportName.replace(/\s+/g, "-")}-${new Date().toISOString().split("T")[0]}.pdf`;
 
-      wrapper.querySelectorAll("*").forEach((el) => {
-        const htmlEl = el as HTMLElement;
-        const cs = window.getComputedStyle(htmlEl);
-        const bg = cs.backgroundColor;
-        if (bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") {
-          const nums = bg.match(/[\d.]+/g)?.map(Number) ?? [];
-          if (nums.length >= 3) {
-            const lum = (nums[0] * 299 + nums[1] * 587 + nums[2] * 114) / 1000;
-            htmlEl.style.backgroundColor = lum < 80 ? "#ffffff" : bg;
-          }
-        } else {
-          htmlEl.style.backgroundColor = "transparent";
-        }
-        const fg = cs.color;
-        if (fg) {
-          const nums = fg.match(/[\d.]+/g)?.map(Number) ?? [];
-          if (nums.length >= 3) {
-            const lum = (nums[0] * 299 + nums[1] * 587 + nums[2] * 114) / 1000;
-            htmlEl.style.color = lum > 200 ? "#0f172a" : fg;
-          }
-        }
-        const border = cs.borderColor;
-        if (border?.includes("oklch")) htmlEl.style.borderColor = "#e2e8f0";
-      });
-
-      const styleTag = document.createElement("style");
-      styleTag.textContent =
-        "* { animation-duration: 0s !important; transition-duration: 0s !important; }";
-      wrapper.appendChild(styleTag);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      const canvas = await html2canvas(wrapper, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        width: 1200,
-        logging: false,
-        onclone: (_doc, el) => {
-          const s = _doc.createElement("style");
-          s.textContent =
-            "* { animation-duration: 0s !important; transition-duration: 0s !important; }";
-          _doc.head.appendChild(s);
-          el.querySelectorAll("[style]").forEach((node) => {
-            const htmlNode = node as HTMLElement;
-            if (
-              htmlNode.style.cssText.includes("oklch") ||
-              htmlNode.style.cssText.includes("lab(")
-            ) {
-              htmlNode.style.backgroundColor = "#ffffff";
-              htmlNode.style.color = "#0f172a";
-              htmlNode.style.borderColor = "#e2e8f0";
-            }
-          });
+      const payload = {
+        type: "report" as const,
+        filename,
+        data: {
+          reportName,
+          periodLabel,
+          generatedAt: new Date().toLocaleString(),
+          days: data.days,
+          // Pass the user's configured sections so the PDF mirrors the viewer
+          sections: config.sections.map((s) => ({
+            id: s.id,
+            metric: s.metric,
+          })),
+          total_tests: data.total_tests,
+          passed: data.passed,
+          failed: data.failed,
+          blocked: data.blocked,
+          skipped: data.skipped,
+          not_run: data.not_run,
+          pass_rate: data.pass_rate,
+          requirements_total: data.requirements_total,
+          requirements_tested: data.requirements_tested,
+          coverage_percentage: data.coverage_percentage,
+          automation_runs: data.automation_runs,
+          automation_pass_rate: data.automation_pass_rate,
+          execution_trend: data.execution_trend,
+          suite_performance: data.suite_performance,
+          top_failures: data.top_failures,
+          flaky_tests: data.flaky_tests,
+          test_type_breakdown: data.test_type_breakdown,
         },
-      });
-      document.body.removeChild(wrapper);
+      };
 
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4",
+      const res = await fetch("/api/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 12;
-      const contentWidth = pageWidth - margin * 2;
-      const scale = canvas.width / contentWidth;
-      const pageSlicePx = Math.floor((pageHeight - margin * 2) * scale);
-      const sliceCanvas = document.createElement("canvas");
-      sliceCanvas.width = canvas.width;
-      const sliceCtx = sliceCanvas.getContext("2d")!;
-      let offsetY = 0,
-        pageNum = 0;
-      while (offsetY < canvas.height) {
-        const slicePx = Math.min(pageSlicePx, canvas.height - offsetY);
-        sliceCanvas.height = slicePx;
-        sliceCtx.fillStyle = "#ffffff";
-        sliceCtx.fillRect(0, 0, sliceCanvas.width, slicePx);
-        sliceCtx.drawImage(
-          canvas,
-          0,
-          offsetY,
-          canvas.width,
-          slicePx,
-          0,
-          0,
-          canvas.width,
-          slicePx,
-        );
-        if (pageNum > 0) pdf.addPage();
-        pdf.addImage(
-          sliceCanvas.toDataURL("image/png"),
-          "PNG",
-          margin,
-          margin,
-          contentWidth,
-          slicePx / scale,
-        );
-        offsetY += slicePx;
-        pageNum++;
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? `PDF generation failed (${res.status})`);
       }
-      pdf.save(
-        `${reportName.replace(/\s+/g, "-")}-${new Date().toISOString().split("T")[0]}.pdf`,
-      );
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
       toast.success("PDF downloaded");
     } catch (e: any) {
       console.error("[PDF export]", e);
-      toast.error("Failed to generate PDF");
+      toast.error(e?.message ?? "Failed to generate PDF");
     } finally {
       setExporting(false);
     }
@@ -883,12 +1011,22 @@ export function ReportViewer({
     "coverage_card",
     "automation_runs_card",
   ];
-  const cardSections = config.sections.filter((s) =>
-    cardMetrics.includes(s.metric),
-  );
-  const otherSections = config.sections.filter(
-    (s) => !cardMetrics.includes(s.metric),
-  );
+
+  // Deduplicate by metric — if the report config has the same metric twice
+  // (e.g. user added pass_rate_card twice in the builder), only show it once.
+  const seenMetrics = new Set<string>();
+  const cardSections = config.sections.filter((s) => {
+    if (!cardMetrics.includes(s.metric)) return false;
+    if (seenMetrics.has(s.metric)) return false;
+    seenMetrics.add(s.metric);
+    return true;
+  });
+  const otherSections = config.sections.filter((s) => {
+    if (cardMetrics.includes(s.metric)) return false;
+    if (seenMetrics.has(s.metric)) return false;
+    seenMetrics.add(s.metric);
+    return true;
+  });
 
   return (
     <div className="space-y-6" id="report-content">
@@ -941,14 +1079,18 @@ export function ReportViewer({
           }`}
         >
           {cardSections.map((s) => (
-            <ReportSection key={s.id} metric={s.metric} data={data} />
+            <div key={s.id} data-report-card>
+              <ReportSection metric={s.metric} data={data} />
+            </div>
           ))}
         </div>
       )}
       {otherSections.length > 0 && (
         <div className="space-y-6">
           {otherSections.map((s) => (
-            <ReportSection key={s.id} metric={s.metric} data={data} />
+            <div key={s.id} data-report-card>
+              <ReportSection metric={s.metric} data={data} />
+            </div>
           ))}
         </div>
       )}
