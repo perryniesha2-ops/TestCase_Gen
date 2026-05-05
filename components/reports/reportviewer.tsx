@@ -96,7 +96,13 @@ type ReportData = {
   test_type_breakdown: Array<{ name: string; count: number }>;
 };
 
-const PIE_COLORS = ["#10b981", "#ef4444", "#f59e0b", "#9ca3af", "#6366f1"];
+const PIE_COLORS: Record<string, string> = {
+  Passed: "#10b981",
+  Failed: "#ef4444",
+  Blocked: "#f59e0b",
+  Skipped: "#9ca3af",
+  "Not Run": "#6366f1",
+};
 const RADIAN = Math.PI / 180;
 
 // ─── Chart theme hook ─────────────────────────────────────────────────────────
@@ -148,15 +154,6 @@ function getChartTheme() {
     muted: resolveCssVar("--muted", isDark ? "#1e293b" : "#f1f5f9"),
   };
 }
-function formatDate(value: string) {
-  const date = new Date(value);
-  return date.toLocaleDateString("en-US", {
-    month: "2-digit",
-    day: "2-digit",
-    year: "2-digit",
-    timeZone: "UTC",
-  });
-}
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
@@ -171,7 +168,7 @@ function PassRateCard({ data }: { data: ReportData }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          Pass Rate
+          <Target className="h-4 w-4" /> Pass Rate
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -195,13 +192,11 @@ function TotalTestsCard({ data }: { data: ReportData }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          Total Tests
+          <Hash className="h-4 w-4" /> Total Tests
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="text-4xl font-bold">{data.total_tests}</div>
-        <div className="h-2 bg-muted rounded-full mt-3 overflow-hidden"></div>
-
         <p className="text-xs text-muted-foreground mt-2">
           {data.not_run} not yet executed
         </p>
@@ -221,7 +216,7 @@ function CoverageCard({ data }: { data: ReportData }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          Requirement Coverage
+          <BarChart3 className="h-4 w-4" /> Requirement Coverage
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -252,7 +247,7 @@ function AutomationRunsCard({ data }: { data: ReportData }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          Automation Runs
+          <Zap className="h-4 w-4" /> Automation Runs
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -326,7 +321,10 @@ function ExecutionTrendLine({ data }: { data: ReportData }) {
               tick={{ fill: ct.mutedForeground }}
               axisLine={{ stroke: ct.border }}
               tickLine={false}
-              tickFormatter={formatDate}
+              tickFormatter={(v) => {
+                const d = new Date(v);
+                return `${d.getMonth() + 1}/${d.getDate()}`;
+              }}
             />
             <YAxis
               style={{ fontSize: "12px" }}
@@ -336,7 +334,6 @@ function ExecutionTrendLine({ data }: { data: ReportData }) {
               width={36}
             />
             <Tooltip
-              labelFormatter={(value) => formatDate(value)}
               contentStyle={tooltipStyle}
               labelStyle={tooltipTextStyle}
               itemStyle={tooltipTextStyle}
@@ -425,7 +422,6 @@ function StatusDistributionPie({ data }: { data: ReportData }) {
   };
   const tooltipLabelStyle: React.CSSProperties = { color: ct.cardForeground };
   const tooltipItemStyle: React.CSSProperties = { color: ct.cardForeground };
-  const tooltipTextStyle: React.CSSProperties = { color: ct.cardForeground };
 
   const pieData = [
     { name: "Passed", value: data.passed },
@@ -461,32 +457,32 @@ function StatusDistributionPie({ data }: { data: ReportData }) {
           fits comfortably within the margins.
         */}
         <ResponsiveContainer width="100%" height={360}>
-          <PieChart>
+          <PieChart margin={{ top: 28, right: 56, bottom: 8, left: 56 }}>
             <Pie
               data={pieData}
               cx="50%"
-              cy="50%"
-              labelLine={true}
-              label={({ name, percent }) =>
-                `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
-              }
-              outerRadius={130}
+              cy="48%"
+              outerRadius={100}
               dataKey="value"
+              isAnimationActive={false}
+              labelLine={false}
+              label={(props) => <PieLabel {...props} />}
             >
-              {pieData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={PIE_COLORS[index % PIE_COLORS.length]}
-                />
+              {pieData.map((_, idx) => (
+                <Cell key={idx} fill={PIE_COLORS[_.name] ?? "#9ca3af"} />
               ))}
             </Pie>
             <Tooltip
               contentStyle={tooltipStyle}
-              labelStyle={tooltipTextStyle}
-              itemStyle={tooltipTextStyle}
-              cursor={{ stroke: ct.border, strokeWidth: 1 }}
+              labelStyle={tooltipLabelStyle}
+              itemStyle={tooltipItemStyle}
             />
-            <Legend />
+            <Legend
+              verticalAlign="bottom"
+              iconType="circle"
+              iconSize={8}
+              wrapperStyle={{ paddingTop: 12, fontSize: 12 }}
+            />
           </PieChart>
         </ResponsiveContainer>
       </CardContent>

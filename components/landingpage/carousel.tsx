@@ -76,10 +76,13 @@ export function Carousel({ slides }: { slides: React.ReactNode[] }) {
             opacity: { duration: 0.2 },
           }}
           className="absolute inset-0 w-full h-full overflow-y-auto"
-          style={{ scrollbarWidth: "none" }}
+          style={{
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+          }}
         >
           <style>{`.carousel-slide::-webkit-scrollbar { display: none; }`}</style>
-          <div className="carousel-slide h-full w-full flex flex-col justify-center">
+          <div className="carousel-slide min-h-full w-full flex flex-col justify-center">
             {slides[index]}
           </div>
         </motion.div>

@@ -52,11 +52,16 @@ import { toastWarning } from "@/lib/utils/toast-utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// Response from POST /api/cross-platform-testing (job creation)
-type JobCreatedResponse = {
-  job_id?: string;
-  status?: string;
-  cases_requested?: number;
+type CrossPlatformResponse = {
+  success?: boolean;
+  total_test_cases?: number;
+  generation_results?: Array<{
+    platform: string;
+    framework: string;
+    count: number;
+    error?: string;
+  }>;
+  message?: string;
   error?: string;
   details?: string;
   upgradeRequired?: boolean;
@@ -235,14 +240,8 @@ export function CrossPlatformGeneratorForm() {
   const { user, loading: authLoading } = useAuth();
 
   const [submitting, setSubmitting] = useState(false);
-  const [jobStatus, setJobStatus] = useState<{
-    jobId: string | null;
-    casesSaved: number;
-    casesRequested: number;
-    phase: "idle" | "queued" | "processing" | "done";
-  }>({ jobId: null, casesSaved: 0, casesRequested: 0, phase: "idle" });
-  const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Core inputs
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [requirement, setRequirement] = useState("");
@@ -462,79 +461,6 @@ export function CrossPlatformGeneratorForm() {
     apiFormat,
   ]);
 
-  function stopPolling() {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }
-
-  function startPolling(jobId: string, casesRequested: number) {
-    stopPolling();
-    setJobStatus({ jobId, casesSaved: 0, casesRequested, phase: "queued" });
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          status: string;
-          cases_saved?: number;
-          cases_requested?: number;
-          generation_id?: string;
-          partial?: boolean;
-          error?: string;
-        };
-
-        setJobStatus((prev) => ({
-          ...prev,
-          casesSaved: data.cases_saved ?? 0,
-          phase:
-            data.status === "pending"
-              ? "queued"
-              : data.status === "processing"
-                ? "processing"
-                : "done",
-        }));
-
-        if (data.status === "complete" || data.status === "failed") {
-          stopPolling();
-          setSubmitting(false);
-          setJobStatus({
-            jobId: null,
-            casesSaved: 0,
-            casesRequested: 0,
-            phase: "idle",
-          });
-
-          if (data.status === "failed") {
-            toast.error("Generation failed", {
-              description: data.error ?? "Please try again.",
-              duration: 8000,
-            });
-          } else {
-            toast.success("Cross-platform tests generated!", {
-              description: `Created ${data.cases_saved} test cases.`,
-              duration: 6000,
-            });
-            if (data.partial) {
-              toast.warning(
-                `${data.cases_saved} of ${casesRequested} cases generated — some batches failed. Try again for more.`,
-                { duration: 8000 },
-              );
-            }
-            router.push("/test-cases");
-          }
-        }
-      } catch {
-        // Network hiccup — keep polling
-      }
-    }, 3000);
-  }
-
-  // Clean up on unmount
-  React.useEffect(() => () => stopPolling(), []);
-
   const onSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -593,12 +519,11 @@ export function CrossPlatformGeneratorForm() {
           body: JSON.stringify(payload),
         });
 
-        const data = (await res.json()) as JobCreatedResponse;
+        const data = (await res.json()) as CrossPlatformResponse;
 
         if (res.status === 401) {
           toast.error("Please sign in to continue");
           router.push("/login");
-          setSubmitting(false);
           return;
         }
 
@@ -623,22 +548,29 @@ export function CrossPlatformGeneratorForm() {
               },
             });
           }
-          setSubmitting(false);
           return;
         }
 
         if (!res.ok) {
+          if (res.status === 400 && (data as any)?.field === "requirement") {
+            toast.error("Invalid requirement", {
+              description: data.error,
+              duration: 8000,
+            });
+            return;
+          }
           throw new Error(
             data?.details || data?.error || `Failed (HTTP ${res.status})`,
           );
         }
 
-        if (!data.job_id) {
-          throw new Error("Server did not return a job ID. Please try again.");
-        }
+        toast.success("Cross-platform tests generated!", {
+          description:
+            data.message || `Created ${data.total_test_cases ?? 0} test cases.`,
+          duration: 6000,
+        });
 
-        // Job created — start polling
-        startPolling(data.job_id, requestedTotal);
+        router.push("/test-cases");
       } catch (err) {
         console.error("❌ Cross-platform generation error:", err);
         toast.error("Unable to generate cross-platform tests", {
@@ -646,6 +578,7 @@ export function CrossPlatformGeneratorForm() {
             err instanceof Error ? err.message : "Please try again later",
           duration: 8000,
         });
+      } finally {
         setSubmitting(false);
       }
     },
@@ -1144,30 +1077,19 @@ export function CrossPlatformGeneratorForm() {
             {/* Generation progress */}
             {submitting && (
               <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
-                    <span className="text-sm font-medium">
-                      {jobStatus.phase === "queued"
-                        ? "Job queued — starting shortly…"
-                        : "Generating cross-platform test cases…"}
-                    </span>
-                  </div>
-                  {jobStatus.phase === "processing" &&
-                    jobStatus.casesRequested > 0 && (
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {jobStatus.casesSaved} / {jobStatus.casesRequested}
-                      </span>
-                    )}
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                  <span className="text-sm font-medium">
+                    Generating cross-platform test cases…
+                  </span>
                 </div>
                 <div className="space-y-1.5">
                   <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                     <div className="h-1.5 rounded-full bg-primary animate-pulse w-full" />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {jobStatus.phase === "queued"
-                      ? "Your generation job has been queued."
-                      : `Running parallel AI batches across ${selectedPlatforms.length} platform(s) — typically 20–60 seconds.`}
+                    Running parallel AI calls across {selectedPlatforms.length}{" "}
+                    platform(s) — typically 20–60 seconds.
                   </p>
                 </div>
               </div>

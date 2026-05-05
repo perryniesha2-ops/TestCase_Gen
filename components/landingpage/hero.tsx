@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { useState } from "react";
+import {
+  AnimatePresence,
+  motion,
+  useReducedMotion,
+  type Variants,
+} from "framer-motion";
 import { ArrowRight, CheckCircle2, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ProductDemo } from "@/components/demo/productdemo";
+import { demoSteps } from "@/components/demo/demosteps";
 
 const container: Variants = {
   hidden: { opacity: 0 },
@@ -24,6 +32,7 @@ const fadeUp: Variants = {
 
 export function Hero() {
   const reduce = useReducedMotion();
+  const [demoOpen, setDemoOpen] = useState(false);
 
   return (
     <section className="relative h-full overflow-hidden">
@@ -80,12 +89,12 @@ export function Hero() {
               </Link>
             </Button>
             <Button
-              asChild
               size="lg"
               variant="outline"
+              onClick={() => setDemoOpen(true)}
               className="gap-2 rounded-full border-gray-300 bg-white/80 px-6 text-sm font-semibold text-gray-700 backdrop-blur-sm transition-all hover:bg-gray-50 dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
             >
-              <Link href="#how-it-works">View demo</Link>
+              View demo
             </Button>
           </motion.div>
 
@@ -273,6 +282,11 @@ export function Hero() {
           </motion.div>
         </motion.div>
       </div>
+      <AnimatePresence>
+        {demoOpen && (
+          <ProductDemo steps={demoSteps} onClose={() => setDemoOpen(false)} />
+        )}
+      </AnimatePresence>
     </section>
   );
 }

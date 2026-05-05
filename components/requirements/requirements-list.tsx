@@ -3,9 +3,9 @@
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
+  useMemo,
 } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -27,10 +27,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { toastSuccess, toastError, toastInfo } from "@/lib/utils/toast-utils";
+import { toastSuccess, toastError } from "@/lib/utils/toast-utils";
 import {
   ChevronDown,
-  FileDown,
+  Download,
+  FileText,
+  FileSpreadsheet,
   FolderOpen,
   Loader2,
   Search,
@@ -96,6 +98,116 @@ async function safeJson(res: Response) {
   }
 }
 
+// ─── Export helpers ───────────────────────────────────────────────────────────
+
+function escapeCSV(value: string | number | null | undefined): string {
+  const str = String(value ?? "");
+  return str.includes(",") || str.includes('"') || str.includes("\n")
+    ? `"${str.replace(/"/g, '""')}"`
+    : str;
+}
+
+function exportCSV(requirements: Requirement[]) {
+  const headers = [
+    "Title",
+    "Project",
+    "Type",
+    "Priority",
+    "Status",
+    "External ID",
+    "Created",
+  ];
+  const rows = requirements.map((r) => [
+    r.title,
+    r.projects?.name ?? "",
+    r.type.replace("_", " "),
+    r.priority,
+    r.status,
+    r.external_id ?? "",
+    new Date(r.created_at).toLocaleDateString(),
+  ]);
+  const csv = [headers, ...rows]
+    .map((row) => row.map(escapeCSV).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `requirements-${new Date().toISOString().split("T")[0]}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function exportXLSX(requirements: Requirement[]) {
+  const ExcelJS = await import("exceljs");
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Requirements Export";
+  wb.created = new Date();
+  const ws = wb.addWorksheet("Requirements");
+
+  ws.columns = [
+    { header: "Title", key: "title", width: 48 },
+    { header: "Project", key: "project", width: 24 },
+    { header: "Type", key: "type", width: 18 },
+    { header: "Priority", key: "priority", width: 14 },
+    { header: "Status", key: "status", width: 16 },
+    { header: "External ID", key: "external_id", width: 18 },
+    { header: "Created", key: "created", width: 18 },
+  ];
+
+  const headerRow = ws.getRow(1);
+  headerRow.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial" };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF4F46E5" },
+    };
+    cell.alignment = { vertical: "middle", horizontal: "left" };
+  });
+  headerRow.height = 22;
+
+  requirements.forEach((r, i) => {
+    const row = ws.addRow({
+      title: r.title,
+      project: r.projects?.name ?? "",
+      type: r.type.replace("_", " "),
+      priority: r.priority,
+      status: r.status,
+      external_id: r.external_id ?? "",
+      created: new Date(r.created_at).toLocaleDateString(),
+    });
+    row.eachCell((cell) => {
+      cell.font = { name: "Arial", size: 10 };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: i % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC" },
+      };
+      cell.alignment = { vertical: "middle" };
+    });
+    row.height = 18;
+  });
+
+  ws.views = [{ state: "frozen", ySplit: 1 }];
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 7 } };
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `requirements-${new Date().toISOString().split("T")[0]}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function RequirementsList({
@@ -104,7 +216,6 @@ export function RequirementsList({
 }: RequirementsListProps) {
   const router = useRouter();
 
-  // ── Filters ───────────────────────────────────────────────────────────────
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
@@ -113,27 +224,20 @@ export function RequirementsList({
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  // ── Data ──────────────────────────────────────────────────────────────────
   const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-
-  // ── UI state ──────────────────────────────────────────────────────────────
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Sequence counter prevents stale responses from racing fetches
   const reqFetchSeq = useRef(0);
-  // Track whether initial load has run
   const didInitialLoad = useRef(false);
 
   const selectedProjectName = useMemo(
     () => projects.find((p) => p.id === selectedProject)?.name ?? null,
     [projects, selectedProject],
   );
-
-  // ── Fetch requirements ────────────────────────────────────────────────────
 
   const fetchRequirementsList = useCallback(
     async (opts?: { initial?: boolean; page?: number }) => {
@@ -152,24 +256,18 @@ export function RequirementsList({
           status: statusFilter,
           priority: priorityFilter,
         });
-
         const res = await fetch(`/api/requirements/list?${params.toString()}`, {
           cache: "no-store",
         });
         const payload = (await safeJson(res)) as RequirementListResponse | null;
-
-        if (!res.ok) {
+        if (!res.ok)
           throw new Error((payload as any)?.error ?? `Failed (${res.status})`);
-        }
-
         if (seq !== reqFetchSeq.current) return;
-
         setRequirements(payload?.requirements ?? []);
         setTotalPages(payload?.totalPages ?? 1);
         setTotalCount(payload?.totalCount ?? 0);
       } catch (err: any) {
         if (seq !== reqFetchSeq.current) return;
-        console.error("fetchRequirementsList error:", err);
         toastError(err?.message ?? "Failed to load requirements");
       } finally {
         if (seq !== reqFetchSeq.current) return;
@@ -177,36 +275,27 @@ export function RequirementsList({
         setRefreshing(false);
       }
     },
-    // Note: currentPage intentionally excluded — passed via opts.page
-    // to avoid the double-fetch that happens when page resets to 1
     [selectedProject, debouncedSearch, statusFilter, priorityFilter, pageSize],
   );
-
-  // ── Initial load — runs once, fetches projects + requirements together ────
 
   useEffect(() => {
     if (didInitialLoad.current) return;
     didInitialLoad.current = true;
-
     (async () => {
       try {
         setInitialLoading(true);
-        const [projectsRes] = await Promise.all([
-          fetch("/api/projects/list", { cache: "no-store" }),
-          // requirements fetch handled by fetchRequirementsList below
-        ]);
+        const projectsRes = await fetch("/api/projects/list", {
+          cache: "no-store",
+        });
         const projectsPayload = await safeJson(projectsRes);
         if (projectsRes.ok) setProjects(projectsPayload?.projects ?? []);
       } catch (err) {
         console.error("fetchProjects error:", err);
       }
-      // Fetch requirements after projects so filters are ready
       await fetchRequirementsList({ initial: true, page: 1 });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // ← empty deps: run once on mount only
-
-  // ── Re-fetch when filters change (not on mount — initial load handles that)
+  }, []);
 
   const isFirstFilterRun = useRef(true);
   useEffect(() => {
@@ -214,12 +303,9 @@ export function RequirementsList({
       isFirstFilterRun.current = false;
       return;
     }
-    // Reset to page 1 and re-fetch
     setCurrentPage(1);
     void fetchRequirementsList({ page: 1 });
   }, [selectedProject, debouncedSearch, statusFilter, priorityFilter]);
-
-  // ── Re-fetch when page changes (not on mount or filter change) ────────────
 
   const prevPage = useRef(currentPage);
   useEffect(() => {
@@ -227,14 +313,6 @@ export function RequirementsList({
     prevPage.current = currentPage;
     void fetchRequirementsList({ page: currentPage });
   }, [currentPage, fetchRequirementsList]);
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
-
-  const handleRequirementAdded = useCallback(async () => {
-    setCurrentPage(1);
-    await fetchRequirementsList({ page: 1 });
-    router.refresh();
-  }, [fetchRequirementsList, router]);
 
   const handleRowClick = useCallback(
     (requirement: Requirement) => {
@@ -247,37 +325,6 @@ export function RequirementsList({
     [selectable, onRequirementSelected, router],
   );
 
-  const handleDelete = useCallback(
-    async (requirement: Requirement) => {
-      const ok = window.confirm(
-        `Are you sure you want to delete "${requirement.title}"?`,
-      );
-      if (!ok) return;
-
-      // Optimistic removal
-      setRequirements((prev) => prev.filter((r) => r.id !== requirement.id));
-      setTotalCount((prev) => Math.max(0, prev - 1));
-
-      try {
-        const res = await fetch(`/api/requirements/${requirement.id}/delete`, {
-          method: "DELETE",
-        });
-        const payload = await safeJson(res);
-        if (!res.ok)
-          throw new Error(payload?.error ?? `Delete failed (${res.status})`);
-        toastSuccess("Requirement deleted");
-        await fetchRequirementsList({ page: currentPage });
-      } catch (err: any) {
-        console.error("deleteRequirement error:", err);
-        toastError(err?.message ?? "Failed to delete requirement");
-        await fetchRequirementsList({ page: currentPage });
-      }
-    },
-    [fetchRequirementsList, currentPage],
-  );
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
   if (initialLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -288,7 +335,7 @@ export function RequirementsList({
 
   return (
     <div className="space-y-6">
-      {/* Top actions */}
+      {/* ── Top actions ───────────────────────────────────────────────────── */}
       <div className="flex items-center justify-end gap-2">
         <ImportRequirementsDialog
           projectId={selectedProject}
@@ -304,6 +351,26 @@ export function RequirementsList({
           </Button>
         </ImportRequirementsDialog>
 
+        {/* Export — exports current page results respecting active filters */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" disabled={requirements.length === 0}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => exportCSV(requirements)}>
+              <FileText className="h-4 w-4 mr-2 text-green-600" />
+              CSV
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => exportXLSX(requirements)}>
+              <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" />
+              Excel (.xlsx)
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <AddRequirementModal
           onRequirementAdded={(newReq) => {
             setRequirements((prev) => [newReq, ...prev]);
@@ -311,7 +378,7 @@ export function RequirementsList({
         />
       </div>
 
-      {/* Filters */}
+      {/* ── Filters ───────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -323,7 +390,6 @@ export function RequirementsList({
           />
         </div>
 
-        {/* Project filter */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="min-w-[180px] justify-between">
@@ -364,7 +430,6 @@ export function RequirementsList({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Status */}
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Status" />
@@ -379,7 +444,6 @@ export function RequirementsList({
           </SelectContent>
         </Select>
 
-        {/* Priority */}
         <Select value={priorityFilter} onValueChange={setPriorityFilter}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Priority" />

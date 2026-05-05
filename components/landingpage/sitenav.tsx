@@ -141,7 +141,7 @@ export function SiteNav() {
                 variant="secondary"
                 asChild
                 size="sm"
-                className="gap-1 bg-cyan-600 text-white shadow-md shadow-blue-600/20 hover:bg-blue-500 dark:bg-cyan-500 dark:shadow-cyan-900/40 dark:hover:bg-cyan-400"
+                className="gap-1 bg-cyan-600 text-white shadow-md shadow-blue-600/20 hover:bg-cyan-500 dark:bg-cyan-500 dark:shadow-cyan-900/40 dark:hover:bg-cyan-400"
               >
                 <Link href="/signup">
                   Sign Up

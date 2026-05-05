@@ -32,6 +32,8 @@ import { Loader2, Sparkles, Info, FileText } from "lucide-react";
 import { TemplateSelect } from "@/components/templates/template-select";
 import { ProjectSelect } from "@/components/projects/project-select";
 import type { Project } from "@/types/projects";
+import { RequirementRow, RequirementOption } from "@/types/requirements";
+
 import {
   AI_MODELS,
   MODEL_GROUPS,
@@ -62,29 +64,6 @@ type TemplateFromSelect = {
   description?: string | null;
   category: TemplateCategory;
   template_content: TemplateContent;
-};
-
-type RequirementRow = {
-  id: string;
-  title: string;
-  description: string;
-  acceptance_criteria?: string | null;
-  type: string;
-  priority: string;
-  status?: string;
-  project_id?: string | null;
-};
-
-type RequirementOption = {
-  id: string;
-  label: string;
-  title: string;
-  description: string;
-  acceptance_criteria?: string | null;
-  type: string;
-  priority: string;
-  value: string;
-  project_id?: string | null;
 };
 
 type ProjectRowLite = {

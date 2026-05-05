@@ -466,7 +466,8 @@ export function Features() {
   return (
     <MotionSection
       id="features"
-      className="relative h-full w-full overflow-y-auto py-12"
+      className="relative w-full overflow-y-auto py-6"
+      style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       variants={sectionVariants}
       initial={reduceMotion ? false : "hidden"}
       animate={reduceMotion ? undefined : "show"}

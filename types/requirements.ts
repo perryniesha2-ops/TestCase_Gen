@@ -85,6 +85,7 @@ export type RequirementRow = {
   id: string;
   title: string;
   description: string;
+  acceptance_criteria?: string | null;
   type: string;
   priority: string;
   status?: string;
@@ -96,6 +97,7 @@ export type RequirementOption = {
   label: string;
   title: string;
   description: string;
+  acceptance_criteria?: string | null;
   type: string;
   priority: string;
   value: string;
