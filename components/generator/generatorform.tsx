@@ -898,10 +898,6 @@ export function GeneratorForm() {
                       <SelectItem value="20">20 test cases</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    AI generates a balanced mix of happy path, error handling,
-                    boundary, edge case, and security tests.
-                  </p>
                 </div>
               </div>
             )}
@@ -919,8 +915,7 @@ export function GeneratorForm() {
                     <div className="h-1.5 rounded-full bg-primary animate-pulse w-full" />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Running {Math.ceil(parseInt(testCaseCount, 10) / 5)}{" "}
-                    parallel AI batches — typically 20–45 seconds.
+                    Generating test cases typically takes 20–45 seconds.
                   </p>
                 </div>
               </div>

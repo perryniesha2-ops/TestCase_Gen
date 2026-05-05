@@ -51,6 +51,7 @@ import { Separator } from "@radix-ui/react-separator";
 import { toastWarning } from "@/lib/utils/toast-utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+import { RequirementRow, RequirementOption } from "@/types/requirements";
 
 type CrossPlatformResponse = {
   success?: boolean;
@@ -74,27 +75,6 @@ type PlatformId = "web" | "mobile" | "api" | "accessibility" | "performance";
 type ApiProtocol = "REST" | "SOAP" | "GraphQL" | "gRPC" | "WebSocket";
 type ApiAuth = "None" | "Basic" | "Bearer" | "OAuth2" | "API Key" | "mTLS";
 type ApiFormat = "JSON" | "XML";
-
-type RequirementRow = {
-  id: string;
-  title: string;
-  description: string;
-  type: string;
-  priority: string;
-  status?: string;
-  project_id?: string | null;
-};
-
-type RequirementOption = {
-  id: string;
-  label: string;
-  title: string;
-  description: string;
-  type: string;
-  priority: string;
-  value: string;
-  project_id?: string | null;
-};
 
 type BootstrapResponse = { requirements: RequirementRow[] };
 
@@ -205,17 +185,71 @@ const PLACEHOLDER_REQUIREMENTS: RequirementOption[] = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function formatAcceptanceCriteria(raw: unknown): string {
+  if (!raw) return "";
+
+  // Plain string
+  if (typeof raw === "string") return raw.trim();
+
+  // Array of strings or objects
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => {
+        if (typeof item === "string") return `- ${item.trim()}`;
+        if (typeof item === "object" && item !== null) {
+          // {text: "..."} or {description: "..."} or {criteria: "..."}
+          const obj = item as Record<string, unknown>;
+          const text =
+            obj.text ??
+            obj.description ??
+            obj.criteria ??
+            obj.content ??
+            Object.values(obj)[0];
+          return `- ${String(text ?? "").trim()}`;
+        }
+        return `- ${String(item).trim()}`;
+      })
+      .filter((line) => line !== "- ")
+      .join("\n");
+  }
+
+  // Object with a criteria/items/list key containing an array
+  if (typeof raw === "object" && raw !== null) {
+    const obj = raw as Record<string, unknown>;
+    const arrayVal =
+      obj.criteria ?? obj.items ?? obj.list ?? obj.acceptance_criteria;
+    if (Array.isArray(arrayVal)) return formatAcceptanceCriteria(arrayVal);
+    // Fallback: stringify all values
+    return Object.entries(obj)
+      .map(([k, v]) => `- ${k}: ${String(v).trim()}`)
+      .join("\n");
+  }
+
+  return String(raw).trim();
+}
+
 function mapRequirementsToOptions(rows: RequirementRow[]): RequirementOption[] {
-  return (rows ?? []).map((req) => ({
-    id: req.id,
-    label: `${req.title} (${req.type})`,
-    title: req.title,
-    description: req.description,
-    type: req.type,
-    priority: req.priority,
-    value: req.description,
-    project_id: req.project_id ?? null,
-  }));
+  return (rows ?? []).map((req) => {
+    const criteriaText = formatAcceptanceCriteria(req.acceptance_criteria);
+    const value = [
+      req.title,
+      req.description,
+      criteriaText ? `Acceptance Criteria:\n${criteriaText}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    return {
+      id: req.id,
+      label: `${req.title} (${req.type})`,
+      title: req.title,
+      description: req.description,
+      type: req.type,
+      priority: req.priority,
+      value,
+      project_id: req.project_id ?? null,
+    };
+  });
 }
 
 function clampInt(n: unknown, min: number, max: number, fallback: number) {
@@ -868,9 +902,7 @@ export function CrossPlatformGeneratorForm() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  AI generates a balanced mix of happy path, error handling,
-                  boundary, edge case, and security tests. Total ={" "}
-                  {clampInt(perPlatformCount, 1, 20, 10)} ×{" "}
+                  Total: = {clampInt(perPlatformCount, 1, 20, 10)} ×{" "}
                   {selectedPlatforms.length} platform(s) = {requestedTotal}{" "}
                   cases.
                 </p>
@@ -1088,8 +1120,8 @@ export function CrossPlatformGeneratorForm() {
                     <div className="h-1.5 rounded-full bg-primary animate-pulse w-full" />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Running parallel AI calls across {selectedPlatforms.length}{" "}
-                    platform(s) — typically 20–60 seconds.
+                    Generations across {selectedPlatforms.length} platform(s) —
+                    typically 20–60 seconds.
                   </p>
                 </div>
               </div>

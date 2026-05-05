@@ -172,11 +172,11 @@ export function UnifiedTestCaseTable(props: Props) {
   ): tc is CrossPlatformTestCase => tc._caseType === "cross-platform";
 
   const statCards = [
-    { label: "Total", value: displayMetrics.total, color: "slate" },
+    { label: "Total", value: displayMetrics.total, color: "white" },
     { label: "Passed", value: displayMetrics.passed, color: "green" },
     { label: "Failed", value: displayMetrics.failed, color: "red" },
     { label: "Blocked", value: displayMetrics.blocked, color: "orange" },
-    { label: "In Progress", value: displayMetrics.inProgress, color: "blue" },
+    { label: "In Progress", value: displayMetrics.inProgress, color: "cyan" },
     { label: "Not Run", value: displayMetrics.notRun, color: "gray" },
   ] as const;
 
