@@ -61,9 +61,6 @@ export function Footer() {
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-8 text-xs sm:flex-row sm:items-center sm:justify-between">
         {/* Logo + copyright */}
         <motion.div variants={item} className="flex flex-col gap-1.5">
-          <span className="text-sm font-semibold tracking-tight text-gray-800 dark:text-white/80">
-            SynthQA
-          </span>
           <p className="text-gray-400 dark:text-white/25">
             © {new Date().getFullYear()} SynthQA, LLC. All rights reserved.
           </p>

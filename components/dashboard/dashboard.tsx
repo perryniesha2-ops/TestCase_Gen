@@ -45,6 +45,7 @@ import {
 } from "recharts";
 
 interface DashboardMetrics {
+  window_days?: number;
   test_cases: {
     total: number;
     passed: number;
@@ -70,22 +71,14 @@ interface DashboardMetrics {
     timestamp: string;
     status?: string;
   }>;
-  automation_runs?: {
-    total: number;
-    pass_rate: number;
-    last_run?: string;
-  };
+  automation_runs?: { total: number; pass_rate: number; last_run?: string };
   execution_timeline?: Array<{
     date: string;
     passed: number;
     failed: number;
     total: number;
   }>;
-  flaky_tests?: Array<{
-    id: string;
-    title: string;
-    flakiness_score: number;
-  }>;
+  flaky_tests?: Array<{ id: string; title: string; flakiness_score: number }>;
   priority_failures?: Array<{
     id: string;
     title: string;
@@ -94,7 +87,50 @@ interface DashboardMetrics {
   }>;
 }
 
-const PIE_COLORS = ["#10b981", "#ef4444", "#f59e0b", "#9ca3af"];
+const PIE_COLORS: Record<string, string> = {
+  Passed: "#10b981",
+  Failed: "#ef4444",
+  Blocked: "#f59e0b",
+  Skipped: "#9ca3af",
+  "Not Run": "#6366f1",
+};
+const RADIAN = Math.PI / 180;
+
+// Custom pie label — positions text outside the slice using midAngle so it
+// never clips against the top/bottom edges of the SVG viewport.
+function PieLabel({
+  cx,
+  cy,
+  midAngle,
+  outerRadius,
+  name,
+  percent,
+}: {
+  cx?: number;
+  cy?: number;
+  midAngle?: number;
+  outerRadius?: number;
+  name?: string;
+  percent?: number;
+}) {
+  if (cx == null || cy == null || midAngle == null || outerRadius == null)
+    return null;
+  const radius = outerRadius + 28;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text
+      x={x}
+      y={y}
+      textAnchor={x > cx ? "start" : "end"}
+      dominantBaseline="central"
+      fontSize={12}
+      fill="currentColor"
+    >
+      {`${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+    </text>
+  );
+}
 
 export function TestManagementDashboard() {
   const [metrics, setMetrics] = useState<DashboardMetrics>({
@@ -119,12 +155,10 @@ export function TestManagementDashboard() {
     flaky_tests: [],
     priority_failures: [],
   });
-
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-
     async function load() {
       try {
         setLoading(true);
@@ -132,17 +166,12 @@ export function TestManagementDashboard() {
           cache: "no-store",
           credentials: "include",
         });
-
         if (res.status === 401) {
           if (!cancelled) setMetrics((m) => ({ ...m, recent_activity: [] }));
           return;
         }
-
-        if (!res.ok) {
-          const msg = await res.text().catch(() => "");
-          throw new Error(`Dashboard metrics failed (${res.status}): ${msg}`);
-        }
-
+        if (!res.ok)
+          throw new Error(`Dashboard metrics failed (${res.status})`);
         const data = (await res.json()) as DashboardMetrics;
         if (!cancelled) setMetrics(data);
       } catch (e) {
@@ -151,28 +180,28 @@ export function TestManagementDashboard() {
         if (!cancelled) setLoading(false);
       }
     }
-
     void load();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const pieChartData = useMemo(() => {
-    return [
-      { name: "Passed", value: metrics.test_cases.passed },
-      { name: "Failed", value: metrics.test_cases.failed },
-      { name: "Blocked", value: metrics.test_cases.blocked },
-      { name: "Not Run", value: metrics.test_cases.not_run },
-    ].filter((item) => item.value > 0);
-  }, [metrics.test_cases]);
+  const pieChartData = useMemo(
+    () =>
+      [
+        { name: "Passed", value: metrics.test_cases.passed },
+        { name: "Failed", value: metrics.test_cases.failed },
+        { name: "Blocked", value: metrics.test_cases.blocked },
+        { name: "Not Run", value: metrics.test_cases.not_run },
+      ].filter((item) => item.value > 0),
+    [metrics.test_cases],
+  );
 
   const manualActivity = useMemo(
     () =>
       metrics.recent_activity.filter((a) => a.type === "execution").slice(0, 5),
     [metrics.recent_activity],
   );
-
   const automationActivity = useMemo(
     () =>
       metrics.recent_activity
@@ -202,7 +231,6 @@ export function TestManagementDashboard() {
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
-
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
@@ -236,16 +264,6 @@ export function TestManagementDashboard() {
     return <Activity className="h-4 w-4 text-blue-600 flex-shrink-0" />;
   }
 
-  function formatDate(value: string) {
-    const date = new Date(value);
-    return date.toLocaleDateString("en-US", {
-      month: "2-digit",
-      day: "2-digit",
-      year: "2-digit",
-      timeZone: "UTC",
-    });
-  }
-
   if (loading) {
     return (
       <div
@@ -262,6 +280,16 @@ export function TestManagementDashboard() {
 
   const hasData = metrics.test_cases.total > 0;
   const hasPriorityFailures = (metrics.priority_failures?.length ?? 0) > 0;
+
+  function formatDate(value: string) {
+    const date = new Date(value);
+    return date.toLocaleDateString("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "2-digit",
+      timeZone: "UTC", // critical
+    });
+  }
 
   return (
     <div data-testid="dashboard" className="space-y-8 px-1 md:px-2">
@@ -319,7 +347,9 @@ export function TestManagementDashboard() {
       >
         <Card data-testid="metric-total-tests">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Tests</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Total Executions
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div
@@ -329,11 +359,10 @@ export function TestManagementDashboard() {
               {metrics.test_cases.total}
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              {metrics.test_cases.not_run} not yet executed
+              {metrics.test_cases.not_run} tests not run in the last 7 days.
             </p>
           </CardContent>
         </Card>
-
         <Card data-testid="metric-pass-rate">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Pass Rate</CardTitle>
@@ -353,11 +382,11 @@ export function TestManagementDashboard() {
               />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              {metrics.test_cases.passed} of {metrics.test_cases.total} passed
+              {metrics.test_cases.passed} of {metrics.test_cases.total}{" "}
+              executions passed
             </p>
           </CardContent>
         </Card>
-
         <Card data-testid="metric-coverage">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Coverage</CardTitle>
@@ -387,7 +416,6 @@ export function TestManagementDashboard() {
             </p>
           </CardContent>
         </Card>
-
         <Card
           data-testid="metric-failed-tests"
           className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800"
@@ -398,13 +426,21 @@ export function TestManagementDashboard() {
           <CardContent>
             <div
               data-testid="metric-failed-tests-value"
-              className="text-3xl font-bold text-red-600"
+              className="text-center text-3xl font-bold text-red-600"
             >
               {metrics.test_cases.failed}
             </div>
+            <Link href="/test-cases?runStatus=failed">
+              <Button
+                data-testid="view-failures-link"
+                variant="link"
+                className="h-auto p-0 text-xs mt-2 text-red-600 hover:text-red-700"
+              >
+                View failures
+              </Button>
+            </Link>
           </CardContent>
         </Card>
-
         <Card data-testid="metric-automation-runs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">
@@ -436,7 +472,7 @@ export function TestManagementDashboard() {
           <CardHeader>
             <CardTitle>Execution Trend</CardTitle>
             <CardDescription>
-              Daily test results over the last 7 days
+              Daily test results — last {metrics.window_days ?? 7} days
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -445,21 +481,34 @@ export function TestManagementDashboard() {
               <div data-testid="execution-timeline-chart">
                 <ResponsiveContainer width="100%" height={360}>
                   <LineChart data={metrics.execution_timeline}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="rgba(255,255,255,0.06)"
+                    />{" "}
                     <XAxis
                       dataKey="date"
                       style={{ fontSize: "12px" }}
-                      tickFormatter={formatDate}
+                      tickFormatter={(v) => {
+                        const d = new Date(v);
+                        return `${d.getMonth() + 1}/${d.getDate()}`;
+                      }}
                     />
                     <YAxis style={{ fontSize: "12px" }} />
                     <Tooltip
                       labelFormatter={(value) => formatDate(value)}
                       contentStyle={{
-                        backgroundColor: "rgba(255, 255, 255, 0.95)",
-                        color: "#111827",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "8px",
-                        fontSize: "12px",
+                        background: "rgba(10, 15, 30, 0.95)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: "10px",
+                        backdropFilter: "blur(8px)",
+                        boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
+                      }}
+                      itemStyle={{
+                        color: "#e5e7eb",
+                      }}
+                      labelStyle={{
+                        color: "#9ca3af",
+                        marginBottom: "4px",
                       }}
                     />
                     <Legend />
@@ -507,53 +556,67 @@ export function TestManagementDashboard() {
         </Card>
       )}
 
-      {/* Status Distribution */}
+      {/* Status Distribution — fixed: custom label, larger height, proper margins */}
       {hasData && (
         <Card data-testid="status-distribution-card">
           <CardHeader>
             <CardTitle>Test Status Distribution</CardTitle>
-            <CardDescription>Breakdown of current test states</CardDescription>
+            <CardDescription>
+              Breakdown of test states — last {metrics.window_days ?? 7} days
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {pieChartData.length > 0 ? (
               <div data-testid="status-distribution-chart">
-                <ResponsiveContainer width="100%" height={360}>
-                  <PieChart>
+                <ResponsiveContainer width="100%" height={400}>
+                  <PieChart
+                    margin={{ top: 28, right: 56, bottom: 8, left: 56 }}
+                  >
                     <Pie
                       data={pieChartData}
                       cx="50%"
-                      cy="50%"
-                      labelLine={true}
-                      label={({ name, percent }) =>
-                        `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
-                      }
-                      outerRadius={130}
+                      cy="48%"
+                      outerRadius={120}
                       dataKey="value"
+                      labelLine={false}
+                      label={(props) => <PieLabel {...props} />}
                     >
                       {pieChartData.map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
-                          fill={PIE_COLORS[index % PIE_COLORS.length]}
+                          fill={PIE_COLORS[entry.name] ?? "#9ca3af"}
                         />
                       ))}
                     </Pie>
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "rgba(255, 255, 255, 0.95)",
-                        color: "#111827",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "8px",
-                        fontSize: "12px",
+                        background: "rgba(10, 15, 30, 0.95)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: "10px",
+                        backdropFilter: "blur(8px)",
+                        boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
+                      }}
+                      itemStyle={{
+                        color: "#e5e7eb",
+                      }}
+                      labelStyle={{
+                        color: "#9ca3af",
+                        marginBottom: "4px",
                       }}
                     />{" "}
-                    <Legend />
+                    <Legend
+                      verticalAlign="bottom"
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{ paddingTop: 12, fontSize: 12 }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
             ) : (
               <div
                 data-testid="status-distribution-empty"
-                className="h-[360px] flex items-center justify-center text-muted-foreground"
+                className="h-[400px] flex items-center justify-center text-muted-foreground"
               >
                 <div className="text-center space-y-2">
                   <Target className="h-8 w-8 mx-auto opacity-50" />

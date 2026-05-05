@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/lib/auth/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,14 +43,159 @@ import {
   AlertCircle,
   ChevronDown,
   Zap,
-  Download,
   TrendingUp,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileSpreadsheet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ExportAutomationButton } from "@/components/automation/export-automation-button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Export helpers ───────────────────────────────────────────────────────────
+
+function escapeCSV(value: string | number | null | undefined): string {
+  const str = String(value ?? "");
+  return str.includes(",") || str.includes('"') || str.includes("\n")
+    ? `"${str.replace(/"/g, '""')}"`
+    : str;
+}
+
+function exportRunsCSV(runs: AutomationRun[]) {
+  const headers = [
+    "Run #",
+    "Suite",
+    "Date",
+    "Framework",
+    "Status",
+    "Passed",
+    "Failed",
+    "Skipped",
+    "Total",
+    "Pass Rate %",
+    "Duration",
+    "Environment",
+    "Branch",
+    "CI Provider",
+  ];
+  const rows = runs.map((r) => [
+    r.run_number,
+    r.suite_name ?? "",
+    new Date(r.started_at).toLocaleString(),
+    r.framework,
+    r.status,
+    r.passed_tests,
+    r.failed_tests,
+    r.skipped_tests,
+    r.total_tests,
+    calcPassRate(r),
+    formatDuration(r.duration_ms),
+    r.environment,
+    r.branch ?? "",
+    r.ci_provider ?? "",
+  ]);
+  const csv = [headers, ...rows]
+    .map((row) => row.map(escapeCSV).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `automation-runs-${new Date().toISOString().split("T")[0]}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function exportRunsXLSX(runs: AutomationRun[]) {
+  const ExcelJS = await import("exceljs");
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Automation Runs Export";
+  wb.created = new Date();
+  const ws = wb.addWorksheet("Automation Runs");
+
+  ws.columns = [
+    { header: "Run #", key: "run_number", width: 10 },
+    { header: "Suite", key: "suite", width: 30 },
+    { header: "Date", key: "date", width: 22 },
+    { header: "Framework", key: "framework", width: 14 },
+    { header: "Status", key: "status", width: 10 },
+    { header: "Passed", key: "passed", width: 10 },
+    { header: "Failed", key: "failed", width: 10 },
+    { header: "Skipped", key: "skipped", width: 10 },
+    { header: "Total", key: "total", width: 10 },
+    { header: "Pass Rate %", key: "pass_rate", width: 12 },
+    { header: "Duration", key: "duration", width: 12 },
+    { header: "Environment", key: "environment", width: 14 },
+    { header: "Branch", key: "branch", width: 20 },
+    { header: "CI Provider", key: "ci_provider", width: 14 },
+  ];
+
+  const headerRow = ws.getRow(1);
+  headerRow.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial" };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF4F46E5" },
+    };
+    cell.alignment = { vertical: "middle", horizontal: "left" };
+  });
+  headerRow.height = 22;
+
+  runs.forEach((r, i) => {
+    const row = ws.addRow({
+      run_number: r.run_number,
+      suite: r.suite_name ?? "",
+      date: new Date(r.started_at).toLocaleString(),
+      framework: r.framework,
+      status: r.status,
+      passed: r.passed_tests,
+      failed: r.failed_tests,
+      skipped: r.skipped_tests,
+      total: r.total_tests,
+      pass_rate: calcPassRate(r),
+      duration: formatDuration(r.duration_ms),
+      environment: r.environment,
+      branch: r.branch ?? "",
+      ci_provider: r.ci_provider ?? "",
+    });
+    row.eachCell((cell) => {
+      cell.font = { name: "Arial", size: 10 };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: i % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC" },
+      };
+      cell.alignment = { vertical: "middle" };
+    });
+    row.height = 18;
+  });
+
+  ws.views = [{ state: "frozen", ySplit: 1 }];
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 14 } };
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `automation-runs-${new Date().toISOString().split("T")[0]}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 type Suite = {
   id: string;
@@ -83,7 +226,6 @@ type AutomationRun = {
   duration_ms: number;
   framework_version: string | null;
   created_at: string;
-  // joined
   suite_name?: string;
 };
 
@@ -105,173 +247,152 @@ type TestExecution = {
   test_cases: { title: string; description: string | null } | null;
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 const stripAnsi = (str: string) => str.replace(/\u001b\[[0-9;]*m/g, "");
 
 function formatDuration(ms: number | null) {
-  if (!ms) return "-";
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-  return `${seconds}s`;
+  if (!ms) return "—";
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
 }
 
-function calculatePassRate(run: AutomationRun) {
-  if (run.total_tests === 0) return 0;
-  return Math.round((run.passed_tests / run.total_tests) * 100);
+function calcPassRate(run: AutomationRun) {
+  return run.total_tests === 0
+    ? 0
+    : Math.round((run.passed_tests / run.total_tests) * 100);
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+function getStatusBadge(status: string) {
+  switch (status) {
+    case "passed":
+      return (
+        <Badge className="bg-green-600 gap-1 text-xs h-5 px-1.5">
+          <CheckCircle2 className="h-3 w-3" />
+          Passed
+        </Badge>
+      );
+    case "failed":
+      return (
+        <Badge variant="destructive" className="gap-1 text-xs h-5 px-1.5">
+          <XCircle className="h-3 w-3" />
+          Failed
+        </Badge>
+      );
+    case "skipped":
+      return (
+        <Badge className="bg-slate-600 gap-1 text-xs h-5 px-1.5">
+          <MinusCircle className="h-3 w-3" />
+          Skipped
+        </Badge>
+      );
+    default:
+      return (
+        <Badge variant="secondary" className="text-xs h-5 px-1.5">
+          {status}
+        </Badge>
+      );
+  }
+}
+
+function getFrameworkBadge(framework: string) {
+  const colors: Record<string, string> = {
+    playwright: "bg-green-700",
+    selenium: "bg-orange-700",
+    cypress: "bg-teal-700",
+    puppeteer: "bg-blue-700",
+    testcafe: "bg-purple-700",
+    webdriverio: "bg-pink-700",
+  };
+  return (
+    <Badge
+      className={`${colors[framework] ?? "bg-gray-700"} text-white text-xs h-5 px-1.5`}
+    >
+      {framework}
+    </Badge>
+  );
+}
 
 export function AutomationHub() {
-  const { user } = useAuth();
   const router = useRouter();
 
-  // Data
   const [suites, setSuites] = useState<Suite[]>([]);
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 50;
 
-  // Filters
-  const [suiteFilter, setSuiteFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [frameworkFilter, setFrameworkFilter] = useState<string>("all");
-  const [dateFilter, setDateFilter] = useState<string>("all");
+  const [suiteFilter, setSuiteFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [frameworkFilter, setFrameworkFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("all");
 
-  // Detail dialog
   const [selectedRun, setSelectedRun] = useState<AutomationRun | null>(null);
-  const [selectedRunExecutions, setSelectedRunExecutions] = useState<
-    TestExecution[]
-  >([]);
+  const [runExecutions, setRunExecutions] = useState<TestExecution[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
-  // ── Load suites ────────────────────────────────────────────────────────────
-
   useEffect(() => {
-    if (!user) return;
-    void loadSuites();
-  }, [user]);
+    fetch("/api/automation/suites")
+      .then((r) => r.json())
+      .then((d) => setSuites(d.suites ?? []))
+      .catch(console.error);
+  }, []);
 
-  async function loadSuites() {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("suites")
-      .select("id, name, automation_framework")
-      .eq("user_id", user!.id)
-      .eq("automation_enabled", true)
-      .order("name", { ascending: true });
-
-    if (!error) setSuites(data ?? []);
-  }
-
-  // ── Load runs ──────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!user) return;
-    void loadRuns();
-  }, [user, suiteFilter, statusFilter, frameworkFilter, dateFilter]);
-
-  async function loadRuns() {
-    if (!user) return;
-    try {
+  const fetchRuns = useCallback(
+    async (page = 1) => {
       setLoading(true);
-      const supabase = createClient();
+      try {
+        const p = new URLSearchParams({
+          page: String(page),
+          pageSize: String(pageSize),
+        });
+        if (suiteFilter !== "all") p.set("suiteId", suiteFilter);
+        if (statusFilter !== "all") p.set("status", statusFilter);
+        if (frameworkFilter !== "all") p.set("framework", frameworkFilter);
+        if (dateFilter !== "all") p.set("dateRange", dateFilter);
 
-      // First get all suite IDs this user owns
-      const { data: userSuites } = await supabase
-        .from("suites")
-        .select("id, name")
-        .eq("user_id", user.id);
-
-      if (!userSuites || userSuites.length === 0) {
+        const res = await fetch(`/api/automation/runs?${p.toString()}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Failed to load runs");
+        setRuns(data.runs ?? []);
+        setTotalCount(data.totalCount ?? 0);
+        setTotalPages(data.totalPages ?? 1);
+      } catch (err: any) {
+        toast.error(err?.message ?? "Failed to load automation runs");
         setRuns([]);
-        return;
+      } finally {
+        setLoading(false);
       }
+    },
+    [suiteFilter, statusFilter, frameworkFilter, dateFilter],
+  );
 
-      const suiteIds = userSuites.map((s) => s.id);
-      const suiteNameMap = new Map(userSuites.map((s) => [s.id, s.name]));
-
-      let query = supabase
-        .from("automation_runs")
-        .select("*")
-        .in("suite_id", suiteIds)
-        .order("started_at", { ascending: false })
-        .limit(300);
-
-      if (suiteFilter !== "all") query = query.eq("suite_id", suiteFilter);
-      if (statusFilter !== "all") query = query.eq("status", statusFilter);
-      if (frameworkFilter !== "all")
-        query = query.eq("framework", frameworkFilter);
-
-      if (dateFilter !== "all") {
-        const startDate = computeStartDate(dateFilter);
-        if (startDate) query = query.gte("created_at", startDate);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      // Attach suite names
-      const enriched = (data ?? []).map((run) => ({
-        ...run,
-        suite_name: suiteNameMap.get(run.suite_id) ?? "Unknown Suite",
-      }));
-
-      setRuns(enriched as AutomationRun[]);
-    } catch (err) {
-      console.error("Error loading runs:", err);
-      toast.error("Failed to load automation runs");
-      setRuns([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function computeStartDate(filter: string): string | null {
-    const now = new Date();
-    if (filter === "today")
-      return new Date(now.setHours(0, 0, 0, 0)).toISOString();
-    if (filter === "week") {
-      const d = new Date();
-      d.setDate(d.getDate() - 7);
-      return d.toISOString();
-    }
-    if (filter === "month") {
-      const d = new Date();
-      d.setMonth(d.getMonth() - 1);
-      return d.toISOString();
-    }
-    return null;
-  }
-
-  // ── Open run detail dialog ─────────────────────────────────────────────────
+  useEffect(() => {
+    setCurrentPage(1);
+    void fetchRuns(1);
+  }, [suiteFilter, statusFilter, frameworkFilter, dateFilter]);
+  useEffect(() => {
+    void fetchRuns(currentPage);
+  }, [currentPage]);
 
   async function openRunDetails(run: AutomationRun) {
     setSelectedRun(run);
     setDetailsOpen(true);
     setLoadingDetails(true);
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("test_executions")
-        .select("*, test_cases:test_case_id (title, description)")
-        .eq("automation_run_id", run.id)
-        .order("started_at", { ascending: true });
-
-      if (error) throw error;
-      setSelectedRunExecutions((data as any[]) ?? []);
-    } catch (err) {
-      console.error("Error loading run details:", err);
-      toast.error("Failed to load test details");
-      setSelectedRunExecutions([]);
+      const res = await fetch(`/api/automation/runs/${run.id}/executions`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to load details");
+      setRunExecutions(data.executions ?? []);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to load test details");
+      setRunExecutions([]);
     } finally {
       setLoadingDetails(false);
     }
   }
-
-  // ── Summary stats ──────────────────────────────────────────────────────────
 
   const stats = useMemo(() => {
     const total = runs.length;
@@ -279,68 +400,17 @@ export function AutomationHub() {
     const failed = runs.filter((r) => r.status === "failed").length;
     const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
     const avgDuration =
-      runs.length > 0
-        ? Math.round(
-            runs.reduce((s, r) => s + (r.duration_ms || 0), 0) / runs.length,
-          )
+      total > 0
+        ? Math.round(runs.reduce((s, r) => s + (r.duration_ms || 0), 0) / total)
         : 0;
     const frameworks = [...new Set(runs.map((r) => r.framework))];
     return { total, passed, failed, passRate, avgDuration, frameworks };
   }, [runs]);
 
-  // ── Badge helpers ──────────────────────────────────────────────────────────
-
-  function getStatusBadge(status: string) {
-    switch (status) {
-      case "passed":
-        return (
-          <Badge className="bg-green-600 gap-1">
-            <CheckCircle2 className="h-3 w-3" />
-            Passed
-          </Badge>
-        );
-      case "failed":
-        return (
-          <Badge variant="destructive" className="gap-1">
-            <XCircle className="h-3 w-3" />
-            Failed
-          </Badge>
-        );
-      case "skipped":
-        return (
-          <Badge className="bg-slate-600 gap-1">
-            <MinusCircle className="h-3 w-3" />
-            Skipped
-          </Badge>
-        );
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  }
-
-  function getFrameworkBadge(framework: string) {
-    const colors: Record<string, string> = {
-      playwright: "bg-green-700",
-      selenium: "bg-orange-700",
-      cypress: "bg-teal-700",
-      puppeteer: "bg-blue-700",
-      testcafe: "bg-purple-700",
-      webdriverio: "bg-pink-700",
-    };
-    return (
-      <Badge className={`${colors[framework] || "bg-gray-700"} text-white`}>
-        {framework}
-      </Badge>
-    );
-  }
-
-  // ── Render ─────────────────────────────────────────────────────────────────
-
   return (
     <div className="space-y-6">
-      {/* Summary Stats */}
+      {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Total Runs — neutral/slate */}
         <Card className="border-slate-200 dark:border-slate-800 hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -351,16 +421,13 @@ export function AutomationHub() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {stats.total}
-            </div>
+            <div className="text-3xl font-bold">{totalCount}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.passed} passed · {stats.failed} failed
             </p>
           </CardContent>
         </Card>
 
-        {/* Pass Rate — green */}
         <Card className="border-green-200 dark:border-green-800 hover:shadow-md transition-shadow bg-green-50/50 dark:bg-green-950/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">
@@ -376,14 +443,13 @@ export function AutomationHub() {
             </div>
             <div className="w-full bg-green-200 dark:bg-green-900 rounded-full h-1.5 mt-2 overflow-hidden">
               <div
-                className="h-1.5 bg-green-600 dark:bg-green-400 transition-all duration-500"
+                className="h-1.5 bg-green-600 transition-all duration-500"
                 style={{ width: `${stats.passRate}%` }}
               />
             </div>
           </CardContent>
         </Card>
 
-        {/* Avg Duration — blue */}
         <Card className="border-blue-200 dark:border-blue-800 hover:shadow-md transition-shadow bg-blue-50/50 dark:bg-blue-950/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-300">
@@ -403,7 +469,6 @@ export function AutomationHub() {
           </CardContent>
         </Card>
 
-        {/* Frameworks — purple, with badges instead of truncated text */}
         <Card className="border-purple-200 dark:border-purple-800 hover:shadow-md transition-shadow bg-purple-50/50 dark:bg-purple-950/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-purple-700 dark:text-purple-300">
@@ -438,145 +503,181 @@ export function AutomationHub() {
         </Card>
       </div>
 
-      {/* Runs Table */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-3 flex-wrap">
-          <CardTitle>All Automation Runs</CardTitle>
+      {/* Filters */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Select value={suiteFilter} onValueChange={setSuiteFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="All suites" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All suites</SelectItem>
+            {suites.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={frameworkFilter} onValueChange={setFrameworkFilter}>
+          <SelectTrigger className="w-[150px]">
+            <SelectValue placeholder="Framework" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All frameworks</SelectItem>
+            <SelectItem value="playwright">Playwright</SelectItem>
+            <SelectItem value="selenium">Selenium</SelectItem>
+            <SelectItem value="cypress">Cypress</SelectItem>
+            <SelectItem value="puppeteer">Puppeteer</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={dateFilter} onValueChange={setDateFilter}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Date range" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All time</SelectItem>
+            <SelectItem value="today">Today</SelectItem>
+            <SelectItem value="week">Last 7 days</SelectItem>
+            <SelectItem value="month">Last 30 days</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[130px]">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="passed">Passed</SelectItem>
+            <SelectItem value="failed">Failed</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void fetchRuns(currentPage)}
+        >
+          Refresh
+        </Button>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Suite filter */}
-            <Select value={suiteFilter} onValueChange={setSuiteFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="All suites" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All suites</SelectItem>
-                {suites.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={frameworkFilter} onValueChange={setFrameworkFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Framework" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All frameworks</SelectItem>
-                <SelectItem value="playwright">Playwright</SelectItem>
-                <SelectItem value="selenium">Selenium</SelectItem>
-                <SelectItem value="cypress">Cypress</SelectItem>
-                <SelectItem value="puppeteer">Puppeteer</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Date range" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All time</SelectItem>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="week">Last 7 days</SelectItem>
-                <SelectItem value="month">Last 30 days</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="passed">Passed</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Button variant="outline" size="sm" onClick={() => void loadRuns()}>
-              Refresh
+        {/* Export current page runs */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              disabled={runs.length === 0}
+            >
+              <Download className="h-4 w-4" />
+              Export
             </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => exportRunsCSV(runs)}>
+              <FileText className="h-4 w-4 mr-2 text-green-600" />
+              CSV
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => exportRunsXLSX(runs)}>
+              <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" />
+              Excel (.xlsx)
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-            {/* Export — only show if a specific suite is selected */}
-            {suiteFilter !== "all" && (
-              <ExportAutomationButton
-                suiteId={suiteFilter}
-                suiteName={
-                  suites.find((s) => s.id === suiteFilter)?.name ?? "Suite"
-                }
-                framework={
-                  suites.find((s) => s.id === suiteFilter)
-                    ?.automation_framework ?? "playwright"
-                }
-              />
-            )}
+        {suiteFilter !== "all" && (
+          <ExportAutomationButton
+            suiteId={suiteFilter}
+            suiteName={
+              suites.find((s) => s.id === suiteFilter)?.name ?? "Suite"
+            }
+            framework={
+              suites.find((s) => s.id === suiteFilter)?.automation_framework ??
+              "playwright"
+            }
+          />
+        )}
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin mr-3 text-muted-foreground" />
+          <span className="text-muted-foreground">Loading runs…</span>
+        </div>
+      ) : runs.length === 0 ? (
+        <div className="border rounded-lg overflow-hidden bg-card">
+          <div className="text-center py-16 text-muted-foreground">
+            <Zap className="h-10 w-10 mx-auto mb-3 opacity-40" />
+            <p className="font-medium">No automation runs found</p>
+            <p className="text-sm mt-1">
+              Export a suite and run your tests to see results here
+            </p>
+            <Button
+              variant="outline"
+              className="mt-4"
+              onClick={() => router.push("/test-library")}
+            >
+              Go to Test Suites
+            </Button>
           </div>
-        </CardHeader>
-
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin mr-3" />
-              <span className="text-muted-foreground">Loading runs...</span>
-            </div>
-          ) : runs.length === 0 ? (
-            <div className="text-center py-16 text-muted-foreground">
-              <Zap className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="font-medium">No automation runs yet</p>
-              <p className="text-sm mt-2">
-                Export a suite and run your tests to see results here
-              </p>
-              <Button
-                variant="outline"
-                className="mt-4"
-                onClick={() => router.push("/test-library")}
-              >
-                Go to Test Suites
-              </Button>
-            </div>
-          ) : (
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="border rounded-lg overflow-hidden bg-card">
             <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Run #</TableHead>
-                  <TableHead>Suite</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Framework</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Results</TableHead>
-                  <TableHead>Pass Rate</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Environment</TableHead>
-                  <TableHead className="w-[80px]">Actions</TableHead>
+              <TableHeader className="bg-muted/30">
+                <TableRow className="hover:bg-transparent border-b">
+                  {[
+                    "Run #",
+                    "Suite",
+                    "Date",
+                    "Framework",
+                    "Status",
+                    "Results",
+                    "Pass Rate",
+                    "Duration",
+                    "Environment",
+                  ].map((h) => (
+                    <TableHead
+                      key={h}
+                      className="font-semibold text-xs uppercase tracking-wide text-muted-foreground"
+                    >
+                      {h}
+                    </TableHead>
+                  ))}
+                  <TableHead className="w-[80px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {runs.map((run) => {
-                  const passRate = calculatePassRate(run);
+                  const passRate = calcPassRate(run);
                   return (
-                    <TableRow key={run.id}>
-                      <TableCell className="font-mono text-sm">
+                    <TableRow
+                      key={run.id}
+                      className="group hover:bg-muted/20 transition-colors border-b last:border-0 cursor-pointer"
+                      onClick={() => void openRunDetails(run)}
+                    >
+                      <TableCell className="py-3 font-mono text-sm font-medium">
                         #{run.run_number}
                       </TableCell>
 
-                      <TableCell>
+                      <TableCell className="py-3">
                         <button
-                          className="text-sm font-medium hover:underline text-left"
-                          onClick={() =>
-                            router.push(`/automation/suites/${run.suite_id}`)
-                          }
+                          className="text-sm font-medium hover:text-primary transition-colors text-left"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/automation/suites/${run.suite_id}`);
+                          }}
                         >
                           {run.suite_name}
                         </button>
                       </TableCell>
 
-                      <TableCell className="text-sm">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <TableCell className="py-3">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           <div>
-                            <div>
+                            <div className="text-sm">
                               {new Date(run.started_at).toLocaleDateString()}
                             </div>
                             <div className="text-xs text-muted-foreground">
@@ -588,12 +689,15 @@ export function AutomationHub() {
                         </div>
                       </TableCell>
 
-                      <TableCell>{getFrameworkBadge(run.framework)}</TableCell>
+                      <TableCell className="py-3">
+                        {getFrameworkBadge(run.framework)}
+                      </TableCell>
+                      <TableCell className="py-3">
+                        {getStatusBadge(run.status)}
+                      </TableCell>
 
-                      <TableCell>{getStatusBadge(run.status)}</TableCell>
-
-                      <TableCell className="text-sm">
-                        <div className="flex items-center gap-1">
+                      <TableCell className="py-3">
+                        <div className="flex items-center gap-1 text-xs">
                           <span className="text-green-600 font-medium">
                             {run.passed_tests}
                           </span>
@@ -611,29 +715,31 @@ export function AutomationHub() {
                         </div>
                       </TableCell>
 
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="w-14 h-2 bg-muted rounded-full overflow-hidden">
+                      <TableCell className="py-3">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
                             <div
-                              className={`h-full ${passRate === 100 ? "bg-green-600" : passRate >= 80 ? "bg-yellow-600" : "bg-red-600"}`}
+                              className={`h-full ${passRate === 100 ? "bg-green-600" : passRate >= 80 ? "bg-yellow-500" : "bg-red-500"}`}
                               style={{ width: `${passRate}%` }}
                             />
                           </div>
-                          <span className="text-sm font-medium">
+                          <span className="text-xs font-medium">
                             {passRate}%
                           </span>
                         </div>
                       </TableCell>
 
-                      <TableCell>
+                      <TableCell className="py-3">
                         <div className="flex items-center gap-1 text-sm">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                           {formatDuration(run.duration_ms)}
                         </div>
                       </TableCell>
 
-                      <TableCell>
-                        <Badge variant="outline">{run.environment}</Badge>
+                      <TableCell className="py-3">
+                        <Badge variant="outline" className="text-xs h-5 px-1.5">
+                          {run.environment}
+                        </Badge>
                         {run.ci_provider && (
                           <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
                             <GitBranch className="h-3 w-3" />
@@ -642,14 +748,17 @@ export function AutomationHub() {
                         )}
                       </TableCell>
 
-                      <TableCell>
+                      <TableCell
+                        className="py-3 pr-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <Button
                           variant="ghost"
                           size="sm"
+                          className="h-7 gap-1"
                           onClick={() => void openRunDetails(run)}
                         >
-                          <Eye className="h-4 w-4 mr-1" />
-                          Details
+                          <Eye className="h-3.5 w-3.5" /> Details
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -657,84 +766,124 @@ export function AutomationHub() {
                 })}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
-      </Card>
+          </div>
 
-      {/* Run Detail Dialog */}
+          {/* Pagination */}
+          <div className="flex items-center justify-between px-1">
+            <p className="text-sm text-muted-foreground">
+              Showing{" "}
+              <span className="font-medium text-foreground">
+                {Math.min((currentPage - 1) * pageSize + 1, totalCount)}
+              </span>
+              –
+              <span className="font-medium text-foreground">
+                {Math.min(currentPage * pageSize, totalCount)}
+              </span>{" "}
+              of{" "}
+              <span className="font-medium text-foreground">{totalCount}</span>{" "}
+              runs
+            </p>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+                </Button>
+                <span className="text-sm px-2 text-muted-foreground">
+                  {currentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3"
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                >
+                  Next <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Detail Dialog */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
         <DialogContent
           className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col p-0"
           onInteractOutside={(e) => e.preventDefault()}
         >
           <DialogHeader className="sticky top-0 z-10 bg-background p-6 border-b">
-            <div className="space-y-2">
-              <DialogTitle className="text-2xl flex items-center gap-3">
-                Test Run #{selectedRun?.run_number}
-                {selectedRun && getStatusBadge(selectedRun.status)}
-                {selectedRun && getFrameworkBadge(selectedRun.framework)}
-              </DialogTitle>
-              {selectedRun && (
-                <DialogDescription className="flex items-center gap-4 text-base">
-                  <span className="font-medium text-foreground">
-                    {selectedRun.suite_name}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-4 w-4" />
-                    {new Date(selectedRun.started_at).toLocaleString()}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-4 w-4" />
-                    {formatDuration(selectedRun.duration_ms)}
-                  </span>
-                </DialogDescription>
-              )}
-            </div>
+            <DialogTitle className="text-2xl flex items-center gap-3">
+              Test Run #{selectedRun?.run_number}
+              {selectedRun && getStatusBadge(selectedRun.status)}
+              {selectedRun && getFrameworkBadge(selectedRun.framework)}
+            </DialogTitle>
+            {selectedRun && (
+              <DialogDescription className="flex items-center gap-4 text-base">
+                <span className="font-medium text-foreground">
+                  {selectedRun.suite_name}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-4 w-4" />
+                  {new Date(selectedRun.started_at).toLocaleString()}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="h-4 w-4" />
+                  {formatDuration(selectedRun.duration_ms)}
+                </span>
+              </DialogDescription>
+            )}
           </DialogHeader>
 
           {selectedRun && (
             <div className="flex-1 overflow-y-auto space-y-6 px-6 py-6">
-              {/* Summary cards */}
               <div className="grid grid-cols-4 gap-4">
-                <Card className="border-green-200 bg-green-50 dark:bg-green-950/20">
-                  <CardContent className="pt-6 text-center">
-                    <div className="text-3xl font-bold text-green-600">
-                      {selectedRun.passed_tests}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">Passed</p>
-                  </CardContent>
-                </Card>
-                <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
-                  <CardContent className="pt-6 text-center">
-                    <div className="text-3xl font-bold text-red-600">
-                      {selectedRun.failed_tests}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">Failed</p>
-                  </CardContent>
-                </Card>
-                <Card className="border-slate-200 bg-slate-50 dark:bg-slate-950/20">
-                  <CardContent className="pt-6 text-center">
-                    <div className="text-3xl font-bold text-slate-600">
-                      {selectedRun.skipped_tests}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Skipped
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
-                  <CardContent className="pt-6 text-center">
-                    <div className="text-3xl font-bold text-blue-600">
-                      {calculatePassRate(selectedRun)}%
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Pass Rate
-                    </p>
-                  </CardContent>
-                </Card>
+                {[
+                  {
+                    label: "Passed",
+                    value: selectedRun.passed_tests,
+                    color: "green",
+                  },
+                  {
+                    label: "Failed",
+                    value: selectedRun.failed_tests,
+                    color: "red",
+                  },
+                  {
+                    label: "Skipped",
+                    value: selectedRun.skipped_tests,
+                    color: "slate",
+                  },
+                  {
+                    label: "Pass Rate",
+                    value: `${calcPassRate(selectedRun)}%`,
+                    color: "blue",
+                  },
+                ].map(({ label, value, color }) => (
+                  <Card
+                    key={label}
+                    className={`border-${color}-200 bg-${color}-50 dark:bg-${color}-950/20`}
+                  >
+                    <CardContent className="pt-6 text-center">
+                      <div className={`text-3xl font-bold text-${color}-600`}>
+                        {value}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {label}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
 
-              {/* Execution info */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
@@ -830,7 +979,6 @@ export function AutomationHub() {
                 </CardContent>
               </Card>
 
-              {/* Individual test results */}
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -846,11 +994,11 @@ export function AutomationHub() {
                 <CardContent>
                   {loadingDetails ? (
                     <div className="flex items-center justify-center py-12">
-                      <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                     </div>
-                  ) : selectedRunExecutions.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground space-y-3">
-                      <FileText className="h-12 w-12 mx-auto opacity-50" />
+                  ) : runExecutions.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground space-y-2">
+                      <FileText className="h-10 w-10 mx-auto opacity-40" />
                       <p className="font-medium">
                         No individual test results available
                       </p>
@@ -860,15 +1008,14 @@ export function AutomationHub() {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {selectedRunExecutions.map((exec, index) => (
+                      {runExecutions.map((exec, index) => (
                         <div
                           key={exec.id}
-                          className="group relative flex items-start gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                          className="flex items-start gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
                         >
                           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-mono font-semibold">
                             {index + 1}
                           </div>
-
                           <div className="flex-1 min-w-0 space-y-2">
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex-1 min-w-0">
@@ -876,25 +1023,24 @@ export function AutomationHub() {
                                   {exec.test_cases?.title || "Untitled Test"}
                                 </h4>
                                 {exec.test_cases?.description && (
-                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
                                     {exec.test_cases.description}
                                   </p>
                                 )}
                               </div>
-                              <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="flex items-center gap-3 shrink-0">
                                 <div className="text-xs text-muted-foreground">
                                   {exec.duration_minutes
                                     ? `${exec.duration_minutes.toFixed(2)}m`
-                                    : "-"}
+                                    : "—"}
                                 </div>
                                 {getStatusBadge(exec.execution_status)}
                               </div>
                             </div>
-
                             {exec.failure_reason && (
                               <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 space-y-2">
                                 <div className="flex items-start gap-2">
-                                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
                                   <div className="flex-1 min-w-0">
                                     <p className="text-xs font-medium text-destructive">
                                       Failure Reason:
@@ -917,14 +1063,6 @@ export function AutomationHub() {
                                 )}
                               </div>
                             )}
-
-                            {exec.execution_notes &&
-                              exec.execution_status === "passed" && (
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                  <CheckCircle2 className="h-3 w-3" />
-                                  {exec.execution_notes}
-                                </div>
-                              )}
                           </div>
                         </div>
                       ))}

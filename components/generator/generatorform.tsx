@@ -32,6 +32,8 @@ import { Loader2, Sparkles, Info, FileText } from "lucide-react";
 import { TemplateSelect } from "@/components/templates/template-select";
 import { ProjectSelect } from "@/components/projects/project-select";
 import type { Project } from "@/types/projects";
+import { RequirementRow, RequirementOption } from "@/types/requirements";
+
 import {
   AI_MODELS,
   MODEL_GROUPS,
@@ -62,29 +64,6 @@ type TemplateFromSelect = {
   description?: string | null;
   category: TemplateCategory;
   template_content: TemplateContent;
-};
-
-type RequirementRow = {
-  id: string;
-  title: string;
-  description: string;
-  acceptance_criteria?: string | null;
-  type: string;
-  priority: string;
-  status?: string;
-  project_id?: string | null;
-};
-
-type RequirementOption = {
-  id: string;
-  label: string;
-  title: string;
-  description: string;
-  acceptance_criteria?: string | null;
-  type: string;
-  priority: string;
-  value: string;
-  project_id?: string | null;
 };
 
 type ProjectRowLite = {
@@ -919,10 +898,6 @@ export function GeneratorForm() {
                       <SelectItem value="20">20 test cases</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    AI generates a balanced mix of happy path, error handling,
-                    boundary, edge case, and security tests.
-                  </p>
                 </div>
               </div>
             )}
@@ -940,8 +915,7 @@ export function GeneratorForm() {
                     <div className="h-1.5 rounded-full bg-primary animate-pulse w-full" />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Running {Math.ceil(parseInt(testCaseCount, 10) / 5)}{" "}
-                    parallel AI batches — typically 20–45 seconds.
+                    Generating test cases typically takes 20–45 seconds.
                   </p>
                 </div>
               </div>

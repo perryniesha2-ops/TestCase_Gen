@@ -1,9 +1,15 @@
 // app/api/dashboard/metrics/route.ts
+// All stats are scoped to the last 7 days for consistency.
+// The execution_timeline chart, pass rate, distribution, automation stats,
+// and flaky tests all reflect the same 7-day window.
+
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const WINDOW_DAYS = 7;
 
 function calculateTrend(
   current: number,
@@ -21,6 +27,7 @@ function calculateTrendPercentage(current: number, previous: number): number {
 
 function groupExecutionsByDay(
   executions: Array<{ created_at: string; execution_status: string }>,
+  startDate: Date,
 ) {
   const groups = new Map<string, { passed: number; failed: number }>();
   executions.forEach((exec) => {
@@ -30,6 +37,8 @@ function groupExecutionsByDay(
     if (exec.execution_status === "passed") group.passed++;
     else if (exec.execution_status === "failed") group.failed++;
   });
+
+  // Pre-fill every day in the window so chart has no gaps
   const result: Array<{
     date: string;
     passed: number;
@@ -37,7 +46,7 @@ function groupExecutionsByDay(
     total: number;
   }> = [];
   const today = new Date();
-  for (let i = 6; i >= 0; i--) {
+  for (let i = WINDOW_DAYS - 1; i >= 0; i--) {
     const date = new Date(today);
     date.setDate(date.getDate() - i);
     const dateStr = date.toISOString().split("T")[0];
@@ -105,25 +114,20 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const sevenDaysAgoIso = sevenDaysAgo.toISOString();
+    const now = new Date();
 
-    // ── Batch 1: all independent queries ─────────────────────────────────────
-    const [
-      regularTCRes,
-      platformTCRes,
-      requirementsRes,
-      automationRunsStatsRes,
-      automationRunsRecentRes,
-      recentRegularRes,
-      recentPlatformRes,
-      regularHistoryRes,
-      platformHistoryRes,
-      regularPrevCountRes,
-      platformPrevCountRes,
-      reqPrevCountRes,
-    ] = await Promise.all([
+    // ── 7-day window ──────────────────────────────────────────────────────────
+    const windowStart = new Date(now);
+    windowStart.setDate(windowStart.getDate() - WINDOW_DAYS);
+    const windowStartIso = windowStart.toISOString();
+
+    // ── Previous 7-day window (for trend arrows) ──────────────────────────────
+    const prevWindowStart = new Date(windowStart);
+    prevWindowStart.setDate(prevWindowStart.getDate() - WINDOW_DAYS);
+    const prevWindowStartIso = prevWindowStart.toISOString();
+
+    // ── Library sizes (not time-scoped — these are current totals) ────────────
+    const [regularTCRes, platformTCRes, requirementsRes] = await Promise.all([
       supabase
         .from("test_cases")
         .select("id")
@@ -138,22 +142,69 @@ export async function GET() {
         .from("requirements")
         .select("id, priority")
         .eq("user_id", user.id),
+    ]);
 
-      // All automation runs for accurate pass rate + total (no .limit())
+    const regularIds = (regularTCRes.data ?? []).map((t) => t.id);
+    const platformIds = (platformTCRes.data ?? []).map((t) => t.id);
+    const requirementIds = (requirementsRes.data ?? []).map((r) => r.id);
+    const allTestIds = [...regularIds, ...platformIds];
+    const libraryTotal = allTestIds.length;
+
+    // ── All 7-day scoped queries in parallel ──────────────────────────────────
+    const [
+      regularExecsRes,
+      platformExecsRes,
+      automationRunsStatsRes,
+      automationRunsRecentRes,
+      recentRegularRes,
+      recentPlatformRes,
+      reqLinksRes,
+      regularPrevCountRes,
+      platformPrevCountRes,
+      reqPrevCountRes,
+    ] = await Promise.all([
+      // Manual + automated executions for regular test cases — 7-day window
+      regularIds.length > 0
+        ? supabase
+            .from("test_executions")
+            .select(
+              "test_case_id, execution_status, created_at, test_cases(title)",
+            )
+            .in("test_case_id", regularIds)
+            .gte("created_at", windowStartIso)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
+
+      // Platform executions — 7-day window
+      platformIds.length > 0
+        ? supabase
+            .from("platform_test_executions")
+            .select(
+              "test_case_id, execution_status, created_at, platform_test_cases(title)",
+            )
+            .in("test_case_id", platformIds)
+            .gte("created_at", windowStartIso)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
+
+      // All automation runs in the 7-day window (no limit — for accurate stats)
       supabase
         .from("automation_runs")
         .select("id, status, started_at")
         .eq("user_id", user.id)
+        .gte("started_at", windowStartIso)
         .order("started_at", { ascending: false }),
 
-      // Recent 10 for activity feed (needs suite name join)
+      // Recent 10 automation runs for activity feed (includes suite name)
       supabase
         .from("automation_runs")
         .select("id, status, started_at, framework, suite_id, suites(name)")
         .eq("user_id", user.id)
+        .gte("started_at", windowStartIso)
         .order("started_at", { ascending: false })
         .limit(10),
 
+      // Recent manual executions for activity feed
       supabase
         .from("test_executions")
         .select(
@@ -161,8 +212,10 @@ export async function GET() {
         )
         .eq("executed_by", user.id)
         .is("automation_run_id", null)
+        .gte("created_at", windowStartIso)
         .order("created_at", { ascending: false })
         .limit(5),
+
       supabase
         .from("platform_test_executions")
         .select(
@@ -170,129 +223,76 @@ export async function GET() {
         )
         .eq("executed_by", user.id)
         .is("automation_run_id", null)
+        .gte("created_at", windowStartIso)
         .order("created_at", { ascending: false })
         .limit(5),
 
-      supabase
-        .from("test_executions")
-        .select("created_at, execution_status")
-        .eq("executed_by", user.id)
-        .gte("created_at", sevenDaysAgoIso)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("platform_test_executions")
-        .select("created_at, execution_status")
-        .eq("executed_by", user.id)
-        .gte("created_at", sevenDaysAgoIso)
-        .order("created_at", { ascending: true }),
+      // Requirement coverage links
+      requirementIds.length > 0
+        ? supabase
+            .from("requirement_test_cases")
+            .select("requirement_id")
+            .in("requirement_id", requirementIds)
+        : Promise.resolve({ data: [], error: null }),
 
+      // Previous window counts for trend arrows
       supabase
         .from("test_cases")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
         .neq("status", "archived")
-        .lt("created_at", sevenDaysAgoIso),
+        .gte("created_at", prevWindowStartIso)
+        .lt("created_at", windowStartIso),
       supabase
         .from("platform_test_cases")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
         .neq("status", "archived")
-        .lt("created_at", sevenDaysAgoIso),
+        .gte("created_at", prevWindowStartIso)
+        .lt("created_at", windowStartIso),
       supabase
         .from("requirements")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
-        .lt("created_at", sevenDaysAgoIso),
+        .gte("created_at", prevWindowStartIso)
+        .lt("created_at", windowStartIso),
     ]);
-
-    const regularIds = (regularTCRes.data ?? []).map((t) => t.id);
-    const platformIds = (platformTCRes.data ?? []).map((t) => t.id);
-    const requirementIds = (requirementsRes.data ?? []).map((r) => r.id);
-
-    // ── Batch 2: queries that depend on IDs ───────────────────────────────────
-    const [regularExecsRes, platformExecsRes, reqLinksRes, priorityFailedRes] =
-      await Promise.all([
-        regularIds.length > 0
-          ? supabase
-              .from("test_executions")
-              .select(
-                "test_case_id, execution_status, created_at, test_cases(title)",
-              )
-              .in("test_case_id", regularIds)
-              .order("created_at", { ascending: false })
-          : Promise.resolve({ data: [], error: null }),
-
-        platformIds.length > 0
-          ? supabase
-              .from("platform_test_executions")
-              .select(
-                "test_case_id, execution_status, created_at, platform_test_cases(title)",
-              )
-              .in("test_case_id", platformIds)
-              .order("created_at", { ascending: false })
-          : Promise.resolve({ data: [], error: null }),
-
-        requirementIds.length > 0
-          ? supabase
-              .from("requirement_test_cases")
-              .select("requirement_id")
-              .in("requirement_id", requirementIds)
-          : Promise.resolve({ data: [], error: null }),
-
-        Promise.all([
-          supabase
-            .from("test_cases")
-            .select("id, title, priority")
-            .eq("user_id", user.id)
-            .eq("execution_status", "failed")
-            .in("priority", ["critical", "high"])
-            .limit(3),
-          supabase
-            .from("platform_test_cases")
-            .select("id, title, priority")
-            .eq("user_id", user.id)
-            .eq("execution_status", "failed")
-            .in("priority", ["critical", "high"])
-            .limit(3),
-        ]),
-      ]);
 
     const regularExecs = (regularExecsRes.data ?? []) as any[];
     const platformExecs = (platformExecsRes.data ?? []) as any[];
 
-    // ── Pass rate: all-time executions (passed / total executed) ─────────────
-    // Uses every execution row — not latest-per-test — for true all-time rate.
-    let allTimePassed = 0,
-      allTimeFailed = 0,
-      allTimeBlocked = 0,
-      allTimeSkipped = 0;
+    // ── Pass rate and distribution — 7-day window executions ─────────────────
+    let windowPassed = 0,
+      windowFailed = 0,
+      windowBlocked = 0,
+      windowSkipped = 0;
     for (const e of regularExecs) {
-      if (e.execution_status === "passed") allTimePassed++;
-      else if (e.execution_status === "failed") allTimeFailed++;
-      else if (e.execution_status === "blocked") allTimeBlocked++;
-      else if (e.execution_status === "skipped") allTimeSkipped++;
+      if (e.execution_status === "passed") windowPassed++;
+      else if (e.execution_status === "failed") windowFailed++;
+      else if (e.execution_status === "blocked") windowBlocked++;
+      else if (e.execution_status === "skipped") windowSkipped++;
     }
     for (const e of platformExecs) {
-      if (e.execution_status === "passed") allTimePassed++;
-      else if (e.execution_status === "failed") allTimeFailed++;
-      else if (e.execution_status === "blocked") allTimeBlocked++;
-      else if (e.execution_status === "skipped") allTimeSkipped++;
+      if (e.execution_status === "passed") windowPassed++;
+      else if (e.execution_status === "failed") windowFailed++;
+      else if (e.execution_status === "blocked") windowBlocked++;
+      else if (e.execution_status === "skipped") windowSkipped++;
     }
-    const allTimeTotal =
-      allTimePassed + allTimeFailed + allTimeBlocked + allTimeSkipped;
-    const allTestIds = [...regularIds, ...platformIds];
-    const libraryTotal = allTestIds.length;
+    const windowTotal =
+      windowPassed + windowFailed + windowBlocked + windowSkipped;
+    const pass_rate =
+      windowTotal > 0 ? Math.round((windowPassed / windowTotal) * 100) : 0;
 
-    // not_run = tests in library with zero executions ever
-    const executedIds = new Set([
+    // not_run = tests in library that had zero executions in the 7-day window
+    const executedInWindow = new Set([
       ...regularExecs.map((e: any) => e.test_case_id),
       ...platformExecs.map((e: any) => e.test_case_id),
     ]);
-    const notRunCount = allTestIds.filter((id) => !executedIds.has(id)).length;
-    const pass_rate =
-      allTimeTotal > 0 ? Math.round((allTimePassed / allTimeTotal) * 100) : 0;
+    const notRunCount = allTestIds.filter(
+      (id) => !executedInWindow.has(id),
+    ).length;
 
-    // ── Flaky tests — with real titles ────────────────────────────────────────
+    // ── Flaky tests — 7-day window ────────────────────────────────────────────
     const flakinessInput = [
       ...regularExecs.map((e: any) => ({
         test_case_id: e.test_case_id,
@@ -307,7 +307,7 @@ export async function GET() {
     ];
     const flaky_tests = calculateFlakyTests(flakinessInput);
 
-    // ── Requirements ──────────────────────────────────────────────────────────
+    // ── Requirements coverage ─────────────────────────────────────────────────
     const requirements = requirementsRes.data ?? [];
     const testedSet = new Set(
       (reqLinksRes.data ?? []).map((x: any) => x.requirement_id),
@@ -325,7 +325,7 @@ export async function GET() {
     const coverage_percentage =
       reqTotal > 0 ? Math.round((reqTested / reqTotal) * 100) : 0;
 
-    // ── Automation — from ALL runs (no limit distortion) ──────────────────────
+    // ── Automation — 7-day window ─────────────────────────────────────────────
     const allAutomationRuns = automationRunsStatsRes.data ?? [];
     const automationTotal = allAutomationRuns.length;
     const automationPassed = allAutomationRuns.filter(
@@ -340,7 +340,7 @@ export async function GET() {
       last_run: (allAutomationRuns[0] as any)?.started_at ?? null,
     };
 
-    // ── Recent activity ───────────────────────────────────────────────────────
+    // ── Recent activity feed ──────────────────────────────────────────────────
     const recentAutomation = automationRunsRecentRes.data ?? [];
     const recent_activity = [
       ...(recentRegularRes.data ?? []).map((e: any) => ({
@@ -371,23 +371,38 @@ export async function GET() {
       )
       .slice(0, 10);
 
-    // ── Execution timeline (7-day chart) ──────────────────────────────────────
-    const execution_timeline = groupExecutionsByDay([
-      ...(regularHistoryRes.data ?? []),
-      ...(platformHistoryRes.data ?? []),
-    ]);
+    // ── Execution timeline — 7-day chart ─────────────────────────────────────
+    const execution_timeline = groupExecutionsByDay(
+      [...regularExecs, ...platformExecs],
+      windowStart,
+    );
 
-    // ── Priority failures ─────────────────────────────────────────────────────
+    // ── Priority failures — tests currently failed at critical/high priority ──
     const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1 };
-    const [regularPF, platformPF] = priorityFailedRes;
+    const [regularPFRes, platformPFRes] = await Promise.all([
+      supabase
+        .from("test_cases")
+        .select("id, title, priority")
+        .eq("user_id", user.id)
+        .eq("execution_status", "failed")
+        .in("priority", ["critical", "high"])
+        .limit(3),
+      supabase
+        .from("platform_test_cases")
+        .select("id, title, priority")
+        .eq("user_id", user.id)
+        .eq("execution_status", "failed")
+        .in("priority", ["critical", "high"])
+        .limit(3),
+    ]);
     const priority_failures = [
-      ...(regularPF.data ?? []).map((t: any) => ({
+      ...(regularPFRes.data ?? []).map((t: any) => ({
         id: t.id,
         title: t.title,
         priority: t.priority,
         failed_count: 1,
       })),
-      ...(platformPF.data ?? []).map((t: any) => ({
+      ...(platformPFRes.data ?? []).map((t: any) => ({
         id: t.id,
         title: t.title,
         priority: t.priority,
@@ -401,20 +416,24 @@ export async function GET() {
       )
       .slice(0, 5);
 
-    // ── Trend arrows ──────────────────────────────────────────────────────────
+    // ── Trend arrows (library size change vs previous window) ─────────────────
     const previousTotal =
       (regularPrevCountRes.count ?? 0) + (platformPrevCountRes.count ?? 0);
     const previousReqTotal = reqPrevCountRes.count ?? 0;
 
     return NextResponse.json({
+      // Window label so the client can show "Last 7 days" accurately
+      window_days: WINDOW_DAYS,
       test_cases: {
-        total: libraryTotal,
+        total: windowTotal, // executions in the 7-day window
+        library_size: libraryTotal, // kept for reference if needed elsewhere
         regular: regularIds.length,
         cross_platform: platformIds.length,
-        passed: allTimePassed,
-        failed: allTimeFailed,
-        blocked: allTimeBlocked,
-        skipped: allTimeSkipped,
+        // All counts scoped to the 7-day window
+        passed: windowPassed,
+        failed: windowFailed,
+        blocked: windowBlocked,
+        skipped: windowSkipped,
         not_run: notRunCount,
         pass_rate,
         trend: calculateTrend(libraryTotal, previousTotal),

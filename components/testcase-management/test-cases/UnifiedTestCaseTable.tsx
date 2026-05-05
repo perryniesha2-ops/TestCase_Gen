@@ -20,12 +20,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   AlertTriangle,
   CheckCircle2,
   ChevronLeft,
@@ -35,14 +29,13 @@ import {
   FlaskConical,
   FolderOpen,
   Loader2,
-  MoreHorizontal,
-  XCircle,
   Monitor,
   Smartphone,
   Globe,
   Eye,
   Zap,
   ExternalLink,
+  XCircle,
 } from "lucide-react";
 
 import type {
@@ -63,6 +56,18 @@ type CombinedTestCase = (TestCase | CrossPlatformTestCase) & {
   _caseType?: "regular" | "cross-platform";
 };
 
+// Pre-computed metrics passed in from the parent.
+// Driven by useStats (all-time DB values) rather than derived from
+// the local execution state map which only reflects the current session.
+export type TableMetrics = {
+  total: number;
+  passed: number;
+  failed: number;
+  blocked: number;
+  inProgress: number;
+  notRun: number;
+};
+
 type Props = {
   testCases: CombinedTestCase[];
   paginated: CombinedTestCase[];
@@ -70,6 +75,9 @@ type Props = {
 
   execution: TestExecution;
   updating: string | null;
+
+  /** All-time stats from useStats. Falls back to deriving from execution if absent. */
+  metrics?: TableMetrics;
 
   selectedIds: Set<string>;
   selectAll: () => void;
@@ -103,6 +111,7 @@ export function UnifiedTestCaseTable(props: Props) {
     filteredCount,
     execution,
     updating,
+    metrics,
     selectedIds,
     selectAll,
     deselectAll,
@@ -122,22 +131,23 @@ export function UnifiedTestCaseTable(props: Props) {
     onUpdateStatus,
   } = props;
 
-  // Calculate stats
-  const passed = testCases.filter(
-    (tc) => execution[tc.id]?.status === "passed",
-  ).length;
-  const failed = testCases.filter(
-    (tc) => execution[tc.id]?.status === "failed",
-  ).length;
-  const blocked = testCases.filter(
-    (tc) => execution[tc.id]?.status === "blocked",
-  ).length;
-  const inProgress = testCases.filter(
-    (tc) => execution[tc.id]?.status === "in_progress",
-  ).length;
-  const notRun = testCases.filter(
-    (tc) => execution[tc.id]?.status === "not_run",
-  ).length;
+  // Use passed-in metrics if available (all-time from useStats),
+  // otherwise fall back to deriving from local execution state.
+  const displayMetrics: TableMetrics = metrics ?? {
+    total: filteredCount,
+    passed: testCases.filter((tc) => execution[tc.id]?.status === "passed")
+      .length,
+    failed: testCases.filter((tc) => execution[tc.id]?.status === "failed")
+      .length,
+    blocked: testCases.filter((tc) => execution[tc.id]?.status === "blocked")
+      .length,
+    inProgress: testCases.filter(
+      (tc) => execution[tc.id]?.status === "in_progress",
+    ).length,
+    notRun: testCases.filter(
+      (tc) => !execution[tc.id] || execution[tc.id]?.status === "not_run",
+    ).length,
+  };
 
   const getExecutionIcon = (status?: string) => {
     switch (status) {
@@ -149,73 +159,46 @@ export function UnifiedTestCaseTable(props: Props) {
         return <AlertTriangle className="h-4 w-4 text-orange-600" />;
       case "in_progress":
         return <Clock className="h-4 w-4 text-blue-600" />;
-      case "skipped":
-        return <Circle className="h-4 w-4 text-gray-400" />;
       default:
         return <Circle className="h-4 w-4 text-gray-400" />;
     }
   };
 
-  const isRegularCase = (tc: CombinedTestCase): tc is TestCase => {
-    return tc._caseType === "regular" || !tc._caseType;
-  };
+  const isRegularCase = (tc: CombinedTestCase): tc is TestCase =>
+    tc._caseType === "regular" || !tc._caseType;
 
   const isCrossPlatformCase = (
     tc: CombinedTestCase,
-  ): tc is CrossPlatformTestCase => {
-    return tc._caseType === "cross-platform";
-  };
+  ): tc is CrossPlatformTestCase => tc._caseType === "cross-platform";
+
+  const statCards = [
+    { label: "Total", value: displayMetrics.total, color: "white" },
+    { label: "Passed", value: displayMetrics.passed, color: "green" },
+    { label: "Failed", value: displayMetrics.failed, color: "red" },
+    { label: "Blocked", value: displayMetrics.blocked, color: "orange" },
+    { label: "In Progress", value: displayMetrics.inProgress, color: "cyan" },
+    { label: "Not Run", value: displayMetrics.notRun, color: "gray" },
+  ] as const;
 
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-        <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4 rounded-lg border shadow-sm">
-          <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-            {filteredCount}
+        {statCards.map(({ label, value, color }) => (
+          <div
+            key={label}
+            className={`bg-gradient-to-br from-${color}-50 to-${color}-500 dark:from-${color}-900/20 dark:to-${color}-800/20 p-4 rounded-lg border border-${color}-200 dark:border-${color}-800 shadow-sm`}
+          >
+            <div
+              className={`text-2xl font-bold text-${color}-700 dark:text-${color}-400`}
+            >
+              {value}
+            </div>
+            <div className={`text-sm text-${color}-600 dark:text-${color}-500`}>
+              {label}
+            </div>
           </div>
-          <div className="text-sm text-slate-600 dark:text-slate-400">
-            Total
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 p-4 rounded-lg border border-green-200 dark:border-green-800 shadow-sm">
-          <div className="text-2xl font-bold text-green-700 dark:text-green-400">
-            {passed}
-          </div>
-          <div className="text-sm text-green-600 dark:text-green-500">
-            Passed
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 p-4 rounded-lg border border-red-200 dark:border-red-800 shadow-sm">
-          <div className="text-2xl font-bold text-red-700 dark:text-red-400">
-            {failed}
-          </div>
-          <div className="text-sm text-red-600 dark:text-red-500">Failed</div>
-        </div>
-        <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 p-4 rounded-lg border border-orange-200 dark:border-orange-800 shadow-sm">
-          <div className="text-2xl font-bold text-orange-700 dark:text-orange-400">
-            {blocked}
-          </div>
-          <div className="text-sm text-orange-600 dark:text-orange-500">
-            Blocked
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800 shadow-sm">
-          <div className="text-2xl font-bold text-blue-700 dark:text-blue-400">
-            {inProgress}
-          </div>
-          <div className="text-sm text-blue-600 dark:text-blue-500">
-            In Progress
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900/20 dark:to-gray-800/20 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm">
-          <div className="text-2xl font-bold text-gray-700 dark:text-gray-400">
-            {notRun}
-          </div>
-          <div className="text-sm text-gray-600 dark:text-gray-500">
-            Not Run
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Table */}
@@ -299,13 +282,11 @@ export function UnifiedTestCaseTable(props: Props) {
                         <div className="mt-0.5 shrink-0">
                           {getExecutionIcon(exec?.status)}
                         </div>
-
                         <div className="min-w-0 flex-1 space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="truncate hover:text-primary transition-colors">
                               {testCase.title}
                             </span>
-
                             {exec?.duration_minutes && (
                               <Badge
                                 variant="outline"
@@ -315,7 +296,6 @@ export function UnifiedTestCaseTable(props: Props) {
                               </Badge>
                             )}
                           </div>
-
                           <p className="text-xs text-muted-foreground line-clamp-1">
                             {testCase.description}
                           </p>
@@ -355,9 +335,7 @@ export function UnifiedTestCaseTable(props: Props) {
                       {testCase.projects ? (
                         <div className="flex items-center gap-2 min-w-0">
                           <FolderOpen
-                            className={`h-4 w-4 flex-shrink-0 ${getProjectColor(
-                              testCase.projects.color,
-                            )}`}
+                            className={`h-4 w-4 flex-shrink-0 ${getProjectColor(testCase.projects.color)}`}
                           />
                           <span className="text-sm truncate">
                             {testCase.projects.name}

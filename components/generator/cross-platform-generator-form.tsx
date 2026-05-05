@@ -51,12 +51,18 @@ import { Separator } from "@radix-ui/react-separator";
 import { toastWarning } from "@/lib/utils/toast-utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+import { RequirementRow, RequirementOption } from "@/types/requirements";
 
-// Response from POST /api/cross-platform-testing (job creation)
-type JobCreatedResponse = {
-  job_id?: string;
-  status?: string;
-  cases_requested?: number;
+type CrossPlatformResponse = {
+  success?: boolean;
+  total_test_cases?: number;
+  generation_results?: Array<{
+    platform: string;
+    framework: string;
+    count: number;
+    error?: string;
+  }>;
+  message?: string;
   error?: string;
   details?: string;
   upgradeRequired?: boolean;
@@ -69,27 +75,6 @@ type PlatformId = "web" | "mobile" | "api" | "accessibility" | "performance";
 type ApiProtocol = "REST" | "SOAP" | "GraphQL" | "gRPC" | "WebSocket";
 type ApiAuth = "None" | "Basic" | "Bearer" | "OAuth2" | "API Key" | "mTLS";
 type ApiFormat = "JSON" | "XML";
-
-type RequirementRow = {
-  id: string;
-  title: string;
-  description: string;
-  type: string;
-  priority: string;
-  status?: string;
-  project_id?: string | null;
-};
-
-type RequirementOption = {
-  id: string;
-  label: string;
-  title: string;
-  description: string;
-  type: string;
-  priority: string;
-  value: string;
-  project_id?: string | null;
-};
 
 type BootstrapResponse = { requirements: RequirementRow[] };
 
@@ -200,17 +185,71 @@ const PLACEHOLDER_REQUIREMENTS: RequirementOption[] = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function formatAcceptanceCriteria(raw: unknown): string {
+  if (!raw) return "";
+
+  // Plain string
+  if (typeof raw === "string") return raw.trim();
+
+  // Array of strings or objects
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => {
+        if (typeof item === "string") return `- ${item.trim()}`;
+        if (typeof item === "object" && item !== null) {
+          // {text: "..."} or {description: "..."} or {criteria: "..."}
+          const obj = item as Record<string, unknown>;
+          const text =
+            obj.text ??
+            obj.description ??
+            obj.criteria ??
+            obj.content ??
+            Object.values(obj)[0];
+          return `- ${String(text ?? "").trim()}`;
+        }
+        return `- ${String(item).trim()}`;
+      })
+      .filter((line) => line !== "- ")
+      .join("\n");
+  }
+
+  // Object with a criteria/items/list key containing an array
+  if (typeof raw === "object" && raw !== null) {
+    const obj = raw as Record<string, unknown>;
+    const arrayVal =
+      obj.criteria ?? obj.items ?? obj.list ?? obj.acceptance_criteria;
+    if (Array.isArray(arrayVal)) return formatAcceptanceCriteria(arrayVal);
+    // Fallback: stringify all values
+    return Object.entries(obj)
+      .map(([k, v]) => `- ${k}: ${String(v).trim()}`)
+      .join("\n");
+  }
+
+  return String(raw).trim();
+}
+
 function mapRequirementsToOptions(rows: RequirementRow[]): RequirementOption[] {
-  return (rows ?? []).map((req) => ({
-    id: req.id,
-    label: `${req.title} (${req.type})`,
-    title: req.title,
-    description: req.description,
-    type: req.type,
-    priority: req.priority,
-    value: req.description,
-    project_id: req.project_id ?? null,
-  }));
+  return (rows ?? []).map((req) => {
+    const criteriaText = formatAcceptanceCriteria(req.acceptance_criteria);
+    const value = [
+      req.title,
+      req.description,
+      criteriaText ? `Acceptance Criteria:\n${criteriaText}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    return {
+      id: req.id,
+      label: `${req.title} (${req.type})`,
+      title: req.title,
+      description: req.description,
+      type: req.type,
+      priority: req.priority,
+      value,
+      project_id: req.project_id ?? null,
+    };
+  });
 }
 
 function clampInt(n: unknown, min: number, max: number, fallback: number) {
@@ -235,14 +274,8 @@ export function CrossPlatformGeneratorForm() {
   const { user, loading: authLoading } = useAuth();
 
   const [submitting, setSubmitting] = useState(false);
-  const [jobStatus, setJobStatus] = useState<{
-    jobId: string | null;
-    casesSaved: number;
-    casesRequested: number;
-    phase: "idle" | "queued" | "processing" | "done";
-  }>({ jobId: null, casesSaved: 0, casesRequested: 0, phase: "idle" });
-  const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Core inputs
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [requirement, setRequirement] = useState("");
@@ -462,79 +495,6 @@ export function CrossPlatformGeneratorForm() {
     apiFormat,
   ]);
 
-  function stopPolling() {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }
-
-  function startPolling(jobId: string, casesRequested: number) {
-    stopPolling();
-    setJobStatus({ jobId, casesSaved: 0, casesRequested, phase: "queued" });
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          status: string;
-          cases_saved?: number;
-          cases_requested?: number;
-          generation_id?: string;
-          partial?: boolean;
-          error?: string;
-        };
-
-        setJobStatus((prev) => ({
-          ...prev,
-          casesSaved: data.cases_saved ?? 0,
-          phase:
-            data.status === "pending"
-              ? "queued"
-              : data.status === "processing"
-                ? "processing"
-                : "done",
-        }));
-
-        if (data.status === "complete" || data.status === "failed") {
-          stopPolling();
-          setSubmitting(false);
-          setJobStatus({
-            jobId: null,
-            casesSaved: 0,
-            casesRequested: 0,
-            phase: "idle",
-          });
-
-          if (data.status === "failed") {
-            toast.error("Generation failed", {
-              description: data.error ?? "Please try again.",
-              duration: 8000,
-            });
-          } else {
-            toast.success("Cross-platform tests generated!", {
-              description: `Created ${data.cases_saved} test cases.`,
-              duration: 6000,
-            });
-            if (data.partial) {
-              toast.warning(
-                `${data.cases_saved} of ${casesRequested} cases generated — some batches failed. Try again for more.`,
-                { duration: 8000 },
-              );
-            }
-            router.push("/test-cases");
-          }
-        }
-      } catch {
-        // Network hiccup — keep polling
-      }
-    }, 3000);
-  }
-
-  // Clean up on unmount
-  React.useEffect(() => () => stopPolling(), []);
-
   const onSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -593,12 +553,11 @@ export function CrossPlatformGeneratorForm() {
           body: JSON.stringify(payload),
         });
 
-        const data = (await res.json()) as JobCreatedResponse;
+        const data = (await res.json()) as CrossPlatformResponse;
 
         if (res.status === 401) {
           toast.error("Please sign in to continue");
           router.push("/login");
-          setSubmitting(false);
           return;
         }
 
@@ -623,22 +582,29 @@ export function CrossPlatformGeneratorForm() {
               },
             });
           }
-          setSubmitting(false);
           return;
         }
 
         if (!res.ok) {
+          if (res.status === 400 && (data as any)?.field === "requirement") {
+            toast.error("Invalid requirement", {
+              description: data.error,
+              duration: 8000,
+            });
+            return;
+          }
           throw new Error(
             data?.details || data?.error || `Failed (HTTP ${res.status})`,
           );
         }
 
-        if (!data.job_id) {
-          throw new Error("Server did not return a job ID. Please try again.");
-        }
+        toast.success("Cross-platform tests generated!", {
+          description:
+            data.message || `Created ${data.total_test_cases ?? 0} test cases.`,
+          duration: 6000,
+        });
 
-        // Job created — start polling
-        startPolling(data.job_id, requestedTotal);
+        router.push("/test-cases");
       } catch (err) {
         console.error("❌ Cross-platform generation error:", err);
         toast.error("Unable to generate cross-platform tests", {
@@ -646,6 +612,7 @@ export function CrossPlatformGeneratorForm() {
             err instanceof Error ? err.message : "Please try again later",
           duration: 8000,
         });
+      } finally {
         setSubmitting(false);
       }
     },
@@ -935,9 +902,7 @@ export function CrossPlatformGeneratorForm() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  AI generates a balanced mix of happy path, error handling,
-                  boundary, edge case, and security tests. Total ={" "}
-                  {clampInt(perPlatformCount, 1, 20, 10)} ×{" "}
+                  Total: = {clampInt(perPlatformCount, 1, 20, 10)} ×{" "}
                   {selectedPlatforms.length} platform(s) = {requestedTotal}{" "}
                   cases.
                 </p>
@@ -1144,30 +1109,19 @@ export function CrossPlatformGeneratorForm() {
             {/* Generation progress */}
             {submitting && (
               <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
-                    <span className="text-sm font-medium">
-                      {jobStatus.phase === "queued"
-                        ? "Job queued — starting shortly…"
-                        : "Generating cross-platform test cases…"}
-                    </span>
-                  </div>
-                  {jobStatus.phase === "processing" &&
-                    jobStatus.casesRequested > 0 && (
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {jobStatus.casesSaved} / {jobStatus.casesRequested}
-                      </span>
-                    )}
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                  <span className="text-sm font-medium">
+                    Generating cross-platform test cases…
+                  </span>
                 </div>
                 <div className="space-y-1.5">
                   <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                     <div className="h-1.5 rounded-full bg-primary animate-pulse w-full" />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {jobStatus.phase === "queued"
-                      ? "Your generation job has been queued."
-                      : `Running parallel AI batches across ${selectedPlatforms.length} platform(s) — typically 20–60 seconds.`}
+                    Generations across {selectedPlatforms.length} platform(s) —
+                    typically 20–60 seconds.
                   </p>
                 </div>
               </div>

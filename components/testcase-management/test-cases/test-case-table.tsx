@@ -17,6 +17,7 @@ import type {
 import { TestCaseToolbar } from "./toolbars/TestCaseToolbar";
 import type { RunStatusFilter } from "./toolbars/TestCaseToolbar";
 import { UnifiedTestCaseTable } from "./UnifiedTestCaseTable";
+import type { TableMetrics } from "./UnifiedTestCaseTable";
 import { BulkActionsToolbar } from "./toolbars/BulkActionsToolbar";
 
 import { TestCaseFormDialog } from "./dialogs/test-case-form-dialog";
@@ -40,16 +41,12 @@ export function TabbedTestCaseTable() {
   const sessionId = searchParams.get("session");
   const router = useRouter();
 
-  // UI filters/pagination
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedProject, setSelectedProject] = useState("");
-
   const [runStatusFilter, setRunStatusFilter] = useState<RunStatusFilter[]>([]);
-
   const [currentPage, setCurrentPage] = useState(1);
   const [crossPlatformCurrentPage, setCrossPlatformCurrentPage] = useState(1);
 
-  // CRUD dialogs
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -58,7 +55,6 @@ export function TabbedTestCaseTable() {
   const [deletingTestCase, setDeletingTestCase] =
     useState<CombinedTestCase | null>(null);
 
-  // Runner
   const [showRunnerDialog, setShowRunnerDialog] = useState(false);
   const [runnerCase, setRunnerCase] = useState<
     TestCase | CrossPlatformTestCase | null
@@ -66,7 +62,6 @@ export function TabbedTestCaseTable() {
   const [runnerCaseType, setRunnerCaseType] = useState<TestCaseType>("regular");
   const [updating, setUpdating] = useState<string | null>(null);
 
-  // Data
   const {
     loading,
     testCases,
@@ -75,13 +70,8 @@ export function TabbedTestCaseTable() {
     currentSession,
     executionByCaseId,
     refresh,
-  } = useTestCaseData({
-    generationId,
-    sessionId,
-    selectedProject,
-  });
+  } = useTestCaseData({ generationId, sessionId, selectedProject });
 
-  // Executions
   const {
     execution,
     setExecution,
@@ -92,12 +82,9 @@ export function TabbedTestCaseTable() {
     reset,
   } = useExecutions({ sessionId });
 
-  // Seed execution statuses
   useEffect(() => {
-    // Example URL: /test-cases?runStatus=failed,blocked
     const raw = searchParams.get("runStatus") ?? "";
     if (!raw) return;
-
     const allowed = new Set<RunStatusFilter>([
       "passed",
       "failed",
@@ -109,7 +96,6 @@ export function TabbedTestCaseTable() {
       .map((s) => s.trim())
       .filter(Boolean)
       .filter((s): s is RunStatusFilter => allowed.has(s as RunStatusFilter));
-
     if (parsed.length > 0) {
       setRunStatusFilter(parsed);
       setCurrentPage(1);
@@ -117,24 +103,25 @@ export function TabbedTestCaseTable() {
     }
   }, [searchParams]);
 
+  // Seed per-row execution icons from all-time latest status (via executionByCaseId)
   useEffect(() => {
     if (loading) return;
     setExecution((prev) => {
       const next = { ...prev };
       for (const tc of [...testCases, ...crossPlatformCases]) {
-        const status = executionByCaseId?.[tc.id]?.status ?? "not_run";
+        const dbStatus = executionByCaseId?.[tc.id]?.status ?? "not_run";
         next[tc.id] = {
           ...(next[tc.id] ?? { completedSteps: [], failedSteps: [] }),
-          status,
+          // Only override with DB status if the runner hasn't set a live status
+          status: next[tc.id]?.status ?? dbStatus,
           completedSteps: next[tc.id]?.completedSteps ?? [],
           failedSteps: next[tc.id]?.failedSteps ?? [],
         };
       }
       return next;
     });
-  }, [loading, testCases, crossPlatformCases]);
+  }, [loading, testCases, crossPlatformCases, executionByCaseId]);
 
-  // Add _caseType to test cases
   const regularCasesWithType = useMemo(
     () => testCases.map((tc) => ({ ...tc, _caseType: "regular" as const })),
     [testCases],
@@ -149,8 +136,6 @@ export function TabbedTestCaseTable() {
     [crossPlatformCases],
   );
 
-  // Unified bulk actions for both types
-
   const getRelativeTime = useCallback((dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -158,7 +143,6 @@ export function TabbedTestCaseTable() {
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
-
     if (diffMins < 60) return `${diffMins} mins ago`;
     if (diffHours < 24) return `${diffHours} hours ago`;
     if (diffDays === 1) return "Yesterday";
@@ -169,17 +153,16 @@ export function TabbedTestCaseTable() {
   const itemsPerPage = 10;
 
   const getRunStatus = useCallback(
-    (id: string) => {
-      return (execution[id]?.status ?? "not_run") as string;
-    },
+    (id: string) => (execution[id]?.status ?? "not_run") as string,
     [execution],
   );
 
   const matchesRunStatusFilter = useCallback(
     (testCaseId: string) => {
       if (runStatusFilter.length === 0) return true;
-      const status = getRunStatus(testCaseId);
-      return runStatusFilter.includes(status as RunStatusFilter);
+      return runStatusFilter.includes(
+        getRunStatus(testCaseId) as RunStatusFilter,
+      );
     },
     [getRunStatus, runStatusFilter],
   );
@@ -275,57 +258,68 @@ export function TabbedTestCaseTable() {
     return colors[color] || "text-gray-500";
   }, []);
 
-  // Metrics (unchanged — note these include statuses beyond the filter options)
-  const regularMetrics = useMemo(() => {
-    return {
+  // ── Metrics for stat cards — derived from executionByCaseId ─────────────────
+  // executionByCaseId comes from v_test_case_latest_execution (all-time latest
+  // per test case) so it includes automation runs, not just manual session runs.
+  // We derive from the *filtered* list so cards always match what's in the table.
+
+  const regularMetrics = useMemo(
+    (): TableMetrics => ({
       total: filteredTestCases.length,
       passed: filteredTestCases.filter(
-        (tc) => execution[tc.id]?.status === "passed",
+        (tc) => (executionByCaseId[tc.id]?.status ?? "not_run") === "passed",
       ).length,
       failed: filteredTestCases.filter(
-        (tc) => execution[tc.id]?.status === "failed",
+        (tc) => (executionByCaseId[tc.id]?.status ?? "not_run") === "failed",
       ).length,
       blocked: filteredTestCases.filter(
-        (tc) => execution[tc.id]?.status === "blocked",
+        (tc) => (executionByCaseId[tc.id]?.status ?? "not_run") === "blocked",
       ).length,
-      in_progress: filteredTestCases.filter(
-        (tc) => execution[tc.id]?.status === "in_progress",
+      inProgress: filteredTestCases.filter(
+        (tc) =>
+          (executionByCaseId[tc.id]?.status ?? "not_run") === "in_progress",
       ).length,
-      not_run: filteredTestCases.filter(
-        (tc) => !execution[tc.id] || execution[tc.id]?.status === "not_run",
+      notRun: filteredTestCases.filter(
+        (tc) =>
+          !executionByCaseId[tc.id] ||
+          executionByCaseId[tc.id]?.status === "not_run",
       ).length,
-    };
-  }, [filteredTestCases, execution]);
+    }),
+    [filteredTestCases, executionByCaseId],
+  );
 
-  const crossPlatformMetrics = useMemo(() => {
-    return {
+  const crossPlatformMetrics = useMemo(
+    (): TableMetrics => ({
       total: filteredCrossPlatformCases.length,
       passed: filteredCrossPlatformCases.filter(
-        (tc) => execution[tc.id]?.status === "passed",
+        (tc) => (executionByCaseId[tc.id]?.status ?? "not_run") === "passed",
       ).length,
       failed: filteredCrossPlatformCases.filter(
-        (tc) => execution[tc.id]?.status === "failed",
+        (tc) => (executionByCaseId[tc.id]?.status ?? "not_run") === "failed",
       ).length,
       blocked: filteredCrossPlatformCases.filter(
-        (tc) => execution[tc.id]?.status === "blocked",
+        (tc) => (executionByCaseId[tc.id]?.status ?? "not_run") === "blocked",
       ).length,
-      in_progress: filteredCrossPlatformCases.filter(
-        (tc) => execution[tc.id]?.status === "in_progress",
+      inProgress: filteredCrossPlatformCases.filter(
+        (tc) =>
+          (executionByCaseId[tc.id]?.status ?? "not_run") === "in_progress",
       ).length,
-      not_run: filteredCrossPlatformCases.filter(
-        (tc) => !execution[tc.id] || execution[tc.id]?.status === "not_run",
+      notRun: filteredCrossPlatformCases.filter(
+        (tc) =>
+          !executionByCaseId[tc.id] ||
+          executionByCaseId[tc.id]?.status === "not_run",
       ).length,
-    };
-  }, [filteredCrossPlatformCases, execution]);
+    }),
+    [filteredCrossPlatformCases, executionByCaseId],
+  );
 
-  // CRUD handlers
   const openRunner = useCallback(
     async (tc: TestCase | CrossPlatformTestCase, type: TestCaseType) => {
       setRunnerCase(tc);
       setRunnerCaseType(type);
       try {
         await hydrateOne(tc.id);
-      } catch (e) {}
+      } catch {}
       setShowRunnerDialog(true);
     },
     [hydrateOne],
@@ -335,12 +329,10 @@ export function TabbedTestCaseTable() {
     setEditingTestCase(null);
     setShowCreateDialog(true);
   }, []);
-
   const openEdit = useCallback((tc: CombinedTestCase) => {
     setEditingTestCase(tc);
     setShowEditDialog(true);
   }, []);
-
   const openDelete = useCallback((tc: CombinedTestCase) => {
     setDeletingTestCase(tc);
     setShowDeleteDialog(true);
@@ -348,9 +340,10 @@ export function TabbedTestCaseTable() {
 
   const runTestFromSheet = useCallback(
     (tc: CombinedTestCase) => {
-      const type =
-        tc._caseType === "cross-platform" ? "cross-platform" : "regular";
-      void openRunner(tc, type);
+      void openRunner(
+        tc,
+        tc._caseType === "cross-platform" ? "cross-platform" : "regular",
+      );
     },
     [openRunner],
   );
@@ -365,19 +358,20 @@ export function TabbedTestCaseTable() {
     async (testCaseId: string, newStatus: "draft" | "active" | "archived") => {
       setUpdating(testCaseId);
       try {
-        const { createClient } = await import("@/lib/supabase/client");
-        const supabase = createClient();
-        const { error } = await supabase
-          .from("test_cases")
-          .update({ status: newStatus, updated_at: new Date().toISOString() })
-          .eq("id", testCaseId);
-
-        if (error) throw error;
+        const res = await fetch(`/api/test-cases/${testCaseId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: newStatus }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.error ?? "Failed to update status");
+        }
         toast.success("Status updated");
         await refresh();
-      } catch (e) {
+      } catch (e: any) {
         console.error("updateTestCaseStatus error:", e);
-        toast.error("Failed to update status");
+        toast.error(e?.message ?? "Failed to update status");
       } finally {
         setUpdating(null);
       }
@@ -387,20 +381,11 @@ export function TabbedTestCaseTable() {
 
   const isRegularTestCase = (
     tc: CombinedTestCase,
-  ): tc is TestCase & { _caseType?: "regular" } => {
-    return tc._caseType === "regular" || !tc._caseType;
-  };
-
-  const isCrossPlatformTestCase = (
-    tc: CombinedTestCase,
-  ): tc is CrossPlatformTestCase & { _caseType: "cross-platform" } => {
-    return tc._caseType === "cross-platform";
-  };
+  ): tc is TestCase & { _caseType?: "regular" } =>
+    tc._caseType === "regular" || !tc._caseType;
 
   const handleViewDetails = useCallback(
-    (tc: CombinedTestCase) => {
-      router.push(`/test-cases/${tc.id}`);
-    },
+    (tc: CombinedTestCase) => router.push(`/test-cases/${tc.id}`),
     [router],
   );
 
@@ -414,9 +399,8 @@ export function TabbedTestCaseTable() {
 
   return (
     <div className="space-y-6">
-      {/* Session Info */}
       {currentSession && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 border border-blue-200 dark:border-blue-800 rounded-lg p-4 shadow-sm">
+        <div className="bg-gradient-to-r from-blue-100 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 border border-blue-200 dark:border-blue-800 rounded-lg p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-blue-900 dark:text-blue-100">
@@ -494,7 +478,6 @@ export function TabbedTestCaseTable() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Regular Tests Tab */}
         <TabsContent value="regular" className="space-y-4 mt-6">
           <BulkActionsToolbar
             selectedIds={regularBulkActions.selectedIds}
@@ -507,13 +490,13 @@ export function TabbedTestCaseTable() {
             onBulkAddToSuite={regularBulkActions.bulkAddToSuite}
             onBulkExport={regularBulkActions.bulkExport}
           />
-
           <UnifiedTestCaseTable
             testCases={filteredTestCases}
             paginated={paginatedTestCases}
             filteredCount={filteredTestCases.length}
             execution={execution}
             updating={updating}
+            metrics={regularMetrics}
             selectedIds={regularBulkActions.selectedIds}
             selectAll={regularBulkActions.selectAll}
             deselectAll={regularBulkActions.deselectAll}
@@ -535,7 +518,6 @@ export function TabbedTestCaseTable() {
           />
         </TabsContent>
 
-        {/* Cross-Platform Tests Tab */}
         <TabsContent value="cross-platform" className="space-y-4 mt-6">
           <BulkActionsToolbar
             selectedIds={crossPlatformBulkActions.selectedIds}
@@ -554,6 +536,7 @@ export function TabbedTestCaseTable() {
             filteredCount={filteredCrossPlatformCases.length}
             execution={execution}
             updating={null}
+            metrics={crossPlatformMetrics}
             selectedIds={crossPlatformBulkActions.selectedIds}
             selectAll={crossPlatformBulkActions.selectAll}
             deselectAll={crossPlatformBulkActions.deselectAll}
@@ -580,7 +563,6 @@ export function TabbedTestCaseTable() {
         </TabsContent>
       </Tabs>
 
-      {/* Dialogs */}
       <DeleteTestCaseDialog
         testCase={deletingTestCase}
         open={showDeleteDialog}

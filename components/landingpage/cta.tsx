@@ -99,7 +99,7 @@ export function CTA() {
             <Button
               asChild
               size="lg"
-              className="gap-2 rounded-full bg-cyan-700 px-8 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition-all hover:bg-blue-500 dark:bg-cyan-500 dark:shadow-cyan-900/50 dark:hover:bg-cyan-400"
+              className="gap-2 rounded-full bg-cyan-700 px-8 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition-all hover:bg-cyan-500 dark:bg-cyan-500 dark:shadow-cyan-900/50 dark:hover:bg-cyan-400"
             >
               <Link href="/signup">
                 Create account
