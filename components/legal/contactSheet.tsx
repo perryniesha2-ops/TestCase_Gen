@@ -247,7 +247,7 @@ export function ContactSheet({
               form="contact-support-form"
               type="submit"
               disabled={loading}
-              className="rounded-full bg-blue-600 px-6 text-white shadow-md shadow-blue-600/20 hover:bg-blue-500 disabled:opacity-50 dark:bg-cyan-500 dark:shadow-cyan-900/40 dark:hover:bg-cyan-400"
+              className="rounded-full bg-cyan-700 px-6 text-white shadow-md shadow-blue-600/20 hover:bg-cyan-500 disabled:opacity-50 dark:bg-cyan-500 dark:shadow-cyan-900/40 dark:hover:bg-cyan-400"
             >
               {loading ? "Sending..." : "Send to Support"}
             </Button>
