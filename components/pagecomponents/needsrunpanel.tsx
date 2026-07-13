@@ -5,17 +5,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useRouter } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from "@/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
@@ -40,7 +29,7 @@ import {
 } from "lucide-react";
 import { toastSuccess, toastError } from "@/lib/utils/toast-utils";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type Priority = "low" | "medium" | "high" | "critical";
 
@@ -67,18 +56,17 @@ interface NeedsRerunPanelProps {
   suiteId?: string | null;
 }
 
-// ─── Priority badge ───────────────────────────────────────────────────────────
+// ── Priority chip ─────────────────────────────────────────────────────────────
 
-const PRIORITY_CLASS: Record<Priority, string> = {
-  critical:
-    "bg-red-100 text-red-800 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800",
-  high: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800",
+const priorityChip: Record<Priority, string> = {
+  critical: "bg-rose-100 text-rose-600 dark:bg-rose-400/10 dark:text-rose-300",
+  high: "bg-orange-100 text-orange-600 dark:bg-orange-400/10 dark:text-orange-300",
   medium:
-    "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
-  low: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800/40 dark:text-slate-300 dark:border-slate-700",
+    "bg-amber-100 text-amber-600 dark:bg-amber-400/10 dark:text-amber-300",
+  low: "bg-slate-100 text-slate-500 dark:bg-slate-700/60 dark:text-slate-400",
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function NeedsRerunPanel({
   projectId,
@@ -98,7 +86,7 @@ export function NeedsRerunPanel({
   const [isOpen, setIsOpen] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
-  // ── Fetch cases via API route ─────────────────────────────────────────────
+  // ── Fetch ────────────────────────────────────────────────────────────────
 
   const fetchCases = useCallback(async () => {
     setLoading(true);
@@ -121,10 +109,6 @@ export function NeedsRerunPanel({
     }
   }, [projectId]);
 
-  // ── Fetch suites via API route (no direct Supabase call) ──────────────────
-  // Uses the existing /api/projects/[id] endpoint which already returns suites.
-  // Memoized with useCallback so the useEffect dependency array stays stable.
-
   const fetchSuites = useCallback(async () => {
     if (!projectId) return;
     try {
@@ -136,16 +120,13 @@ export function NeedsRerunPanel({
         name: s.name,
       }));
       setSuites(suiteList);
-      if (!defaultSuiteId && suiteList.length > 0) {
+      if (!defaultSuiteId && suiteList.length > 0)
         setSelectedSuiteId(suiteList[0].id);
-      }
     } catch (err) {
       console.error("[NeedsRerunPanel] suites fetch error:", err);
     }
   }, [projectId, defaultSuiteId]);
 
-  // Both fetchCases and fetchSuites are now stable useCallback references
-  // so this effect fires exactly once when the user is available
   useEffect(() => {
     if (authLoading || !user) return;
     void fetchCases();
@@ -163,14 +144,14 @@ export function NeedsRerunPanel({
   }
 
   function toggleAll() {
-    if (selectedIds.size === cases.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(cases.map((c) => c.id)));
-    }
+    setSelectedIds(
+      selectedIds.size === cases.length
+        ? new Set()
+        : new Set(cases.map((c) => c.id)),
+    );
   }
 
-  // ── Create re-run session ─────────────────────────────────────────────────
+  // ── Create session ────────────────────────────────────────────────────────
 
   async function createRerunSession() {
     if (!selectedSuiteId) {
@@ -181,7 +162,6 @@ export function NeedsRerunPanel({
       toastError("Select at least one test case");
       return;
     }
-
     setCreating(true);
     try {
       const res = await fetch("/api/test-cases/needs-rerun", {
@@ -193,14 +173,11 @@ export function NeedsRerunPanel({
           project_id: projectId ?? undefined,
         }),
       });
-
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Failed to create session");
-
       toastSuccess(
         `Re-run session created — ${json.case_count} case${json.case_count !== 1 ? "s" : ""} queued`,
       );
-
       router.push(
         `/test-library/${selectedSuiteId}?session=${json.session_id}`,
       );
@@ -218,30 +195,24 @@ export function NeedsRerunPanel({
 
   if (!loading && cases.length === 0) {
     return (
-      <Card className="border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20">
-        <CardContent className="py-5 flex items-center gap-3">
-          <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-green-800 dark:text-green-300">
-              All clear
-            </p>
-            <p className="text-xs text-green-600 dark:text-green-500 mt-0.5">
-              No test cases are waiting for fix verification.
-            </p>
-          </div>
-          {lastRefreshed && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="ml-auto h-7 w-7 text-green-600"
-              onClick={fetchCases}
-              title="Refresh"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+      <div className="flex items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-4 dark:border-emerald-400/20 dark:bg-emerald-400/5">
+        <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500 dark:text-emerald-400" />
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+            All clear
+          </p>
+          <p className="text-xs text-emerald-600 dark:text-emerald-500">
+            No test cases are waiting for fix verification.
+          </p>
+        </div>
+        <button
+          onClick={fetchCases}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-emerald-500 hover:bg-emerald-100 transition dark:hover:bg-emerald-400/10"
+          title="Refresh"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+        </button>
+      </div>
     );
   }
 
@@ -249,115 +220,120 @@ export function NeedsRerunPanel({
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <Card className="border-amber-200 dark:border-amber-800">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900">
-                <Bug className="h-4 w-4 text-amber-700 dark:text-amber-400" />
-              </div>
-              <div>
-                <CardTitle className="text-base flex items-center gap-2">
-                  Fix Verification
-                  {!loading && (
-                    <Badge className="bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-900/60 dark:text-amber-300 dark:border-amber-700 text-xs">
-                      {cases.length}
-                    </Badge>
-                  )}
-                </CardTitle>
-                <CardDescription className="text-xs mt-0.5">
-                  Jira bugs closed — re-run these tests to verify the fixes
-                </CardDescription>
-              </div>
+      <section className="rounded-2xl border border-amber-200 bg-white dark:border-amber-400/20 dark:bg-slate-900">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-400/10">
+              <Bug className="h-4 w-4 text-amber-600 dark:text-amber-400" />
             </div>
-
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={fetchCases}
-                disabled={loading}
-                title="Refresh"
-              >
-                <RefreshCw
-                  className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-                />
-              </Button>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7">
-                  {isOpen ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </Button>
-              </CollapsibleTrigger>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+                  Fix verification
+                </h3>
+                {!loading && (
+                  <span className="rounded-full bg-amber-100 px-2.5 py-0.5 font-mono text-[10px] text-amber-700 dark:bg-amber-400/10 dark:text-amber-300">
+                    {cases.length}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                Jira bugs closed — re-run these tests to verify the fixes
+              </p>
             </div>
           </div>
-        </CardHeader>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={fetchCases}
+              disabled={loading}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition dark:hover:bg-slate-800"
+              title="Refresh"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+              />
+            </button>
+            <CollapsibleTrigger asChild>
+              <button className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition dark:hover:bg-slate-800">
+                {isOpen ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </button>
+            </CollapsibleTrigger>
+          </div>
+        </div>
 
         <CollapsibleContent>
-          <CardContent className="pt-0 pb-3 space-y-2">
+          {/* Divider */}
+          <div className="border-t border-slate-100 dark:border-slate-800" />
+
+          {/* Body */}
+          <div className="px-6 py-4">
             {loading ? (
-              <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground">
+              <div className="flex items-center justify-center gap-2 py-8 text-slate-400 dark:text-slate-500">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">Loading...</span>
+                <span className="text-sm">Loading…</span>
               </div>
             ) : (
-              <>
-                {/* Select all row */}
-                <div className="flex items-center gap-2 pb-1 border-b">
-                  <Checkbox
+              <div className="space-y-2">
+                {/* Select all */}
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
+                  <input
+                    type="checkbox"
+                    id="select-all-rerun"
                     checked={
                       selectedIds.size === cases.length && cases.length > 0
                     }
-                    onCheckedChange={toggleAll}
-                    id="select-all-rerun"
+                    onChange={toggleAll}
+                    className="h-4 w-4 rounded border-slate-300 accent-cyan-500 dark:border-slate-600"
                   />
                   <label
                     htmlFor="select-all-rerun"
-                    className="text-xs font-medium text-muted-foreground cursor-pointer select-none"
+                    className="cursor-pointer select-none text-xs font-medium text-slate-500 dark:text-slate-400"
                   >
                     Select all ({cases.length})
                   </label>
                   {selectedIds.size > 0 && selectedIds.size < cases.length && (
-                    <span className="text-xs text-muted-foreground ml-auto">
+                    <span className="ml-auto font-mono text-xs text-slate-400 dark:text-slate-500">
                       {selectedIds.size} selected
                     </span>
                   )}
                 </div>
 
                 {/* Case list */}
-                <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
                   {cases.map((c) => (
                     <div
                       key={c.id}
-                      className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                        selectedIds.has(c.id)
-                          ? "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
-                          : "bg-background border-transparent hover:border-border hover:bg-muted/50"
-                      }`}
                       onClick={() => toggleCase(c.id)}
+                      className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition ${
+                        selectedIds.has(c.id)
+                          ? "border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5"
+                          : "border-slate-100 bg-slate-50 hover:border-slate-200 dark:border-slate-800 dark:bg-slate-950/60 dark:hover:border-slate-700"
+                      }`}
                     >
-                      <Checkbox
+                      <input
+                        type="checkbox"
                         checked={selectedIds.has(c.id)}
-                        onCheckedChange={() => toggleCase(c.id)}
+                        onChange={() => toggleCase(c.id)}
                         onClick={(e) => e.stopPropagation()}
-                        className="mt-0.5 shrink-0"
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 accent-cyan-500 dark:border-slate-600"
                       />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium leading-snug truncate">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
                           {c.title}
                         </p>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] border ${PRIORITY_CLASS[c.priority as Priority] ?? PRIORITY_CLASS.medium}`}
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 font-mono text-[10px] ${priorityChip[c.priority as Priority] ?? priorityChip.medium}`}
                           >
                             {c.priority}
-                          </Badge>
-                          <span className="text-[11px] text-muted-foreground">
+                          </span>
+                          <span className="text-xs text-slate-400 dark:text-slate-500">
                             {c.test_type}
                           </span>
                           {c.jira_issue_key && (
@@ -366,7 +342,7 @@ export function NeedsRerunPanel({
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline dark:text-blue-400"
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
                             >
                               <svg
                                 className="h-3 w-3"
@@ -384,22 +360,23 @@ export function NeedsRerunPanel({
                     </div>
                   ))}
                 </div>
-              </>
+              </div>
             )}
-          </CardContent>
+          </div>
 
-          <CardFooter className="pt-0 pb-4 flex items-center gap-2 border-t mt-1">
+          {/* Footer */}
+          <div className="flex items-center gap-3 border-t border-slate-100 px-6 py-4 dark:border-slate-800">
             {!defaultSuiteId && suites.length > 0 && (
               <Select
                 value={selectedSuiteId}
                 onValueChange={setSelectedSuiteId}
               >
-                <SelectTrigger className="flex-1 h-8 text-xs">
+                <SelectTrigger className="h-9 flex-1 border-slate-200 bg-white text-sm dark:border-slate-700 dark:bg-slate-800">
                   <SelectValue placeholder="Select suite to run in…" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
                   {suites.map((s) => (
-                    <SelectItem key={s.id} value={s.id} className="text-xs">
+                    <SelectItem key={s.id} value={s.id} className="text-sm">
                       {s.name}
                     </SelectItem>
                   ))}
@@ -407,27 +384,30 @@ export function NeedsRerunPanel({
               </Select>
             )}
 
-            <Button
-              size="sm"
-              className="gap-1.5 ml-auto"
+            <button
+              onClick={createRerunSession}
               disabled={
                 creating ||
                 loading ||
                 selectedIds.size === 0 ||
                 !selectedSuiteId
               }
-              onClick={createRerunSession}
+              className="ml-auto flex items-center gap-1.5 rounded-full border border-cyan-500/40 bg-cyan-50 px-4 py-2 text-xs font-medium text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-cyan-400/40 dark:bg-cyan-400/10 dark:text-cyan-300 dark:hover:bg-cyan-400/20"
             >
               {creating ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Creating…
+                </>
               ) : (
-                <Play className="h-3.5 w-3.5" />
+                <>
+                  <Play className="h-3.5 w-3.5" /> Start re-run (
+                  {selectedIds.size})
+                </>
               )}
-              {creating ? "Creating…" : `Start re-run (${selectedIds.size})`}
-            </Button>
-          </CardFooter>
+            </button>
+          </div>
         </CollapsibleContent>
-      </Card>
+      </section>
     </Collapsible>
   );
 }

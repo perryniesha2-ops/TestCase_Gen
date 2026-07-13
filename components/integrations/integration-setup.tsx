@@ -1,13 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { toastSuccess, toastError, toastInfo } from "@/lib/utils/toast-utils";
 import {
   RefreshCw,
@@ -17,10 +11,13 @@ import {
   Clock,
   XCircle,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
+import Link from "next/link";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type IntegrationType = "jira" | "testrail";
-
 type IssueStatus = "open" | "in_progress" | "resolved" | "closed" | "wont_fix";
 
 interface TrackedIssue {
@@ -32,6 +29,8 @@ interface TrackedIssue {
   updated_at: string;
   test_executions?: { test_cases?: { title?: string } };
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function normalizeJiraBaseUrl(input: string) {
   return String(input ?? "")
@@ -49,84 +48,190 @@ function isLikelyJiraBaseUrl(url: string) {
   }
 }
 
-function statusBadge(status: IssueStatus) {
-  const map: Record<
-    IssueStatus,
-    {
-      label: string;
-      variant: "default" | "secondary" | "destructive" | "outline";
-      icon: React.ReactNode;
-    }
-  > = {
-    open: {
-      label: "Open",
-      variant: "destructive",
-      icon: <AlertCircle className="h-3 w-3" />,
-    },
-    in_progress: {
-      label: "In Progress",
-      variant: "secondary",
-      icon: <Clock className="h-3 w-3" />,
-    },
-    resolved: {
-      label: "Resolved",
-      variant: "default",
-      icon: <CheckCircle className="h-3 w-3" />,
-    },
-    closed: {
-      label: "Closed",
-      variant: "default",
-      icon: <CheckCircle className="h-3 w-3" />,
-    },
-    wont_fix: {
-      label: "Won't Fix",
-      variant: "outline",
-      icon: <XCircle className="h-3 w-3" />,
-    },
-  };
-  const { label, variant, icon } = map[status] ?? map.open;
+// ── Status chip ───────────────────────────────────────────────────────────────
+
+const statusConfig: Record<
+  IssueStatus,
+  { label: string; className: string; icon: React.ReactNode }
+> = {
+  open: {
+    label: "Open",
+    className:
+      "bg-rose-100 text-rose-600 dark:bg-rose-400/10 dark:text-rose-300",
+    icon: <AlertCircle className="h-3 w-3" />,
+  },
+  in_progress: {
+    label: "In progress",
+    className:
+      "bg-amber-100 text-amber-600 dark:bg-amber-400/10 dark:text-amber-300",
+    icon: <Clock className="h-3 w-3" />,
+  },
+  resolved: {
+    label: "Resolved",
+    className:
+      "bg-emerald-100 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-300",
+    icon: <CheckCircle className="h-3 w-3" />,
+  },
+  closed: {
+    label: "Closed",
+    className:
+      "bg-emerald-100 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-300",
+    icon: <CheckCircle className="h-3 w-3" />,
+  },
+  wont_fix: {
+    label: "Won't fix",
+    className:
+      "bg-slate-100 text-slate-500 dark:bg-slate-700/60 dark:text-slate-400",
+    icon: <XCircle className="h-3 w-3" />,
+  },
+};
+
+function StatusChip({ status }: { status: IssueStatus }) {
+  const { label, className, icon } = statusConfig[status] ?? statusConfig.open;
   return (
-    <Badge variant={variant} className="flex items-center gap-1 text-xs">
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-mono text-[10px] ${className}`}
+    >
       {icon}
       {label}
-    </Badge>
+    </span>
   );
 }
 
-// ─── Root component ───────────────────────────────────────────────────────────
+// ── Field components ──────────────────────────────────────────────────────────
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+        {label}
+      </label>
+      {children}
+      {hint && (
+        <p className="text-[11px] text-slate-400 dark:text-slate-500">{hint}</p>
+      )}
+    </div>
+  );
+}
+
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-cyan-400/60 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+    />
+  );
+}
+
+function ActionBtn({
+  onClick,
+  disabled,
+  loading,
+  children,
+  variant = "default",
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  children: React.ReactNode;
+  variant?: "default" | "outline" | "danger";
+}) {
+  const base =
+    "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50";
+  const styles = {
+    default:
+      "border border-cyan-500/40 bg-cyan-50 text-cyan-700 hover:bg-cyan-100 dark:border-cyan-400/40 dark:bg-cyan-400/10 dark:text-cyan-300 dark:hover:bg-cyan-400/20",
+    outline:
+      "border border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600",
+    danger:
+      "border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:border-rose-400/20 dark:bg-rose-400/5 dark:text-rose-400",
+  };
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled || loading}
+      className={`${base} ${styles[variant]}`}
+    >
+      {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+      {children}
+    </button>
+  );
+}
+
+// ── Root component ────────────────────────────────────────────────────────────
 
 export function IntegrationSetup({ projectId }: { projectId: string }) {
   const [activeType, setActiveType] = useState<IntegrationType>("jira");
 
+  const tabs: { id: IntegrationType; label: string }[] = [
+    { id: "jira", label: "Jira" },
+    { id: "testrail", label: "TestRail" },
+  ];
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Integration Settings</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Tabs
-          value={activeType}
-          onValueChange={(v) => setActiveType(v as IntegrationType)}
-        >
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="jira">Jira</TabsTrigger>
-            <TabsTrigger value="testrail">TestRail</TabsTrigger>
-          </TabsList>
-          <TabsContent value="jira">
-            <JiraSetup projectId={projectId} />
-          </TabsContent>
-          <TabsContent value="testrail">
-            <div className="pt-4 text-sm text-muted-foreground">
-              TestRail setup coming next.
-            </div>
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+      <div className="h-4" />
+      <Link
+        href="/project-manager"
+        className="rounded-full border border-slate-200 px-4 py-1.5 text-xs font-medium text-slate-600 hover:border-slate-300 transition dark:border-slate-700 dark:text-slate-300"
+      >
+        ← Back to Projects
+      </Link>
+      <div className="h-4" />
+
+      <h3 className="mb-5 text-base font-semibold text-slate-800 dark:text-slate-100">
+        Integration settings
+      </h3>
+
+      {/* Tab pills */}
+      <div className="mb-6 flex gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit dark:border-slate-800 dark:bg-slate-900">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveType(t.id)}
+            className={`rounded-lg px-4 py-1.5 text-xs font-medium transition ${
+              activeType === t.id
+                ? "bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100"
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeType === "jira" && <JiraSetup projectId={projectId} />}
+      {activeType === "testrail" && (
+        <p className="text-sm text-slate-400 dark:text-slate-500">
+          TestRail integration coming soon.
+        </p>
+      )}
+    </section>
   );
 }
 
-// ─── Jira setup ───────────────────────────────────────────────────────────────
+// ── Jira setup ────────────────────────────────────────────────────────────────
 
 function JiraSetup({ projectId }: { projectId: string }) {
   const [integrationId, setIntegrationId] = useState<string | null>(null);
@@ -136,6 +241,7 @@ function JiraSetup({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const [issues, setIssues] = useState<TrackedIssue[]>([]);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const [config, setConfig] = useState({
     url: "",
@@ -146,10 +252,27 @@ function JiraSetup({ projectId }: { projectId: string }) {
     autoSync: false,
   });
 
+  const set = (key: keyof typeof config) => (val: string | boolean) =>
+    setConfig((prev) => ({ ...prev, [key]: val }));
+
   const webhookUrl = useMemo(() => {
     if (!integrationId || typeof window === "undefined") return null;
     return `${window.location.origin}/api/integrations/jira/webhook?integration_id=${integrationId}`;
   }, [integrationId]);
+
+  const normalizedUrl = useMemo(
+    () => normalizeJiraBaseUrl(config.url),
+    [config.url],
+  );
+  const urlLooksValid = useMemo(
+    () => Boolean(normalizedUrl) && isLikelyJiraBaseUrl(normalizedUrl),
+    [normalizedUrl],
+  );
+  const canConnect = Boolean(
+    config.url && config.email && config.apiToken && urlLooksValid,
+  );
+
+  // ── Load ────────────────────────────────────────────────────────────────
 
   const loadIntegration = useCallback(async () => {
     if (!projectId) return;
@@ -161,7 +284,6 @@ function JiraSetup({ projectId }: { projectId: string }) {
       const jira = (json?.integrations ?? []).find(
         (i: { integration_type: string }) => i.integration_type === "jira",
       );
-
       if (jira) {
         setIntegrationId(jira.id);
         setLastSynced(jira.last_synced_at ?? null);
@@ -173,14 +295,10 @@ function JiraSetup({ projectId }: { projectId: string }) {
           webhookSecret: jira.config?.webhookSecret ?? "",
           autoSync: jira.sync_enabled ?? false,
         });
-        // Load tracked issues
         const issuesRes = await fetch(
           `/api/integrations/jira/issues?integration_id=${jira.id}`,
         );
-        if (issuesRes.ok) {
-          const issuesJson = await issuesRes.json();
-          setIssues(issuesJson.issues ?? []);
-        }
+        if (issuesRes.ok) setIssues((await issuesRes.json()).issues ?? []);
       } else {
         setIntegrationId(null);
         setConfig({
@@ -204,29 +322,13 @@ function JiraSetup({ projectId }: { projectId: string }) {
     loadIntegration();
   }, [loadIntegration]);
 
-  const normalizedUrl = useMemo(
-    () => normalizeJiraBaseUrl(config.url),
-    [config.url],
-  );
-  const urlLooksValid = useMemo(
-    () => Boolean(normalizedUrl) && isLikelyJiraBaseUrl(normalizedUrl),
-    [normalizedUrl],
-  );
+  // ── Actions ─────────────────────────────────────────────────────────────
 
   async function saveIntegration() {
-    if (!projectId) {
-      toastError("Missing project id");
-      return;
-    }
-    if (!config.url || !config.email || !config.apiToken) {
+    if (!canConnect) {
       toastError("URL, Email, and API Token are required");
       return;
     }
-    if (!urlLooksValid) {
-      toastError("Use the base Jira site URL only (no /jira/... path).");
-      return;
-    }
-
     setSaving(true);
     try {
       const res = await fetch("/api/integrations", {
@@ -247,27 +349,21 @@ function JiraSetup({ projectId }: { projectId: string }) {
         }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error ?? "Failed to save integration");
+      if (!res.ok) throw new Error(json?.error ?? "Failed to save");
       const id = json?.integration?.id ?? null;
-      if (!id) throw new Error("Saved, but API did not return integration id");
+      if (!id) throw new Error("Saved, but no integration id returned");
       setIntegrationId(id);
       toastSuccess(integrationId ? "Integration updated" : "Integration saved");
     } catch (err) {
-      toastError(
-        err instanceof Error ? err.message : "Failed to save integration",
-      );
+      toastError(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSaving(false);
     }
   }
 
   async function testConnection() {
-    if (!config.url || !config.email || !config.apiToken) {
+    if (!canConnect) {
       toastError("URL, Email, and API Token are required");
-      return;
-    }
-    if (!urlLooksValid) {
-      toastError("Use the base Jira site URL only.");
       return;
     }
     setTesting(true);
@@ -283,13 +379,9 @@ function JiraSetup({ projectId }: { projectId: string }) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
-      toastSuccess(
-        `Connection successful! Connected as ${json?.me?.displayName ?? "user"}`,
-      );
+      toastSuccess(`Connected as ${json?.me?.displayName ?? "user"}`);
     } catch (err) {
-      toastError(
-        err instanceof Error ? err.message : "Failed to connect to Jira",
-      );
+      toastError(err instanceof Error ? err.message : "Connection failed");
     } finally {
       setTesting(false);
     }
@@ -310,7 +402,7 @@ function JiraSetup({ projectId }: { projectId: string }) {
         `Synced ${result?.synced ?? 0} issues, ${result?.changed ?? 0} updated`,
       );
       setLastSynced(new Date().toISOString());
-      await loadIntegration(); // refresh issue list
+      await loadIntegration();
     } catch (err) {
       toastError(err instanceof Error ? err.message : "Sync failed");
     } finally {
@@ -321,196 +413,206 @@ function JiraSetup({ projectId }: { projectId: string }) {
   async function copyWebhookUrl() {
     if (!webhookUrl) return;
     await navigator.clipboard.writeText(webhookUrl);
-    toastInfo("Webhook URL copied to clipboard");
+    setCopied(true);
+    toastInfo("Webhook URL copied");
+    setTimeout(() => setCopied(false), 2000);
   }
 
-  if (loading) {
+  // ── Loading ──────────────────────────────────────────────────────────────
+
+  if (loading)
     return (
-      <div className="space-y-4 pt-4 text-sm text-muted-foreground">
-        Loading integration settings...
+      <div className="flex items-center gap-2 py-8 text-slate-400 dark:text-slate-500">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="text-sm">Loading integration settings…</span>
       </div>
     );
-  }
+
+  // ── Form ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6 pt-4">
+    <div className="space-y-6">
       {/* Config fields */}
       <div className="space-y-4">
-        <div className="space-y-2">
-          <Label>Jira URL</Label>
-          <Input
-            placeholder="https://your-domain.atlassian.net"
+        <Field
+          label="Jira URL"
+          hint={
+            config.url && !urlLooksValid
+              ? "Use the base site URL only — e.g. https://your-domain.atlassian.net"
+              : undefined
+          }
+        >
+          <TextInput
             value={config.url}
-            onChange={(e) => setConfig({ ...config, url: e.target.value })}
+            onChange={set("url")}
+            placeholder="https://your-domain.atlassian.net"
           />
-          {config.url && !urlLooksValid && (
-            <p className="text-xs text-muted-foreground">
-              Use the base site URL only (e.g.
-              https://your-domain.atlassian.net).
-            </p>
-          )}
-        </div>
+        </Field>
 
-        <div className="space-y-2">
-          <Label>Email</Label>
-          <Input
-            type="email"
+        <Field label="Email">
+          <TextInput
             value={config.email}
-            onChange={(e) => setConfig({ ...config, email: e.target.value })}
+            onChange={set("email")}
+            type="email"
           />
-        </div>
+        </Field>
 
-        <div className="space-y-2">
-          <Label>API Token</Label>
-          <Input
-            type="password"
-            placeholder="Create in Atlassian Account → Security → API tokens"
+        <Field
+          label="API Token"
+          hint="Create in Atlassian Account → Security → API tokens"
+        >
+          <TextInput
             value={config.apiToken}
-            onChange={(e) => setConfig({ ...config, apiToken: e.target.value })}
+            onChange={set("apiToken")}
+            type="password"
+            placeholder="••••••••"
           />
-        </div>
+        </Field>
 
-        <div className="space-y-2">
-          <Label>Project Key</Label>
-          <Input
-            placeholder="SCRUM"
+        <Field label="Project Key">
+          <TextInput
             value={config.projectKey}
-            onChange={(e) =>
-              setConfig({ ...config, projectKey: e.target.value })
-            }
+            onChange={set("projectKey")}
+            placeholder="SCRUM"
           />
-        </div>
+        </Field>
 
-        <div className="flex items-center justify-between">
-          <Label>Auto-sync every hour</Label>
+        {/* Auto-sync toggle */}
+        <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/60">
+          <div>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              Auto-sync
+            </p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              Sync Jira issue statuses automatically every hour
+            </p>
+          </div>
           <Switch
             checked={config.autoSync}
-            onCheckedChange={(v) => setConfig({ ...config, autoSync: v })}
+            onCheckedChange={(v) => set("autoSync")(v)}
           />
         </div>
       </div>
 
-      {/* Webhook section — only shown after integration is saved */}
+      {/* Webhook section — shown after save */}
       {integrationId && (
-        <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
+        <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/60">
           <div>
-            <p className="text-sm font-medium">Webhook URL</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Add this URL in Jira → Project Settings → Automation → Webhooks to
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              Webhook URL
+            </p>
+            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+              Add this in Jira → Project Settings → Automation → Webhooks to
               receive real-time status updates.
             </p>
           </div>
-
           <div className="flex items-center gap-2">
-            <Input
+            <input
               readOnly
               value={webhookUrl ?? ""}
-              className="font-mono text-xs bg-background"
+              className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-mono text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             />
-            <Button
-              size="icon"
-              variant="outline"
+            <button
               onClick={copyWebhookUrl}
               title="Copy webhook URL"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-600 dark:text-slate-400"
             >
-              <Copy className="h-4 w-4" />
-            </Button>
+              {copied ? (
+                <CheckCircle className="h-4 w-4 text-emerald-500" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </button>
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-xs">
-              Webhook Secret (optional but recommended)
-            </Label>
-            <Input
+          <Field
+            label="Webhook Secret (optional)"
+            hint={
+              <>
+                Jira will include this in{" "}
+                <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">
+                  x-hub-signature-256
+                </code>{" "}
+                so your endpoint can verify requests are genuine.
+              </>
+            }
+          >
+            <TextInput
+              value={config.webhookSecret}
+              onChange={set("webhookSecret")}
               type="password"
               placeholder="Random string — set the same value in Jira"
-              value={config.webhookSecret}
-              onChange={(e) =>
-                setConfig({ ...config, webhookSecret: e.target.value })
-              }
-              className="text-xs"
             />
-            <p className="text-xs text-muted-foreground">
-              Jira will include this in{" "}
-              <code className="text-xs">x-hub-signature-256</code> so your
-              endpoint can verify requests are genuine.
-            </p>
-          </div>
+          </Field>
         </div>
       )}
 
-      {/* Action buttons */}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
+      {/* Actions */}
+      <div className="flex flex-wrap items-center gap-2">
+        <ActionBtn
           onClick={testConnection}
-          disabled={
-            testing ||
-            !config.url ||
-            !config.email ||
-            !config.apiToken ||
-            !urlLooksValid
-          }
+          disabled={!canConnect}
+          loading={testing}
+          variant="outline"
         >
-          {testing ? "Testing..." : "Test Connection"}
-        </Button>
-        <Button onClick={saveIntegration} disabled={saving || !urlLooksValid}>
+          {testing ? "Testing…" : "Test connection"}
+        </ActionBtn>
+        <ActionBtn
+          onClick={saveIntegration}
+          disabled={!urlLooksValid}
+          loading={saving}
+        >
           {saving
-            ? "Saving..."
+            ? "Saving…"
             : integrationId
-              ? "Update Configuration"
-              : "Save Configuration"}
-        </Button>
+              ? "Update configuration"
+              : "Save configuration"}
+        </ActionBtn>
         {integrationId && (
-          <Button
-            variant="outline"
-            onClick={syncNow}
-            disabled={syncing}
-            className="ml-auto"
-          >
+          <ActionBtn onClick={syncNow} loading={syncing} variant="outline">
             <RefreshCw
-              className={`h-4 w-4 mr-2 ${syncing ? "animate-spin" : ""}`}
+              className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`}
             />
-            {syncing ? "Syncing..." : "Sync Now"}
-          </Button>
+            {syncing ? "Syncing…" : "Sync now"}
+          </ActionBtn>
+        )}
+        {lastSynced && (
+          <span className="ml-auto text-xs text-slate-400 dark:text-slate-500">
+            Last synced {new Date(lastSynced).toLocaleString()}
+          </span>
         )}
       </div>
-
-      {lastSynced && (
-        <p className="text-xs text-muted-foreground">
-          Last synced: {new Date(lastSynced).toLocaleString()}
-        </p>
-      )}
 
       {/* Tracked issues */}
       {issues.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">
-              Tracked Issues ({issues.length})
-            </p>
+            <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+              Tracked issues
+              <span className="ml-2 font-mono text-xs text-slate-400 dark:text-slate-500">
+                ({issues.length})
+              </span>
+            </h4>
           </div>
-          <div className="space-y-2 max-h-72 overflow-y-auto">
+          <div className="max-h-72 space-y-2 overflow-y-auto">
             {issues.map((issue) => (
               <div
                 key={issue.id}
-                className="flex items-center justify-between rounded-md border px-3 py-2 text-sm bg-background"
+                className="flex items-center gap-4 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/60"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <a
-                    href={issue.external_issue_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-xs font-medium text-primary hover:underline flex items-center gap-1 shrink-0"
-                  >
-                    {issue.external_issue_id}
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                  <span className="text-xs text-muted-foreground truncate">
-                    {issue.test_executions?.test_cases?.title ?? "—"}
-                  </span>
-                </div>
-                {statusBadge(issue.status)}
+                <a
+                  href={issue.external_issue_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center gap-1 font-mono text-xs font-semibold text-cyan-600 hover:underline dark:text-cyan-400"
+                >
+                  {issue.external_issue_id}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+                <span className="min-w-0 flex-1 truncate text-xs text-slate-500 dark:text-slate-400">
+                  {issue.test_executions?.test_cases?.title ?? "—"}
+                </span>
+                <StatusChip status={issue.status} />
               </div>
             ))}
           </div>

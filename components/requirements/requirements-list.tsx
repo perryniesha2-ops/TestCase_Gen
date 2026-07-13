@@ -8,8 +8,6 @@ import React, {
   useMemo,
 } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { AddRequirementModal } from "@/components/requirements/add-requirement-modal";
 import { ImportRequirementsDialog } from "@/components/requirements/import-requirements-dialog";
 import {
@@ -20,14 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { toastSuccess, toastError } from "@/lib/utils/toast-utils";
+import { toastError } from "@/lib/utils/toast-utils";
 import {
   ChevronDown,
   Download,
@@ -37,13 +28,13 @@ import {
   Loader2,
   Search,
   Upload,
+  X,
 } from "lucide-react";
-
 import { RequirementsTable } from "./requirements-table";
 import { getProjectColor } from "@/lib/utils/requirement-helpers";
 import type { Project, Requirement } from "@/types/requirements";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface RequirementsListProps {
   onRequirementSelected?: (requirement: Requirement) => void;
@@ -58,7 +49,7 @@ type RequirementListResponse = {
   pageSize: number;
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debounced, setDebounced] = useState(value);
@@ -98,7 +89,7 @@ async function safeJson(res: Response) {
   }
 }
 
-// ─── Export helpers ───────────────────────────────────────────────────────────
+// ── Export helpers ────────────────────────────────────────────────────────────
 
 function escapeCSV(value: string | number | null | undefined): string {
   const str = String(value ?? "");
@@ -146,7 +137,6 @@ async function exportXLSX(requirements: Requirement[]) {
   wb.creator = "Requirements Export";
   wb.created = new Date();
   const ws = wb.addWorksheet("Requirements");
-
   ws.columns = [
     { header: "Title", key: "title", width: 48 },
     { header: "Project", key: "project", width: 24 },
@@ -156,7 +146,6 @@ async function exportXLSX(requirements: Requirement[]) {
     { header: "External ID", key: "external_id", width: 18 },
     { header: "Created", key: "created", width: 18 },
   ];
-
   const headerRow = ws.getRow(1);
   headerRow.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial" };
@@ -168,7 +157,6 @@ async function exportXLSX(requirements: Requirement[]) {
     cell.alignment = { vertical: "middle", horizontal: "left" };
   });
   headerRow.height = 22;
-
   requirements.forEach((r, i) => {
     const row = ws.addRow({
       title: r.title,
@@ -190,10 +178,8 @@ async function exportXLSX(requirements: Requirement[]) {
     });
     row.height = 18;
   });
-
   ws.views = [{ state: "frozen", ySplit: 1 }];
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 7 } };
-
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -208,7 +194,33 @@ async function exportXLSX(requirements: Requirement[]) {
   URL.revokeObjectURL(url);
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ── Filter select ─────────────────────────────────────────────────────────────
+
+function FilterSelect({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400/60 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function RequirementsList({
   onRequirementSelected,
@@ -243,10 +255,8 @@ export function RequirementsList({
     async (opts?: { initial?: boolean; page?: number }) => {
       const seq = ++reqFetchSeq.current;
       const targetPage = opts?.page ?? currentPage;
-
       if (opts?.initial) setInitialLoading(true);
       else setRefreshing(true);
-
       try {
         const params = buildQueryParams({
           page: targetPage,
@@ -325,96 +335,159 @@ export function RequirementsList({
     [selectable, onRequirementSelected, router],
   );
 
-  if (initialLoading) {
+  const hasActiveFilters =
+    selectedProject ||
+    statusFilter !== "all" ||
+    priorityFilter !== "all" ||
+    searchTerm;
+
+  // ── Loading ───────────────────────────────────────────────────────────────
+
+  if (initialLoading)
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center gap-2 py-16 text-slate-400 dark:text-slate-500">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span className="text-sm">Loading requirements…</span>
       </div>
     );
-  }
 
   return (
-    <div className="space-y-6">
-      {/* ── Top actions ───────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-end gap-2">
-        <ImportRequirementsDialog
-          projectId={selectedProject}
-          onImportComplete={async () => {
-            setCurrentPage(1);
-            await fetchRequirementsList({ page: 1 });
-            router.refresh();
-          }}
-        >
-          <Button variant="outline">
-            <Upload className="h-4 w-4 mr-2" />
-            Import
-          </Button>
-        </ImportRequirementsDialog>
+    <div className="space-y-4">
+      {/* ── Top bar ── */}
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+          Requirements
+          {totalCount > 0 && (
+            <span className="ml-2 font-mono text-xs font-normal text-slate-400 dark:text-slate-500">
+              ({totalCount})
+            </span>
+          )}
+        </h1>
 
-        {/* Export — exports current page results respecting active filters */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" disabled={requirements.length === 0}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => exportCSV(requirements)}>
-              <FileText className="h-4 w-4 mr-2 text-green-600" />
-              CSV
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => exportXLSX(requirements)}>
-              <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" />
-              Excel (.xlsx)
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-2">
+          {/* Import */}
+          <ImportRequirementsDialog
+            projectId={selectedProject}
+            onImportComplete={async () => {
+              setCurrentPage(1);
+              await fetchRequirementsList({ page: 1 });
+              router.refresh();
+            }}
+          >
+            <button className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600">
+              <Upload className="h-3.5 w-3.5" /> Import
+            </button>
+          </ImportRequirementsDialog>
 
-        <AddRequirementModal
-          onRequirementAdded={(newReq) => {
-            setRequirements((prev) => [newReq, ...prev]);
-          }}
-        />
+          {/* Export */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                disabled={requirements.length === 0}
+                className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600"
+              >
+                <Download className="h-3.5 w-3.5" /> Export
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+            >
+              <DropdownMenuItem
+                onClick={() => exportCSV(requirements)}
+                className="text-slate-700 focus:bg-slate-50 dark:text-slate-200 dark:focus:bg-slate-800"
+              >
+                <FileText className="h-4 w-4 mr-2 text-emerald-500" /> CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => exportXLSX(requirements)}
+                className="text-slate-700 focus:bg-slate-50 dark:text-slate-200 dark:focus:bg-slate-800"
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-500" />{" "}
+                Excel (.xlsx)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Add */}
+          <AddRequirementModal
+            onRequirementAdded={(newReq) =>
+              setRequirements((prev) => [newReq, ...prev])
+            }
+          >
+            <button className="flex items-center gap-1.5 rounded-full border border-cyan-500/40 bg-cyan-50 px-4 py-1.5 text-xs font-medium text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-400/40 dark:bg-cyan-400/10 dark:text-cyan-300 dark:hover:bg-cyan-400/20">
+              + Add requirement
+            </button>
+          </AddRequirementModal>
+        </div>
       </div>
 
-      {/* ── Filters ───────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search requirements..."
+      {/* ── Filters ── */}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+          <input
+            type="text"
+            placeholder="Search requirements…"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-cyan-400/60 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500"
           />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
 
+        {/* Project filter */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="min-w-[180px] justify-between">
-              {selectedProjectName ? (
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <FolderOpen className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{selectedProjectName}</span>
-                </div>
+            <button className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              {selectedProject ? (
+                <>
+                  <FolderOpen className="h-3.5 w-3.5 shrink-0 text-cyan-500" />
+                  <span className="truncate max-w-[120px]">
+                    {selectedProjectName}
+                  </span>
+                </>
               ) : (
-                <span className="text-muted-foreground">All Projects</span>
+                <>
+                  <FolderOpen className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                  <span className="text-slate-400 dark:text-slate-500">
+                    All projects
+                  </span>
+                </>
               )}
-              <ChevronDown className="h-4 w-4 ml-2 shrink-0 opacity-50" />
-            </Button>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400 ml-1" />
+            </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[220px]">
-            <DropdownMenuLabel>Filter by Project</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setSelectedProject("")}>
-              All Projects
+          <DropdownMenuContent
+            align="start"
+            className="w-56 border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+          >
+            <DropdownMenuLabel className="text-xs text-slate-500 dark:text-slate-400">
+              Filter by project
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator className="bg-slate-100 dark:bg-slate-800" />
+            <DropdownMenuItem
+              onClick={() => setSelectedProject("")}
+              className="text-slate-700 focus:bg-slate-50 dark:text-slate-200 dark:focus:bg-slate-800"
+            >
+              All projects
             </DropdownMenuItem>
-            {projects.length > 0 && <DropdownMenuSeparator />}
+            {projects.length > 0 && (
+              <DropdownMenuSeparator className="bg-slate-100 dark:bg-slate-800" />
+            )}
             {projects.map((project) => (
               <DropdownMenuItem
                 key={project.id}
                 onClick={() => setSelectedProject(project.id)}
+                className="text-slate-700 focus:bg-slate-50 dark:text-slate-200 dark:focus:bg-slate-800"
               >
                 <FolderOpen
                   className={`h-4 w-4 mr-2 ${getProjectColor(project.color)}`}
@@ -423,48 +496,64 @@ export function RequirementsList({
               </DropdownMenuItem>
             ))}
             {projects.length === 0 && (
-              <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+              <div className="px-2 py-6 text-center text-sm text-slate-400 dark:text-slate-500">
                 No projects yet
               </div>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="draft">Draft</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="implemented">Implemented</SelectItem>
-            <SelectItem value="tested">Tested</SelectItem>
-            <SelectItem value="rejected">Rejected</SelectItem>
-          </SelectContent>
-        </Select>
+        {/* Status */}
+        <FilterSelect
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { value: "all", label: "All status" },
+            { value: "draft", label: "Draft" },
+            { value: "approved", label: "Approved" },
+            { value: "implemented", label: "Implemented" },
+            { value: "tested", label: "Tested" },
+            { value: "rejected", label: "Rejected" },
+          ]}
+        />
 
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Priority" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Priority</SelectItem>
-            <SelectItem value="critical">Critical</SelectItem>
-            <SelectItem value="high">High</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="low">Low</SelectItem>
-          </SelectContent>
-        </Select>
+        {/* Priority */}
+        <FilterSelect
+          value={priorityFilter}
+          onChange={setPriorityFilter}
+          options={[
+            { value: "all", label: "All priority" },
+            { value: "critical", label: "Critical" },
+            { value: "high", label: "High" },
+            { value: "medium", label: "Medium" },
+            { value: "low", label: "Low" },
+          ]}
+        />
+
+        {/* Clear filters */}
+        {hasActiveFilters && (
+          <button
+            onClick={() => {
+              setSelectedProject("");
+              setStatusFilter("all");
+              setPriorityFilter("all");
+              setSearchTerm("");
+            }}
+            className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition dark:hover:text-slate-300"
+          >
+            <X className="h-3 w-3" /> Clear
+          </button>
+        )}
+
+        {/* Refreshing indicator */}
+        {refreshing && (
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Updating…
+          </div>
+        )}
       </div>
 
-      {refreshing && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Updating…
-        </div>
-      )}
-
+      {/* ── Table ── */}
       <RequirementsTable
         requirements={requirements}
         selectable={selectable}
@@ -475,7 +564,6 @@ export function RequirementsList({
         onRowClick={handleRowClick}
         onPageChange={setCurrentPage}
       />
-      <div className="h-4" />
     </div>
   );
 }

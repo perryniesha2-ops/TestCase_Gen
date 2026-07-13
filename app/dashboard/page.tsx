@@ -22,6 +22,7 @@ export default function Dashboard() {
             <TestManagementDashboard />
           </div>
         </main>
+        <div className="h-4" />
         <SiteFooter />
       </div>
     </div>
